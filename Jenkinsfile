@@ -41,7 +41,35 @@ pipeline {
             }
           }
         }
-        stage('clang-4') {
+        stage('gcc-7') {
+          agent {
+            docker {
+              reuseNode true
+              image 'braintwister/ubuntu-16.04-cmake-3.10-gcc-7-gtest-1.8.0'
+            }
+          }
+          steps {
+            sh '''
+              mkdir -p build-gcc-7
+              cd build-gcc-7
+              cmake -DCMAKE_BUILD_TYPE=release \
+                    -DGMX_BUILD_OWN_FFTW=ON \
+                    ..
+              make
+            '''
+          }
+          post {
+            always {
+              step([
+                $class: 'WarningsPublisher', canComputeNew: false, canResolveRelativePaths: false,
+                defaultEncoding: '', excludePattern: '', healthy: '', includePattern: '', messagesPattern: '',
+                parserConfigurations: [[parserName: 'GNU Make + GNU C Compiler (gcc)', pattern: 'build-gcc-7/make.out']],
+                unHealthy: ''
+              ])
+            }
+          }
+        }
+        stage('clang-6') {
           agent {
             docker {
               reuseNode true
@@ -93,7 +121,27 @@ pipeline {
             }
           }
         }
-        stage('clang-4') {
+        stage('gcc-7') {
+          agent {
+            docker {
+              reuseNode true
+              image 'braintwister/ubuntu-16.04-cmake-3.10-gcc-7-gtest-1.8.0'
+            }
+          }
+          steps {
+            sh 'cd build-gcc-7 && make test'
+          }
+          post {
+            always {
+              step([
+                $class: 'XUnitBuilder',
+                thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
+                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-7/Testing/*.xml']]
+              ])
+            }
+          }
+        }
+        stage('clang-6') {
           agent {
             docker {
               reuseNode true
