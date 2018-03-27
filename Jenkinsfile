@@ -17,7 +17,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'bernddoser/docker-devel-cpp:ubuntu-16.04-cmake-3.10-gcc-5-gtest-1.8.0'
+              image 'braintwister/ubuntu-16.04-cmake-3.10-gcc-5-gtest-1.8.0'
             }
           }
           steps {
@@ -45,7 +45,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'bernddoser/docker-devel-cpp:ubuntu-16.04-cmake-3.10-clang-4-gtest-1.8.0'
+              image 'braintwister/ubuntu-16.04-cmake-3.10-clang-4-gtest-1.8.0'
             }
           }
           steps {
@@ -77,7 +77,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'bernddoser/docker-devel-cpp:ubuntu-16.04-cmake-3.10-gcc-5-gtest-1.8.0'
+              image 'braintwister/ubuntu-16.04-cmake-3.10-gcc-5-gtest-1.8.0'
             }
           }
           steps {
@@ -97,7 +97,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'bernddoser/docker-devel-cpp:ubuntu-16.04-cmake-3.10-clang-4-gtest-1.8.0'
+              image 'braintwister/ubuntu-16.04-cmake-3.10-clang-4-gtest-1.8.0'
             }
           }
           steps {
