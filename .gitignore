@@ -25,3 +25,4 @@ _build
 CMakeLists.txt.user
 /VersionInfo*.cmake
 Testing
+.settings
