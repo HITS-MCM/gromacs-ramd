@@ -21,12 +21,14 @@ pipeline {
             }
           }
           steps {
-            mkdir -p build-gcc-5
-            cd build-gcc-5
-            cmake -DCMAKE_BUILD_TYPE=release \
-                  -DGMX_BUILD_OWN_FFTW=ON \
-                  ..
-            make
+            sh '''
+              mkdir -p build-gcc-5
+              cd build-gcc-5
+              cmake -DCMAKE_BUILD_TYPE=release \
+                    -DGMX_BUILD_OWN_FFTW=ON \
+                    ..
+              make
+            '''
           }
           post {
             always {
@@ -47,12 +49,14 @@ pipeline {
             }
           }
           steps {
-            mkdir -p build-clang-4
-            cd build-clang-4
-            cmake -DCMAKE_BUILD_TYPE=release \
-                  -DGMX_BUILD_OWN_FFTW=ON \
-                  ..
-            make
+            sh '''
+              mkdir -p build-clang-4
+              cd build-clang-4
+              cmake -DCMAKE_BUILD_TYPE=release \
+                    -DGMX_BUILD_OWN_FFTW=ON \
+                    ..
+              make
+            '''
           }
           post {
             always {
