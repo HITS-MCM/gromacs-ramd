@@ -27,7 +27,7 @@ pipeline {
               cmake -DCMAKE_BUILD_TYPE=release \
                     -DGMX_BUILD_OWN_FFTW=ON \
                     ..
-              make
+              make 2>&1 |tee make.out
             '''
           }
           post {
@@ -55,7 +55,7 @@ pipeline {
               cmake -DCMAKE_BUILD_TYPE=release \
                     -DGMX_BUILD_OWN_FFTW=ON \
                     ..
-              make
+              make 2>&1 |tee make.out
             '''
           }
           post {
@@ -88,7 +88,7 @@ pipeline {
               step([
                 $class: 'XUnitBuilder',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
-                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-7/Testing/*.xml']]
+                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-7/Testing/Temporary/*.xml']]
               ])
             }
           }
@@ -108,7 +108,7 @@ pipeline {
               step([
                 $class: 'XUnitBuilder',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
-                tools: [[$class: 'GoogleTestType', pattern: 'build-clang-6/Testing/*.xml']]
+                tools: [[$class: 'GoogleTestType', pattern: 'build-clang-6/Testing/Temporary/*.xml']]
               ])
             }
           }
