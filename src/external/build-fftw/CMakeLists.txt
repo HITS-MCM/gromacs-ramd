@@ -76,7 +76,7 @@ elseif(${GMX_SIMD_ACTIVE} MATCHES "^(AVX)")
     # MSVC, GCC < 4.9, Clang < 3.9 do not support AVX-512, so
     # we should not enable it.
 if(MSVC OR (CMAKE_COMPILER_IS_GNUCC AND CMAKE_C_COMPILER_VERSION VERSION_LESS 4.9.0) OR
-   (CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 3.9.0))
+    (CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 3.9.0) OR NOT ${GMX_SIMD_ACTIVE} MATCHES "^(AVX_512)")
     set(_fftw_simd_support_level --enable-sse2;--enable-avx;--enable-avx2)
 else()
     set(_fftw_simd_support_level --enable-sse2;--enable-avx;--enable-avx2;--enable-avx512)
