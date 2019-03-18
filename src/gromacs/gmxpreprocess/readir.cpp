@@ -106,6 +106,7 @@ typedef struct t_inputrec_strings
     char   fep_lambda[efptNR][STRLEN];
     char   lambda_weights[STRLEN];
     char **pull_grp;
+    char **ramd_grp;
     char **rot_grp;
     char   anneal[STRLEN], anneal_npoints[STRLEN],
            anneal_time[STRLEN], anneal_temp[STRLEN];
@@ -2082,6 +2083,15 @@ void get_ir(const char *mdparin, const char *mdparout,
     {
         snew(ir->pull, 1);
         is->pull_grp = read_pullparams(&inp, ir->pull, wi);
+    }
+
+    /* RAMD */
+    printStringNewline(&inp, "RAMD");
+    ir->bRAMD = (get_eeenum(&inp, "ramd", yesno_names, wi) != 0);
+    if (ir->bRAMD)
+    {
+        //snew(ir->ramdParams, 1);
+        //is->ramd_grp = read_pullparams(&inp, ir->ramdParams, wi);
     }
 
     /* AWH biasing

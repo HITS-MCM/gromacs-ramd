@@ -842,6 +842,11 @@ computeSpecialForces(FILE                          *fplog,
         }
     }
 
+    if (inputrec->bRAMD)
+    {
+        printf("Starting RAMD\n");
+    }
+
     rvec *f = as_rvec_array(forceWithVirial->force_.data());
 
     /* Add the forces from enforced rotation potentials (if any) */

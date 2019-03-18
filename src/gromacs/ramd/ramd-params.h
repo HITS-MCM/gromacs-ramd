@@ -9,7 +9,7 @@ namespace gmx {
 //! Parameters for RAMD group
 struct RAMDGroup
 {
-    int   nat;     ///< Number of atoms in the pull group
+    int   nat;     ///< Number of atoms in the RAMD group
     int  *ind;     ///< The global atoms numbers
 };
 

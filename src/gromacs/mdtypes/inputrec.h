@@ -542,9 +542,9 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     //! The COM pull force calculation data structure
     pull_t *pull_work;
 
-    /* Random Acceleration Molecular Dynamics */
-    gmx_bool                 bRAMD;          /* Do we do RAMD?                               */
-    gmx::RAMDParams         *ramdRarams;     /* RAMD parameters                              */
+    /* RAMD */
+    gmx_bool                 bRAMD;          //< Do we do RAMD?
+    gmx::RAMDParams         *ramdParams;     //< RAMD parameters
 
     /* AWH bias data */
     //! Whether to use AWH biasing for PMF calculations
