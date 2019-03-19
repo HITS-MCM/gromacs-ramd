@@ -17,7 +17,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.13-gcc-7'
+              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-gcc-7'
             }
           }
           steps {
@@ -45,7 +45,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.13-clang-6'
+              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-clang-6'
             }
           }
           steps {
@@ -77,7 +77,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.13-gcc-7'
+              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-gcc-7'
             }
           }
           steps {
@@ -97,7 +97,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.13-clang-6'
+              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-clang-6'
             }
           }
           steps {
