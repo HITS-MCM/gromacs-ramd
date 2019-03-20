@@ -657,6 +657,11 @@ static void pr_pull(FILE *fp, int indent, const pull_params_t *pull)
     }
 }
 
+static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramd)
+{
+
+}
+
 static void pr_awh_bias_dim(FILE *fp, int indent, gmx::AwhDimParams *awhDimParams, const char *prefix)
 {
     pr_indent(fp, indent);
@@ -978,6 +983,13 @@ void pr_inputrec(FILE *fp, int indent, const char *title, const t_inputrec *ir,
         if (ir->bPull)
         {
             pr_pull(fp, indent, ir->pull);
+        }
+
+        /* RAMD */
+        PS("ramd", EBOOL(ir->bRAMD));
+        if (ir->bRAMD)
+        {
+            pr_ramd(fp, indent, ir->ramdParams);
         }
 
         /* AWH BIASING */
