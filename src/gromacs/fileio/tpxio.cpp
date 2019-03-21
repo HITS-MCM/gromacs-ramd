@@ -124,6 +124,7 @@ enum tpxv {
     tpxv_PullPrevStepCOMAsReference,                         /**< Enabled using the COM of the pull group of the last frame as reference for PBC */
     tpxv_MimicQMMM,                                          /**< Inroduced support for MiMiC QM/MM interface */
     tpxv_PullAverage,                                        /**< Added possibility to output average pull force and position */
+    tpxv_RAMD,                                               /**< Add RAMD information */
     tpxv_Count                                               /**< the total number of tpxv versions */
 };
 
@@ -1469,7 +1470,9 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
 
     /* RAMD */
     {
-    	gmx_fio_do_gmx_bool(fio, ir->bRAMD);
+        if (file_version >= tpxv_RAMD) {
+    	    gmx_fio_do_gmx_bool(fio, ir->bRAMD);
+        }
     }
 
     if (file_version >= tpxv_AcceleratedWeightHistogram)
