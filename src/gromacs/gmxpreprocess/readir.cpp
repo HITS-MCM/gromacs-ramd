@@ -61,6 +61,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull-params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/options/options.h"
 #include "gromacs/options/treesupport.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -2090,8 +2091,8 @@ void get_ir(const char *mdparin, const char *mdparout,
     ir->bRAMD = (get_eeenum(&inp, "ramd", yesno_names, wi) != 0);
     if (ir->bRAMD)
     {
-        //snew(ir->ramdParams, 1);
-        //is->ramd_grp = read_pullparams(&inp, ir->ramdParams, wi);
+        snew(ir->ramdParams, 1);
+        ir->ramdParams->seed = get_eint(&inp, "ramd-seed", 1234, wi);
     }
 
     /* AWH biasing

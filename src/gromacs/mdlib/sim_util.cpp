@@ -92,6 +92,7 @@
 #include "gromacs/mdtypes/iforceprovider.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/mshift.h"
@@ -844,6 +845,7 @@ computeSpecialForces(FILE                          *fplog,
 
     if (inputrec->bRAMD)
     {
+        printf("Seed: %" PRId64 "\n", inputrec->ramdParams->seed);
         printf("Starting RAMD\n");
     }
 
