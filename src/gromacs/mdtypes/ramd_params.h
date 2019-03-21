@@ -16,7 +16,7 @@ struct RAMDGroup
 //! Parameters for Random Acceleration Molecular Dynamics (RAMD)
 struct RAMDParams
 {
-    gmx_int64_t    seed;           ///< Random seed
+	int64_t        seed;           ///< Random seed
     real           force;          ///< Force to be applied in kcal/mol/Angstrom
     int            steps;          ///< Number of MD steps in one RAMD step
     real           rMinRamd;       ///< Specifies the minimum distance in Angstrom

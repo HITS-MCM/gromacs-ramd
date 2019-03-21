@@ -58,6 +58,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull-params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/boxutilities.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -1464,6 +1465,11 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
             }
             do_pull(fio, ir->pull, bRead, file_version, ePullOld);
         }
+    }
+
+    /* RAMD */
+    {
+    	gmx_fio_do_gmx_bool(fio, ir->bRAMD);
     }
 
     if (file_version >= tpxv_AcceleratedWeightHistogram)
