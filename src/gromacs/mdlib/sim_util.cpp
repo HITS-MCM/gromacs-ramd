@@ -845,8 +845,8 @@ computeSpecialForces(FILE                          *fplog,
 
     if (inputrec->bRAMD)
     {
-        printf("Seed: %" PRId64 "\n", inputrec->ramdParams->seed);
         printf("Starting RAMD\n");
+        printf("Seed: %" PRId64 "\n", inputrec->ramdParams->seed);
     }
 
     rvec *f = as_rvec_array(forceWithVirial->force_.data());

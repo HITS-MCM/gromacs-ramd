@@ -1472,6 +1472,11 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
     {
         if (file_version >= tpxv_RAMD) {
     	    gmx_fio_do_gmx_bool(fio, ir->bRAMD);
+
+    	    if (ir->bRAMD) {
+    	        if (bRead) snew(ir->ramdParams, 1);
+                gmx_fio_do_int64(fio, ir->ramdParams->seed);
+    	    }
         }
     }
 

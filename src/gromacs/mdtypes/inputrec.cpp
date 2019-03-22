@@ -49,6 +49,7 @@
 #include "gromacs/mdtypes/awh-params.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull-params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/utility/compare.h"
 #include "gromacs/utility/cstringutil.h"
@@ -659,7 +660,7 @@ static void pr_pull(FILE *fp, int indent, const pull_params_t *pull)
 
 static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramd)
 {
-
+    PI("ramd-seed", ramd->seed);
 }
 
 static void pr_awh_bias_dim(FILE *fp, int indent, gmx::AwhDimParams *awhDimParams, const char *prefix)
