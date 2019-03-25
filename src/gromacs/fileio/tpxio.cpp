@@ -1476,6 +1476,25 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
     	    if (ir->bRAMD) {
     	        if (bRead) snew(ir->ramdParams, 1);
                 gmx_fio_do_int64(fio, ir->ramdParams->seed);
+                gmx_fio_do_real(fio, ir->ramdParams->force);
+                gmx_fio_do_int(fio, ir->ramdParams->steps);
+                gmx_fio_do_real(fio, ir->ramdParams->rMinRamd);
+                gmx_fio_do_int(fio, ir->ramdParams->forceOutFreq);
+                gmx_fio_do_real(fio, ir->ramdParams->maxDist);
+
+                gmx_fio_do_int(fio, ir->ramdParams->protein.nat);
+				if (bRead)
+				{
+					snew(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+				}
+				gmx_fio_ndo_int(fio, ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+
+                gmx_fio_do_int(fio, ir->ramdParams->ligand.nat);
+				if (bRead)
+				{
+					snew(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+				}
+				gmx_fio_ndo_int(fio, ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
     	    }
         }
     }

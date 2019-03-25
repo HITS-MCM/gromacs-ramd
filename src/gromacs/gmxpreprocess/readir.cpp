@@ -2092,7 +2092,7 @@ void get_ir(const char *mdparin, const char *mdparout,
     if (ir->bRAMD)
     {
         snew(ir->ramdParams, 1);
-        ir->ramdParams->seed = get_eint(&inp, "ramd-seed", 1234, wi);
+        is->ramd_grp = read_ramdparams(&inp, ir->ramdParams, wi);
     }
 
     /* AWH biasing
@@ -3479,6 +3479,11 @@ void do_index(const char* mdparin, const char *ndx,
         make_pull_groups(ir->pull, is->pull_grp, grps, gnames);
 
         make_pull_coords(ir->pull);
+    }
+
+    if (ir->bRAMD)
+    {
+        make_ramd_groups(ir->ramdParams, is->ramd_grp, grps, gnames);
     }
 
     if (ir->bRot)

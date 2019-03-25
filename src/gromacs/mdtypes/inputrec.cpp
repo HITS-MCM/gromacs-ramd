@@ -658,9 +658,22 @@ static void pr_pull(FILE *fp, int indent, const pull_params_t *pull)
     }
 }
 
-static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramd)
+static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramdparams)
 {
-    PI("ramd-seed", ramd->seed);
+    PI("ramd-seed", ramdparams->seed);
+    PR("ramd-force", ramdparams->force);
+    PI("ramd-steps", ramdparams->steps);
+    PR("ramd-rMinRamd", ramdparams->rMinRamd);
+    PI("ramd-forceOutFreq", ramdparams->forceOutFreq);
+    PR("ramd-maxDist", ramdparams->maxDist);
+
+    pr_indent(fp, indent);
+    fprintf(fp, "ramd-protein:\n");
+    pr_ivec_block(fp, indent + 2, "atom", ramdparams->protein.ind, ramdparams->protein.nat, TRUE);
+
+    pr_indent(fp, indent);
+    fprintf(fp, "ramd-ligand:\n");
+    pr_ivec_block(fp, indent + 2, "atom", ramdparams->ligand.ind, ramdparams->ligand.nat, TRUE);
 }
 
 static void pr_awh_bias_dim(FILE *fp, int indent, gmx::AwhDimParams *awhDimParams, const char *prefix)
