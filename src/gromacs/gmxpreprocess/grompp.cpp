@@ -2233,8 +2233,19 @@ int gmx_grompp(int argc, char *argv[])
 
     struct pull_t *pull = nullptr;
 
-    if (ir->bPull)
+    if (ir->bPull || ir->bRAMD)
     {
+    	if (ir->bRAMD) {
+    		// fake pull parameters for using pull_work
+    		ir->pull = new pull_params_t;
+    		ir->pull->ngroup = 2;
+    		ir->pull->ncoord = 1;
+    		snew(ir->pull->group, 2);
+    		ir->pull->group[0].nat = 0;
+    		ir->pull->group[1].nat = 0;
+    		snew(ir->pull->coord, 1);
+    		ir->pull->coord[0].eType = epullUMBRELLA;
+    	}
         pull = set_pull_init(ir, &sys, state.x.rvec_array(), state.box, state.lambda[efptMASS], wi);
     }
 
@@ -2249,7 +2260,7 @@ int gmx_grompp(int argc, char *argv[])
                                    state.box, ir->ePBC, &ir->opts, wi);
     }
 
-    if (ir->bPull)
+    if (ir->bPull || ir->bRAMD)
     {
         finish_pull(pull);
     }

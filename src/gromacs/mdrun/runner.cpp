@@ -1344,7 +1344,7 @@ int Mdrunner::mdrunner()
         /* Assumes uniform use of the number of OpenMP threads */
         walltime_accounting = walltime_accounting_init(gmx_omp_nthreads_get(emntDefault));
 
-        if (inputrec->bPull)
+        if (inputrec->bPull || inputrec->bRAMD)
         {
             /* Initialize pull code */
             inputrec->pull_work =

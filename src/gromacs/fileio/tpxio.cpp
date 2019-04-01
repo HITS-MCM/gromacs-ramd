@@ -1443,31 +1443,6 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
         ir->bAdress = FALSE;
     }
 
-    /* pull stuff */
-    {
-        int ePullOld = 0;
-
-        if (file_version >= tpxv_PullCoordTypeGeom)
-        {
-            gmx_fio_do_gmx_bool(fio, ir->bPull);
-        }
-        else
-        {
-            gmx_fio_do_int(fio, ePullOld);
-            ir->bPull = (ePullOld > 0);
-            /* We removed the first ePull=ePullNo for the enum */
-            ePullOld -= 1;
-        }
-        if (ir->bPull)
-        {
-            if (bRead)
-            {
-                snew(ir->pull, 1);
-            }
-            do_pull(fio, ir->pull, bRead, file_version, ePullOld);
-        }
-    }
-
     /* RAMD */
     {
         if (file_version >= tpxv_RAMD) {
@@ -1496,6 +1471,31 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
 				}
 				gmx_fio_ndo_int(fio, ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
     	    }
+        }
+    }
+
+    /* pull stuff */
+    {
+        int ePullOld = 0;
+
+        if (file_version >= tpxv_PullCoordTypeGeom)
+        {
+            gmx_fio_do_gmx_bool(fio, ir->bPull);
+        }
+        else
+        {
+            gmx_fio_do_int(fio, ePullOld);
+            ir->bPull = (ePullOld > 0);
+            /* We removed the first ePull=ePullNo for the enum */
+            ePullOld -= 1;
+        }
+        if (ir->bPull || ir->bRAMD)
+        {
+            if (bRead)
+            {
+                snew(ir->pull, 1);
+            }
+            do_pull(fio, ir->pull, bRead, file_version, ePullOld);
         }
     }
 
