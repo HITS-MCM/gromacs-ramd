@@ -98,6 +98,7 @@
 #include "gromacs/pbcutil/mshift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
+#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/pulling/pull_rotation.h"
 #include "gromacs/timing/cyclecounter.h"
 #include "gromacs/timing/gpu_timing.h"
@@ -256,6 +257,7 @@ static void pull_potential_wrapper(const t_commrec *cr,
                                    double t,
                                    gmx_wallcycle_t wcycle)
 {
+	fprintf(stderr, "PULL Debug\n");
     t_pbc  pbc;
     real   dvdl;
 
@@ -268,6 +270,11 @@ static void pull_potential_wrapper(const t_commrec *cr,
     enerd->term[F_COM_PULL] +=
         pull_potential(ir->pull_work, mdatoms, &pbc,
                        cr, t, lambda[efptRESTRAINT], as_rvec_array(x.data()), force, &dvdl);
+
+    for (int g = 0; g < ir->pull->ngroup; ++g) {
+        fprintf(stderr, "COM group %d = %8.3e %8.3e %8.3e\n", g, ir->pull_work->group[g].x[0], ir->pull_work->group[g].x[1], ir->pull_work->group[g].x[2]);
+    }
+
     enerd->dvdl_lin[efptRESTRAINT] += dvdl;
     wallcycle_stop(wcycle, ewcPULLPOT);
 }
@@ -282,6 +289,7 @@ static void ramd_potential_wrapper(const t_commrec *cr,
                                    double t,
                                    gmx_wallcycle_t wcycle)
 {
+	fprintf(stderr, "RAMD Debug\n");
     wallcycle_start(wcycle, ewcRAMD);
     t_pbc pbc;
     set_pbc(&pbc, ir->ePBC, box);
@@ -289,6 +297,11 @@ static void ramd_potential_wrapper(const t_commrec *cr,
     enerd->term[F_COM_PULL] +=
         pull_potential(ir->pull_work, mdatoms, &pbc,
                        cr, t, lambda[efptRESTRAINT], as_rvec_array(x.data()), force, &dvdl);
+
+    for (int g = 0; g < ir->pull->ngroup; ++g) {
+        fprintf(stderr, "COM group %d = %8.3e %8.3e %8.3e\n", g, ir->pull_work->group[g].x[0], ir->pull_work->group[g].x[1], ir->pull_work->group[g].x[2]);
+    }
+
     enerd->dvdl_lin[efptRESTRAINT] += dvdl;
     wallcycle_stop(wcycle, ewcRAMD);
 }
