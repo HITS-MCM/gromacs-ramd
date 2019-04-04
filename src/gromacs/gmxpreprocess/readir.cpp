@@ -107,7 +107,6 @@ typedef struct t_inputrec_strings
     char   fep_lambda[efptNR][STRLEN];
     char   lambda_weights[STRLEN];
     char **pull_grp;
-    char **ramd_grp;
     char **rot_grp;
     char   anneal[STRLEN], anneal_npoints[STRLEN],
            anneal_time[STRLEN], anneal_temp[STRLEN];
@@ -2092,7 +2091,25 @@ void get_ir(const char *mdparin, const char *mdparout,
     if (ir->bRAMD)
     {
         snew(ir->ramdParams, 1);
-        is->ramd_grp = read_ramdparams(&inp, ir->ramdParams, wi);
+        read_ramdparams(&inp, ir->ramdParams, wi);
+
+        inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
+        inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "1");
+        inp.emplace_back(0, 1, false, false, false, "pull-group1-name", "Protein");
+        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", "INH");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "umbrella");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "distance");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-dim", "N N Y");
+        inp.emplace_back(0, 1, false, false, false, "pull_coord1_rate", "0.001");
+        inp.emplace_back(0, 1, false, false, false, "pull_coord1_k", "1000");
+        inp.emplace_back(0, 1, false, false, false, "pull_coord1_start", "yes");
+        inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
+        inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
+
+		// Set PULL parameters according to RAMD parameters
+		snew(ir->pull, 1);
+        is->pull_grp = read_pullparams(&inp, ir->pull, wi);
     }
 
     /* AWH biasing
@@ -3474,16 +3491,10 @@ void do_index(const char* mdparin, const char *ndx,
         }
     }
 
-    if (ir->bPull)
+    if (ir->bPull || ir->bRAMD)
     {
         make_pull_groups(ir->pull, is->pull_grp, grps, gnames);
-
         make_pull_coords(ir->pull);
-    }
-
-    if (ir->bRAMD)
-    {
-        make_ramd_groups(ir->ramdParams, is->ramd_grp, grps, gnames);
     }
 
     if (ir->bRot)
