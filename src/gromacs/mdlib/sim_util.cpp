@@ -883,6 +883,8 @@ computeSpecialForces(FILE                          *fplog,
                                forceWithVirial,
                                mdatoms, enerd, lambda, t,
                                wcycle);
+
+        apply_external_pull_coord_force(inputrec->pull_work, 0, 0.0, mdatoms, forceWithVirial);
     }
 
     rvec *f = as_rvec_array(forceWithVirial->force_.data());

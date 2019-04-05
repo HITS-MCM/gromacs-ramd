@@ -2091,21 +2091,17 @@ void get_ir(const char *mdparin, const char *mdparout,
     if (ir->bRAMD)
     {
         snew(ir->ramdParams, 1);
-        read_ramdparams(&inp, ir->ramdParams, wi);
+        char** ramd_groups = read_ramdparams(&inp, ir->ramdParams, wi);
 
         inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
         inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "1");
-        inp.emplace_back(0, 1, false, false, false, "pull-group1-name", "Protein");
-        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", "INH");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "umbrella");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "distance");
+        inp.emplace_back(0, 1, false, false, false, "pull-group1-name", ramd_groups[0]);
+        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-dim", "N N Y");
-        inp.emplace_back(0, 1, false, false, false, "pull_coord1_rate", "0.001");
-        inp.emplace_back(0, 1, false, false, false, "pull_coord1_k", "1000");
-        inp.emplace_back(0, 1, false, false, false, "pull_coord1_start", "yes");
         inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
         inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
 
 		// Set PULL parameters according to RAMD parameters
 		snew(ir->pull, 1);

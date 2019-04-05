@@ -2243,6 +2243,11 @@ int gmx_grompp(int argc, char *argv[])
      * that providers have been registerd for all external potentials.
      */
 
+    if (ir->bRAMD)
+    {
+    	register_external_pull_potential(pull, 0, "RAMD");
+    }
+
     if (ir->bDoAwh)
     {
         setStateDependentAwhParams(ir->awhParams, ir->pull, pull,
