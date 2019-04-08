@@ -2093,15 +2093,18 @@ void get_ir(const char *mdparin, const char *mdparout,
         snew(ir->ramdParams, 1);
         char** ramd_groups = read_ramdparams(&inp, ir->ramdParams, wi);
 
+        if (search_einp(inp, "pull-") != -1) gmx_fatal(FARGS, "PULL options can't be used with RAMD");
+        if (search_einp(inp, "awh-") != -1) gmx_fatal(FARGS, "AWH options can't be used with RAMD");
+
         inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
         inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "1");
         inp.emplace_back(0, 1, false, false, false, "pull-group1-name", ramd_groups[0]);
-        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
         inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
-        inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
+        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
 
 		// Set PULL parameters according to RAMD parameters
 		snew(ir->pull, 1);
