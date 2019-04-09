@@ -2093,8 +2093,11 @@ void get_ir(const char *mdparin, const char *mdparout,
         snew(ir->ramdParams, 1);
         char** ramd_groups = read_ramdparams(&inp, ir->ramdParams, wi);
 
-        if (search_einp(inp, "pull-") != -1) gmx_fatal(FARGS, "PULL options can't be used with RAMD");
-        if (search_einp(inp, "awh-") != -1) gmx_fatal(FARGS, "AWH options can't be used with RAMD");
+        int pos = search_einp(inp, "pull-");
+        if (inp[pos].name_ != "pull") gmx_fatal(FARGS, "PULL options can't be used with RAMD 1");
+        if (search_einp(std::vector<t_inpfile>(&inp[pos+1], &inp[inp.size()]), "pull-ngroups") != -1)
+        	gmx_fatal(FARGS, "PULL options can't be used with RAMD");
+        if (search_einp(inp, "awh-") != -1) gmx_fatal(FARGS, "AWH options can't be used with RAMD 2");
 
         inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
         inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "1");
