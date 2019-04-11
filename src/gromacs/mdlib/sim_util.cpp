@@ -100,6 +100,7 @@
 #include "gromacs/pulling/pull.h"
 #include "gromacs/pulling/pull_internal.h"
 #include "gromacs/pulling/pull_rotation.h"
+#include "gromacs/ramd/ramd.h"
 #include "gromacs/timing/cyclecounter.h"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
@@ -884,7 +885,8 @@ computeSpecialForces(FILE                          *fplog,
                                mdatoms, enerd, lambda, t,
                                wcycle);
 
-        apply_external_pull_coord_force(inputrec->pull_work, 0, 0.0, mdatoms, forceWithVirial);
+        RAMD ramd(1234);
+        enerd->term[F_COM_PULL] += ramd.add_force(inputrec->pull_work, *mdatoms, forceWithVirial);
     }
 
     rvec *f = as_rvec_array(forceWithVirial->force_.data());

@@ -2107,6 +2107,8 @@ void get_ir(const char *mdparin, const char *mdparout,
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "direction");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0"); // Must be set, because pull vector 0,0,0 is not allowed
         inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
 
 		// Set PULL parameters according to RAMD parameters
