@@ -5,18 +5,28 @@
  *      Author: Bernd Doser, HITS gGmbH <bernd.doser@h-its.org>
  */
 
+#include <iostream>
+
 #include "ramd.h"
 #include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/pulling/pull.h"
 #include "gromacs/pulling/pull_internal.h"
 
-real RAMD::add_force(struct pull_t *pull,
+namespace gmx {
+
+RAMD::RAMD(RAMDParams const* params)
+ : params(params),
+   engine(params->seed),
+   dist(0.0, 1.0)
+{
+    std::cout << "seed = " << params->seed << std::endl;
+}
+
+real RAMD::add_force(pull_t *pull,
 	                 const t_mdatoms &mdatoms,
                      gmx::ForceWithVirial *forceWithVirial) const
 {
-	pull->coord[0].spatialData.vec[0] = 0.0;
-	pull->coord[0].spatialData.vec[1] = 0.0;
-	pull->coord[0].spatialData.vec[2] = 1.0;
+	set_random_direction(pull->coord[0].spatialData.vec);
 
 	double force = 10.0;
 
@@ -24,3 +34,20 @@ real RAMD::add_force(struct pull_t *pull,
 
     return 0.0;
 }
+
+void RAMD::set_random_direction(dvec& vec) const
+{
+//	set theta [expr "2*$pi*rand()"]
+//	set psi [expr "$pi*rand()"]
+//	set sinpsi [expr "sin($psi)"]
+//	set rx [expr "cos($theta)*$sinpsi"]
+//	set ry [expr "sin($theta)*$sinpsi"]
+//	set rz [expr "cos($psi)"]
+
+    auto r = dist(engine);
+	vec[0] = std::cos(r);
+	vec[1] = std::sin(r);
+	vec[2] = std::cos(r);
+}
+
+} // namespace gmx

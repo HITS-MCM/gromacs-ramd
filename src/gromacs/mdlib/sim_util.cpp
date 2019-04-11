@@ -885,7 +885,7 @@ computeSpecialForces(FILE                          *fplog,
                                mdatoms, enerd, lambda, t,
                                wcycle);
 
-        RAMD ramd(1234);
+        static gmx::RAMD ramd(inputrec->ramdParams);
         enerd->term[F_COM_PULL] += ramd.add_force(inputrec->pull_work, *mdatoms, forceWithVirial);
     }
 
