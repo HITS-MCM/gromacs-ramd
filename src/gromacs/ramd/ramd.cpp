@@ -21,42 +21,47 @@ RAMD::RAMD(RAMDParams const& params, pull_t *pull)
    dist(0.0, 1.0)
 {
     std::cout << "==== RAMD seed = " << params.seed << std::endl;
+	set_random_direction();
 }
 
+#if 0
 // Pseudo-Code:
-//{
-//	set_random_direction();
-//
-//	if (step % params.ramd_eval_freq) {
-//
-//	}
-//}
+	if (step % params.eval_freq)
+	{
+		if (cur_dist >= params.max_dist) termination();
 
-real RAMD::add_force(t_mdatoms const& mdatoms,
-                     gmx::ForceWithVirial *forceWithVirial) const
+		walk_dist = distance between ligand and protein COM during last md step
+		if (walk_dist >= params.r_min_dist)
+		{
+			set_random_direction();
+		}
+	}
+#endif
+
+real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
+    gmx::ForceWithVirial *forceWithVirial) const
 {
-	set_random_direction(pull->coord[0].spatialData.vec);
+    std::cout << "==== RAMD step " << step << std::endl;
 
-	double force = 10.0;
+	if (step % params.eval_freq)
+	{
 
-    apply_external_pull_coord_force(pull, 0, force, &mdatoms, forceWithVirial);
+	}
 
-    return 0.0;
+	real potential = 0.0;
+    apply_external_pull_coord_force(pull, 0, params.force, &mdatoms, forceWithVirial);
+    return potential;
 }
 
-void RAMD::set_random_direction(dvec& vec) const
+void RAMD::set_random_direction() const
 {
-//	set theta [expr "2*$pi*rand()"]
-//	set psi [expr "$pi*rand()"]
-//	set sinpsi [expr "sin($psi)"]
-//	set rx [expr "cos($theta)*$sinpsi"]
-//	set ry [expr "sin($theta)*$sinpsi"]
-//	set rz [expr "cos($psi)"]
+    auto theta = 2 * M_PI * dist(engine);
+    auto psi   =     M_PI * dist(engine);
 
-    auto r = dist(engine);
-	vec[0] = std::cos(r);
-	vec[1] = std::sin(r);
-	vec[2] = std::cos(r);
+    auto& vec = pull->coord[0].spatialData.vec;
+	vec[0] = std::cos(theta) * std::sin(psi);
+	vec[1] = std::sin(theta) * std::sin(psi);
+	vec[2] = std::cos(psi);
 }
 
 } // namespace gmx

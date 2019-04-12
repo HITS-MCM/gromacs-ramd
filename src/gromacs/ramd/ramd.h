@@ -23,12 +23,13 @@ public:
 
 	RAMD(RAMDParams const& params, pull_t *pull);
 
-	real add_force(t_mdatoms const& mdatoms, gmx::ForceWithVirial *forceWithVirial) const;
+	real add_force(int64_t step, t_mdatoms const& mdatoms,
+		gmx::ForceWithVirial *forceWithVirial) const;
 
 private:
 
 	/// Returns a new random direction
-	void set_random_direction(dvec& vec) const;
+	void set_random_direction() const;
 
 	/// Initialization number for pseudo random number generator
 	const RAMDParams params;
