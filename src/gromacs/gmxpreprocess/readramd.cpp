@@ -28,7 +28,7 @@ char **read_ramdparams(std::vector<t_inpfile> *inp,
 {
     ramdparams->seed = get_eint(inp, "ramd-seed", 1234, wi);
     ramdparams->force = get_ereal(inp, "ramd-force", 1.5, wi);
-	ramdparams->steps = get_eint(inp, "ramd-eval-freq", 100, wi);
+	ramdparams->eval_freq = get_eint(inp, "ramd-eval-freq", 100, wi);
 	ramdparams->r_min_dist = get_ereal(inp, "ramd-r-min-dist", 1234, wi);
 	ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 1234, wi);
 	ramdparams->max_dist = get_ereal(inp, "ramd-max-dist", 1234, wi);

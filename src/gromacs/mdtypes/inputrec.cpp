@@ -662,7 +662,7 @@ static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramdparams)
 {
     PI("ramd-seed", ramdparams->seed);
     PR("ramd-force", ramdparams->force);
-    PI("ramd-steps", ramdparams->steps);
+    PI("ramd-eval-freq", ramdparams->eval_freq);
     PR("ramd-r-min-dist", ramdparams->r_min_dist);
     PI("ramd-force-out-freq", ramdparams->force_out_freq);
     PR("ramd-max-dist", ramdparams->max_dist);

@@ -1452,7 +1452,7 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
     	        if (bRead) snew(ir->ramdParams, 1);
                 gmx_fio_do_int64(fio, ir->ramdParams->seed);
                 gmx_fio_do_real(fio, ir->ramdParams->force);
-                gmx_fio_do_int(fio, ir->ramdParams->steps);
+                gmx_fio_do_int(fio, ir->ramdParams->eval_freq);
                 gmx_fio_do_real(fio, ir->ramdParams->r_min_dist);
                 gmx_fio_do_int(fio, ir->ramdParams->force_out_freq);
                 gmx_fio_do_real(fio, ir->ramdParams->max_dist);
