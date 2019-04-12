@@ -38,9 +38,9 @@ pull-coord1-type         = umbrella
 pull-coord1-geometry     = distance
 pull-coord1-groups       = 1 2
 pull-coord1-dim          = N N Y         ; pull only in z direction
-pull_coord1_rate         = 0.001         ; nm per ps
-pull_coord1_k            = 1000          ; kJ mol^-1 nm^-2
-pull_coord1_start        = yes
+pull-coord1-rate         = 0.001         ; nm per ps
+pull-coord1-k            = 1000          ; kJ mol^-1 nm^-2
+pull-coord1-start        = yes
 
 pull-group1-pbcatom          = 1
 pull-pbc-ref-prev-step-com   = yes

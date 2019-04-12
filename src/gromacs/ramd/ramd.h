@@ -21,11 +21,9 @@ class RAMD
 {
 public:
 
-	RAMD(RAMDParams const* params);
+	RAMD(RAMDParams const& params, pull_t *pull);
 
-	real add_force(pull_t *pull,
-			       const t_mdatoms &mdatoms,
-                   gmx::ForceWithVirial *forceWithVirial) const;
+	real add_force(t_mdatoms const& mdatoms, gmx::ForceWithVirial *forceWithVirial) const;
 
 private:
 
@@ -33,7 +31,10 @@ private:
 	void set_random_direction(dvec& vec) const;
 
 	/// Initialization number for pseudo random number generator
-	RAMDParams const* params;
+	const RAMDParams params;
+
+	/// Pointer to pull work array
+	pull_t *pull;
 
 	/// Random number generator
 	mutable std::default_random_engine engine;

@@ -885,8 +885,8 @@ computeSpecialForces(FILE                          *fplog,
                                mdatoms, enerd, lambda, t,
                                wcycle);
 
-        static gmx::RAMD ramd(inputrec->ramdParams);
-        enerd->term[F_COM_PULL] += ramd.add_force(inputrec->pull_work, *mdatoms, forceWithVirial);
+        static gmx::RAMD ramd(*inputrec->ramdParams, inputrec->pull_work);
+        enerd->term[F_COM_PULL] += ramd.add_force(*mdatoms, forceWithVirial);
     }
 
     rvec *f = as_rvec_array(forceWithVirial->force_.data());

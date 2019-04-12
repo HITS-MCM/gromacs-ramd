@@ -1453,9 +1453,9 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
                 gmx_fio_do_int64(fio, ir->ramdParams->seed);
                 gmx_fio_do_real(fio, ir->ramdParams->force);
                 gmx_fio_do_int(fio, ir->ramdParams->steps);
-                gmx_fio_do_real(fio, ir->ramdParams->rMinRamd);
-                gmx_fio_do_int(fio, ir->ramdParams->forceOutFreq);
-                gmx_fio_do_real(fio, ir->ramdParams->maxDist);
+                gmx_fio_do_real(fio, ir->ramdParams->r_min_dist);
+                gmx_fio_do_int(fio, ir->ramdParams->force_out_freq);
+                gmx_fio_do_real(fio, ir->ramdParams->max_dist);
 
                 gmx_fio_do_int(fio, ir->ramdParams->protein.nat);
 				if (bRead)

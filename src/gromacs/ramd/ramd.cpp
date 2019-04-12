@@ -14,16 +14,25 @@
 
 namespace gmx {
 
-RAMD::RAMD(RAMDParams const* params)
+RAMD::RAMD(RAMDParams const& params, pull_t *pull)
  : params(params),
-   engine(params->seed),
+   pull(pull),
+   engine(params.seed),
    dist(0.0, 1.0)
 {
-    std::cout << "seed = " << params->seed << std::endl;
+    std::cout << "==== RAMD seed = " << params.seed << std::endl;
 }
 
-real RAMD::add_force(pull_t *pull,
-	                 const t_mdatoms &mdatoms,
+// Pseudo-Code:
+//{
+//	set_random_direction();
+//
+//	if (step % params.ramd_eval_freq) {
+//
+//	}
+//}
+
+real RAMD::add_force(t_mdatoms const& mdatoms,
                      gmx::ForceWithVirial *forceWithVirial) const
 {
 	set_random_direction(pull->coord[0].spatialData.vec);
