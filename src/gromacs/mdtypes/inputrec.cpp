@@ -668,7 +668,7 @@ static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramdparams)
     PR("ramd-max-dist", ramdparams->max_dist);
 
     pr_indent(fp, indent);
-    fprintf(fp, "ramd-protein:\n");
+    fprintf(fp, "ramd-receptor:\n");
     pr_ivec_block(fp, indent + 2, "atom", ramdparams->protein.ind, ramdparams->protein.nat, TRUE);
 
     pr_indent(fp, indent);

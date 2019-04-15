@@ -39,7 +39,7 @@ char **read_ramdparams(std::vector<t_inpfile> *inp,
     snew(grpbuf[0], STRLEN);
     snew(grpbuf[1], STRLEN);
 
-    sprintf(buf, "ramd-protein");
+    sprintf(buf, "ramd-receptor");
     setStringEntry(inp, buf, grpbuf[0], "");
     sprintf(buf, "ramd-ligand");
     setStringEntry(inp, buf, grpbuf[1], "");

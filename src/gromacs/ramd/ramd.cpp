@@ -24,20 +24,6 @@ RAMD::RAMD(RAMDParams const& params, pull_t *pull)
 	set_random_direction();
 }
 
-#if 0
-// Pseudo-Code:
-	if (step % params.eval_freq)
-	{
-		if (cur_dist >= params.max_dist) termination();
-
-		walk_dist = distance between ligand and protein COM during last md step
-		if (walk_dist >= params.r_min_dist)
-		{
-			set_random_direction();
-		}
-	}
-#endif
-
 real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
     gmx::ForceWithVirial *forceWithVirial) const
 {
