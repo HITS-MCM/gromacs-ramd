@@ -24,7 +24,7 @@ public:
 	RAMD(RAMDParams const& params, pull_t *pull);
 
 	real add_force(int64_t step, t_mdatoms const& mdatoms,
-		gmx::ForceWithVirial *forceWithVirial) const;
+		gmx::ForceWithVirial *forceWithVirial);
 
 private:
 
@@ -42,6 +42,12 @@ private:
 
 	/// Random number distribution
     mutable std::uniform_real_distribution<> dist;
+
+    /// COM of receptor of last RAMD evaluation step
+    DVec com_rec_prev;
+
+    /// COM of ligand of last RAMD evaluation step
+    DVec com_lig_prev;
 
 };
 

@@ -25,13 +25,34 @@ RAMD::RAMD(RAMDParams const& params, pull_t *pull)
 }
 
 real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
-    gmx::ForceWithVirial *forceWithVirial) const
+    gmx::ForceWithVirial *forceWithVirial)
 {
     std::cout << "==== RAMD step " << step << std::endl;
 
-	if (step % params.eval_freq)
-	{
+    DVec com_rec_curr = pull->group[1].x;
+    DVec com_lig_curr = pull->group[2].x;
 
+	if (step != 0 && !(step % params.eval_freq))
+	{
+	    std::cout << "==== RAMD evaluation " << step << std::endl;
+
+        auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
+        if (curr_dist >= params.max_dist) {
+        	std::cout << "RAMD: maximal distance between ligand and receptor COM is reached.\n"
+        			  << "GROMACS will be stopped." << std::endl;
+            std::abort();
+        }
+
+        // walk_dist =	vector length of the vector substraction
+        // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
+        // during last RAMD evaluation step
+        auto walk_dist = std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)).norm2());
+        if (walk_dist < params.r_min_dist) {
+            set_random_direction();
+        }
+
+        com_lig_prev = com_lig_curr;
+        com_rec_prev = com_rec_curr;
 	}
 
 	real potential = 0.0;
