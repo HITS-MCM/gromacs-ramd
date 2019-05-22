@@ -27,11 +27,11 @@ char **read_ramdparams(std::vector<t_inpfile> *inp,
                        warninp_t wi)
 {
     ramdparams->seed = get_eint(inp, "ramd-seed", 1234, wi);
-    ramdparams->force = get_ereal(inp, "ramd-force", 1.5, wi);
-	ramdparams->eval_freq = get_eint(inp, "ramd-eval-freq", 100, wi);
-	ramdparams->r_min_dist = get_ereal(inp, "ramd-r-min-dist", 1234, wi);
-	ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 1234, wi);
-	ramdparams->max_dist = get_ereal(inp, "ramd-max-dist", 1234, wi);
+    ramdparams->force = get_ereal(inp, "ramd-force", 600, wi);
+	ramdparams->eval_freq = get_eint(inp, "ramd-eval-freq", 50, wi);
+	ramdparams->r_min_dist = get_ereal(inp, "ramd-r-min-dist", 0.025, wi);
+	ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
+	ramdparams->max_dist = get_ereal(inp, "ramd-max-dist", 4.0, wi);
 
     char buf[STRLEN];
     char **grpbuf;
