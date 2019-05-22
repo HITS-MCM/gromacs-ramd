@@ -31,10 +31,10 @@ ref-p                    = 1.0
 
 ramd                     = yes
 ramd-seed                = 9876
-ramd-force               = 1000          ; kJ/mol/nm
-ramd-eval-freq           = 100
-ramd-r-min-dist          = 0.1           ; nm
-ramd-force-out-freq      = 1000
-ramd-max-dist            = 10.0          ; nm
+ramd-force               = 600.0       ; kJ mol-1 nm-1
+ramd-eval-freq           = 50
+ramd-r-min-dist          = 0.025       ; nm
+ramd-force-out-freq      = 10
+ramd-max-dist            = 4.0         ; nm
 ramd-receptor            = Protein
 ramd-ligand              = INH
