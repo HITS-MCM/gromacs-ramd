@@ -19,12 +19,11 @@ RAMD::RAMD(RAMDParams const& params, pull_t *pull)
    pull(pull),
    engine(params.seed),
    dist(0.0, 1.0),
+   direction(get_random_direction()),
    // Store COM positions for first evaluation
    com_rec_prev(pull->group[1].x),
    com_lig_prev(pull->group[2].x)
-{
-	set_random_direction();
-}
+{}
 
 real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
     gmx::ForceWithVirial *forceWithVirial)
@@ -60,7 +59,7 @@ real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
         std::cout << "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation is " << walk_dist << std::endl;
 
         if (walk_dist < params.r_min_dist) {
-            set_random_direction();
+            direction = get_random_direction();
         }
 
         com_lig_prev = com_lig_curr;
@@ -68,21 +67,25 @@ real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
 	}
 
 	real potential = 0.0;
-    apply_external_pull_coord_force(pull, 0, params.force, &mdatoms, forceWithVirial);
+    apply_external_pull_coord_force(pull, 0, direction[0] * params.force, &mdatoms, forceWithVirial);
+    apply_external_pull_coord_force(pull, 1, direction[1] * params.force, &mdatoms, forceWithVirial);
+    apply_external_pull_coord_force(pull, 2, direction[2] * params.force, &mdatoms, forceWithVirial);
     return potential;
 }
 
-void RAMD::set_random_direction() const
+DVec RAMD::get_random_direction() const
 {
     auto theta = 2 * M_PI * dist(engine);
     auto psi   =     M_PI * dist(engine);
 
-    auto& vec = pull->coord[0].spatialData.vec;
-	vec[0] = std::cos(theta) * std::sin(psi);
-	vec[1] = std::sin(theta) * std::sin(psi);
-	vec[2] = std::cos(psi);
+    DVec direction;
+    direction[0] = std::cos(theta) * std::sin(psi);
+    direction[1] = std::sin(theta) * std::sin(psi);
+    direction[2] = std::cos(psi);
 
-    std::cout << "==== RAMD ==== New random direction is [" << vec[0] << " ," << vec[1] << " ," << vec[2] << "]" << std::endl;
+    std::cout << "==== RAMD ==== New random direction is [" << direction[0] << " ," << direction[1] << " ," << direction[2] << "]" << std::endl;
+
+    return direction;
 }
 
 } // namespace gmx

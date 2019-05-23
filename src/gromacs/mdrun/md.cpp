@@ -397,6 +397,8 @@ void gmx::Integrator::do_md()
     if (ir->bRAMD)
     {
 	    register_external_pull_potential(ir->pull_work, 0, "RAMD");
+	    register_external_pull_potential(ir->pull_work, 1, "RAMD");
+	    register_external_pull_potential(ir->pull_work, 2, "RAMD");
     }
 
     // TODO: Remove this by converting AWH into a ForceProvider

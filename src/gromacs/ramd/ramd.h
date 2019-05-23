@@ -29,7 +29,7 @@ public:
 private:
 
 	/// Returns a new random direction
-	void set_random_direction() const;
+	DVec get_random_direction() const;
 
 	/// Initialization number for pseudo random number generator
 	const RAMDParams params;
@@ -42,6 +42,9 @@ private:
 
 	/// Random number distribution
     mutable std::uniform_real_distribution<> dist;
+
+    /// Random pull direction
+    DVec direction;
 
     /// COM of receptor of last RAMD evaluation step
     DVec com_rec_prev;

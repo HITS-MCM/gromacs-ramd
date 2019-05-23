@@ -2100,15 +2100,27 @@ void get_ir(const char *mdparin, const char *mdparout,
         if (search_einp(inp, "awh-") != -1) gmx_fatal(FARGS, "AWH options can't be used with RAMD 2");
 
         inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
-        inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "1");
         inp.emplace_back(0, 1, false, false, false, "pull-group1-name", ramd_groups[0]);
         inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
         inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
+
+        inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "3");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "direction");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0"); // Must be set, because pull vector 0,0,0 is not allowed
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-type", "external-potential");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-geometry", "direction");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-vec", "0 1 0");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-type", "external-potential");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-geometry", "direction");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-vec", "0 0 1");
+
         inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
 
 		// Set PULL parameters according to RAMD parameters
