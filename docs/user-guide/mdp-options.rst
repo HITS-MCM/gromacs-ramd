@@ -2209,19 +2209,19 @@ applied to a molecule in the system.
    determined by the fast-dissociated compounds, whose dissociation time
    should be longer than 100 ps. The lower threshold of the force magnitude
    depends on the computation facilities available.
-   
+
 .. mdp:: ramd-seed
 
    (1234)
    Seed for random direction
 
 .. mdp:: ramd-eval-freq
-   
+
    (50)
    This parameter affect absolute dissociation time but have less
    effect on the relative dissociation times of different compounds. It is
    recommended to use default value.
-   
+
 .. mdp:: ramd-r-min-dist
 
    (0.025) [nm]
@@ -2238,7 +2238,7 @@ applied to a molecule in the system.
    (4) [nm]
    This value has to be adjusted for the system studied: no
    protein-ligand contacts should be observed in the last snapshot of a
-   dissociation trajectory. Usually 40 Angstrom is enough, but in the case
+   dissociation trajectory. Usually 4 nm is enough, but in the case
    of a long dissociation channel (as in membrane proteins) maxDist must be
    increased accordingly. Method performance is not very sensitive to the
    upper limit of this parameter since motion of the free ligand due to the
