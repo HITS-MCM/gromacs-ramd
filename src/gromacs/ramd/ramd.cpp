@@ -19,11 +19,14 @@ RAMD::RAMD(RAMDParams const& params, pull_t *pull)
    pull(pull),
    engine(params.seed),
    dist(0.0, 1.0),
-   direction(get_random_direction()),
-   // Store COM positions for first evaluation
-   com_rec_prev(pull->group[1].x),
-   com_lig_prev(pull->group[2].x)
-{}
+   direction(get_random_direction())
+{
+	if (pull->group.size() != 3) throw std::runtime_error("2 pull groups must be defined for RAMD");
+
+    // Store COM positions for first evaluation
+    com_rec_prev = pull->group[1].x;
+    com_lig_prev = pull->group[2].x;
+}
 
 real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
     gmx::ForceWithVirial *forceWithVirial)
