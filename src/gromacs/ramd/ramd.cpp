@@ -5,8 +5,6 @@
  *      Author: Bernd Doser, HITS gGmbH <bernd.doser@h-its.org>
  */
 
-#include <iostream>
-
 #include "ramd.h"
 #include "gromacs/mdtypes/pull-params.h"
 #include "gromacs/pulling/pull.h"
@@ -17,9 +15,8 @@ namespace gmx {
 RAMD::RAMD(RAMDParams const& params, pull_t *pull)
  : params(params),
    pull(pull),
-   engine(params.seed),
-   dist(0.0, 1.0),
-   direction(get_random_direction())
+   random_spherical_direction_generator(params.seed),
+   direction(random_spherical_direction_generator())
 {
 	if (pull->group.size() != 3) throw std::runtime_error("2 pull groups must be defined for RAMD");
 
@@ -61,8 +58,10 @@ real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
 
         std::cout << "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation is " << walk_dist << std::endl;
 
-        if (walk_dist < params.r_min_dist) {
-            direction = get_random_direction();
+        if (walk_dist < params.r_min_dist)
+        {
+            direction = random_spherical_direction_generator();
+            std::cout << "==== RAMD ==== New random direction is " << direction << std::endl;
         }
 
         com_lig_prev = com_lig_curr;
@@ -74,21 +73,6 @@ real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
     apply_external_pull_coord_force(pull, 1, direction[1] * params.force, &mdatoms, forceWithVirial);
     apply_external_pull_coord_force(pull, 2, direction[2] * params.force, &mdatoms, forceWithVirial);
     return potential;
-}
-
-DVec RAMD::get_random_direction() const
-{
-    auto theta = 2 * M_PI * dist(engine);
-    auto psi   =     M_PI * dist(engine);
-
-    DVec direction;
-    direction[0] = std::cos(theta) * std::sin(psi);
-    direction[1] = std::sin(theta) * std::sin(psi);
-    direction[2] = std::cos(psi);
-
-    std::cout << "==== RAMD ==== New random direction is [" << direction[0] << " ," << direction[1] << " ," << direction[2] << "]" << std::endl;
-
-    return direction;
 }
 
 } // namespace gmx

@@ -7,11 +7,12 @@
 
 #pragma once
 
-#include <random>
+#include <iostream>
 
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/forceoutput.h"
+#include "RandomSphericalDirectionGenerator.h"
 
 struct pull_t;
 
@@ -28,23 +29,17 @@ public:
 
 private:
 
-	/// Returns a new random direction
-	DVec get_random_direction() const;
-
 	/// Initialization number for pseudo random number generator
 	const RAMDParams params;
 
 	/// Pointer to pull work array
 	pull_t *pull;
 
-	/// Random number generator
-	mutable std::default_random_engine engine;
-
-	/// Random number distribution
-    mutable std::uniform_real_distribution<> dist;
-
     /// Random pull direction
-    DVec direction;
+	RandomSphericalDirectionGenerator random_spherical_direction_generator;
+
+	/// Current pull direction
+	DVec direction;
 
     /// COM of receptor of last RAMD evaluation step
     DVec com_rec_prev;

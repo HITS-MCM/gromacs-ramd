@@ -25,14 +25,14 @@ TEST(RAMDTest, exception_group_number)
 	EXPECT_THROW(RAMD(params, &pull), std::exception);
 }
 
-//TEST(RAMDTest, construction)
-//{
-//	RAMDParams params;
-//	pull_t pull;
+TEST(RAMDTest, construction)
+{
+	RAMDParams params;
+	pull_t pull;
 //	pull.group.resize(3);
 //
-//	RAMD(params, &pull);
-//}
+	EXPECT_THROW(RAMD(params, &pull), std::exception);
+}
 
 } // namespace test
 } // namespace gmx
