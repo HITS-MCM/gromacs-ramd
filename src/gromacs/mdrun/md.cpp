@@ -393,6 +393,14 @@ void gmx::Integrator::do_md()
 
     preparePrevStepPullCom(ir, mdatoms, state, state_global, cr, startingFromCheckpoint);
 
+    /* RAMD */
+    if (ir->bRAMD)
+    {
+	    register_external_pull_potential(ir->pull_work, 0, "RAMD");
+	    register_external_pull_potential(ir->pull_work, 1, "RAMD");
+	    register_external_pull_potential(ir->pull_work, 2, "RAMD");
+    }
+
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog, *ir, state_global, cr, ms, startingFromCheckpoint,
                                 shellfc != nullptr,

@@ -57,7 +57,7 @@ enum {
     ewcWAIT_GPU_PME_SPREAD, ewcPME_FFT_MIXED_MODE, ewcPME_SOLVE_MIXED_MODE,
     ewcWAIT_GPU_PME_GATHER, ewcWAIT_GPU_BONDED, ewcPME_GPU_F_REDUCTION,
     ewcWAIT_GPU_NB_NL, ewcWAIT_GPU_NB_L, ewcNB_XF_BUF_OPS,
-    ewcVSITESPREAD, ewcPULLPOT, ewcAWH,
+    ewcVSITESPREAD, ewcPULLPOT, ewcRAMD, ewcAWH,
     ewcTRAJ, ewcUPDATE, ewcCONSTR, ewcMoveE, ewcROT, ewcROTadd, ewcSWAP, ewcIMD,
     ewcTEST, ewcNR
 };

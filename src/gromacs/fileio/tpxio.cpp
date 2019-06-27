@@ -58,6 +58,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull-params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/boxutilities.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -123,6 +124,7 @@ enum tpxv {
     tpxv_PullPrevStepCOMAsReference,                         /**< Enabled using the COM of the pull group of the last frame as reference for PBC */
     tpxv_MimicQMMM,                                          /**< Inroduced support for MiMiC QM/MM interface */
     tpxv_PullAverage,                                        /**< Added possibility to output average pull force and position */
+    tpxv_RAMD,                                               /**< Add RAMD information */
     tpxv_Count                                               /**< the total number of tpxv versions */
 };
 
@@ -1441,6 +1443,37 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
         ir->bAdress = FALSE;
     }
 
+    /* RAMD */
+    {
+        if (file_version >= tpxv_RAMD) {
+    	    gmx_fio_do_gmx_bool(fio, ir->bRAMD);
+
+    	    if (ir->bRAMD) {
+    	        if (bRead) snew(ir->ramdParams, 1);
+                gmx_fio_do_int64(fio, ir->ramdParams->seed);
+                gmx_fio_do_real(fio, ir->ramdParams->force);
+                gmx_fio_do_int(fio, ir->ramdParams->eval_freq);
+                gmx_fio_do_real(fio, ir->ramdParams->r_min_dist);
+                gmx_fio_do_int(fio, ir->ramdParams->force_out_freq);
+                gmx_fio_do_real(fio, ir->ramdParams->max_dist);
+
+                gmx_fio_do_int(fio, ir->ramdParams->protein.nat);
+				if (bRead)
+				{
+					snew(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+				}
+				gmx_fio_ndo_int(fio, ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+
+                gmx_fio_do_int(fio, ir->ramdParams->ligand.nat);
+				if (bRead)
+				{
+					snew(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+				}
+				gmx_fio_ndo_int(fio, ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+    	    }
+        }
+    }
+
     /* pull stuff */
     {
         int ePullOld = 0;
@@ -1456,7 +1489,7 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
             /* We removed the first ePull=ePullNo for the enum */
             ePullOld -= 1;
         }
-        if (ir->bPull)
+        if (ir->bPull || ir->bRAMD)
         {
             if (bRead)
             {
