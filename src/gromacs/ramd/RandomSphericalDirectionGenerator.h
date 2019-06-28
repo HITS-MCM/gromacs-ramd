@@ -25,7 +25,8 @@ public:
 	DVec operator()()
 	{
 	    auto theta = 2 * M_PI * dist(engine);  // azimuthal angle
-	    auto psi   =     M_PI * dist(engine);  // polar angle
+	    //auto psi   =     M_PI * dist(engine);  // polar angle
+	    auto psi   = std::acos(1.0 - 2 * dist(engine));  // polar angle
 
 	    DVec direction;
 	    direction[0] = std::cos(theta) * std::sin(psi);
