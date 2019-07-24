@@ -9,6 +9,7 @@
 
 #include <iostream>
 
+#include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/forceoutput.h"
@@ -22,18 +23,15 @@ class RAMD
 {
 public:
 
-	RAMD(RAMDParams const& params, pull_t *pull);
+	RAMD(RAMDParams const& params);
 
 	real add_force(int64_t step, t_mdatoms const& mdatoms,
-		gmx::ForceWithVirial *forceWithVirial);
+		gmx::ForceWithVirial *forceWithVirial, pull_t *pull, const t_commrec *cr);
 
 private:
 
 	/// Initialization number for pseudo random number generator
 	const RAMDParams params;
-
-	/// Pointer to pull work array
-	pull_t *pull;
 
     /// Random pull direction
 	RandomSphericalDirectionGenerator random_spherical_direction_generator;

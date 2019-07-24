@@ -5,6 +5,8 @@
  *      Author: Bernd Doser, HITS gGmbH <bernd.doser@h-its.org>
  */
 
+#include <cassert>
+
 #include "ramd.h"
 #include "gromacs/mdtypes/pull-params.h"
 #include "gromacs/pulling/pull.h"
@@ -12,60 +14,64 @@
 
 namespace gmx {
 
-RAMD::RAMD(RAMDParams const& params, pull_t *pull)
+RAMD::RAMD(RAMDParams const& params)
  : params(params),
-   pull(pull),
    random_spherical_direction_generator(params.seed),
    direction(random_spherical_direction_generator())
-{
-	if (pull->group.size() != 3) throw std::runtime_error("2 pull groups must be defined for RAMD");
-
-    // Store COM positions for first evaluation
-    com_rec_prev = pull->group[1].x;
-    com_lig_prev = pull->group[2].x;
-}
+{}
 
 real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
-    gmx::ForceWithVirial *forceWithVirial)
+    gmx::ForceWithVirial *forceWithVirial, pull_t *pull, const t_commrec *cr)
 {
-    if (step != 0 && !(step % params.eval_freq))
+	assert(pull->group.size() == 3);
+
+	if (MASTER(cr))
 	{
-	    std::cout << "==== RAMD ==== evaluation " << step << std::endl;
+		if (step == 0)
+		{
+			// Store COM positions for first evaluation
+			com_rec_prev = pull->group[1].x;
+			com_lig_prev = pull->group[2].x;
+		}
+		else if (!(step % params.eval_freq))
+		{
+			std::cout << "==== RAMD ==== evaluation " << step << std::endl;
 
-	    DVec com_rec_curr = pull->group[1].x;
-	    DVec com_lig_curr = pull->group[2].x;
+			DVec com_rec_curr = pull->group[1].x;
+			DVec com_lig_curr = pull->group[2].x;
 
-	    std::cout << "==== RAMD ==== COM ligand position at [" << com_lig_curr[0] << " ," << com_lig_curr[1] << " ," << com_lig_curr[2] << "]" << std::endl;
-	    std::cout << "==== RAMD ==== COM receptor position at [" << com_rec_curr[0] << " ," << com_rec_curr[1] << " ," << com_rec_curr[2] << "]" << std::endl;
+			std::cout << "==== RAMD ==== COM ligand position at [" << com_lig_curr[0] << " ," << com_lig_curr[1] << " ," << com_lig_curr[2] << "]" << std::endl;
+			std::cout << "==== RAMD ==== COM receptor position at [" << com_rec_curr[0] << " ," << com_rec_curr[1] << " ," << com_rec_curr[2] << "]" << std::endl;
 
-        auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
+			auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
 
-        std::cout << "==== RAMD ==== Distance between COM of receptor and COM of ligand is " << curr_dist << std::endl;
+			std::cout << "==== RAMD ==== Distance between COM of receptor and COM of ligand is " << curr_dist << std::endl;
 
-        if (curr_dist >= params.max_dist) {
-        	std::cout << "==== RAMD ==== Maximal distance between ligand and receptor COM is reached.\n"
-        			  << "==== RAMD ==== GROMACS will be stopped." << std::endl;
-            std::abort();
-        }
+			if (curr_dist >= params.max_dist) {
+				std::cout << "==== RAMD ==== Maximal distance between ligand and receptor COM is reached.\n"
+						  << "==== RAMD ==== GROMACS will be stopped." << std::endl;
+				std::abort();
+			}
 
-	    std::cout << "==== RAMD ==== Previous COM ligand position at " << com_lig_prev[0] << " ," << com_lig_prev[1] << " ," << com_lig_prev[2] << "]" << std::endl;
-	    std::cout << "==== RAMD ==== Previous COM receptor position at " << com_rec_prev[0] << " ," << com_rec_prev[1] << " ," << com_rec_prev[2] << "]" << std::endl;
+			std::cout << "==== RAMD ==== Previous COM ligand position at " << com_lig_prev[0] << " ," << com_lig_prev[1] << " ," << com_lig_prev[2] << "]" << std::endl;
+			std::cout << "==== RAMD ==== Previous COM receptor position at " << com_rec_prev[0] << " ," << com_rec_prev[1] << " ," << com_rec_prev[2] << "]" << std::endl;
 
-        // walk_dist =	vector length of the vector substraction
-        // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
-        // during last RAMD evaluation step
-        auto walk_dist = std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)).norm2());
+			// walk_dist =	vector length of the vector substraction
+			// (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
+			// during last RAMD evaluation step
+			auto walk_dist = std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)).norm2());
 
-        std::cout << "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation is " << walk_dist << std::endl;
+			std::cout << "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation is " << walk_dist << std::endl;
 
-        if (walk_dist < params.r_min_dist)
-        {
-            direction = random_spherical_direction_generator();
-            std::cout << "==== RAMD ==== New random direction is " << direction << std::endl;
-        }
+			if (walk_dist < params.r_min_dist)
+			{
+				direction = random_spherical_direction_generator();
+				std::cout << "==== RAMD ==== New random direction is [" << direction[0] << " ," << direction[1] << " ," << direction[2] << "]" << std::endl;
+			}
 
-        com_lig_prev = com_lig_curr;
-        com_rec_prev = com_rec_curr;
+			com_lig_prev = com_lig_curr;
+			com_rec_prev = com_rec_curr;
+		}
 	}
 
 	real potential = 0.0;

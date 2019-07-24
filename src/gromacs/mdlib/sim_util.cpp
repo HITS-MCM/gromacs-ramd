@@ -258,7 +258,6 @@ static void pull_potential_wrapper(const t_commrec *cr,
                                    double t,
                                    gmx_wallcycle_t wcycle)
 {
-	fprintf(stderr, "PULL Debug\n");
     t_pbc  pbc;
     real   dvdl;
 
@@ -873,15 +872,15 @@ computeSpecialForces(FILE                          *fplog,
         }
     }
 
-    if (inputrec->bRAMD)
+    if (inputrec->bRAMD && pull_have_potential(inputrec->pull_work))
     {
         ramd_potential_wrapper(cr, inputrec, box, x,
                                forceWithVirial,
                                mdatoms, enerd, lambda, t,
                                wcycle);
 
-        static gmx::RAMD ramd(*inputrec->ramdParams, inputrec->pull_work);
-        enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial);
+        static gmx::RAMD ramd(*inputrec->ramdParams);
+        enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial, inputrec->pull_work, cr);
     }
 
     rvec *f = as_rvec_array(forceWithVirial->force_.data());
