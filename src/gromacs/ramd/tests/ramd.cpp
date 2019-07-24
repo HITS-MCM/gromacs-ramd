@@ -17,21 +17,10 @@
 namespace gmx {
 namespace test {
 
-TEST(RAMDTest, exception_group_number)
-{
-	RAMDParams params;
-	pull_t pull;
-
-	EXPECT_THROW(RAMD(params, &pull), std::exception);
-}
-
 TEST(RAMDTest, construction)
 {
 	RAMDParams params;
-	pull_t pull;
-//	pull.group.resize(3);
-//
-	EXPECT_THROW(RAMD(params, &pull), std::exception);
+	RAMD ramd(params);
 }
 
 } // namespace test
