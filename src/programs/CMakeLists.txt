@@ -120,7 +120,3 @@ else()
         add_subdirectory(mdrun/tests)
     endif()
 endif()
-
-if(BUILD_TESTING)
-    add_subdirectory(mdrun/ramd_tests)
-endif()

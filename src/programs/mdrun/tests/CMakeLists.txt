@@ -55,12 +55,12 @@ gmx_add_gtest_executable(
     initialconstraints.cpp
     interactiveMD.cpp
     pmetest.cpp
-    ramd.cpp
     swapcoords.cpp
     tabulated_bonded_interactions.cpp
     termination.cpp
     trajectory_writing.cpp
     mimic.cpp
+    ramd.cpp
     # pseudo-library for code for testing mdrun
     $<TARGET_OBJECTS:mdrun_test_objlib>
     # pseudo-library for code for mdrun
