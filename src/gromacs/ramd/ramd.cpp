@@ -49,7 +49,7 @@ real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
 
 			if (curr_dist >= params.max_dist) {
 				std::cout << "==== RAMD ==== Maximal distance between ligand and receptor COM is reached.\n"
-						  << "==== RAMD ==== GROMACS will be stopped." << std::endl;
+						  << "==== RAMD ==== GROMACS will be stopped after " << step << " steps." << std::endl;
 				std::abort();
 			}
 
