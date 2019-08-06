@@ -16,7 +16,7 @@ namespace gmx {
 
 RAMD::RAMD(RAMDParams const& params)
  : params(params),
-   random_spherical_direction_generator(params.seed),
+   random_spherical_direction_generator(params.seed, params.old_angle_dist),
    direction(random_spherical_direction_generator())
 {}
 

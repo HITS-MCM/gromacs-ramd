@@ -27,6 +27,7 @@ struct RAMDParams
                                      ///  in the default groups to obtain the atoms involved
     RAMDGroup      ligand;           ///< The name of the protein group, is looked up in the index file or
                                      ///  in the default groups to obtain the atoms involved
+    gmx_bool       old_angle_dist;   ///< Use old angle distribution
 };
 
 } // namespace gmx

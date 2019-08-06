@@ -679,6 +679,8 @@ static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramdparams)
     pr_indent(fp, indent);
     fprintf(fp, "ramd-ligand:\n");
     pr_ivec_block(fp, indent + 2, "atom", ramdparams->ligand.ind, ramdparams->ligand.nat, TRUE);
+
+    PS("ramd-old-angle-dist", EBOOL(ramdparams->old_angle_dist));
 }
 
 static void pr_awh_bias_dim(FILE *fp, int indent, gmx::AwhDimParams *awhDimParams, const char *prefix)

@@ -1470,6 +1470,8 @@ static void do_inputrec(t_fileio *fio, t_inputrec *ir, gmx_bool bRead,
 					snew(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
 				}
 				gmx_fio_ndo_int(fio, ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+
+			    gmx_fio_do_gmx_bool(fio, ir->ramdParams->old_angle_dist);
     	    }
         }
     }

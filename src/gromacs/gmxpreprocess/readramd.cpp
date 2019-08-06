@@ -44,6 +44,8 @@ char **read_ramdparams(std::vector<t_inpfile> *inp,
     sprintf(buf, "ramd-ligand");
     setStringEntry(inp, buf, grpbuf[1], "");
 
+	ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
+
     return grpbuf;
 }
 

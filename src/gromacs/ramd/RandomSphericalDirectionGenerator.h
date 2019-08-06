@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <iostream>
 #include <random>
 
 #include "gromacs/math/vectypes.h"
@@ -17,16 +18,25 @@ class RandomSphericalDirectionGenerator
 {
 public:
 
-	RandomSphericalDirectionGenerator(int64_t seed)
+	RandomSphericalDirectionGenerator(int64_t seed, bool use_old_angle_dist)
      : engine(seed),
-       dist(0.0, 1.0)
-    {}
+       dist(0.0, 1.0),
+	   use_old_angle_dist(use_old_angle_dist)
+    {
+		if (use_old_angle_dist) {
+			std::cout << "==== RAMD ==== Warning: Old angle distribution is used." << std::endl;
+		}
+    }
 
-	DVec operator()()
+	DVec operator () ()
 	{
-	    auto theta = 2 * M_PI * dist(engine);  // azimuthal angle
-	    //auto psi   =     M_PI * dist(engine);  // polar angle
-	    auto psi   = std::acos(1.0 - 2 * dist(engine));  // polar angle
+	    // azimuth angle
+	    real theta = 2 * M_PI * dist(engine);
+
+	    // polar angle
+	    real psi;
+	    if (use_old_angle_dist) psi = M_PI * dist(engine);
+	    else psi = std::acos(1.0 - 2 * dist(engine));
 
 	    DVec direction;
 	    direction[0] = std::cos(theta) * std::sin(psi);
@@ -43,6 +53,9 @@ private:
 
 	/// Random number distribution
     std::uniform_real_distribution<> dist;
+
+    /// For backward compa
+    bool use_old_angle_dist;
 
 };
 
