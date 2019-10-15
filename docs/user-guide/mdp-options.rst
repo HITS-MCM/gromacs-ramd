@@ -2225,7 +2225,7 @@ applied to a molecule in the system.
 
 .. mdp:: ramd-r-min-dist
 
-   (0.025) [nm]
+   (0.0025) [nm]
    This parameter affect absolute dissociation time but have less
    effect on the relative dissociation times of different compounds. It is
    recommended to use default value.
