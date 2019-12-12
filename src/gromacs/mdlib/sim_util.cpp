@@ -271,10 +271,6 @@ static void pull_potential_wrapper(const t_commrec *cr,
         pull_potential(ir->pull_work, mdatoms, &pbc,
                        cr, t, lambda[efptRESTRAINT], as_rvec_array(x.data()), force, &dvdl);
 
-    for (int g = 0; g < ir->pull->ngroup; ++g) {
-        fprintf(stderr, "COM group %d = %8.3e %8.3e %8.3e\n", g, ir->pull_work->group[g].x[0], ir->pull_work->group[g].x[1], ir->pull_work->group[g].x[2]);
-    }
-
     enerd->dvdl_lin[efptRESTRAINT] += dvdl;
     wallcycle_stop(wcycle, ewcPULLPOT);
 }
