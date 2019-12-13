@@ -16,11 +16,13 @@ in the :ref:`release-notes`.
 Fixes where mdrun could behave incorrectly
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Fix missing intermolecular interactions with domain decomposition
+Fix missing interactions with domain decomposition
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-When running with domain decomposition, all intermolecular interactions
-(when present) were ignored.
+When running with domain decomposition, any interactions described by
+the rarely-used topology file section
+``[ intermolecular_interactions ]`` were ignored. This did not
+affect normal non-bonded or intra-molecular interactions.
 
 :issue:`2953`
 
@@ -65,9 +67,11 @@ Fix gmx wham with angle geometries
 """"""""""""""""""""""""""""""""""
 
 gmx wham would mix up degree and radian units leading to no overlap
-or not-a-number output.
+or not-a-number output. **Note**: this fix is not correct, a correct
+fix is applied in the next patch release.
 
 :issue:`2609`
+:issue:`3094`
 
 Add some information for grompp error with wrong line endings
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
