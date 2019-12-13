@@ -396,9 +396,9 @@ void gmx::Integrator::do_md()
     /* RAMD */
     if (ir->bRAMD)
     {
-	    register_external_pull_potential(ir->pull_work, 0, "RAMD");
-	    register_external_pull_potential(ir->pull_work, 1, "RAMD");
-	    register_external_pull_potential(ir->pull_work, 2, "RAMD");
+        register_external_pull_potential(ir->pull_work, 0, "RAMD");
+        register_external_pull_potential(ir->pull_work, 1, "RAMD");
+        register_external_pull_potential(ir->pull_work, 2, "RAMD");
     }
 
     // TODO: Remove this by converting AWH into a ForceProvider
@@ -1371,7 +1371,7 @@ void gmx::Integrator::do_md()
                        step, t,
                        eprNORMAL, mdebin, fcd, groups, &(ir->opts), awh.get());
 
-            if (ir->bPull)
+            if (ir->bPull || ir->bRAMD)
             {
                 pull_print_output(ir->pull_work, step, t);
             }

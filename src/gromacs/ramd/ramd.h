@@ -23,21 +23,21 @@ class RAMD
 {
 public:
 
-	RAMD(RAMDParams const& params);
+    RAMD(RAMDParams const& params);
 
-	real add_force(int64_t step, t_mdatoms const& mdatoms,
-		gmx::ForceWithVirial *forceWithVirial, pull_t *pull, const t_commrec *cr);
+    real add_force(int64_t step, t_mdatoms const& mdatoms,
+        gmx::ForceWithVirial *forceWithVirial, pull_t *pull, const t_commrec *cr);
 
 private:
 
-	/// Initialization number for pseudo random number generator
-	const RAMDParams params;
+    /// Initialization number for pseudo random number generator
+    const RAMDParams params;
 
     /// Random pull direction
-	RandomSphericalDirectionGenerator random_spherical_direction_generator;
+    RandomSphericalDirectionGenerator random_spherical_direction_generator;
 
-	/// Current pull direction
-	DVec direction;
+    /// Current pull direction
+    DVec direction;
 
     /// COM of receptor of last RAMD evaluation step
     DVec com_rec_prev;

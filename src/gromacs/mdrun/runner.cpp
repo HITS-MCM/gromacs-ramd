@@ -1445,7 +1445,7 @@ int Mdrunner::mdrunner()
         };
         integrator.run(inputrec->eI, doRerun);
 
-        if (inputrec->bPull)
+        if (inputrec->bPull || inputrec->bRAMD)
         {
             finish_pull(inputrec->pull_work);
         }

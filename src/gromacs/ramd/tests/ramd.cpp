@@ -19,8 +19,8 @@ namespace test {
 
 TEST(RAMDTest, construction)
 {
-	RAMDParams params;
-	RAMD ramd(params);
+    RAMDParams params;
+    RAMD ramd(params);
 }
 
 } // namespace test

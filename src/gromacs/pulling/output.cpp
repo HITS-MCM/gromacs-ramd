@@ -285,6 +285,7 @@ static void pull_print_x(FILE *out, pull_t *pull, double t)
     {
         pullResetHistory(pull->coordForceHistory, TRUE, FALSE);
     }
+    fflush(out);
 }
 
 static void pull_print_f(FILE *out, const pull_t *pull, double t)
@@ -311,6 +312,7 @@ static void pull_print_f(FILE *out, const pull_t *pull, double t)
     {
         pullResetHistory(pull->coordForceHistory, FALSE, TRUE);
     }
+    fflush(out);
 }
 
 void pull_print_output(struct pull_t *pull, int64_t step, double time)

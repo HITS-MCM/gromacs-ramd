@@ -2233,6 +2233,7 @@ applied to a molecule in the system.
 .. mdp:: ramd-force-out-freq
 
    (100)
+   This ramd parameter resets pull-nstxout and pull-nstfout.
 
 .. mdp:: ramd-max-dist
 
