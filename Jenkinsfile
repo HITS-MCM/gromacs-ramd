@@ -17,7 +17,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-gcc-7'
+              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-gcc-7'
             }
           }
           steps {
@@ -32,12 +32,8 @@ pipeline {
           }
           post {
             always {
-              step([
-                $class: 'WarningsPublisher', canComputeNew: false, canResolveRelativePaths: false,
-                defaultEncoding: '', excludePattern: '', healthy: '', includePattern: '', messagesPattern: '',
-                parserConfigurations: [[parserName: 'GNU Make + GNU C Compiler (gcc)', pattern: 'build-gcc-7/make.out']],
-                unHealthy: ''
-              ])
+              recordIssues enabledForFailure: true, aggregatingResults: false,
+                tool: gcc(id: 'gcc-7', pattern: 'build-gcc-7/make.out')
             }
           }
         }
@@ -45,7 +41,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-clang-6'
+              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-6'
             }
           }
           steps {
@@ -60,12 +56,8 @@ pipeline {
           }
           post {
             always {
-              step([
-                $class: 'WarningsPublisher', canComputeNew: false, canResolveRelativePaths: false,
-                defaultEncoding: '', excludePattern: '', healthy: '', includePattern: '', messagesPattern: '',
-                parserConfigurations: [[parserName: 'Clang (LLVM based)', pattern: 'build-clang-6/make.out']],
-                unHealthy: ''
-              ])
+              recordIssues enabledForFailure: true, aggregatingResults: false,
+                tool: gcc(id: 'clang-6', pattern: 'build-clang-6/make.out')
             }
           }
         }
@@ -77,7 +69,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-gcc-7'
+              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-gcc-7'
             }
           }
           steps {
@@ -86,7 +78,7 @@ pipeline {
           post {
             always {
               step([
-                $class: 'XUnitBuilder',
+                $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
                 tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-7/Testing/Temporary/*.xml']]
               ])
@@ -97,7 +89,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.0-cmake-3.14-clang-6'
+              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-6'
             }
           }
           steps {
@@ -106,7 +98,7 @@ pipeline {
           post {
             always {
               step([
-                $class: 'XUnitBuilder',
+                $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
                 tools: [[$class: 'GoogleTestType', pattern: 'build-clang-6/Testing/Temporary/*.xml']]
               ])
