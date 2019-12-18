@@ -96,5 +96,72 @@ TEST_F(RAMDTest, RAMD_membrane)
     ASSERT_EQ(0, runner_.callMdrun(caller));
 }
 
+// heat shock protein 90
+TEST_F(RAMDTest, RAMD_hsp90)
+{
+    runner_.useTopGroAndNdxFromDatabase("hsp90");
+    const std::string mdpContents = R"(
+        integrator               = md
+        dt                       = 0.002
+        nsteps                   = 20000
+        nstlog                   = 2500
+        nstenergy                = 2500
+        nstxout-compressed       = 500
+        continuation             = yes
+        constraints              = h-bonds
+        constraint-algorithm     = lincs
+        cutoff-scheme            = Verlet
+        coulombtype              = PME
+        rcoulomb                 = 1.2
+        vdwtype                  = Cut-off
+        DispCorr                 = EnerPres
+        ramd                     = yes
+        ramd-seed                = 989
+        ramd-force               = 585.0
+        ramd-eval-freq           = 60
+        ramd-r-min-dist          = 0.0025
+        ramd-force-out-freq      = 100
+        ramd-max-dist            = 4.0
+        ramd-receptor            = Protein
+        ramd-ligand              = INH
+        comm-mode                = Linear
+        nstcomm                  = 100
+        comm_grps                = System
+        tinit                    = 0.000
+        nstxout                  = 25000
+        nstvout                  = 50000
+        compressed-x-precision   = 1000
+        compressed-x-grps        = SYSTEM
+        pbc                      = xyz
+        rlist                    = 1.10
+        fourierspacing           = 0.12
+        pme_order                = 4
+        ewald_geometry           = 3d
+        ewald-rtol               = 1e-5
+        ewald-rtol-lj            = 1e-5
+        vdw-modifier             = Potential-shift
+        rvdw-switch              = 0.0
+        rvdw                     = 1.2
+        tcoupl                   = Nose-Hoover
+        tc_grps                  = Protein_INH Water_and_ions
+        tau_t                    = 1.0  1.0
+        ref_t                    = 300  300
+        Pcoupl                   = Parrinello-Rahman
+        pcoupltype               = semiisotropic
+        tau_p                    = 5.0
+        compressibility          = 4.5e-5  4.5e-5
+        ref_p                    = 1.0     1.0
+        gen_vel                  = no
+    )";
+    runner_.useStringAsMdpFile(mdpContents);
+
+    EXPECT_EQ(0, runner_.callGrompp());
+
+    ::gmx::test::CommandLine caller;
+
+    // Do an mdrun with RAMD enabled
+    ASSERT_EQ(0, runner_.callMdrun(caller));
+}
+
 } // namespace test
 } // namespace gmx
