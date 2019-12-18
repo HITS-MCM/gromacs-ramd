@@ -103,7 +103,7 @@ TEST_F(RAMDTest, RAMD_hsp90)
     const std::string mdpContents = R"(
         integrator               = md
         dt                       = 0.002
-        nsteps                   = 20000
+        nsteps                   = 200
         nstlog                   = 2500
         nstenergy                = 2500
         nstxout-compressed       = 500
