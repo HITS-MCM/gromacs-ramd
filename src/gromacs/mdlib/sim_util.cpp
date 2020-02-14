@@ -86,6 +86,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/simulation_workload.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/mdtypes/state_propagator_data_gpu.h"
 #include "gromacs/nbnxm/gpu_data_mgmt.h"
@@ -94,7 +95,9 @@
 #include "gromacs/pbcutil/mshift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
+#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/pulling/pull_rotation.h"
+#include "gromacs/ramd/ramd.h"
 #include "gromacs/timing/cyclecounter.h"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
@@ -193,6 +196,28 @@ static void pull_potential_wrapper(const t_commrec*               cr,
                                               as_rvec_array(x.data()), force, &dvdl);
     enerd->dvdl_lin[efptRESTRAINT] += dvdl;
     wallcycle_stop(wcycle, ewcPULLPOT);
+}
+
+static void ramd_potential_wrapper(const t_commrec *cr,
+                                   const t_inputrec *ir,
+                                   const matrix box, gmx::ArrayRef<const gmx::RVec> x,
+                                   gmx::ForceWithVirial *force,
+                                   const t_mdatoms *mdatoms,
+                                   gmx_enerdata_t *enerd,
+                                   const real *lambda,
+                                   double t,
+                                   gmx_wallcycle_t wcycle)
+{
+    wallcycle_start(wcycle, ewcRAMD);
+    t_pbc pbc;
+    set_pbc(&pbc, ir->ePBC, box);
+    real dvdl = 0;
+    enerd->term[F_COM_PULL] +=
+        pull_potential(ir->pull_work, mdatoms, &pbc,
+                       cr, t, lambda[efptRESTRAINT], as_rvec_array(x.data()), force, &dvdl);
+
+    enerd->dvdl_lin[efptRESTRAINT] += dvdl;
+    wallcycle_stop(wcycle, ewcRAMD);
 }
 
 static void pme_receive_force_ener(t_forcerec*           fr,
@@ -570,6 +595,17 @@ static void computeSpecialForces(FILE*                          fplog,
             enerd->term[F_COM_PULL] += awh->applyBiasForcesAndUpdateBias(
                     inputrec->ePBC, *mdatoms, box, forceWithVirial, t, step, wcycle, fplog);
         }
+    }
+
+    if (inputrec->bRAMD && pull_have_potential(inputrec->pull_work))
+    {
+        ramd_potential_wrapper(cr, inputrec, box, x,
+                               forceWithVirial,
+                               mdatoms, enerd, lambda, t,
+                               wcycle);
+
+        static gmx::RAMD ramd(*inputrec->ramdParams);
+        enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial, inputrec->pull_work, cr);
     }
 
     rvec* f = as_rvec_array(forceWithVirial->force_.data());

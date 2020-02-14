@@ -2261,7 +2261,7 @@ int gmx_grompp(int argc, char* argv[])
 
     pull_t* pull = nullptr;
 
-    if (ir->bPull)
+    if (ir->bPull || ir->bRAMD)
     {
         pull = set_pull_init(ir, &sys, state.x.rvec_array(), state.box, state.lambda[efptMASS], wi);
     }
@@ -2270,6 +2270,13 @@ int gmx_grompp(int argc, char* argv[])
      * should register those potentials here. finish_pull() will check
      * that providers have been registerd for all external potentials.
      */
+
+    if (ir->bRAMD)
+    {
+    	register_external_pull_potential(pull, 0, "RAMD");
+    	register_external_pull_potential(pull, 1, "RAMD");
+    	register_external_pull_potential(pull, 2, "RAMD");
+    }
 
     if (ir->bDoAwh)
     {
@@ -2282,7 +2289,7 @@ int gmx_grompp(int argc, char* argv[])
                                    compressibility, &ir->opts, wi);
     }
 
-    if (ir->bPull)
+    if (ir->bPull || ir->bRAMD)
     {
         finish_pull(pull);
     }

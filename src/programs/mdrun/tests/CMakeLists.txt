@@ -65,6 +65,9 @@ gmx_add_gtest_executable(
     termination.cpp
     trajectory_writing.cpp
     mimic.cpp
+    ramd.cpp
+    # pseudo-library for code for testing mdrun
+    $<TARGET_OBJECTS:mdrun_test_objlib>
     # pseudo-library for code for mdrun
     $<TARGET_OBJECTS:mdrun_objlib>
     )

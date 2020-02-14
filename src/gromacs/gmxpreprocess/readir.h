@@ -40,6 +40,7 @@
 
 #include "gromacs/fileio/readinp.h"
 #include "gromacs/math/vectypes.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/utility/real.h"
 
 namespace gmx
@@ -143,7 +144,7 @@ void do_index(const char*                   mdparin,
 /* Read the index file and assign grp numbers to atoms.
  */
 
-/* Routines In readpull.c */
+/* Routines In readpull.cpp */
 
 char** read_pullparams(std::vector<t_inpfile>* inp, pull_params_t* pull, warninp_t wi);
 /* Reads the pull parameters, returns a list of the pull group names */
@@ -160,6 +161,18 @@ pull_t* set_pull_init(t_inputrec* ir, const gmx_mtop_t* mtop, rvec* x, matrix bo
  * Returns the pull_t pull work struct. This should be passed to finish_pull()
  * after all modules have registered their external potentials, if present.
  */
+
+/* Routines In readramd.cpp */
+
+char **read_ramdparams(std::vector<t_inpfile> *inp,
+                       gmx::RAMDParams *ramdparams,
+                       warninp_t wi);
+/* Reads the ramd parameters, returns a list of the ramd group names */
+
+void make_ramd_groups(gmx::RAMDParams *ramdparams,
+                      char **pgnames,
+                      const t_blocka *grps, char **gnames);
+/* Process the ramd group parameters after reading the index groups */
 
 char** read_rotparams(std::vector<t_inpfile>* inp, t_rot* rot, warninp_t wi);
 /* Reads enforced rotation parameters, returns a list of the rot group names */

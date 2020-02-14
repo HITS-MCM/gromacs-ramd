@@ -217,6 +217,9 @@ wall-ewald-zfac          = 3
 ; COM PULLING          
 pull                     = no
 
+; RAMD                 
+ramd                     = no
+
 ; AWH biasing          
 awh                      = no
 

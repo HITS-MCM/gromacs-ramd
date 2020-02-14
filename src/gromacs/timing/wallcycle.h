@@ -95,6 +95,7 @@ enum
     ewcSWAP,
     ewcIMD,
     ewcTEST,
+    ewcRAMD,
     ewcNR
 };
 

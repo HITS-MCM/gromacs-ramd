@@ -49,6 +49,7 @@
 #include "gromacs/mdtypes/awh_params.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull_params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/utility/compare.h"
 #include "gromacs/utility/cstringutil.h"
@@ -637,6 +638,26 @@ static void pr_pull(FILE* fp, int indent, const pull_params_t* pull)
     }
 }
 
+static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramdparams)
+{
+    PI("ramd-seed", ramdparams->seed);
+    PR("ramd-force", ramdparams->force);
+    PI("ramd-eval-freq", ramdparams->eval_freq);
+    PR("ramd-r-min-dist", ramdparams->r_min_dist);
+    PI("ramd-force-out-freq", ramdparams->force_out_freq);
+    PR("ramd-max-dist", ramdparams->max_dist);
+
+    pr_indent(fp, indent);
+    fprintf(fp, "ramd-receptor:\n");
+    pr_ivec_block(fp, indent + 2, "atom", ramdparams->protein.ind, ramdparams->protein.nat, TRUE);
+
+    pr_indent(fp, indent);
+    fprintf(fp, "ramd-ligand:\n");
+    pr_ivec_block(fp, indent + 2, "atom", ramdparams->ligand.ind, ramdparams->ligand.nat, TRUE);
+
+    PS("ramd-old-angle-dist", EBOOL(ramdparams->old_angle_dist));
+}
+
 static void pr_awh_bias_dim(FILE* fp, int indent, gmx::AwhDimParams* awhDimParams, const char* prefix)
 {
     pr_indent(fp, indent);
@@ -955,9 +976,16 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
 
         /* COM PULLING */
         PS("pull", EBOOL(ir->bPull));
-        if (ir->bPull)
+        if (ir->bPull || ir->bRAMD)
         {
             pr_pull(fp, indent, ir->pull);
+        }
+
+        /* RAMD */
+        PS("ramd", EBOOL(ir->bRAMD));
+        if (ir->bRAMD)
+        {
+            pr_ramd(fp, indent, ir->ramdParams);
         }
 
         /* AWH BIASING */

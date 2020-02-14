@@ -58,6 +58,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull_params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/boxutilities.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -129,6 +130,7 @@ enum tpxv
     tpxv_GenericInternalParameters, /**< Added internal parameters for mdrun modules*/
     tpxv_VSite2FD,                  /**< Added 2FD type virtual site */
     tpxv_AddSizeField, /**< Added field with information about the size of the serialized tpr file in bytes, excluding the header */
+    tpxv_RAMD,         /**< Add RAMD information */
     tpxv_Count         /**< the total number of tpxv versions */
 };
 
@@ -1450,6 +1452,39 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
         ir->bAdress = FALSE;
     }
 
+    /* RAMD */
+    {
+        if (file_version >= tpxv_RAMD) {
+    	    gmx_fio_do_gmx_bool(fio, ir->bRAMD);
+
+    	    if (ir->bRAMD) {
+    	        if (bRead) snew(ir->ramdParams, 1);
+                gmx_fio_do_int64(fio, ir->ramdParams->seed);
+                gmx_fio_do_real(fio, ir->ramdParams->force);
+                gmx_fio_do_int(fio, ir->ramdParams->eval_freq);
+                gmx_fio_do_real(fio, ir->ramdParams->r_min_dist);
+                gmx_fio_do_int(fio, ir->ramdParams->force_out_freq);
+                gmx_fio_do_real(fio, ir->ramdParams->max_dist);
+
+                gmx_fio_do_int(fio, ir->ramdParams->protein.nat);
+				if (bRead)
+				{
+					snew(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+				}
+				gmx_fio_ndo_int(fio, ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+
+                gmx_fio_do_int(fio, ir->ramdParams->ligand.nat);
+				if (bRead)
+				{
+					snew(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+				}
+				gmx_fio_ndo_int(fio, ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+
+			    gmx_fio_do_gmx_bool(fio, ir->ramdParams->old_angle_dist);
+    	    }
+        }
+    }
+
     /* pull stuff */
     {
         int ePullOld = 0;
@@ -1465,7 +1500,7 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
             /* We removed the first ePull=ePullNo for the enum */
             ePullOld -= 1;
         }
-        if (ir->bPull)
+        if (ir->bPull || ir->bRAMD)
         {
             if (serializer->reading())
             {
