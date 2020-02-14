@@ -1,4 +1,4 @@
-[![Build Status](https://jenkins.h-its.org/buildStatus/icon?job=MCM/HITS-MCM/gromacs-ramd/release-2019)](https://jenkins.h-its.org/job/MCM/job/HITS-MCM/job/gromacs-ramd/job/release-2019/)
+[![Build Status](https://jenkins.h-its.org/buildStatus/icon?job=MCM/HITS-MCM/gromacs-ramd/release-2020)](https://jenkins.h-its.org/job/MCM/job/HITS-MCM/job/gromacs-ramd/job/release-2020/)
 
 # Random accelerated Molecular Dynamics (RAMD)
 
