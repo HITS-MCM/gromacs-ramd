@@ -49,7 +49,7 @@ TEST_F(RAMDTest, RAMD_1whhi)
         ramd-force               = 600.0
         ramd-eval-freq           = 50
         ramd-r-min-dist          = 0.025
-        ramd-force-out-freq      = 100
+        ramd-force-out-freq      = 0
         ramd-max-dist            = 4.0
         ramd-receptor            = Protein
         ramd-ligand              = INH
@@ -58,10 +58,8 @@ TEST_F(RAMDTest, RAMD_1whhi)
 
     EXPECT_EQ(0, runner_.callGrompp());
 
-    ::gmx::test::CommandLine caller;
-
     // Do an mdrun with RAMD enabled
-    ASSERT_EQ(0, runner_.callMdrun(caller));
+    ASSERT_EQ(0, runner_.callMdrun());
 }
 
 TEST_F(RAMDTest, RAMD_membrane)
@@ -81,7 +79,7 @@ TEST_F(RAMDTest, RAMD_membrane)
         ramd-force               = 600.0
         ramd-eval-freq           = 50
         ramd-r-min-dist          = 0.025
-        ramd-force-out-freq      = 100
+        ramd-force-out-freq      = 0
         ramd-max-dist            = 4.0
         ramd-receptor            = Protein
         ramd-ligand              = IXO
@@ -90,10 +88,8 @@ TEST_F(RAMDTest, RAMD_membrane)
 
     EXPECT_EQ(0, runner_.callGrompp());
 
-    ::gmx::test::CommandLine caller;
-
     // Do an mdrun with RAMD enabled
-    ASSERT_EQ(0, runner_.callMdrun(caller));
+    ASSERT_EQ(0, runner_.callMdrun());
 }
 
 // heat shock protein 90
@@ -120,7 +116,7 @@ TEST_F(RAMDTest, RAMD_hsp90)
         ramd-force               = 585.0
         ramd-eval-freq           = 60
         ramd-r-min-dist          = 0.0025
-        ramd-force-out-freq      = 100
+        ramd-force-out-freq      = 0
         ramd-max-dist            = 4.0
         ramd-receptor            = Protein
         ramd-ligand              = INH
@@ -157,10 +153,8 @@ TEST_F(RAMDTest, RAMD_hsp90)
 
     EXPECT_EQ(0, runner_.callGrompp());
 
-    ::gmx::test::CommandLine caller;
-
     // Do an mdrun with RAMD enabled
-    ASSERT_EQ(0, runner_.callMdrun(caller));
+    ASSERT_EQ(0, runner_.callMdrun());
 }
 
 } // namespace test
