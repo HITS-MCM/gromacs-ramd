@@ -61,6 +61,30 @@ pipeline {
             }
           }
         }
+        stage('clang-8') {
+          agent {
+            docker {
+              reuseNode true
+              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-8'
+            }
+          }
+          steps {
+            sh '''
+              mkdir -p build-clang-8
+              cd build-clang-8
+              cmake -DCMAKE_BUILD_TYPE=release \
+                    -DGMX_BUILD_OWN_FFTW=ON \
+                    ..
+              make 2>&1 |tee make.out
+            '''
+          }
+          post {
+            always {
+              recordIssues enabledForFailure: true, aggregatingResults: false,
+                tool: gcc(id: 'clang-8', pattern: 'build-clang-8/make.out')
+            }
+          }
+        }
       }
     }
     stage('Test') {
@@ -101,6 +125,26 @@ pipeline {
                 $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
                 tools: [[$class: 'GoogleTestType', pattern: 'build-clang-6/Testing/Temporary/*.xml']]
+              ])
+            }
+          }
+        }
+        stage('clang-8') {
+          agent {
+            docker {
+              reuseNode true
+              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-8'
+            }
+          }
+          steps {
+            sh 'cd build-clang-8 && make check'
+          }
+          post {
+            always {
+              step([
+                $class: 'XUnitPublisher',
+                thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
+                tools: [[$class: 'GoogleTestType', pattern: 'build-clang-8/Testing/Temporary/*.xml']]
               ])
             }
           }
