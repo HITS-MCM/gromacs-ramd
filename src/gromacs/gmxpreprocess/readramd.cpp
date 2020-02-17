@@ -10,7 +10,6 @@
 #include "gromacs/gmxpreprocess/readir.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/mdatoms.h"
-#include "gromacs/mdlib/mdrun.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/ramd_params.h"
