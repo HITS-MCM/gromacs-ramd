@@ -2145,7 +2145,7 @@ void get_ir(const char*     mdparin,
         int pos = search_einp(inp, "pull-");
         if (inp[pos].name_ != "pull") gmx_fatal(FARGS, "PULL options can't be used with RAMD 1");
         if (search_einp(std::vector<t_inpfile>(&inp[pos+1], &inp[inp.size()]), "pull-ngroups") != -1)
-        	gmx_fatal(FARGS, "PULL options can't be used with RAMD");
+            gmx_fatal(FARGS, "PULL options can't be used with RAMD");
         if (search_einp(inp, "awh-") != -1) gmx_fatal(FARGS, "AWH options can't be used with RAMD 2");
 
         inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
@@ -2174,8 +2174,8 @@ void get_ir(const char*     mdparin,
 
         inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
 
-		// Set PULL parameters according to RAMD parameters
-		snew(ir->pull, 1);
+        // Set PULL parameters according to RAMD parameters
+        snew(ir->pull, 1);
         is->pull_grp = read_pullparams(&inp, ir->pull, wi);
     }
 

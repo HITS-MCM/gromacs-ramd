@@ -1455,36 +1455,36 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
     /* RAMD */
     {
         if (file_version >= tpxv_RAMD) {
-        	serializer->doBool(&ir->bRAMD);
+            serializer->doBool(&ir->bRAMD);
 
-    	    if (ir->bRAMD) {
-    	        if (serializer->reading())
-    	        {
-    	            snew(ir->ramdParams, 1);
-    	        }
-    	        serializer->doInt64(&ir->ramdParams->seed);
-    	        serializer->doReal(&ir->ramdParams->force);
-    	        serializer->doInt(&ir->ramdParams->eval_freq);
+            if (ir->bRAMD) {
+                if (serializer->reading())
+                {
+                    snew(ir->ramdParams, 1);
+                }
+                serializer->doInt64(&ir->ramdParams->seed);
+                serializer->doReal(&ir->ramdParams->force);
+                serializer->doInt(&ir->ramdParams->eval_freq);
                 serializer->doReal(&ir->ramdParams->r_min_dist);
                 serializer->doInt(&ir->ramdParams->force_out_freq);
                 serializer->doReal(&ir->ramdParams->max_dist);
 
                 serializer->doInt(&ir->ramdParams->protein.nat);
-				if (serializer->reading())
-				{
-					snew(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
-				}
-				serializer->doIntArray(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+                if (serializer->reading())
+                {
+                    snew(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
+                }
+                serializer->doIntArray(ir->ramdParams->protein.ind, ir->ramdParams->protein.nat);
 
-				serializer->doInt(&ir->ramdParams->ligand.nat);
-				if (serializer->reading())
-				{
-					snew(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
-				}
-				serializer->doIntArray(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+                serializer->doInt(&ir->ramdParams->ligand.nat);
+                if (serializer->reading())
+                {
+                    snew(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
+                }
+                serializer->doIntArray(ir->ramdParams->ligand.ind, ir->ramdParams->ligand.nat);
 
-				serializer->doBool(&ir->ramdParams->old_angle_dist);
-    	    }
+                serializer->doBool(&ir->ramdParams->old_angle_dist);
+            }
         }
     }
 
