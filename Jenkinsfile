@@ -13,27 +13,25 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
-        stage('gcc-9') {
+        stage('gcc-8') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-9'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-8'
             }
           }
           steps {
             sh '''
-              mkdir -p build-gcc-9
-              cd build-gcc-9
-              cmake -DCMAKE_BUILD_TYPE=release \
-                    -DGMX_BUILD_OWN_FFTW=ON \
-                    ..
+              mkdir -p build-gcc-8
+              cd build-gcc-8
+              cmake -DGMX_BUILD_OWN_FFTW=ON ..
               make 2>&1 |tee make.out
             '''
           }
           post {
             always {
               recordIssues enabledForFailure: true, aggregatingResults: false,
-                tool: gcc(id: 'gcc-9', pattern: 'build-gcc-9/make.out')
+                tool: gcc(id: 'gcc-8', pattern: 'build-gcc-8/make.out')
             }
           }
         }
@@ -48,9 +46,7 @@ pipeline {
             sh '''
               mkdir -p build-clang-6
               cd build-clang-6
-              cmake -DCMAKE_BUILD_TYPE=release \
-                    -DGMX_BUILD_OWN_FFTW=ON \
-                    ..
+              cmake -DGMX_BUILD_OWN_FFTW=ON ..
               make 2>&1 |tee make.out
             '''
           }
@@ -72,9 +68,7 @@ pipeline {
             sh '''
               mkdir -p build-clang-8
               cd build-clang-8
-              cmake -DCMAKE_BUILD_TYPE=release \
-                    -DGMX_BUILD_OWN_FFTW=ON \
-                    ..
+              cmake -DGMX_BUILD_OWN_FFTW=ON ..
               make 2>&1 |tee make.out
             '''
           }
@@ -89,22 +83,22 @@ pipeline {
     }
     stage('Test') {
       parallel {
-        stage('gcc-9') {
+        stage('gcc-8') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-9'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-8'
             }
           }
           steps {
-            sh 'cd build-gcc-9 && make check'
+            sh 'cd build-gcc-8 && make check'
           }
           post {
             always {
               step([
                 $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
-                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-9/Testing/Temporary/*.xml']]
+                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-8/Testing/Temporary/*.xml']]
               ])
             }
           }
