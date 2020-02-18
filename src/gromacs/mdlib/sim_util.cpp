@@ -563,7 +563,7 @@ static void computeSpecialForces(FILE*                          fplog,
         forceProviders->calculateForces(forceProviderInput, &forceProviderOutput);
     }
 
-    if (inputrec->bPull && pull_have_potential(pull_work))
+    if ((inputrec->bPull || inputrec->bRAMD) && pull_have_potential(pull_work))
     {
         pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
                                lambda, t, wcycle);
