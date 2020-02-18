@@ -13,17 +13,17 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
-        stage('gcc-7') {
+        stage('gcc-9') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-gcc-7'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-9'
             }
           }
           steps {
             sh '''
-              mkdir -p build-gcc-7
-              cd build-gcc-7
+              mkdir -p build-gcc-9
+              cd build-gcc-9
               cmake -DCMAKE_BUILD_TYPE=release \
                     -DGMX_BUILD_OWN_FFTW=ON \
                     ..
@@ -33,7 +33,7 @@ pipeline {
           post {
             always {
               recordIssues enabledForFailure: true, aggregatingResults: false,
-                tool: gcc(id: 'gcc-7', pattern: 'build-gcc-7/make.out')
+                tool: gcc(id: 'gcc-9', pattern: 'build-gcc-9/make.out')
             }
           }
         }
@@ -41,7 +41,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-6'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-clang-6'
             }
           }
           steps {
@@ -65,7 +65,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-8'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-clang-8'
             }
           }
           steps {
@@ -89,22 +89,22 @@ pipeline {
     }
     stage('Test') {
       parallel {
-        stage('gcc-7') {
+        stage('gcc-9') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-gcc-7'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-9'
             }
           }
           steps {
-            sh 'cd build-gcc-7 && make check'
+            sh 'cd build-gcc-9 && make check'
           }
           post {
             always {
               step([
                 $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
-                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-7/Testing/Temporary/*.xml']]
+                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-9/Testing/Temporary/*.xml']]
               ])
             }
           }
@@ -113,7 +113,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-6'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-clang-6'
             }
           }
           steps {
@@ -133,7 +133,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.1-cmake-3.15-clang-8'
+              image 'braintwister/ubuntu-18.04-cuda-10.2-clang-8'
             }
           }
           steps {
