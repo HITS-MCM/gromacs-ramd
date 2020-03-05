@@ -813,20 +813,18 @@ static void gmx_conect_addline(gmx_conect_t *con, char *line)
 {
     int         n, ai, aj;
 
-    std::string form2  = "%%*s";
-    std::string format = form2 + "%%d";
+    std::string form2  = "%*s";
+    std::string format = form2 + "%d";
     if (sscanf(line, format.c_str(), &ai) == 1)
     {
         do
         {
             form2 += "%*s";
-            format = form2 + "%%d";
+            format = form2 + "%d";
             n      = sscanf(line, format.c_str(), &aj);
             if (n == 1)
             {
-                srenew(con->conect, ++con->nconect);
-                con->conect[con->nconect-1].ai = ai-1;
-                con->conect[con->nconect-1].aj = aj-1;
+                gmx_conect_add(con, ai - 1, aj - 1); /* to prevent duplicated records */
             }
         }
         while (n == 1);

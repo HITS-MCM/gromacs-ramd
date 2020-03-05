@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -46,6 +46,7 @@
 #include "gromacs/correlationfunctions/autocorr.h"
 #include "gromacs/fileio/trrio.h"
 #include "gromacs/fileio/xvgr.h"
+#include "gromacs/gmxana/angle_correction.h"
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/functions.h"
@@ -164,12 +165,11 @@ int gmx_g_angle(int argc, char *argv[])
                        bFrac,               /* calculate fraction too?  */
                        bTrans,              /* worry about transtions too? */
                        bCorr;               /* correlation function ? */
-    real              aver, aver2, aversig; /* fraction trans dihedrals */
-    double            tfrac = 0;
-    char              title[256];
-    real            **dih = nullptr; /* mega array with all dih. angles at all times*/
-    real             *time, *trans_frac, *aver_angle;
-    t_filenm          fnm[] = {
+    double             tfrac = 0;
+    char               title[256];
+    real             **dih = nullptr; /* mega array with all dih. angles at all times*/
+    real              *time, *trans_frac, *aver_angle;
+    t_filenm           fnm[] = {
         { efTRX, "-f", nullptr,  ffREAD  },
         { efNDX, nullptr, "angle",  ffREAD  },
         { efXVG, "-od", "angdist",  ffWRITE },
@@ -181,9 +181,9 @@ int gmx_g_angle(int argc, char *argv[])
         { efTRR, "-or", nullptr,       ffOPTWR }
     };
 #define NFILE asize(fnm)
-    int               npargs;
-    t_pargs          *ppa;
-    gmx_output_env_t *oenv;
+    int                npargs;
+    t_pargs           *ppa;
+    gmx_output_env_t  *oenv;
 
     npargs = asize(pa);
     ppa    = add_acf_pargs(&npargs, pa);
@@ -411,20 +411,41 @@ int gmx_g_angle(int argc, char *argv[])
         ;
     }
 
-    aver = aver2 = 0;
-    for (i = 0; (i < nframes); i++)
-    {
-        aver  += RAD2DEG*aver_angle[i];
-        aver2 += gmx::square(RAD2DEG*aver_angle[i]);
-    }
-    aver   /= nframes;
-    aver2  /= nframes;
-    aversig = std::sqrt(aver2-gmx::square(aver));
+    double aver  = 0;
     printf("Found points in the range from %d to %d (max %d)\n",
            first, last, maxangstat);
-    printf(" < angle >  = %g\n", aver);
-    printf("< angle^2 > = %g\n", aver2);
-    printf("Std. Dev.   = %g\n", aversig);
+    if (bTrans || bCorr  || bALL || opt2bSet("-or", NFILE, fnm))
+    {   /* It's better to re-calculate Std. Dev per sample */
+        real b_aver = aver_angle[0];
+        real b      = dih[0][0];
+        real delta;
+        for (int i = 0; (i < nframes); i++)
+        {
+            delta   = correctRadianAngleRange(aver_angle[i] - b_aver);
+            b_aver += delta;
+            aver   += b_aver;
+            for (int j = 0; (j < nangles); j++)
+            {
+                delta  = correctRadianAngleRange(dih[j][i] - b);
+                b     += delta;
+            }
+        }
+    }
+    else
+    {   /* Incorrect  for Std. Dev. */
+        real delta, b_aver = aver_angle[0];
+        for (i = 0; (i < nframes); i++)
+        {
+            delta   = correctRadianAngleRange(aver_angle[i] - b_aver);
+            b_aver += delta;
+            aver   += b_aver;
+        }
+    }
+    aver  /= nframes;
+    double aversig = correctRadianAngleRange(aver);
+    aversig *= RAD2DEG;
+    aver    *= RAD2DEG;
+    printf(" < angle >  = %g\n", aversig);
 
     if (mult == 3)
     {

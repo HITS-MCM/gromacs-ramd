@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2020, by the GROMACS development team, led by
+ * Copyright (c) 2019, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -32,20 +32,17 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
-#include "gmxpre.h"
+#ifndef GMX_GMXANA_ANGLE_CORRECTION_H
+#define GMX_GMXANA_ANGLE_CORRECTION_H
 
-#include "gpu_hw_info.h"
+#include "gromacs/math/units.h"
 
-#include "config.h"
+/*! \brief
+ * Return the angle in radians after correcting to be within range of -PI < \p angle < PI.
+ *
+ * \param[in] angle The angle in radians.
+ * \returns Angle within range.
+ */
+real correctRadianAngleRange(real angle);
 
-/* Note that some of the following arrays must match the "GPU support
- * enumeration" in src/config.h.cmakein, so that GMX_GPU looks up an
- * array entry. */
-
-// TODO If/when we unify CUDA and OpenCL support code, this should
-// move to a single place in gpu_utils.
-/* Names of the GPU detection/check results (see e_gpu_detect_res_t in hw_info.h). */
-const char * const gpu_detect_res_str[egpuNR] =
-{
-    "compatible", "nonexistent", "incompatible", "incompatible (please recompile with GMX_OPENCL_NB_CLUSTER_SIZE=4)", "insane", "unavailable"
-};
+#endif
