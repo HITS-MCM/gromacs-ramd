@@ -85,6 +85,7 @@
 #include "gromacs/mdtypes/iforceprovider.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/mdtypes/state_propagator_data_gpu.h"
@@ -94,7 +95,9 @@
 #include "gromacs/pbcutil/mshift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
+#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/pulling/pull_rotation.h"
+#include "gromacs/ramd/ramd.h"
 #include "gromacs/timing/cyclecounter.h"
 #include "gromacs/timing/gpu_timing.h"
 #include "gromacs/timing/wallcycle.h"
@@ -560,7 +563,7 @@ static void computeSpecialForces(FILE*                          fplog,
         forceProviders->calculateForces(forceProviderInput, &forceProviderOutput);
     }
 
-    if (inputrec->bPull && pull_have_potential(pull_work))
+    if ((inputrec->bPull || inputrec->bRAMD) && pull_have_potential(pull_work))
     {
         pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
                                lambda, t, wcycle);
@@ -569,6 +572,12 @@ static void computeSpecialForces(FILE*                          fplog,
         {
             enerd->term[F_COM_PULL] += awh->applyBiasForcesAndUpdateBias(
                     inputrec->ePBC, *mdatoms, box, forceWithVirial, t, step, wcycle, fplog);
+        }
+
+        if (inputrec->bRAMD)
+        {
+            static gmx::RAMD ramd(*inputrec->ramdParams);
+            enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial, pull_work, cr);
         }
     }
 

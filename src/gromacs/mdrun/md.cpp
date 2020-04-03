@@ -414,6 +414,14 @@ void gmx::LegacySimulator::do_md()
     preparePrevStepPullCom(ir, pull_work, mdatoms, state, state_global, cr,
                            startingBehavior != StartingBehavior::NewSimulation);
 
+    /* RAMD */
+    if (ir->bRAMD)
+    {
+        register_external_pull_potential(pull_work, 0, "RAMD");
+        register_external_pull_potential(pull_work, 1, "RAMD");
+        register_external_pull_potential(pull_work, 2, "RAMD");
+    }
+
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog, *ir, state_global, cr, ms,
                                 startingBehavior != StartingBehavior::NewSimulation,
@@ -1531,7 +1539,7 @@ void gmx::LegacySimulator::do_md()
                                                    do_log ? fplog : nullptr, step, t, fcd, awh.get());
             }
 
-            if (ir->bPull)
+            if (ir->bPull || ir->bRAMD)
             {
                 pull_print_output(pull_work, step, t);
             }

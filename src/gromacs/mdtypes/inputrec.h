@@ -58,6 +58,7 @@ namespace gmx
 class Awh;
 struct AwhParams;
 class KeyValueTreeObject;
+struct RAMDParams;
 } // namespace gmx
 
 struct t_grpopts
@@ -527,6 +528,10 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     gmx_bool bPull;
     //! The data for center of mass pulling
     pull_params_t* pull;
+
+    /* RAMD */
+    gmx_bool         bRAMD;      //< Do we do RAMD?
+    gmx::RAMDParams* ramdParams; //< RAMD parameters
 
     /* AWH bias data */
     //! Whether to use AWH biasing for PMF calculations

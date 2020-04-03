@@ -59,6 +59,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull_params.h"
+#include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/options/options.h"
 #include "gromacs/options/treesupport.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -2133,6 +2134,61 @@ void get_ir(const char*     mdparin,
         is->pull_grp = read_pullparams(&inp, ir->pull, wi);
     }
 
+    /* RAMD */
+    printStringNewline(&inp, "RAMD");
+    ir->bRAMD = (get_eeenum(&inp, "ramd", yesno_names, wi) != 0);
+    if (ir->bRAMD)
+    {
+        snew(ir->ramdParams, 1);
+        char** ramd_groups = read_ramdparams(&inp, ir->ramdParams, wi);
+
+        int pos = search_einp(inp, "pull-");
+        if (inp[pos].name_ != "pull")
+        {
+            gmx_fatal(FARGS, "PULL options can't be used with RAMD 1");
+        }
+        if (search_einp(std::vector<t_inpfile>(&inp[pos + 1], &inp[inp.size()]), "pull-ngroups") != -1)
+        {
+            gmx_fatal(FARGS, "PULL options can't be used with RAMD");
+        }
+        if (search_einp(inp, "awh-") != -1)
+        {
+            gmx_fatal(FARGS, "AWH options can't be used with RAMD 2");
+        }
+
+        inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
+        inp.emplace_back(0, 1, false, false, false, "pull-group1-name", ramd_groups[0]);
+        inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
+        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
+        inp.emplace_back(0, 1, false, false, false, "pull-nstxout",
+                         std::to_string(ir->ramdParams->force_out_freq));
+        inp.emplace_back(0, 1, false, false, false, "pull-nstfout",
+                         std::to_string(ir->ramdParams->force_out_freq));
+
+        inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "3");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "direction");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-type", "external-potential");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-geometry", "direction");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord2-vec", "0 1 0");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-groups", "1 2");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-type", "external-potential");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-potential-provider", "RAMD");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-geometry", "direction");
+        inp.emplace_back(0, 1, false, false, false, "pull-coord3-vec", "0 0 1");
+
+        inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
+
+        // Set PULL parameters according to RAMD parameters
+        snew(ir->pull, 1);
+        is->pull_grp = read_pullparams(&inp, ir->pull, wi);
+    }
+
     /* AWH biasing
        NOTE: needs COM pulling input */
     printStringNewline(&inp, "AWH biasing");
@@ -3590,7 +3646,7 @@ void do_index(const char*                   mdparin,
         }
     }
 
-    if (ir->bPull)
+    if (ir->bPull || ir->bRAMD)
     {
         make_pull_groups(ir->pull, is->pull_grp, defaultIndexGroups, gnames);
 
