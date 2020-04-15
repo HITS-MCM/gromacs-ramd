@@ -53,8 +53,8 @@ real RAMD::add_force(int64_t step, t_mdatoms const& mdatoms,
 				std::abort();
 			}
 
-			std::cout << "==== RAMD ==== Previous COM ligand position at " << com_lig_prev[0] << " ," << com_lig_prev[1] << " ," << com_lig_prev[2] << "]" << std::endl;
-			std::cout << "==== RAMD ==== Previous COM receptor position at " << com_rec_prev[0] << " ," << com_rec_prev[1] << " ," << com_rec_prev[2] << "]" << std::endl;
+			std::cout << "==== RAMD ==== Previous COM ligand position at [" << com_lig_prev[0] << " ," << com_lig_prev[1] << " ," << com_lig_prev[2] << "]" << std::endl;
+			std::cout << "==== RAMD ==== Previous COM receptor position at [" << com_rec_prev[0] << " ," << com_rec_prev[1] << " ," << com_rec_prev[2] << "]" << std::endl;
 
 			// walk_dist =	vector length of the vector substraction
 			// (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
