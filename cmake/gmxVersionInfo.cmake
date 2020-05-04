@@ -196,7 +196,7 @@
 # The GROMACS convention is that these are the version number of the next
 # release that is going to be made from this branch.
 set(GMX_VERSION_MAJOR 2020)
-set(GMX_VERSION_PATCH 1)
+set(GMX_VERSION_PATCH 2)
 # The suffix, on the other hand, is used mainly for betas and release
 # candidates, where it signifies the most recent such release from
 # this branch; it will be empty before the first such release, as well
@@ -254,13 +254,13 @@ if (NOT SOURCE_IS_SOURCE_DISTRIBUTION AND
 endif()
 
 set(REGRESSIONTEST_VERSION "${GMX_VERSION_STRING}")
-set(REGRESSIONTEST_BRANCH "refs/heads/release-2020")
+set(REGRESSIONTEST_BRANCH "release-2020")
 # Run the regressiontests packaging job with the correct pakage
 # version string, and the release box checked, in order to have it
 # build the regressiontests tarball with all the right naming. The
 # naming affects the md5sum that has to go here, and if it isn't right
 # release workflow will report a failure.
-set(REGRESSIONTEST_MD5SUM "b032e4517195b1f8cd9db87cee1b30df" CACHE INTERNAL "MD5 sum of the regressiontests tarball for this GROMACS version")
+set(REGRESSIONTEST_MD5SUM "b75c3b1bac0e4114e236f049fc7f1f1c" CACHE INTERNAL "MD5 sum of the regressiontests tarball for this GROMACS version")
 
 math(EXPR GMX_VERSION_NUMERIC
      "${GMX_VERSION_MAJOR}*10000 + ${GMX_VERSION_PATCH}")
@@ -283,8 +283,8 @@ if (GMX_VERSION_STRING_OF_FORK)
     set(GMX_MANUAL_DOI_INTERNAL "")
     set(GMX_SOURCE_DOI_INTERNAL "")
 else()
-    set(GMX_MANUAL_DOI_INTERNAL "10.5281/zenodo.3685920") # Set correct doi string here
-    set(GMX_SOURCE_DOI_INTERNAL "10.5281/zenodo.3685919") # Set correct doi string here
+    set(GMX_MANUAL_DOI_INTERNAL "10.5281/zenodo.3773799") # Set correct doi string here
+    set(GMX_SOURCE_DOI_INTERNAL "10.5281/zenodo.3773801") # Set correct doi string here
 endif()
 set(GMX_MANUAL_DOI ${GMX_MANUAL_DOI_INTERNAL} CACHE INTERNAL "reserved doi for GROMACS manual" FORCE)
 set(GMX_SOURCE_DOI ${GMX_SOURCE_DOI_INTERNAL} CACHE INTERNAL "reserved doi for GROMACS source code" FORCE)
@@ -331,8 +331,8 @@ set(VERSION_INFO_DEPS         ${VERSION_INFO_CMAKE_FILE})
 set(VERSION_INFO_CMAKEIN_FILE     ${CMAKE_CURRENT_LIST_DIR}/VersionInfo.cmake.cmakein)
 set(VERSION_INFO_CONFIGURE_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/gmxConfigureVersionInfo.cmake)
 # A set of directories to scan for calculating the hash of source files.
-set(SET_OF_DIRECTORIES_TO_CHECKSUM  "${PROJECT_SOURCE_DIR}/src")
-list(APPEND SET_OF_DIRECTORIES_TO_CHECKSUM "${PROJECT_SOURCE_DIR}/python_packaging")
+set(SET_OF_DIRECTORIES_TO_CHECKSUM  "src")
+list(APPEND SET_OF_DIRECTORIES_TO_CHECKSUM "python_packaging")
 # Due to the limitations for passing a list as arguments, we make the directories a string here
 string(REPLACE ";" ":" DIRECTORIES_TO_CHECKSUM_STRING "${SET_OF_DIRECTORIES_TO_CHECKSUM}")
 # Try to find python for the checksumming script
@@ -436,11 +436,16 @@ set(CHECKSUM_FILE "${PROJECT_SOURCE_DIR}/src/reference_checksum")
 # Note: The RUN_ALWAYS here is to regenerate the hash file only, it does not
 # mean that the target is run in all builds
 if (PYTHONINTERP_FOUND)
+    # We need the full path to the directories after passing it through
+    set(FULL_PATH_DIRECTORIES "")
+    foreach(DIR ${SET_OF_DIRECTORIES_TO_CHECKSUM})
+        list(APPEND FULL_PATH_DIRECTORIES "${PROJECT_SOURCE_DIR}/${DIR}")
+    endforeach()
     gmx_add_custom_output_target(reference_checksum RUN_ALWAYS
         OUTPUT ${CHECKSUM_FILE}
         COMMAND ${PYTHON_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/admin/createFileHash.py
-            -s ${SET_OF_DIRECTORIES_TO_CHECKSUM}
+            -s ${FULL_PATH_DIRECTORIES}
             -o ${CHECKSUM_FILE}
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         COMMENT "Generating reference checksum of source files")
