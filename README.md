@@ -1,6 +1,6 @@
 [![Build Status](https://jenkins.h-its.org/buildStatus/icon?job=MCM/HITS-MCM/gromacs-ramd/release-2020)](https://jenkins.h-its.org/job/MCM/job/HITS-MCM/job/gromacs-ramd/job/release-2020/)
 
-# Random accelerated Molecular Dynamics (RAMD)
+# Random Acceleration Molecular Dynamics (RAMD)
 
 ## Background
 
@@ -55,10 +55,10 @@ Please use following mdp options:
    This value has to be adjusted for the system studied: no
    protein-ligand contacts should be observed in the last snapshot of a
    dissociation trajectory. Usually 4 nm is enough, but in the case
-   of a long dissociation channel (as in membrane proteins) maxDist must be
+   of a long dissociation channel (as in many membrane proteins) maxDist must be
    increased accordingly. Method performance is not very sensitive to the
    upper limit of this parameter since motion of the free ligand due to the
-   external force is very fast (i.e. the last part of the trajectory, where
-   ligand does not interact with the protein, has a negligible contribution
-   to the observed dissociation time.
+   external force is very fast (i.e. the last part of the trajectory, where the 
+   ligand does not interact with the protein, usually has a negligible contribution
+   to the observed dissociation time).
 
