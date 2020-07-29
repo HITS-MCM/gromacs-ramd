@@ -10,9 +10,7 @@
 # MPIRUNNER from the environment, or something.
 
 # Make sure the script errors if any commands error.
-set -ev
-
-source $VENVPATH/bin/activate
+set -e
 
 # TODO: We should be able to just use a $GMXAPI_0_1_SDIST or venv artifact...
 pushd python_packaging/src
@@ -42,16 +40,15 @@ pushd python_packaging/sample_restraint
   popd
 
   python -m pytest $PWD/tests --junitxml=$PLUGIN_TEST_XML
-# TODO: enable MPI tests
-#  if [ -x `which mpiexec` ]; then
-#      PYTHONDONTWRITEBYTECODE=1 \
-#      mpiexec --allow-run-as-root \
-#        --mca opal_warn_on_missing_libcuda 0 \
-#        --mca orte_base_help_aggregate 0 \
-#        -n 2 \
-#        `which python` -m pytest \
-#          -p no:cacheprovider \
-#          $PWD/tests \
-#          --junitxml=$PLUGIN_MPI_TEST_XML
-#  fi
+  if [ -x `which mpiexec` ]; then
+      PYTHONDONTWRITEBYTECODE=1 \
+      mpiexec --allow-run-as-root \
+        --mca opal_warn_on_missing_libcuda 0 \
+        --mca orte_base_help_aggregate 0 \
+        -n 2 \
+        `which python` -m pytest \
+          -p no:cacheprovider \
+          $PWD/tests \
+          --junitxml=$PLUGIN_MPI_TEST_XML
+  fi
 popd
