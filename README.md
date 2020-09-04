@@ -12,6 +12,10 @@ applied to a molecule in the system.
 
 See http://manual.gromacs.org/documentation/2019/install-guide/index.html
 
+## HPC deployment with EasyBuild
+
+The [EasyBuild](http://easybuilders.github.io/easybuild/) recipe is available [here](https://github.com/BerndDoser/easybuild-easyconfigs/blob/hits/easybuild/easyconfigs/g/GROMACS/GROMACS-2020.3-RAMD-1.0-fosscuda-2019b.eb). 
+
 ## Usage
 
 Please use following mdp options:
