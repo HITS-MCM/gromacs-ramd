@@ -577,7 +577,8 @@ static void computeSpecialForces(FILE*                          fplog,
         if (inputrec->bRAMD)
         {
             static gmx::RAMD ramd(*inputrec->ramdParams);
-            enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial, pull_work, cr);
+            enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial, pull_work, cr,
+                    inputrec->ePBC, box);
         }
     }
 

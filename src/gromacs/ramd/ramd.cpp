@@ -42,6 +42,7 @@
 #include <cassert>
 
 #include "gromacs/mdtypes/pull_params.h"
+#include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
 #include "gromacs/pulling/pull_internal.h"
 #include "gromacs/utility/fatalerror.h"
@@ -60,7 +61,9 @@ real RAMD::add_force(int64_t               step,
                      t_mdatoms const&      mdatoms,
                      gmx::ForceWithVirial* forceWithVirial,
                      pull_t*               pull,
-                     const t_commrec*      cr)
+                     const t_commrec*      cr,
+                     int                   ePBC,
+                     const matrix          box)
 {
     assert(pull->group.size() == 3);
 
@@ -127,10 +130,16 @@ real RAMD::add_force(int64_t               step,
         }
     }
 
+    t_pbc pbc;
+    set_pbc(&pbc, ePBC, box);
+
     real potential = 0.0;
-    apply_external_pull_coord_force(pull, 0, direction[0] * params.force, &mdatoms, forceWithVirial);
-    apply_external_pull_coord_force(pull, 1, direction[1] * params.force, &mdatoms, forceWithVirial);
-    apply_external_pull_coord_force(pull, 2, direction[2] * params.force, &mdatoms, forceWithVirial);
+    for (int i = 0; i < 3; ++i)
+    {
+        get_pull_coord_value(pull, i, &pbc);
+        apply_external_pull_coord_force(pull, i, direction[i] * params.force, &mdatoms, forceWithVirial);
+    }
+
     return potential;
 }
 

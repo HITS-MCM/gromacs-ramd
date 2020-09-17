@@ -59,7 +59,9 @@ public:
                    t_mdatoms const&      mdatoms,
                    gmx::ForceWithVirial* forceWithVirial,
                    pull_t*               pull,
-                   const t_commrec*      cr);
+                   const t_commrec*      cr,
+                   int                   ePBC,
+                   const matrix          box);
 
 private:
     /// Initialization number for pseudo random number generator
