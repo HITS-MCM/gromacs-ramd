@@ -1124,9 +1124,9 @@ void relax_shell_flexcon(FILE*                               fplog,
         pr_rvecs(debug, 0, "x b4 do_force", xRvec, homenr);
     }
     int shellfc_flags = force_flags | (bVerbose ? GMX_FORCE_ENERGY : 0);
-    do_force(fplog, cr, ms, inputrec, nullptr, enforcedRotation, imdSession, pull_work, mdstep,
-             nrnb, wcycle, top, box, x, hist, forceWithPadding[Min], force_vir, md, enerd, fcd,
-             lambda, graph, fr, runScheduleWork, vsite, mu_tot, t, nullptr,
+    do_force(fplog, cr, ms, inputrec, nullptr, nullptr, enforcedRotation, imdSession, pull_work,
+             mdstep, nrnb, wcycle, top, box, x, hist, forceWithPadding[Min], force_vir, md, enerd,
+             fcd, lambda, graph, fr, runScheduleWork, vsite, mu_tot, t, nullptr,
              (bDoNS ? GMX_FORCE_NS : 0) | shellfc_flags, ddBalanceRegionHandler);
 
     sf_dir = 0;
@@ -1218,10 +1218,10 @@ void relax_shell_flexcon(FILE*                               fplog,
             pr_rvecs(debug, 0, "RELAX: pos[Try]  ", as_rvec_array(pos[Try].data()), homenr);
         }
         /* Try the new positions */
-        do_force(fplog, cr, ms, inputrec, nullptr, enforcedRotation, imdSession, pull_work, 1, nrnb,
-                 wcycle, top, box, posWithPadding[Try], hist, forceWithPadding[Try], force_vir, md,
-                 enerd, fcd, lambda, graph, fr, runScheduleWork, vsite, mu_tot, t, nullptr,
-                 shellfc_flags, ddBalanceRegionHandler);
+        do_force(fplog, cr, ms, inputrec, nullptr, nullptr, enforcedRotation, imdSession, pull_work,
+                 1, nrnb, wcycle, top, box, posWithPadding[Try], hist, forceWithPadding[Try],
+                 force_vir, md, enerd, fcd, lambda, graph, fr, runScheduleWork, vsite, mu_tot, t,
+                 nullptr, shellfc_flags, ddBalanceRegionHandler);
         sum_epot(&(enerd->grpp), enerd->term);
         if (gmx_debug_at)
         {

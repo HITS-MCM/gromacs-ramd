@@ -37,10 +37,13 @@
  */
 #pragma once
 
-#include <iostream>
+#include <memory>
 
+#include "gromacs/fileio/oenv.h"
+#include "gromacs/mdrunutility/handlerestart.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/forceoutput.h"
+#include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/ramd/randomsphericaldirectiongenerator.h"
@@ -53,13 +56,18 @@ namespace gmx
 class RAMD
 {
 public:
-    RAMD(RAMDParams const& params);
+    RAMD(RAMDParams const&           params,
+         const gmx::StartingBehavior startingBehavior,
+         const t_commrec*            cr,
+         int                         nfile,
+         const t_filenm              fnm[],
+         const gmx_output_env_t*     oenv);
 
     real add_force(int64_t               step,
+                   double                time,
                    t_mdatoms const&      mdatoms,
                    gmx::ForceWithVirial* forceWithVirial,
                    pull_t*               pull,
-                   const t_commrec*      cr,
                    int                   ePBC,
                    const matrix          box);
 
@@ -78,6 +86,27 @@ private:
 
     /// COM of ligand of last RAMD evaluation step
     DVec com_lig_prev;
+
+    /// Output file for COM distances
+    FILE* out;
+
+    /// MPI communicator
+    const t_commrec* cr;
 };
+
+/*! \brief Makes an RAMD object and register external PULL forces.
+ *
+ * \param[in]     ir                      General input parameters (as set up by grompp).
+ * \param[in,out] pull                    Pointer to a pull struct.
+ * \param[in]     cr                      Struct for communication, can be nullptr.
+ * \returns       An initialized RAMD module, or nullptr if none was requested.
+ */
+std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
+                                             pull_t*                     pull,
+                                             const gmx::StartingBehavior startingBehavior,
+                                             const t_commrec*            cr,
+                                             int                         nfile,
+                                             const t_filenm              fnm[],
+                                             const gmx_output_env_t*     oenv);
 
 } // namespace gmx

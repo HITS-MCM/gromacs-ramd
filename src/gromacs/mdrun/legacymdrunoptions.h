@@ -117,6 +117,7 @@ public:
                                           { efMTX, "-mtx", "nm", ffOPTWR },
                                           { efRND, "-multidir", nullptr, ffOPTRDMULT },
                                           { efXVG, "-awh", "awhinit", ffOPTRD },
+                                          { efXVG, "-ramd", "ramd", ffOPTWR },
                                           { efDAT, "-membed", "membed", ffOPTRD },
                                           { efTOP, "-mp", "membed", ffOPTRD },
                                           { efNDX, "-mn", "membed", ffOPTRD },

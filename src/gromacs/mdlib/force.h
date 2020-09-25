@@ -66,6 +66,7 @@ struct t_nrnb;
 namespace gmx
 {
 class Awh;
+class RAMD;
 class ForceWithVirial;
 class ImdSession;
 class MdrunScheduleWorkload;
@@ -78,6 +79,7 @@ void do_force(FILE*                               log,
               const gmx_multisim_t*               ms,
               const t_inputrec*                   inputrec,
               gmx::Awh*                           awh,
+              gmx::RAMD*                          ramd,
               gmx_enfrot*                         enforcedRotation,
               gmx::ImdSession*                    imdSession,
               pull_t*                             pull_work,

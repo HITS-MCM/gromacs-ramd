@@ -41,6 +41,10 @@
 
 #include <cassert>
 
+#include "gromacs/commandline/filenm.h"
+#include "gromacs/fileio/gmxfio.h"
+#include "gromacs/fileio/oenv.h"
+#include "gromacs/fileio/xvgr.h"
 #include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
@@ -50,18 +54,38 @@
 namespace gmx
 {
 
-RAMD::RAMD(RAMDParams const& params) :
+RAMD::RAMD(RAMDParams const&           params,
+           const gmx::StartingBehavior startingBehavior,
+           const t_commrec*            cr,
+           int                         nfile,
+           const t_filenm              fnm[],
+           const gmx_output_env_t*     oenv) :
     params(params),
     random_spherical_direction_generator(params.seed, params.old_angle_dist),
-    direction(random_spherical_direction_generator())
+    direction(random_spherical_direction_generator()),
+    cr(cr)
 {
+    if (MASTER(cr))
+    {
+        std::string filename = std::string(opt2fn("-ramd", nfile, fnm));
+
+        if (startingBehavior == gmx::StartingBehavior::RestartWithAppending)
+        {
+            out = gmx_fio_fopen(filename.c_str(), "a+");
+        }
+        else
+        {
+            out = gmx_fio_fopen(filename.c_str(), "w+");
+            xvgr_header(out, "RAMD Ligand-receptor COM distance", "Time (ps)", "Distance (nm)", exvggtXNY, oenv);
+        }
+    }
 }
 
 real RAMD::add_force(int64_t               step,
+                     double                time,
                      t_mdatoms const&      mdatoms,
                      gmx::ForceWithVirial* forceWithVirial,
                      pull_t*               pull,
-                     const t_commrec*      cr,
                      int                   ePBC,
                      const matrix          box)
 {
@@ -92,6 +116,8 @@ real RAMD::add_force(int64_t               step,
             fprintf(debug,
                     "==== RAMD ==== Distance between COM of receptor and COM of ligand is %g\n",
                     curr_dist);
+
+            fprintf(out, "%.4f\t%g\n", time, curr_dist);
 
             if (curr_dist >= params.max_dist)
             {
@@ -141,6 +167,24 @@ real RAMD::add_force(int64_t               step,
     }
 
     return potential;
+}
+
+std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
+                                             pull_t*                     pull,
+                                             const gmx::StartingBehavior startingBehavior,
+                                             const t_commrec*            cr,
+                                             int                         nfile,
+                                             const t_filenm              fnm[],
+                                             const gmx_output_env_t*     oenv)
+{
+    if (!ir->bRAMD)
+        return nullptr;
+
+    register_external_pull_potential(pull, 0, "RAMD");
+    register_external_pull_potential(pull, 1, "RAMD");
+    register_external_pull_potential(pull, 2, "RAMD");
+
+    return std::make_unique<RAMD>(*ir->ramdParams, startingBehavior, cr, nfile, fnm, oenv);
 }
 
 } // namespace gmx

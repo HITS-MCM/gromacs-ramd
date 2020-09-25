@@ -842,8 +842,8 @@ void EnergyEvaluator::run(em_state_t* ems, rvec mu_tot, tensor vir, tensor pres,
     /* do_force always puts the charge groups in the box and shifts again
      * We do not unshift, so molecules are always whole in congrad.c
      */
-    do_force(fplog, cr, ms, inputrec, nullptr, nullptr, imdSession, pull_work, count, nrnb, wcycle,
-             top, ems->s.box, ems->s.x.arrayRefWithPadding(), &ems->s.hist,
+    do_force(fplog, cr, ms, inputrec, nullptr, nullptr, nullptr, imdSession, pull_work, count, nrnb,
+             wcycle, top, ems->s.box, ems->s.x.arrayRefWithPadding(), &ems->s.hist,
              ems->f.arrayRefWithPadding(), force_vir, mdAtoms->mdatoms(), enerd, fcd, ems->s.lambda,
              graph, fr, runScheduleWork, vsite, mu_tot, t, nullptr,
              GMX_FORCE_STATECHANGED | GMX_FORCE_ALLFORCES | GMX_FORCE_VIRIAL | GMX_FORCE_ENERGY

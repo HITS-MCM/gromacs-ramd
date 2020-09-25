@@ -534,6 +534,7 @@ static void computeSpecialForces(FILE*                          fplog,
                                  const t_commrec*               cr,
                                  const t_inputrec*              inputrec,
                                  gmx::Awh*                      awh,
+                                 gmx::RAMD*                     ramd,
                                  gmx_enfrot*                    enforcedRotation,
                                  gmx::ImdSession*               imdSession,
                                  pull_t*                        pull_work,
@@ -574,11 +575,10 @@ static void computeSpecialForces(FILE*                          fplog,
                     inputrec->ePBC, *mdatoms, box, forceWithVirial, t, step, wcycle, fplog);
         }
 
-        if (inputrec->bRAMD)
+        if (ramd)
         {
-            static gmx::RAMD ramd(*inputrec->ramdParams);
-            enerd->term[F_COM_PULL] += ramd.add_force(step, *mdatoms, forceWithVirial, pull_work, cr,
-                    inputrec->ePBC, box);
+            enerd->term[F_COM_PULL] +=
+                    ramd->add_force(step, t, *mdatoms, forceWithVirial, pull_work, inputrec->ePBC, box);
         }
     }
 
@@ -907,6 +907,7 @@ void do_force(FILE*                               fplog,
               const gmx_multisim_t*               ms,
               const t_inputrec*                   inputrec,
               gmx::Awh*                           awh,
+              gmx::RAMD*                          ramd,
               gmx_enfrot*                         enforcedRotation,
               gmx::ImdSession*                    imdSession,
               pull_t*                             pull_work,
@@ -1531,9 +1532,10 @@ void do_force(FILE*                               fplog,
 
     wallcycle_stop(wcycle, ewcFORCE);
 
-    computeSpecialForces(fplog, cr, inputrec, awh, enforcedRotation, imdSession, pull_work, step, t,
-                         wcycle, fr->forceProviders, box, x.unpaddedArrayRef(), mdatoms, lambda.data(),
-                         stepWork, &forceOut.forceWithVirial(), enerd, ed, stepWork.doNeighborSearch);
+    computeSpecialForces(fplog, cr, inputrec, awh, ramd, enforcedRotation, imdSession, pull_work,
+                         step, t, wcycle, fr->forceProviders, box, x.unpaddedArrayRef(), mdatoms,
+                         lambda.data(), stepWork, &forceOut.forceWithVirial(), enerd, ed,
+                         stepWork.doNeighborSearch);
 
 
     // Will store the amount of cycles spent waiting for the GPU that
