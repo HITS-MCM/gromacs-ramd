@@ -41,6 +41,8 @@
 
 #include <gtest/gtest.h>
 
+#include "gromacs/commandline/filenm.h"
+#include "gromacs/gmxlib/network.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pulling/pull_internal.h"
 
@@ -52,7 +54,13 @@ namespace test
 TEST(RAMDTest, construction)
 {
     RAMDParams params;
-    RAMD       ramd(params);
+    CommrecHandle cr = init_commrec(MPI_COMM_WORLD, nullptr);
+
+    t_filenm fnm[] = {
+        { efXVG, "-ramd", "ramd", ffOPTWR }
+    };
+
+    RAMD ramd(params, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
 }
 
 } // namespace test

@@ -63,9 +63,10 @@ RAMD::RAMD(RAMDParams const&           params,
     params(params),
     random_spherical_direction_generator(params.seed, params.old_angle_dist),
     direction(random_spherical_direction_generator()),
+    out(nullptr),
     cr(cr)
 {
-    if (MASTER(cr))
+    if (MASTER(cr) and opt2bSet("-ramd", nfile, fnm))
     {
         std::string filename = std::string(opt2fn("-ramd", nfile, fnm));
 
@@ -117,7 +118,7 @@ real RAMD::add_force(int64_t               step,
                     "==== RAMD ==== Distance between COM of receptor and COM of ligand is %g\n",
                     curr_dist);
 
-            fprintf(out, "%.4f\t%g\n", time, curr_dist);
+            if (out) fprintf(out, "%.4f\t%g\n", time, curr_dist);
 
             if (curr_dist >= params.max_dist)
             {
