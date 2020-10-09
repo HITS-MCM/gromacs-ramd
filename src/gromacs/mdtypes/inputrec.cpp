@@ -638,7 +638,7 @@ static void pr_pull(FILE* fp, int indent, const pull_params_t* pull)
     }
 }
 
-static void pr_ramd(FILE *fp, int indent, const gmx::RAMDParams *ramdparams)
+static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams* ramdparams)
 {
     PI("ramd-seed", ramdparams->seed);
     PR("ramd-force", ramdparams->force);

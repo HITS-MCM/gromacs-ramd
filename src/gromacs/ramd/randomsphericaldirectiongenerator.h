@@ -35,33 +35,63 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
-#include "gmxpre.h"
+#pragma once
 
-#include "gromacs/ramd/ramd.h"
+#include <iostream>
+#include <random>
 
-#include <gtest/gtest.h>
-
-#include "gromacs/commandline/filenm.h"
-#include "gromacs/gmxlib/network.h"
-#include "gromacs/mdtypes/state.h"
-#include "gromacs/pulling/pull_internal.h"
+#include "gromacs/math/vectypes.h"
 
 namespace gmx
 {
-namespace test
+
+class RandomSphericalDirectionGenerator
 {
+public:
+    RandomSphericalDirectionGenerator(int64_t seed, bool use_old_angle_dist = false) :
+        engine(seed),
+        dist(0.0, 1.0),
+        use_old_angle_dist(use_old_angle_dist)
+    {
+        if (use_old_angle_dist)
+        {
+            std::cout << "==== RAMD ==== Warning: Old angle distribution is used." << std::endl;
+        }
+    }
 
-TEST(RAMDTest, construction)
-{
-    RAMDParams params;
-    CommrecHandle cr = init_commrec(MPI_COMM_WORLD, nullptr);
+    DVec operator()()
+    {
+        // azimuth angle
+        real theta = 2 * M_PI * dist(engine);
 
-    t_filenm fnm[] = {
-        { efXVG, "-ramd", "ramd", ffOPTWR }
-    };
+        // polar angle
+        real psi;
+        if (use_old_angle_dist)
+        {
+            psi = M_PI * dist(engine);
+        }
+        else
+        {
+            psi = std::acos(1.0 - 2 * dist(engine));
+        }
 
-    RAMD ramd(params, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
-}
+        DVec direction;
+        direction[0] = std::cos(theta) * std::sin(psi);
+        direction[1] = std::sin(theta) * std::sin(psi);
+        direction[2] = std::cos(psi);
 
-} // namespace test
+        return direction;
+    }
+
+private:
+    /// Random number generator
+    std::default_random_engine engine;
+
+    /// Random number distribution
+    std::uniform_real_distribution<> dist;
+
+    /// For backward compa
+    bool use_old_angle_dist;
+};
+
 } // namespace gmx

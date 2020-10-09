@@ -164,14 +164,10 @@ pull_t* set_pull_init(t_inputrec* ir, const gmx_mtop_t* mtop, rvec* x, matrix bo
 
 /* Routines In readramd.cpp */
 
-char **read_ramdparams(std::vector<t_inpfile> *inp,
-                       gmx::RAMDParams *ramdparams,
-                       warninp_t wi);
+char** read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, warninp_t wi);
 /* Reads the ramd parameters, returns a list of the ramd group names */
 
-void make_ramd_groups(gmx::RAMDParams *ramdparams,
-                      char **pgnames,
-                      const t_blocka *grps, char **gnames);
+void make_ramd_groups(gmx::RAMDParams* ramdparams, char** pgnames, const t_blocka* grps, char** gnames);
 /* Process the ramd group parameters after reading the index groups */
 
 char** read_rotparams(std::vector<t_inpfile>* inp, t_rot* rot, warninp_t wi);

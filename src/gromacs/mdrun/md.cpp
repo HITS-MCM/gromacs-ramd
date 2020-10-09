@@ -126,6 +126,7 @@
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/output.h"
 #include "gromacs/pulling/pull.h"
+#include "gromacs/ramd/ramd.h"
 #include "gromacs/swap/swapcoords.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/timing/walltime_accounting.h"
@@ -445,12 +446,7 @@ void gmx::LegacySimulator::do_md()
                            startingBehavior != StartingBehavior::NewSimulation);
 
     /* RAMD */
-    if (ir->bRAMD)
-    {
-        register_external_pull_potential(pull_work, 0, "RAMD");
-        register_external_pull_potential(pull_work, 1, "RAMD");
-        register_external_pull_potential(pull_work, 2, "RAMD");
-    }
+    auto ramd = prepareRAMDModule(ir, pull_work, startingBehavior, cr, nfile, fnm, oenv);
 
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog, *ir, state_global, cr, ms,
@@ -963,8 +959,8 @@ void gmx::LegacySimulator::do_md()
              * This is parallellized as well, and does communication too.
              * Check comments in sim_util.c
              */
-            do_force(fplog, cr, ms, ir, awh.get(), enforcedRotation, imdSession, pull_work, step,
-                     nrnb, wcycle, &top, state->box, state->x.arrayRefWithPadding(), &state->hist,
+            do_force(fplog, cr, ms, ir, awh.get(), ramd.get(), enforcedRotation, imdSession, pull_work,
+                     step, nrnb, wcycle, &top, state->box, state->x.arrayRefWithPadding(), &state->hist,
                      f.arrayRefWithPadding(), force_vir, mdatoms, enerd, fcd, state->lambda, graph,
                      fr, runScheduleWork, vsite, mu_tot, t, ed ? ed->getLegacyED() : nullptr,
                      (bNS ? GMX_FORCE_NS : 0) | force_flags, ddBalanceRegionHandler);

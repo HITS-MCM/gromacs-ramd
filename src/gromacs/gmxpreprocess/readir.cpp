@@ -2142,18 +2142,14 @@ void get_ir(const char*     mdparin,
         snew(ir->ramdParams, 1);
         char** ramd_groups = read_ramdparams(&inp, ir->ramdParams, wi);
 
-        int pos = search_einp(inp, "pull-");
-        if (inp[pos].name_ != "pull") gmx_fatal(FARGS, "PULL options can't be used with RAMD 1");
-        if (search_einp(std::vector<t_inpfile>(&inp[pos+1], &inp[inp.size()]), "pull-ngroups") != -1)
-            gmx_fatal(FARGS, "PULL options can't be used with RAMD");
-        if (search_einp(inp, "awh-") != -1) gmx_fatal(FARGS, "AWH options can't be used with RAMD 2");
-
         inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
         inp.emplace_back(0, 1, false, false, false, "pull-group1-name", ramd_groups[0]);
         inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
         inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
-        inp.emplace_back(0, 1, false, false, false, "pull-nstxout", std::to_string(ir->ramdParams->force_out_freq));
-        inp.emplace_back(0, 1, false, false, false, "pull-nstfout", std::to_string(ir->ramdParams->force_out_freq));
+        inp.emplace_back(0, 1, false, false, false, "pull-nstxout",
+                         std::to_string(ir->ramdParams->force_out_freq));
+        inp.emplace_back(0, 1, false, false, false, "pull-nstfout",
+                         std::to_string(ir->ramdParams->force_out_freq));
 
         inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "3");
         inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");

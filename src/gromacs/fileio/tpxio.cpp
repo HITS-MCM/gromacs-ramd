@@ -131,8 +131,8 @@ enum tpxv
     tpxv_GenericInternalParameters, /**< Added internal parameters for mdrun modules*/
     tpxv_VSite2FD,                  /**< Added 2FD type virtual site */
     tpxv_AddSizeField, /**< Added field with information about the size of the serialized tpr file in bytes, excluding the header */
-    tpxv_RAMD,         /**< Add RAMD information */
-    tpxv_Count         /**< the total number of tpxv versions */
+    tpxv_RAMD,                                    /**< Add RAMD information */
+    tpxv_Count                                    /**< the total number of tpxv versions */
 };
 
 /*! \brief Version number of the file format written to run input
@@ -1455,10 +1455,12 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
 
     /* RAMD */
     {
-        if (file_version >= tpxv_RAMD) {
+        if (file_version >= tpxv_RAMD)
+        {
             serializer->doBool(&ir->bRAMD);
 
-            if (ir->bRAMD) {
+            if (ir->bRAMD)
+            {
                 if (serializer->reading())
                 {
                     snew(ir->ramdParams, 1);

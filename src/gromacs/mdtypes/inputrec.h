@@ -530,8 +530,8 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     pull_params_t* pull;
 
     /* RAMD */
-    gmx_bool                 bRAMD;          //< Do we do RAMD?
-    gmx::RAMDParams         *ramdParams;     //< RAMD parameters
+    gmx_bool         bRAMD;      //< Do we do RAMD?
+    gmx::RAMDParams* ramdParams; //< RAMD parameters
 
     /* AWH bias data */
     //! Whether to use AWH biasing for PMF calculations
