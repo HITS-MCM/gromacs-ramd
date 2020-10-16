@@ -68,7 +68,7 @@ RAMD::RAMD(RAMDParams const&           params,
 {
     if (MASTER(cr) and opt2bSet("-ramd", nfile, fnm))
     {
-        std::string filename = std::string(opt2fn("-ramd", nfile, fnm));
+        auto filename = std::string(opt2fn("-ramd", nfile, fnm));
 
         if (startingBehavior == gmx::StartingBehavior::RestartWithAppending)
         {
@@ -79,6 +79,7 @@ RAMD::RAMD(RAMDParams const&           params,
             out = gmx_fio_fopen(filename.c_str(), "w+");
             xvgr_header(out, "RAMD Ligand-receptor COM distance", "Time (ps)", "Distance (nm)", exvggtXNY, oenv);
         }
+        fflush(out);
     }
 }
 
@@ -97,6 +98,13 @@ real RAMD::add_force(int64_t               step,
         // Store COM positions for first evaluation
         com_rec_prev = pull->group[1].x;
         com_lig_prev = pull->group[2].x;
+        auto dist = std::sqrt((com_lig_prev - com_rec_prev).norm2());
+
+        if (MASTER(cr) and out)
+        {
+            fprintf(out, "%.4f\t%g\n", time, dist);
+            fflush(out);
+        }
     }
     else if (!(step % params.eval_freq))
     {
@@ -119,6 +127,7 @@ real RAMD::add_force(int64_t               step,
         if (MASTER(cr) and out)
         {
             fprintf(out, "%.4f\t%g\n", time, curr_dist);
+            fflush(out);
         }
 
         if (curr_dist >= params.max_dist)
