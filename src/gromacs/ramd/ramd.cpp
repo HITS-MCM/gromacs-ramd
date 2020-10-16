@@ -92,69 +92,77 @@ real RAMD::add_force(int64_t               step,
 {
     assert(pull->group.size() == 3);
 
-    if (MASTER(cr))
+    if (step == 0)
     {
-        if (step == 0)
-        {
-            // Store COM positions for first evaluation
-            com_rec_prev = pull->group[1].x;
-            com_lig_prev = pull->group[2].x;
-        }
-        else if (!(step % params.eval_freq))
+        // Store COM positions for first evaluation
+        com_rec_prev = pull->group[1].x;
+        com_lig_prev = pull->group[2].x;
+    }
+    else if (!(step % params.eval_freq))
+    {
+        DVec com_rec_curr = pull->group[1].x;
+        DVec com_lig_curr = pull->group[2].x;
+        auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
+
+        if (MASTER(cr) and debug)
         {
             fprintf(debug, "==== RAMD ==== evaluation %ld\n", step);
-
-            DVec com_rec_curr = pull->group[1].x;
-            DVec com_lig_curr = pull->group[2].x;
-
             fprintf(debug, "==== RAMD ==== COM ligand position at [%g, %g, %g]\n", com_lig_curr[0],
                     com_lig_curr[1], com_lig_curr[2]);
             fprintf(debug, "==== RAMD ==== COM receptor position at [%g, %g, %g]\n",
                     com_rec_curr[0], com_rec_curr[1], com_rec_curr[2]);
-
-            auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
-
             fprintf(debug,
                     "==== RAMD ==== Distance between COM of receptor and COM of ligand is %g\n",
                     curr_dist);
+        }
 
-            if (out) fprintf(out, "%.4f\t%g\n", time, curr_dist);
+        if (MASTER(cr) and out)
+        {
+            fprintf(out, "%.4f\t%g\n", time, curr_dist);
+        }
 
-            if (curr_dist >= params.max_dist)
+        if (curr_dist >= params.max_dist)
+        {
+            if (MASTER(cr) and debug)
             {
                 fprintf(debug,
                         "==== RAMD ==== Maximal distance between ligand and receptor COM is "
                         "reached.\n");
                 fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
-                std::abort();
             }
+            std::abort();
+        }
 
+        // walk_dist = vector length of the vector substraction
+        // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
+        // during last RAMD evaluation step
+        auto walk_dist =
+                std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)).norm2());
+
+        if (MASTER(cr) and debug)
+        {
             fprintf(debug, "==== RAMD ==== Previous COM ligand position at [%g, %g, %g]\n",
                     com_lig_prev[0], com_lig_prev[1], com_lig_prev[2]);
             fprintf(debug, "==== RAMD ==== Previous COM receptor position at [%g, %g, %g]\n",
                     com_rec_prev[0], com_rec_prev[1], com_rec_prev[2]);
-
-            // walk_dist = vector length of the vector substraction
-            // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
-            // during last RAMD evaluation step
-            auto walk_dist =
-                    std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)).norm2());
-
             fprintf(debug,
                     "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation "
                     "is %g\n",
                     walk_dist);
+        }
 
-            if (walk_dist < params.r_min_dist)
+        if (walk_dist < params.r_min_dist)
+        {
+            direction = random_spherical_direction_generator();
+            if (MASTER(cr) and debug)
             {
-                direction = random_spherical_direction_generator();
                 fprintf(debug, "==== RAMD ==== New random direction is [%g, %g, %g]\n",
                         direction[0], direction[1], direction[2]);
             }
-
-            com_lig_prev = com_lig_curr;
-            com_rec_prev = com_rec_curr;
         }
+
+        com_lig_prev = com_lig_curr;
+        com_rec_prev = com_rec_curr;
     }
 
     t_pbc pbc;
@@ -179,7 +187,9 @@ std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
                                              const gmx_output_env_t*     oenv)
 {
     if (!ir->bRAMD)
+    {
         return nullptr;
+    }
 
     register_external_pull_potential(pull, 0, "RAMD");
     register_external_pull_potential(pull, 1, "RAMD");
