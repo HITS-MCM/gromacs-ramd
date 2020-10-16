@@ -97,8 +97,13 @@ private:
 /*! \brief Makes an RAMD object and register external PULL forces.
  *
  * \param[in]     ir                      General input parameters (as set up by grompp).
- * \param[in,out] pull                    Pointer to a pull struct.
+ * \param[in,out] pull                    Pointer to pull object.
+ * \param[in]     startingBehavior        Describes whether this is a restart appending to output
+ *                                        files.
  * \param[in]     cr                      Struct for communication, can be nullptr.
+ * \param[in]     nfile                   Number of files.
+ * \param[in]     fnm                     Filename struct.
+ * \param[in]     oenv                    The output environment information.
  * \returns       An initialized RAMD module, or nullptr if none was requested.
  */
 std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,

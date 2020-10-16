@@ -511,6 +511,7 @@ static bool haveSpecialForces(const t_inputrec&          inputrec,
  * \param[in]     cr               The communication record
  * \param[in]     inputrec         The input record
  * \param[in]     awh              The Awh module (nullptr if none in use).
+ * \param[in]     ramd             The RAMD module (nullptr if none in use).
  * \param[in]     enforcedRotation Enforced rotation module.
  * \param[in]     imdSession       The IMD session
  * \param[in]     pull_work        The pull work structure.
