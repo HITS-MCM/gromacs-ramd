@@ -48,15 +48,32 @@
 
 char** read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, warninp_t wi)
 {
-    ramdparams->seed           = get_eint(inp, "ramd-seed", 1234, wi);
-    ramdparams->force          = get_ereal(inp, "ramd-force", 600, wi);
-    ramdparams->eval_freq      = get_eint(inp, "ramd-eval-freq", 50, wi);
-    ramdparams->r_min_dist     = get_ereal(inp, "ramd-r-min-dist", 0.0025, wi);
-    ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
-    ramdparams->max_dist       = get_ereal(inp, "ramd-max-dist", 4.0, wi);
+    ramdparams->seed = get_eint(inp, "ramd-seed", 1234, wi);
+    ramdparams->ngroup = get_eint(inp, "ramd-ngroups", 1, wi);
 
-    char   buf[STRLEN];
+    char buf[STRLEN];
     char** grpbuf;
+    snew(grpbuf, ramdparams->ngroup);
+    for (int i = 1; i < ramdparams->ngroup; i++)
+    {
+        auto ramdgrp = &ramdparams->group[i];
+        snew(grpbuf[i], STRLEN);
+        sprintf(buf, "ramd-group%d-receptor", i);
+        setStringEntry(inp, buf, grpbuf[i], "");
+        sprintf(buf, "ramd-group%d-ligand", i);
+        setStringEntry(inp, buf, grpbuf[i], "");
+        sprintf(buf, "ramd-group%d-force", i);
+        ramdgrp->force = get_ereal(inp, buf, 600, wi);
+        sprintf(buf, "ramd-group%d-r-min-dist", i);
+        ramdgrp->r_min_dist = get_ereal(inp, buf, 0.0025, wi);
+        sprintf(buf, "ramd-group%d-max-dist", i);
+        ramdgrp->max_dist  = get_ereal(inp, buf, 4.0, wi);
+    }
+
+    ramdparams->eval_freq = get_eint(inp, "ramd-eval-freq", 50, wi);
+    ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
+    ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
+
     snew(grpbuf, 2);
     snew(grpbuf[0], STRLEN);
     snew(grpbuf[1], STRLEN);
@@ -65,8 +82,6 @@ char** read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams,
     setStringEntry(inp, buf, grpbuf[0], "");
     sprintf(buf, "ramd-ligand");
     setStringEntry(inp, buf, grpbuf[1], "");
-
-    ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
 
     return grpbuf;
 }

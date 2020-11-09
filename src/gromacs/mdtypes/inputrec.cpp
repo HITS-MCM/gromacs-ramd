@@ -638,23 +638,25 @@ static void pr_pull(FILE* fp, int indent, const pull_params_t* pull)
     }
 }
 
+static void pr_ramd_group(FILE* fp, int indent, int g, const gmx::RAMDGroup grp)
+{
+    pr_indent(fp, indent);
+    fprintf(fp, "ramd-group %d:\n", g);
+    indent += 2;
+    pr_ivec_block(fp, indent, "atom", grp.receptor.data(), grp.receptor.size(), TRUE);
+    PR("force", grp.force);
+}
+
 static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams* ramdparams)
 {
     PI("ramd-seed", ramdparams->seed);
-    PR("ramd-force", ramdparams->force);
+    PI("pull-ngroups", ramdparams->ngroup);
+    for (int g = 0; g < ramdparams->ngroup; g++)
+    {
+        pr_ramd_group(fp, indent, g, ramdparams->group[g]);
+    }
     PI("ramd-eval-freq", ramdparams->eval_freq);
-    PR("ramd-r-min-dist", ramdparams->r_min_dist);
     PI("ramd-force-out-freq", ramdparams->force_out_freq);
-    PR("ramd-max-dist", ramdparams->max_dist);
-
-    pr_indent(fp, indent);
-    fprintf(fp, "ramd-receptor:\n");
-    pr_ivec_block(fp, indent + 2, "atom", ramdparams->protein.ind, ramdparams->protein.nat, TRUE);
-
-    pr_indent(fp, indent);
-    fprintf(fp, "ramd-ligand:\n");
-    pr_ivec_block(fp, indent + 2, "atom", ramdparams->ligand.ind, ramdparams->ligand.nat, TRUE);
-
     PS("ramd-old-angle-dist", EBOOL(ramdparams->old_angle_dist));
 }
 
