@@ -45,6 +45,7 @@
 #include "gromacs/fileio/gmxfio.h"
 #include "gromacs/fileio/oenv.h"
 #include "gromacs/fileio/xvgr.h"
+#include "gromacs/mdlib/sighandler.h"
 #include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
@@ -130,19 +131,16 @@ real RAMD::add_force(int64_t               step,
             fflush(out);
         }
 
-        if (curr_dist >= params.max_dist)
+        if (MASTER(cr) and curr_dist >= params.max_dist)
         {
-            if (MASTER(cr))
+            if (debug)
             {
-                if (debug)
-                {
-                    fprintf(debug,
-                            "==== RAMD ==== Maximal distance between ligand and receptor COM is "
-                            "reached.\n");
-                }
-                fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
+                fprintf(debug,
+                        "==== RAMD ==== Maximal distance between ligand and receptor COM is "
+                        "reached.\n");
             }
-            std::abort();
+            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
+            gmx_set_stop_condition(gmx_stop_cond_next);
         }
 
         // walk_dist = vector length of the vector substraction
