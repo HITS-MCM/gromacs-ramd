@@ -2140,35 +2140,7 @@ void get_ir(const char*     mdparin,
     if (ir->bRAMD)
     {
         snew(ir->ramdParams, 1);
-        char** ramd_groups = read_ramdparams(&inp, ir->ramdParams, wi);
-
-        inp.emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
-        inp.emplace_back(0, 1, false, false, false, "pull-group1-name", ramd_groups[0]);
-        inp.emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
-        inp.emplace_back(0, 1, false, false, false, "pull-group2-name", ramd_groups[1]);
-        inp.emplace_back(0, 1, false, false, false, "pull-nstxout",
-                         std::to_string(ir->ramdParams->force_out_freq));
-        inp.emplace_back(0, 1, false, false, false, "pull-nstfout",
-                         std::to_string(ir->ramdParams->force_out_freq));
-
-        inp.emplace_back(0, 1, false, false, false, "pull-ncoords", "3");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "direction");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord2-groups", "1 2");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord2-type", "external-potential");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord2-potential-provider", "RAMD");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord2-geometry", "direction");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord2-vec", "0 1 0");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord3-groups", "1 2");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord3-type", "external-potential");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord3-potential-provider", "RAMD");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord3-geometry", "direction");
-        inp.emplace_back(0, 1, false, false, false, "pull-coord3-vec", "0 0 1");
-
-        inp.emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
+        read_ramdparams(&inp, ir->ramdParams, wi);
 
         // Set PULL parameters according to RAMD parameters
         snew(ir->pull, 1);

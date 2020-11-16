@@ -131,7 +131,7 @@ real RAMD::add_force(int64_t               step,
             fflush(out);
         }
 
-        if (MASTER(cr) and curr_dist >= params.max_dist)
+        if (MASTER(cr) and curr_dist >= params.group[0].max_dist)
         {
             if (debug)
             {
@@ -161,7 +161,7 @@ real RAMD::add_force(int64_t               step,
                     walk_dist);
         }
 
-        if (walk_dist < params.r_min_dist)
+        if (walk_dist < params.group[0].r_min_dist)
         {
             direction = random_spherical_direction_generator();
             if (MASTER(cr) and debug)
@@ -182,7 +182,7 @@ real RAMD::add_force(int64_t               step,
     for (int i = 0; i < 3; ++i)
     {
         get_pull_coord_value(pull, i, &pbc);
-        apply_external_pull_coord_force(pull, i, direction[i] * params.force, &mdatoms, forceWithVirial);
+        apply_external_pull_coord_force(pull, i, direction[i] * params.group[0].force, &mdatoms, forceWithVirial);
     }
 
     return potential;
@@ -201,9 +201,12 @@ std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
         return nullptr;
     }
 
-    register_external_pull_potential(pull, 0, "RAMD");
-    register_external_pull_potential(pull, 1, "RAMD");
-    register_external_pull_potential(pull, 2, "RAMD");
+    for (int g = 0; g < ir->ramdParams->ngroup; g++)
+    {
+        register_external_pull_potential(pull, g*3,   "RAMD x");
+        register_external_pull_potential(pull, g*3+1, "RAMD y");
+        register_external_pull_potential(pull, g*3+2, "RAMD z");
+    }
 
     return std::make_unique<RAMD>(*ir->ramdParams, startingBehavior, cr, nfile, fnm, oenv);
 }

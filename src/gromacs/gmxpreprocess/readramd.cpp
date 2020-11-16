@@ -46,22 +46,23 @@
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/smalloc.h"
 
-char** read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, warninp_t wi)
+void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, warninp_t wi)
 {
     ramdparams->seed = get_eint(inp, "ramd-seed", 1234, wi);
     ramdparams->ngroup = get_eint(inp, "ramd-ngroups", 1, wi);
+    snew(ramdparams->group, ramdparams->ngroup);
 
     char buf[STRLEN];
-    char** grpbuf;
-    snew(grpbuf, ramdparams->ngroup);
+    char buf2[STRLEN];
     for (int i = 1; i < ramdparams->ngroup; i++)
     {
         auto ramdgrp = &ramdparams->group[i];
-        snew(grpbuf[i], STRLEN);
         sprintf(buf, "ramd-group%d-receptor", i);
-        setStringEntry(inp, buf, grpbuf[i], "");
+        sprintf(buf2, "pull-group%d-name", i);
+        inp->emplace_back(0, 1, false, false, false, buf2, buf);
         sprintf(buf, "ramd-group%d-ligand", i);
-        setStringEntry(inp, buf, grpbuf[i], "");
+        sprintf(buf2, "pull-group%d-name", i);
+        inp->emplace_back(0, 1, false, false, false, buf2, buf);
         sprintf(buf, "ramd-group%d-force", i);
         ramdgrp->force = get_ereal(inp, buf, 600, wi);
         sprintf(buf, "ramd-group%d-r-min-dist", i);
@@ -74,35 +75,29 @@ char** read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams,
     ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
     ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
 
-    snew(grpbuf, 2);
-    snew(grpbuf[0], STRLEN);
-    snew(grpbuf[1], STRLEN);
+    inp->emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
+    inp->emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
+    inp->emplace_back(0, 1, false, false, false, "pull-nstxout",
+                        std::to_string(ramdparams->force_out_freq));
+    inp->emplace_back(0, 1, false, false, false, "pull-nstfout",
+                        std::to_string(ramdparams->force_out_freq));
 
-    sprintf(buf, "ramd-receptor");
-    setStringEntry(inp, buf, grpbuf[0], "");
-    sprintf(buf, "ramd-ligand");
-    setStringEntry(inp, buf, grpbuf[1], "");
+    inp->emplace_back(0, 1, false, false, false, "pull-ncoords", "3");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "direction");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord2-groups", "1 2");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord2-type", "external-potential");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord2-potential-provider", "RAMD");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord2-geometry", "direction");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord2-vec", "0 1 0");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord3-groups", "1 2");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord3-type", "external-potential");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord3-potential-provider", "RAMD");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord3-geometry", "direction");
+    inp->emplace_back(0, 1, false, false, false, "pull-coord3-vec", "0 0 1");
 
-    return grpbuf;
-}
-
-void make_ramd_groups(gmx::RAMDParams* ramdparams, char** pgnames, const t_blocka* grps, char** gnames)
-{
-    int ig                  = search_string(pgnames[0], grps->nr, gnames);
-    ramdparams->protein.nat = grps->index[ig + 1] - grps->index[ig];
-
-    snew(ramdparams->protein.ind, ramdparams->protein.nat);
-    for (int i = 0; i < ramdparams->protein.nat; i++)
-    {
-        ramdparams->protein.ind[i] = grps->a[grps->index[ig] + i];
-    }
-
-    ig                     = search_string(pgnames[1], grps->nr, gnames);
-    ramdparams->ligand.nat = grps->index[ig + 1] - grps->index[ig];
-
-    snew(ramdparams->ligand.ind, ramdparams->ligand.nat);
-    for (int i = 0; i < ramdparams->ligand.nat; i++)
-    {
-        ramdparams->ligand.ind[i] = grps->a[grps->index[ig] + i];
-    }
+    inp->emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
 }

@@ -643,14 +643,15 @@ static void pr_ramd_group(FILE* fp, int indent, int g, const gmx::RAMDGroup grp)
     pr_indent(fp, indent);
     fprintf(fp, "ramd-group %d:\n", g);
     indent += 2;
-    pr_ivec_block(fp, indent, "atom", grp.receptor.data(), grp.receptor.size(), TRUE);
     PR("force", grp.force);
+    PR("max_dist", grp.max_dist);
+    PR("r_min_dist", grp.r_min_dist);
 }
 
 static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams* ramdparams)
 {
     PI("ramd-seed", ramdparams->seed);
-    PI("pull-ngroups", ramdparams->ngroup);
+    PI("ramd-ngroups", ramdparams->ngroup);
     for (int g = 0; g < ramdparams->ngroup; g++)
     {
         pr_ramd_group(fp, indent, g, ramdparams->group[g]);
