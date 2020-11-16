@@ -54,20 +54,24 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
 
     char buf[STRLEN];
     char buf2[STRLEN];
-    for (int i = 1; i < ramdparams->ngroup; i++)
+    char receptor[STRLEN];
+    char ligand[STRLEN];
+    for (int i = 0; i < ramdparams->ngroup; i++)
     {
         auto ramdgrp = &ramdparams->group[i];
-        sprintf(buf, "ramd-group%d-receptor", i);
-        sprintf(buf2, "pull-group%d-name", i);
-        inp->emplace_back(0, 1, false, false, false, buf2, buf);
-        sprintf(buf, "ramd-group%d-ligand", i);
-        sprintf(buf2, "pull-group%d-name", i);
-        inp->emplace_back(0, 1, false, false, false, buf2, buf);
-        sprintf(buf, "ramd-group%d-force", i);
+        sprintf(buf, "ramd-group%d-receptor", i + 1);
+        setStringEntry(inp, buf, receptor, "");
+        sprintf(buf2, "pull-group%d-name", i * 2 + 1);
+        inp->emplace_back(0, 1, false, false, false, buf2, receptor);
+        sprintf(buf, "ramd-group%d-ligand", i + 1);
+        setStringEntry(inp, buf, ligand, "");
+        sprintf(buf2, "pull-group%d-name", i * 2 + 2);
+        inp->emplace_back(0, 1, false, false, false, buf2, ligand);
+        sprintf(buf, "ramd-group%d-force", i + 1);
         ramdgrp->force = get_ereal(inp, buf, 600, wi);
-        sprintf(buf, "ramd-group%d-r-min-dist", i);
+        sprintf(buf, "ramd-group%d-r-min-dist", i + 1);
         ramdgrp->r_min_dist = get_ereal(inp, buf, 0.0025, wi);
-        sprintf(buf, "ramd-group%d-max-dist", i);
+        sprintf(buf, "ramd-group%d-max-dist", i + 1);
         ramdgrp->max_dist  = get_ereal(inp, buf, 4.0, wi);
     }
 
