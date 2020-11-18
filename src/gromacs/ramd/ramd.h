@@ -43,6 +43,7 @@
 #include "gromacs/mdrunutility/handlerestart.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/forceoutput.h"
+#include "gromacs/mdtypes/iforceprovider.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/ramd_params.h"
@@ -113,5 +114,15 @@ std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
                                              int                         nfile,
                                              const t_filenm              fnm[],
                                              const gmx_output_env_t*     oenv);
+
+class RAMDForceProvider final : public IForceProvider
+{
+public:
+    RAMDForceProvider(){};
+
+    //! \copydoc IForceProvider::calculateForces()
+    void calculateForces(const ForceProviderInput& forceProviderInput,
+                         ForceProviderOutput*      forceProviderOutput) override;
+};
 
 } // namespace gmx

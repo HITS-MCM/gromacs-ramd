@@ -211,4 +211,10 @@ std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
     return std::make_unique<RAMD>(*ir->ramdParams, startingBehavior, cr, nfile, fnm, oenv);
 }
 
+void RAMDForceProvider::calculateForces(const ForceProviderInput& forceProviderInput,
+                                        ForceProviderOutput*      forceProviderOutput)
+{
+    forceProviderOutput->forceWithVirial_.force_[0][0] = forceProviderInput.box_[0][0];
+}
+
 } // namespace gmx

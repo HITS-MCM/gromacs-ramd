@@ -443,6 +443,8 @@ void gmx::LegacySimulator::do_md()
 
     /* RAMD */
     auto ramd = prepareRAMDModule(ir, pull_work, startingBehavior, cr, nfile, fnm, oenv);
+    RAMDForceProvider ramdForceProvider;
+    fr->forceProviders->addForceProvider(&ramdForceProvider);
 
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog, *ir, state_global, cr, ms,
