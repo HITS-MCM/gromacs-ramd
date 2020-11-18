@@ -203,9 +203,9 @@ std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
 
     for (int g = 0; g < ir->ramdParams->ngroup; g++)
     {
-        register_external_pull_potential(pull, g*3,   "RAMD x");
-        register_external_pull_potential(pull, g*3+1, "RAMD y");
-        register_external_pull_potential(pull, g*3+2, "RAMD z");
+        register_external_pull_potential(pull, g*3,   "RAMD");
+        register_external_pull_potential(pull, g*3+1, "RAMD");
+        register_external_pull_potential(pull, g*3+2, "RAMD");
     }
 
     return std::make_unique<RAMD>(*ir->ramdParams, startingBehavior, cr, nfile, fnm, oenv);
