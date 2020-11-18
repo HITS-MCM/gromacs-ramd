@@ -432,11 +432,10 @@ void gmx::LegacySimulator::do_mimic()
              * This is parallellized as well, and does communication too.
              * Check comments in sim_util.c
              */
-            Awh*       awh  = nullptr;
-            RAMD*      ramd = nullptr;
-            gmx_edsam* ed   = nullptr;
-            do_force(fplog, cr, ms, ir, awh, ramd, enforcedRotation, imdSession, pull_work, step,
-                     nrnb, wcycle, &top, state->box, state->x.arrayRefWithPadding(), &state->hist,
+            Awh*       awh = nullptr;
+            gmx_edsam* ed  = nullptr;
+            do_force(fplog, cr, ms, ir, awh, enforcedRotation, imdSession, pull_work, step, nrnb,
+                     wcycle, &top, state->box, state->x.arrayRefWithPadding(), &state->hist,
                      f.arrayRefWithPadding(), force_vir, mdatoms, enerd, fcd, state->lambda, graph,
                      fr, runScheduleWork, vsite, mu_tot, t, ed, GMX_FORCE_NS | force_flags,
                      ddBalanceRegionHandler);

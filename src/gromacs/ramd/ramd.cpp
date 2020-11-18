@@ -55,18 +55,29 @@
 namespace gmx
 {
 
-RAMD::RAMD(RAMDParams const&           params,
+RAMD::RAMD(const RAMDParams&           params,
+           pull_t*                     pull,
+           int64_t*                    pstep,
+           int                         ePBC,
            const gmx::StartingBehavior startingBehavior,
            const t_commrec*            cr,
            int                         nfile,
            const t_filenm              fnm[],
-           const gmx_output_env_t*     oenv) :
-    params(params),
+           const gmx_output_env_t*     oenv)
+  : params(params),
+    pull(pull),
+    pstep(pstep),
+    ePBC(ePBC),
     random_spherical_direction_generator(params.seed, params.old_angle_dist),
     direction(random_spherical_direction_generator()),
     out(nullptr),
     cr(cr)
 {
+    for (int g = 0; g < 3 * params.ngroup; g++)
+    {
+        register_external_pull_potential(pull, g, "RAMD");
+    }
+
     if (MASTER(cr) and opt2bSet("-ramd", nfile, fnm))
     {
         auto filename = std::string(opt2fn("-ramd", nfile, fnm));
@@ -84,17 +95,10 @@ RAMD::RAMD(RAMDParams const&           params,
     }
 }
 
-real RAMD::add_force(int64_t               step,
-                     double                time,
-                     t_mdatoms const&      mdatoms,
-                     gmx::ForceWithVirial* forceWithVirial,
-                     pull_t*               pull,
-                     int                   ePBC,
-                     const matrix          box)
+void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
+                           ForceProviderOutput*      forceProviderOutput)
 {
-    assert(pull->group.size() == 3);
-
-    if (step == 0)
+    if (*pstep == 0)
     {
         // Store COM positions for first evaluation
         com_rec_prev = pull->group[1].x;
@@ -103,11 +107,11 @@ real RAMD::add_force(int64_t               step,
 
         if (MASTER(cr) and out)
         {
-            fprintf(out, "%.4f\t%g\n", time, dist);
+            fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, dist);
             fflush(out);
         }
     }
-    else if (!(step % params.eval_freq))
+    else if (!(*pstep % params.eval_freq))
     {
         DVec com_rec_curr = pull->group[1].x;
         DVec com_lig_curr = pull->group[2].x;
@@ -115,7 +119,7 @@ real RAMD::add_force(int64_t               step,
 
         if (MASTER(cr) and debug)
         {
-            fprintf(debug, "==== RAMD ==== evaluation %ld\n", step);
+            fprintf(debug, "==== RAMD ==== evaluation %ld\n", *pstep);
             fprintf(debug, "==== RAMD ==== COM ligand position at [%g, %g, %g]\n", com_lig_curr[0],
                     com_lig_curr[1], com_lig_curr[2]);
             fprintf(debug, "==== RAMD ==== COM receptor position at [%g, %g, %g]\n",
@@ -127,7 +131,7 @@ real RAMD::add_force(int64_t               step,
 
         if (MASTER(cr) and out)
         {
-            fprintf(out, "%.4f\t%g\n", time, curr_dist);
+            fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, curr_dist);
             fflush(out);
         }
 
@@ -139,7 +143,7 @@ real RAMD::add_force(int64_t               step,
                         "==== RAMD ==== Maximal distance between ligand and receptor COM is "
                         "reached.\n");
             }
-            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
+            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
             gmx_set_stop_condition(gmx_stop_cond_next);
         }
 
@@ -176,45 +180,14 @@ real RAMD::add_force(int64_t               step,
     }
 
     t_pbc pbc;
-    set_pbc(&pbc, ePBC, box);
+    set_pbc(&pbc, ePBC, forceProviderInput.box_);
 
-    real potential = 0.0;
     for (int i = 0; i < 3; ++i)
     {
         get_pull_coord_value(pull, i, &pbc);
-        apply_external_pull_coord_force(pull, i, direction[i] * params.group[0].force, &mdatoms, forceWithVirial);
+        apply_external_pull_coord_force(pull, i, direction[i] * params.group[0].force,
+            &forceProviderInput.mdatoms_, &forceProviderOutput->forceWithVirial_);
     }
-
-    return potential;
-}
-
-std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
-                                             pull_t*                     pull,
-                                             const gmx::StartingBehavior startingBehavior,
-                                             const t_commrec*            cr,
-                                             int                         nfile,
-                                             const t_filenm              fnm[],
-                                             const gmx_output_env_t*     oenv)
-{
-    if (!ir->bRAMD)
-    {
-        return nullptr;
-    }
-
-    for (int g = 0; g < ir->ramdParams->ngroup; g++)
-    {
-        register_external_pull_potential(pull, g*3,   "RAMD");
-        register_external_pull_potential(pull, g*3+1, "RAMD");
-        register_external_pull_potential(pull, g*3+2, "RAMD");
-    }
-
-    return std::make_unique<RAMD>(*ir->ramdParams, startingBehavior, cr, nfile, fnm, oenv);
-}
-
-void RAMDForceProvider::calculateForces(const ForceProviderInput& forceProviderInput,
-                                        ForceProviderOutput*      forceProviderOutput)
-{
-    forceProviderOutput->forceWithVirial_.force_[0][0] = forceProviderInput.box_[0][0];
 }
 
 } // namespace gmx

@@ -129,7 +129,6 @@ void ForceElement::run(Step step, Time time, unsigned int flags)
 {
     // Disabled functionality
     Awh*            awh   = nullptr;
-    RAMD*           ramd  = nullptr;
     gmx_edsam*      ed    = nullptr;
     gmx_multisim_t* ms    = nullptr;
     t_graph*        graph = nullptr;
@@ -157,7 +156,7 @@ void ForceElement::run(Step step, Time time, unsigned int flags)
     ArrayRef<real> lambda =
             freeEnergyPerturbationElement_ ? freeEnergyPerturbationElement_->lambdaView() : lambda_;
 
-    do_force(fplog_, cr_, ms, inputrec_, awh, ramd, enforcedRotation_, imdSession_, pull_work_, step,
+    do_force(fplog_, cr_, ms, inputrec_, awh, enforcedRotation_, imdSession_, pull_work_, step,
              nrnb_, wcycle_, localTopology_, box, x, hist, forces, force_vir, mdAtoms_->mdatoms(),
              energyElement_->enerdata(), fcd_, lambda, graph, fr_, runScheduleWork_, vsite_,
              energyElement_->muTot(), time, ed, static_cast<int>(flags), ddBalanceRegionHandler_);

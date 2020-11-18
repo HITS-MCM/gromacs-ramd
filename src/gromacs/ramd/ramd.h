@@ -54,27 +54,43 @@ struct pull_t;
 namespace gmx
 {
 
-class RAMD
+class RAMD final : public IForceProvider
 {
 public:
-    RAMD(RAMDParams const&           params,
+
+    /*! \brief RAMD ForceProvider.
+    *
+    * \param[in]     ramdParams              RAMD parameters.
+    * \param[in,out] pull                    Pointer to pull object.
+    * \param[in]     startingBehavior        Describes whether this is a restart appending to output
+    *                                        files.
+    * \param[in]     cr                      Struct for communication, can be nullptr.
+    * \param[in]     nfile                   Number of files.
+    * \param[in]     fnm                     Filename struct.
+    * \param[in]     oenv                    The output environment information.
+    */
+    RAMD(const RAMDParams&           params,
+         pull_t*                     pull,
+         int64_t*                    pstep,
+         int                         ePBC,
          const gmx::StartingBehavior startingBehavior,
          const t_commrec*            cr,
          int                         nfile,
          const t_filenm              fnm[],
          const gmx_output_env_t*     oenv);
 
-    real add_force(int64_t               step,
-                   double                time,
-                   t_mdatoms const&      mdatoms,
-                   gmx::ForceWithVirial* forceWithVirial,
-                   pull_t*               pull,
-                   int                   ePBC,
-                   const matrix          box);
+    //! \copydoc IForceProvider::calculateForces()
+    void calculateForces(const ForceProviderInput& forceProviderInput,
+                         ForceProviderOutput*      forceProviderOutput) override;
 
 private:
-    /// Initialization number for pseudo random number generator
-    const RAMDParams params;
+
+    /// RAMD parameters
+    const RAMDParams& params;
+
+    pull_t* pull;
+    int64_t* pstep;
+    int ePBC;
 
     /// Random pull direction
     RandomSphericalDirectionGenerator random_spherical_direction_generator;
@@ -93,36 +109,6 @@ private:
 
     /// MPI communicator
     const t_commrec* cr;
-};
-
-/*! \brief Makes an RAMD object and register external PULL forces.
- *
- * \param[in]     ir                      General input parameters (as set up by grompp).
- * \param[in,out] pull                    Pointer to pull object.
- * \param[in]     startingBehavior        Describes whether this is a restart appending to output
- *                                        files.
- * \param[in]     cr                      Struct for communication, can be nullptr.
- * \param[in]     nfile                   Number of files.
- * \param[in]     fnm                     Filename struct.
- * \param[in]     oenv                    The output environment information.
- * \returns       An initialized RAMD module, or nullptr if none was requested.
- */
-std::unique_ptr<gmx::RAMD> prepareRAMDModule(const t_inputrec*           ir,
-                                             pull_t*                     pull,
-                                             const gmx::StartingBehavior startingBehavior,
-                                             const t_commrec*            cr,
-                                             int                         nfile,
-                                             const t_filenm              fnm[],
-                                             const gmx_output_env_t*     oenv);
-
-class RAMDForceProvider final : public IForceProvider
-{
-public:
-    RAMDForceProvider(){};
-
-    //! \copydoc IForceProvider::calculateForces()
-    void calculateForces(const ForceProviderInput& forceProviderInput,
-                         ForceProviderOutput*      forceProviderOutput) override;
 };
 
 } // namespace gmx

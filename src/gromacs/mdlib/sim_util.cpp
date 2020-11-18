@@ -511,7 +511,6 @@ static bool haveSpecialForces(const t_inputrec&          inputrec,
  * \param[in]     cr               The communication record
  * \param[in]     inputrec         The input record
  * \param[in]     awh              The Awh module (nullptr if none in use).
- * \param[in]     ramd             The RAMD module (nullptr if none in use).
  * \param[in]     enforcedRotation Enforced rotation module.
  * \param[in]     imdSession       The IMD session
  * \param[in]     pull_work        The pull work structure.
@@ -536,7 +535,6 @@ static void computeSpecialForces(FILE*                          fplog,
                                  const t_commrec*               cr,
                                  const t_inputrec*              inputrec,
                                  gmx::Awh*                      awh,
-                                 gmx::RAMD*                     ramd,
                                  gmx_enfrot*                    enforcedRotation,
                                  gmx::ImdSession*               imdSession,
                                  pull_t*                        pull_work,
@@ -554,18 +552,6 @@ static void computeSpecialForces(FILE*                          fplog,
                                  gmx_edsam*                     ed,
                                  bool                           didNeighborSearch)
 {
-    /* NOTE: Currently all ForceProviders only provide forces.
-     *       When they also provide energies, remove this conditional.
-     */
-    if (stepWork.computeForces)
-    {
-        gmx::ForceProviderInput  forceProviderInput(x, *mdatoms, t, box, *cr);
-        gmx::ForceProviderOutput forceProviderOutput(forceWithVirial, enerd);
-
-        /* Collect forces from modules */
-        forceProviders->calculateForces(forceProviderInput, &forceProviderOutput);
-    }
-
     if ((inputrec->bPull || inputrec->bRAMD) && pull_have_potential(pull_work))
     {
         pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
@@ -576,12 +562,18 @@ static void computeSpecialForces(FILE*                          fplog,
             enerd->term[F_COM_PULL] += awh->applyBiasForcesAndUpdateBias(
                     inputrec->ePBC, *mdatoms, box, forceWithVirial, t, step, wcycle, fplog);
         }
+    }
 
-        if (ramd)
-        {
-            enerd->term[F_COM_PULL] +=
-                    ramd->add_force(step, t, *mdatoms, forceWithVirial, pull_work, inputrec->ePBC, box);
-        }
+    /* NOTE: Currently all ForceProviders only provide forces.
+     *       When they also provide energies, remove this conditional.
+     */
+    if (stepWork.computeForces)
+    {
+        gmx::ForceProviderInput  forceProviderInput(x, *mdatoms, t, box, *cr);
+        gmx::ForceProviderOutput forceProviderOutput(forceWithVirial, enerd);
+
+        /* Collect forces from modules */
+        forceProviders->calculateForces(forceProviderInput, &forceProviderOutput);
     }
 
     rvec* f = as_rvec_array(forceWithVirial->force_.data());
@@ -909,7 +901,6 @@ void do_force(FILE*                               fplog,
               const gmx_multisim_t*               ms,
               const t_inputrec*                   inputrec,
               gmx::Awh*                           awh,
-              gmx::RAMD*                          ramd,
               gmx_enfrot*                         enforcedRotation,
               gmx::ImdSession*                    imdSession,
               pull_t*                             pull_work,
@@ -1558,10 +1549,9 @@ void do_force(FILE*                               fplog,
 
     wallcycle_stop(wcycle, ewcFORCE);
 
-    computeSpecialForces(fplog, cr, inputrec, awh, ramd, enforcedRotation, imdSession, pull_work,
-                         step, t, wcycle, fr->forceProviders, box, x.unpaddedArrayRef(), mdatoms,
-                         lambda.data(), stepWork, &forceOut.forceWithVirial(), enerd, ed,
-                         stepWork.doNeighborSearch);
+    computeSpecialForces(fplog, cr, inputrec, awh, enforcedRotation, imdSession, pull_work, step, t,
+                         wcycle, fr->forceProviders, box, x.unpaddedArrayRef(), mdatoms, lambda.data(),
+                         stepWork, &forceOut.forceWithVirial(), enerd, ed, stepWork.doNeighborSearch);
 
 
     // Will store the amount of cycles spent waiting for the GPU that

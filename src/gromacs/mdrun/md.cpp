@@ -442,9 +442,8 @@ void gmx::LegacySimulator::do_md()
                            startingBehavior != StartingBehavior::NewSimulation);
 
     /* RAMD */
-    auto ramd = prepareRAMDModule(ir, pull_work, startingBehavior, cr, nfile, fnm, oenv);
-    RAMDForceProvider ramdForceProvider;
-    fr->forceProviders->addForceProvider(&ramdForceProvider);
+    auto ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, ir->ePBC, startingBehavior, cr, nfile, fnm, oenv);
+    fr->forceProviders->addForceProvider(ramd.get());
 
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog, *ir, state_global, cr, ms,
@@ -948,8 +947,8 @@ void gmx::LegacySimulator::do_md()
              * This is parallellized as well, and does communication too.
              * Check comments in sim_util.c
              */
-            do_force(fplog, cr, ms, ir, awh.get(), ramd.get(), enforcedRotation, imdSession, pull_work,
-                     step, nrnb, wcycle, &top, state->box, state->x.arrayRefWithPadding(), &state->hist,
+            do_force(fplog, cr, ms, ir, awh.get(), enforcedRotation, imdSession, pull_work, step,
+                     nrnb, wcycle, &top, state->box, state->x.arrayRefWithPadding(), &state->hist,
                      f.arrayRefWithPadding(), force_vir, mdatoms, enerd, fcd, state->lambda, graph,
                      fr, runScheduleWork, vsite, mu_tot, t, ed ? ed->getLegacyED() : nullptr,
                      (bNS ? GMX_FORCE_NS : 0) | force_flags, ddBalanceRegionHandler);
