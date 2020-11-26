@@ -58,7 +58,6 @@ namespace gmx
 RAMD::RAMD(const RAMDParams&           params,
            pull_t*                     pull,
            int64_t*                    pstep,
-           int                         ePBC,
            const gmx::StartingBehavior startingBehavior,
            const t_commrec*            cr,
            int                         nfile,
@@ -67,15 +66,19 @@ RAMD::RAMD(const RAMDParams&           params,
   : params(params),
     pull(pull),
     pstep(pstep),
-    ePBC(ePBC),
     random_spherical_direction_generator(params.seed, params.old_angle_dist),
-    direction(random_spherical_direction_generator()),
+    direction(params.ngroup),
+    com_rec_prev(params.ngroup),
+    com_lig_prev(params.ngroup),
     out(nullptr),
     cr(cr)
 {
-    for (int g = 0; g < 3 * params.ngroup; g++)
+    for (int g = 0; g < params.ngroup; ++g)
     {
-        register_external_pull_potential(pull, g, "RAMD");
+        register_external_pull_potential(pull, g * 3    , "RAMD");
+        register_external_pull_potential(pull, g * 3 + 1, "RAMD");
+        register_external_pull_potential(pull, g * 3 + 2, "RAMD");
+        direction[g] = random_spherical_direction_generator();
     }
 
     if (MASTER(cr) and opt2bSet("-ramd", nfile, fnm))
@@ -101,92 +104,105 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     if (*pstep == 0)
     {
         // Store COM positions for first evaluation
-        com_rec_prev = pull->group[1].x;
-        com_lig_prev = pull->group[2].x;
-        auto dist = std::sqrt((com_lig_prev - com_rec_prev).norm2());
-
-        if (MASTER(cr) and out)
+        for (int g = 0; g < params.ngroup; ++g)
         {
-            fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, dist);
-            fflush(out);
+            com_rec_prev[g] = pull->group[g * 2].x;
+            com_lig_prev[g] = pull->group[g * 2 + 1].x;
+
+            if (MASTER(cr) and out)
+            {
+                auto dist = std::sqrt((com_lig_prev[g] - com_rec_prev[g]).norm2());
+                fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, dist);
+                fflush(out);
+            }
         }
     }
     else if (!(*pstep % params.eval_freq))
     {
-        DVec com_rec_curr = pull->group[1].x;
-        DVec com_lig_curr = pull->group[2].x;
-        auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
-
         if (MASTER(cr) and debug)
         {
             fprintf(debug, "==== RAMD ==== evaluation %ld\n", *pstep);
-            fprintf(debug, "==== RAMD ==== COM ligand position at [%g, %g, %g]\n", com_lig_curr[0],
-                    com_lig_curr[1], com_lig_curr[2]);
-            fprintf(debug, "==== RAMD ==== COM receptor position at [%g, %g, %g]\n",
-                    com_rec_curr[0], com_rec_curr[1], com_rec_curr[2]);
-            fprintf(debug,
-                    "==== RAMD ==== Distance between COM of receptor and COM of ligand is %g\n",
-                    curr_dist);
         }
-
-        if (MASTER(cr) and out)
+        for (int g = 0; g < params.ngroup; ++g)
         {
-            fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, curr_dist);
-            fflush(out);
-        }
+            DVec com_rec_curr = pull->group[g * 2].x;
+            DVec com_lig_curr = pull->group[g * 2 + 1].x;
+            auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
 
-        if (MASTER(cr) and curr_dist >= params.group[0].max_dist)
-        {
-            if (debug)
-            {
-                fprintf(debug,
-                        "==== RAMD ==== Maximal distance between ligand and receptor COM is "
-                        "reached.\n");
-            }
-            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
-            gmx_set_stop_condition(gmx_stop_cond_next);
-        }
-
-        // walk_dist = vector length of the vector substraction
-        // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
-        // during last RAMD evaluation step
-        auto walk_dist =
-                std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)).norm2());
-
-        if (MASTER(cr) and debug)
-        {
-            fprintf(debug, "==== RAMD ==== Previous COM ligand position at [%g, %g, %g]\n",
-                    com_lig_prev[0], com_lig_prev[1], com_lig_prev[2]);
-            fprintf(debug, "==== RAMD ==== Previous COM receptor position at [%g, %g, %g]\n",
-                    com_rec_prev[0], com_rec_prev[1], com_rec_prev[2]);
-            fprintf(debug,
-                    "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation "
-                    "is %g\n",
-                    walk_dist);
-        }
-
-        if (walk_dist < params.group[0].r_min_dist)
-        {
-            direction = random_spherical_direction_generator();
             if (MASTER(cr) and debug)
             {
-                fprintf(debug, "==== RAMD ==== New random direction is [%g, %g, %g]\n",
-                        direction[0], direction[1], direction[2]);
+                fprintf(debug, "==== RAMD ==== group %d\n", g);
+                fprintf(debug, "==== RAMD ==== COM ligand position at [%g, %g, %g]\n",
+                        com_lig_curr[0], com_lig_curr[1], com_lig_curr[2]);
+                fprintf(debug, "==== RAMD ==== COM receptor position at [%g, %g, %g]\n",
+                        com_rec_curr[0], com_rec_curr[1], com_rec_curr[2]);
+                fprintf(debug,
+                        "==== RAMD ==== Distance between COM of receptor and COM of ligand is %g\n",
+                        curr_dist);
             }
-        }
 
-        com_lig_prev = com_lig_curr;
-        com_rec_prev = com_rec_curr;
+            if (MASTER(cr) and out)
+            {
+                fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, curr_dist);
+                fflush(out);
+            }
+
+            if (MASTER(cr) and curr_dist >= params.group[0].max_dist)
+            {
+                if (debug)
+                {
+                    fprintf(debug,
+                            "==== RAMD ==== Maximal distance between ligand and receptor COM is "
+                            "reached.\n");
+                }
+                fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+                gmx_set_stop_condition(gmx_stop_cond_next);
+            }
+
+            // walk_dist = vector length of the vector substraction
+            // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
+            // during last RAMD evaluation step
+            auto walk_dist =
+                    std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev[g] - com_rec_prev[g])).norm2());
+
+            if (MASTER(cr) and debug)
+            {
+                fprintf(debug, "==== RAMD ==== Previous COM ligand position at [%g, %g, %g]\n",
+                        com_lig_prev[g][0], com_lig_prev[g][1], com_lig_prev[g][2]);
+                fprintf(debug, "==== RAMD ==== Previous COM receptor position at [%g, %g, %g]\n",
+                        com_rec_prev[g][0], com_rec_prev[g][1], com_rec_prev[g][2]);
+                fprintf(debug,
+                        "==== RAMD ==== Change in receptor-ligand distance since last RAMD evaluation "
+                        "is %g\n",
+                        walk_dist);
+            }
+
+            if (walk_dist < params.group[0].r_min_dist)
+            {
+                direction[g] = random_spherical_direction_generator();
+                if (MASTER(cr) and debug)
+                {
+                    fprintf(debug, "==== RAMD ==== New random direction is [%g, %g, %g]\n",
+                            direction[g][0], direction[g][1], direction[g][2]);
+                }
+            }
+
+            com_lig_prev[g] = com_lig_curr;
+            com_rec_prev[g] = com_rec_curr;
+        }
     }
 
     t_pbc pbc;
-    set_pbc(&pbc, ePBC, forceProviderInput.box_);
+    set_pbc(&pbc, pull->ePBC, forceProviderInput.box_);
 
-    for (int i = 0; i < 3; ++i)
+    for (int g = 0; g < params.ngroup; ++g)
     {
-        get_pull_coord_value(pull, i, &pbc);
-        apply_external_pull_coord_force(pull, i, direction[i] * params.group[0].force,
-            &forceProviderInput.mdatoms_, &forceProviderOutput->forceWithVirial_);
+        for (int i = 0; i < 3; ++i)
+        {
+            get_pull_coord_value(pull, g * 2 + i, &pbc);
+            apply_external_pull_coord_force(pull, g * 2 + i, direction[g][i] * params.group[g].force,
+                &forceProviderInput.mdatoms_, &forceProviderOutput->forceWithVirial_);
+        }
     }
 }
 

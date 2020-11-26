@@ -72,7 +72,6 @@ public:
     RAMD(const RAMDParams&           params,
          pull_t*                     pull,
          int64_t*                    pstep,
-         int                         ePBC,
          const gmx::StartingBehavior startingBehavior,
          const t_commrec*            cr,
          int                         nfile,
@@ -88,21 +87,23 @@ private:
     /// RAMD parameters
     const RAMDParams& params;
 
+    /// PULL work structure
     pull_t* pull;
+
+    /// Pointer to the current MD step
     int64_t* pstep;
-    int ePBC;
 
     /// Random pull direction
     RandomSphericalDirectionGenerator random_spherical_direction_generator;
 
     /// Current pull direction
-    DVec direction;
+    std::vector<DVec> direction;
 
     /// COM of receptor of last RAMD evaluation step
-    DVec com_rec_prev;
+    std::vector<DVec> com_rec_prev;
 
     /// COM of ligand of last RAMD evaluation step
-    DVec com_lig_prev;
+    std::vector<DVec> com_lig_prev;
 
     /// Output file for COM distances
     FILE* out;

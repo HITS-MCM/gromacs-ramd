@@ -60,7 +60,10 @@ TEST(RAMDTest, construction)
         { efXVG, "-ramd", "ramd", ffOPTWR }
     };
 
-    RAMD ramd(params, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
+    int64_t step = 0;
+    pull_t pull;
+
+    auto ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
 }
 
 } // namespace test

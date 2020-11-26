@@ -442,8 +442,12 @@ void gmx::LegacySimulator::do_md()
                            startingBehavior != StartingBehavior::NewSimulation);
 
     /* RAMD */
-    auto ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, ir->ePBC, startingBehavior, cr, nfile, fnm, oenv);
-    fr->forceProviders->addForceProvider(ramd.get());
+    std::unique_ptr<RAMD> ramd = nullptr;
+    if (ir->bRAMD)
+    {
+        ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, startingBehavior, cr, nfile, fnm, oenv);
+        fr->forceProviders->addForceProvider(ramd.get());
+    }
 
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog, *ir, state_global, cr, ms,
