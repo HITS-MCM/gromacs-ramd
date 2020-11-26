@@ -46,13 +46,14 @@ TEST_F(RAMDTest, RAMD_1whhi)
         cutoff-scheme            = Verlet
         ramd                     = yes
         ramd-seed                = 9876
-        ramd-force               = 600.0
+        ramd-ngroups             = 1
+        ramd-group1-receptor     = Protein
+        ramd-group1-ligand       = INH
+        ramd-group1-force        = 600.0
+        ramd-group1-r-min-dist   = 0.025
+        ramd-group1-max-dist     = 4.0
         ramd-eval-freq           = 50
-        ramd-r-min-dist          = 0.025
         ramd-force-out-freq      = 0
-        ramd-max-dist            = 4.0
-        ramd-receptor            = Protein
-        ramd-ligand              = INH
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
@@ -76,13 +77,14 @@ TEST_F(RAMDTest, RAMD_membrane)
         cutoff-scheme            = Verlet
         ramd                     = yes
         ramd-seed                = 9876
-        ramd-force               = 600.0
+        ramd-ngroups             = 1
+        ramd-group1-receptor     = Protein
+        ramd-group1-ligand       = IXO
+        ramd-group1-force        = 600.0
+        ramd-group1-r-min-dist   = 0.025
+        ramd-group1-max-dist     = 4.0
         ramd-eval-freq           = 50
-        ramd-r-min-dist          = 0.025
         ramd-force-out-freq      = 0
-        ramd-max-dist            = 4.0
-        ramd-receptor            = Protein
-        ramd-ligand              = IXO
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
@@ -113,13 +115,14 @@ TEST_F(RAMDTest, RAMD_hsp90)
         DispCorr                 = EnerPres
         ramd                     = yes
         ramd-seed                = 989
-        ramd-force               = 585.0
+        ramd-ngroups             = 1
+        ramd-group1-receptor     = Protein
+        ramd-group1-ligand       = INH
+        ramd-group1-force        = 585.0
+        ramd-group1-r-min-dist   = 0.0025
+        ramd-group1-max-dist     = 4.0
         ramd-eval-freq           = 60
-        ramd-r-min-dist          = 0.0025
         ramd-force-out-freq      = 0
-        ramd-max-dist            = 4.0
-        ramd-receptor            = Protein
-        ramd-ligand              = INH
         comm-mode                = Linear
         nstcomm                  = 100
         comm_grps                = System
