@@ -54,6 +54,16 @@ namespace test
 TEST(RAMDTest, construction)
 {
     RAMDParams params;
+    params.seed = 9876;
+    params.ngroup = 1;
+    snew(params.group, 1);
+    params.group->force = 600.0;
+    params.group->max_dist = 4.0;
+    params.group->r_min_dist = 0.025;
+    params.eval_freq = 50;
+    params.force_out_freq = 50;
+    params.old_angle_dist = false;
+
     CommrecHandle cr = init_commrec(MPI_COMM_WORLD, nullptr);
 
     t_filenm fnm[] = {
@@ -62,6 +72,15 @@ TEST(RAMDTest, construction)
 
     int64_t step = 0;
     pull_t pull;
+    t_pull_coord coord_params;
+    coord_params.eType = epullEXTERNAL;
+    char buf[] = "RAMD";
+    coord_params.externalPotentialProvider = buf;
+    pull_coord_work_t pull_coord(coord_params);
+    pull.coord.push_back(pull_coord);
+    pull.coord.push_back(pull_coord);
+    pull.coord.push_back(pull_coord);
+    pull.numUnregisteredExternalPotentials = 3;
 
     auto ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
 }
