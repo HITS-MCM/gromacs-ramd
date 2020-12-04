@@ -106,8 +106,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         // Store COM positions for first evaluation
         for (int g = 0; g < params.ngroup; ++g)
         {
-            com_rec_prev[g] = pull->group[g * 2].x;
-            com_lig_prev[g] = pull->group[g * 2 + 1].x;
+            com_rec_prev[g] = pull->group[g * 2 + 1].x;
+            com_lig_prev[g] = pull->group[g * 2 + 2].x;
 
             if (MASTER(cr) and out)
             {
@@ -125,8 +125,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
         for (int g = 0; g < params.ngroup; ++g)
         {
-            DVec com_rec_curr = pull->group[g * 2].x;
-            DVec com_lig_curr = pull->group[g * 2 + 1].x;
+            DVec com_rec_curr = pull->group[g * 2 + 1].x;
+            DVec com_lig_curr = pull->group[g * 2 + 2].x;
             auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
 
             if (MASTER(cr) and debug)
