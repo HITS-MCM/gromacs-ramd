@@ -80,7 +80,6 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
     ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
 
     inp->emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
-    inp->emplace_back(0, 1, false, false, false, "pull-group1-pbcatom", "1");
     inp->emplace_back(0, 1, false, false, false, "pull-nstxout",
                         std::to_string(ramdparams->force_out_freq));
     inp->emplace_back(0, 1, false, false, false, "pull-nstfout",
@@ -102,6 +101,4 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
     inp->emplace_back(0, 1, false, false, false, "pull-coord3-potential-provider", "RAMD");
     inp->emplace_back(0, 1, false, false, false, "pull-coord3-geometry", "direction");
     inp->emplace_back(0, 1, false, false, false, "pull-coord3-vec", "0 0 1");
-
-    inp->emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com", "yes");
 }
