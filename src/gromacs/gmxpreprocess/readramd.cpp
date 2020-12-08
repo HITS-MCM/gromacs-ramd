@@ -79,26 +79,31 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
     ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
     ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
 
-    inp->emplace_back(0, 1, false, false, false, "pull-ngroups", "2");
+    inp->emplace_back(0, 1, false, false, false, "pull-ngroups",
+        std::to_string(ramdparams->ngroup * 2));
     inp->emplace_back(0, 1, false, false, false, "pull-nstxout",
-                        std::to_string(ramdparams->force_out_freq));
+        std::to_string(ramdparams->force_out_freq));
     inp->emplace_back(0, 1, false, false, false, "pull-nstfout",
-                        std::to_string(ramdparams->force_out_freq));
+        std::to_string(ramdparams->force_out_freq));
+    inp->emplace_back(0, 1, false, false, false, "pull-ncoords",
+        std::to_string(ramdparams->ngroup * 3));
 
-    inp->emplace_back(0, 1, false, false, false, "pull-ncoords", "3");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord1-groups", "1 2");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord1-type", "external-potential");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord1-potential-provider", "RAMD");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord1-geometry", "direction");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord1-vec", "1 0 0");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord2-groups", "1 2");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord2-type", "external-potential");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord2-potential-provider", "RAMD");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord2-geometry", "direction");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord2-vec", "0 1 0");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord3-groups", "1 2");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord3-type", "external-potential");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord3-potential-provider", "RAMD");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord3-geometry", "direction");
-    inp->emplace_back(0, 1, false, false, false, "pull-coord3-vec", "0 0 1");
+    std::vector<std::string> v{"1 0 0", "0 1 0", "0 0 1"};
+    for (int i = 0; i < ramdparams->ngroup; ++i)
+    {
+        for (int d = 0; d < 3; ++d)
+        {
+            auto prefix = std::string("pull-coord") + std::to_string(i * 3 + d + 1);
+            inp->emplace_back(0, 1, false, false, false,
+                prefix + "-groups", std::to_string(i * 2 + 1) + " " + std::to_string(i * 2 + 2));
+            inp->emplace_back(0, 1, false, false, false,
+                prefix + "-type", "external-potential");
+            inp->emplace_back(0, 1, false, false, false,
+                prefix + "-potential-provider", "RAMD");
+            inp->emplace_back(0, 1, false, false, false,
+                prefix + "-geometry", "direction");
+            inp->emplace_back(0, 1, false, false, false,
+                prefix + "-vec", v[d]);
+        }
+    }
 }

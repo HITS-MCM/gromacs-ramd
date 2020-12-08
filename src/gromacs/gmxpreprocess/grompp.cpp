@@ -2274,9 +2274,12 @@ int gmx_grompp(int argc, char* argv[])
 
     if (ir->bRAMD)
     {
-        register_external_pull_potential(pull, 0, "RAMD");
-        register_external_pull_potential(pull, 1, "RAMD");
-        register_external_pull_potential(pull, 2, "RAMD");
+        for (int g = 0; g < ir->ramdParams->ngroup; ++g)
+        {
+            register_external_pull_potential(pull, g * 3    , "RAMD");
+            register_external_pull_potential(pull, g * 3 + 1, "RAMD");
+            register_external_pull_potential(pull, g * 3 + 2, "RAMD");
+        }
     }
 
     if (ir->bDoAwh)
