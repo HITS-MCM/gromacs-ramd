@@ -2125,15 +2125,6 @@ void get_ir(const char*     mdparin,
     setStringEntry(&inp, "wall-density", is->wall_density, nullptr);
     ir->wall_ewald_zfac = get_ereal(&inp, "wall-ewald-zfac", 3, wi);
 
-    /* COM pulling */
-    printStringNewline(&inp, "COM PULLING");
-    ir->bPull = (get_eeenum(&inp, "pull", yesno_names, wi) != 0);
-    if (ir->bPull)
-    {
-        snew(ir->pull, 1);
-        is->pull_grp = read_pullparams(&inp, ir->pull, wi);
-    }
-
     /* RAMD */
     printStringNewline(&inp, "RAMD");
     ir->bRAMD = (get_eeenum(&inp, "ramd", yesno_names, wi) != 0);
@@ -2141,8 +2132,13 @@ void get_ir(const char*     mdparin,
     {
         snew(ir->ramdParams, 1);
         read_ramdparams(&inp, ir->ramdParams, wi);
+    }
 
-        // Set PULL parameters according to RAMD parameters
+    /* COM pulling */
+    printStringNewline(&inp, "COM PULLING");
+    ir->bPull = (get_eeenum(&inp, "pull", yesno_names, wi) != 0);
+    if (ir->bPull || ir->bRAMD)
+    {
         snew(ir->pull, 1);
         is->pull_grp = read_pullparams(&inp, ir->pull, wi);
     }
