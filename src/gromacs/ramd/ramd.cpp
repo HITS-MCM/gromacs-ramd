@@ -93,6 +93,13 @@ RAMD::RAMD(const RAMDParams&           params,
         {
             out = gmx_fio_fopen(filename.c_str(), "w+");
             xvgr_header(out, "RAMD Ligand-receptor COM distance", "Time (ps)", "Distance (nm)", exvggtXNY, oenv);
+
+            std::vector<std::string> setnames;
+            for (int g = 1; g <= params.ngroup; ++g)
+            {
+                setnames.push_back(std::to_string(g));
+            }
+            xvgrLegend(out, setnames, oenv);
         }
         fflush(out);
     }
@@ -101,6 +108,11 @@ RAMD::RAMD(const RAMDParams&           params,
 void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                            ForceProviderOutput*      forceProviderOutput)
 {
+    if (*pstep % params.eval_freq == 0)
+    {
+        fprintf(out, "%.4f", forceProviderInput.t_);
+    }
+
     if (*pstep == 0)
     {
         // Store COM positions for first evaluation
@@ -112,12 +124,11 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             if (MASTER(cr) and out)
             {
                 auto dist = std::sqrt((com_lig_prev[g] - com_rec_prev[g]).norm2());
-                fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, dist);
-                fflush(out);
+                fprintf(out, "\t%g", dist);
             }
         }
     }
-    else if (!(*pstep % params.eval_freq))
+    else if (*pstep % params.eval_freq == 0)
     {
         if (MASTER(cr) and debug)
         {
@@ -143,8 +154,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
 
             if (MASTER(cr) and out)
             {
-                fprintf(out, "%.4f\t%g\n", forceProviderInput.t_, curr_dist);
-                fflush(out);
+                fprintf(out, "\t%g", curr_dist);
             }
 
             if (MASTER(cr) and curr_dist >= params.group[0].max_dist)
@@ -190,6 +200,12 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             com_lig_prev[g] = com_lig_curr;
             com_rec_prev[g] = com_rec_curr;
         }
+    }
+
+    if (*pstep % params.eval_freq == 0)
+    {
+        fprintf(out, "\n");
+        fflush(out);
     }
 
     t_pbc pbc;
