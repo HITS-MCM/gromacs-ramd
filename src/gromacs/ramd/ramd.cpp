@@ -108,7 +108,7 @@ RAMD::RAMD(const RAMDParams&           params,
 void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                            ForceProviderOutput*      forceProviderOutput)
 {
-    if (*pstep % params.eval_freq == 0)
+    if (MASTER(cr) and out and (*pstep % params.eval_freq == 0))
     {
         fprintf(out, "%.4f", forceProviderInput.t_);
     }
@@ -202,7 +202,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
-    if (*pstep % params.eval_freq == 0)
+    if (MASTER(cr) and out and (*pstep % params.eval_freq == 0))
     {
         fprintf(out, "\n");
         fflush(out);
