@@ -110,6 +110,9 @@ private:
 
     /// MPI communicator
     const t_commrec* cr;
+
+    /// Memorize reached ligand-rezeptor distances
+    std::vector<int> max_dist_reached;
 };
 
 } // namespace gmx

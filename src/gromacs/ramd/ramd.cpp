@@ -71,7 +71,8 @@ RAMD::RAMD(const RAMDParams&           params,
     com_rec_prev(params.ngroup),
     com_lig_prev(params.ngroup),
     out(nullptr),
-    cr(cr)
+    cr(cr),
+    max_dist_reached(params.ngroup, 0)
 {
     for (int g = 0; g < params.ngroup; ++g)
     {
@@ -157,7 +158,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 fprintf(out, "\t%g", curr_dist);
             }
 
-            if (MASTER(cr) and curr_dist >= params.group[0].max_dist)
+            if (MASTER(cr) and curr_dist >= params.group[g].max_dist)
             {
                 if (debug)
                 {
@@ -165,8 +166,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                             "==== RAMD ==== Maximal distance between ligand and receptor COM is "
                             "reached.\n");
                 }
-                fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
-                gmx_set_stop_condition(gmx_stop_cond_next);
+                max_dist_reached[g] = 1;
             }
 
             // walk_dist = vector length of the vector substraction
@@ -202,10 +202,19 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
-    if (MASTER(cr) and out and (*pstep % params.eval_freq == 0))
+    if (MASTER(cr) and (*pstep % params.eval_freq == 0))
     {
-        fprintf(out, "\n");
-        fflush(out);
+        if (out)
+        {
+            fprintf(out, "\n");
+            fflush(out);
+        }
+
+        if (std::all_of(max_dist_reached.cbegin(), max_dist_reached.cend(), [](int i){ return i == 1;}))
+        {
+            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+            gmx_set_stop_condition(gmx_stop_cond_next);
+        }
     }
 
     t_pbc pbc;
