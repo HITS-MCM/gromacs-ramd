@@ -158,7 +158,7 @@ TEST_F(RAMDTest, RAMD_hsp90)
     EXPECT_EQ(0, runner_.callGrompp());
 
     // Do an mdrun with RAMD enabled
-    ASSERT_EQ(2, runner_.callMdrun());
+    ASSERT_EQ(0, runner_.callMdrun());
 
     gmx_reset_stop_condition();
 }
