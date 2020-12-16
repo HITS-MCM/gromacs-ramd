@@ -2178,6 +2178,20 @@ applied to a molecule in the system.
 
    (INH)
 
+.. mdp:: ramd-group1-receptor-pbcatom
+
+   (1)
+   The value will be forwarded to the associated pull group of the receptor.
+
+.. mdp:: ramd-group1-ligand-pbcatom
+
+   (1)
+   The value will be forwarded to the associated pull group of the ligand.
+
+.. mdp:: ramd-pbc-ref-prev-step-com
+
+   (yes)
+   The value will be forwarded to pull-pbc-ref-prev-step-com. Default value is 'yes'.
 
 Enforced rotation
 ^^^^^^^^^^^^^^^^^

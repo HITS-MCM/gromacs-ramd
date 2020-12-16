@@ -52,28 +52,30 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
     ramdparams->ngroup = get_eint(inp, "ramd-ngroups", 1, wi);
     snew(ramdparams->group, ramdparams->ngroup);
 
-    char buf[STRLEN];
-    char buf2[STRLEN];
-    char receptor[STRLEN];
-    char ligand[STRLEN];
     for (int i = 0; i < ramdparams->ngroup; i++)
     {
         auto ramdgrp = &ramdparams->group[i];
-        sprintf(buf, "ramd-group%d-receptor", i + 1);
-        setStringEntry(inp, buf, receptor, "");
-        sprintf(buf2, "pull-group%d-name", i * 2 + 1);
-        inp->emplace_back(0, 1, false, false, false, buf2, receptor);
-        sprintf(buf, "ramd-group%d-ligand", i + 1);
-        setStringEntry(inp, buf, ligand, "");
-        sprintf(buf2, "pull-group%d-name", i * 2 + 2);
-        inp->emplace_back(0, 1, false, false, false, buf2, ligand);
-        sprintf(buf, "ramd-group%d-force", i + 1);
-        ramdgrp->force = get_ereal(inp, buf, 600, wi);
-        sprintf(buf, "ramd-group%d-r-min-dist", i + 1);
-        ramdgrp->r_min_dist = get_ereal(inp, buf, 0.0025, wi);
-        sprintf(buf, "ramd-group%d-max-dist", i + 1);
-        ramdgrp->max_dist  = get_ereal(inp, buf, 4.0, wi);
+        auto ramd_prefix = std::string("ramd-group") + std::to_string(i + 1);
+        auto pull1_prefix = std::string("pull-group") + std::to_string(i * 2 + 1);
+        auto pull2_prefix = std::string("pull-group") + std::to_string(i * 2 + 2);
+
+        inp->emplace_back(0, 1, false, false, false, pull1_prefix + "-name",
+            get_estr(inp, ramd_prefix + "-receptor", "Protein"));
+        inp->emplace_back(0, 1, false, false, false, pull1_prefix + "-pbcatom",
+            get_estr(inp, ramd_prefix + "-receptor-pbc-atom", "1"));
+
+        inp->emplace_back(0, 1, false, false, false, pull2_prefix + "-name",
+            get_estr(inp, ramd_prefix + "-ligand", "INH"));
+        inp->emplace_back(0, 1, false, false, false, pull2_prefix + "-pbcatom",
+            get_estr(inp, ramd_prefix + "-ligand-pbc-atom", "1"));
+
+        ramdgrp->force = get_ereal(inp, ramd_prefix + "-force", 600, wi);
+        ramdgrp->r_min_dist = get_ereal(inp, ramd_prefix + "-r-min-dist", 0.0025, wi);
+        ramdgrp->max_dist  = get_ereal(inp, ramd_prefix + "-max-dist", 4.0, wi);
     }
+
+    inp->emplace_back(0, 1, false, false, false, "pull-pbc-ref-prev-step-com",
+        get_estr(inp, "ramd-pbc-ref-prev-step-com", "yes"));
 
     ramdparams->eval_freq = get_eint(inp, "ramd-eval-freq", 50, wi);
     ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
