@@ -71,8 +71,7 @@ RAMD::RAMD(const RAMDParams&           params,
     com_rec_prev(params.ngroup),
     com_lig_prev(params.ngroup),
     out(nullptr),
-    cr(cr),
-    max_dist_reached(params.ngroup, 0)
+    cr(cr)
 {
     for (int g = 0; g < params.ngroup; ++g)
     {
@@ -113,7 +112,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     {
         fprintf(out, "%.4f", forceProviderInput.t_);
     }
-
+    
+    int nb_ligands_outside = 0;
     if (*pstep == 0)
     {
         // Store COM positions for first evaluation
@@ -166,7 +166,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                             "==== RAMD ==== Maximal distance between ligand and receptor COM is "
                             "reached.\n");
                 }
-                max_dist_reached[g] = 1;
+                ++nb_ligands_outside;
             }
 
             // walk_dist = vector length of the vector substraction
@@ -210,7 +210,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             fflush(out);
         }
 
-        if (std::all_of(max_dist_reached.cbegin(), max_dist_reached.cend(), [](int i){ return i == 1;}))
+        // Exit if all ligand-receptor COM distances are larger than max_dist
+        if (nb_ligands_outside == params.ngroup)
         {
             fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
             gmx_set_stop_condition(gmx_stop_cond_next);
