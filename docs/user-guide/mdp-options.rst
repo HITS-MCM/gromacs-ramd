@@ -2180,12 +2180,12 @@ applied to a molecule in the system.
 
 .. mdp:: ramd-group1-receptor-pbcatom
 
-   (1)
+   (0)
    The value will be forwarded to the associated pull group of the receptor.
 
 .. mdp:: ramd-group1-ligand-pbcatom
 
-   (1)
+   (0)
    The value will be forwarded to the associated pull group of the ligand.
 
 .. mdp:: ramd-pbc-ref-prev-step-com

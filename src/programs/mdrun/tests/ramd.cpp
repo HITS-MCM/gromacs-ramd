@@ -38,7 +38,7 @@ TEST_F(RAMDTest, RAMD_1whhi)
     runner_.useTopGroAndNdxFromDatabase("1wdhi");
     const std::string mdpContents = R"(
         dt                       = 0.004
-        nsteps                   = 2
+        nsteps                   = 4
         tcoupl                   = Berendsen
         tc-grps                  = System
         tau-t                    = 0.5
@@ -53,8 +53,10 @@ TEST_F(RAMDTest, RAMD_1whhi)
         ramd-group1-force        = 600.0
         ramd-group1-r-min-dist   = 0.025
         ramd-group1-max-dist     = 4.0
-        ramd-eval-freq           = 50
-        ramd-force-out-freq      = 0
+        ramd-eval-freq           = 2
+        ramd-force-out-freq      = 2
+        ramd-group1-ligand-pbcatom   = 1631
+        ramd-group1-receptor-pbcatom = 3289
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
@@ -69,7 +71,7 @@ TEST_F(RAMDTest, RAMD_membrane)
     runner_.useTopGroAndNdxFromDatabase("membrane");
     const std::string mdpContents = R"(
         dt                       = 0.004
-        nsteps                   = 2
+        nsteps                   = 4
         tcoupl                   = Berendsen
         tc-grps                  = System
         tau-t                    = 0.5
@@ -84,8 +86,10 @@ TEST_F(RAMDTest, RAMD_membrane)
         ramd-group1-force        = 600.0
         ramd-group1-r-min-dist   = 0.025
         ramd-group1-max-dist     = 4.0
-        ramd-eval-freq           = 50
-        ramd-force-out-freq      = 0
+        ramd-eval-freq           = 2
+        ramd-force-out-freq      = 2
+        ramd-group1-ligand-pbcatom   = 3255
+        ramd-group1-receptor-pbcatom = 6580
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
@@ -102,10 +106,10 @@ TEST_F(RAMDTest, RAMD_hsp90)
     const std::string mdpContents = R"(
         integrator               = md
         dt                       = 0.002
-        nsteps                   = 200
-        nstlog                   = 2500
-        nstenergy                = 2500
-        nstxout-compressed       = 500
+        nsteps                   = 4
+        nstlog                   = 1
+        nstenergy                = 1
+        nstxout-compressed       = 1
         continuation             = yes
         constraints              = h-bonds
         constraint-algorithm     = lincs
@@ -150,8 +154,10 @@ TEST_F(RAMDTest, RAMD_hsp90)
         ramd-group1-force        = 585.0
         ramd-group1-r-min-dist   = 0.0025
         ramd-group1-max-dist     = 4.0
-        ramd-eval-freq           = 60
+        ramd-eval-freq           = 2
         ramd-force-out-freq      = 0
+        ramd-group1-ligand-pbcatom   = 1
+        ramd-group1-receptor-pbcatom = 1
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
@@ -167,10 +173,10 @@ TEST_F(RAMDTest, RAMD_GlyR)
     const std::string mdpContents = R"(
         integrator               = md
         dt                       = 0.002
-        nsteps                   = 100
-        nstlog                   = 1000
-        nstenergy                = 1000
-        nstxout-compressed       = 1000
+        nsteps                   = 4
+        nstlog                   = 1
+        nstenergy                = 1
+        nstxout-compressed       = 1
         continuation             = yes
         constraints              = h-bonds
         constraint-algorithm     = lincs
@@ -216,9 +222,19 @@ TEST_F(RAMDTest, RAMD_GlyR)
         ramd-group5-force        = 600
         ramd-group5-max_dist     = 40.0
         ramd-group5-r_min_dist   = 0.0025
-        ramd-eval_freq           = 50
-        ramd-force_out_freq      = 100
+        ramd-eval_freq           = 2
+        ramd-force_out_freq      = 2
         ramd-old-angle-dist      = no
+        ramd-group1-ligand-pbcatom   = 0
+        ramd-group1-receptor-pbcatom = 2692
+        ramd-group2-ligand-pbcatom   = 0
+        ramd-group2-receptor-pbcatom = 8075
+        ramd-group3-ligand-pbcatom   = 0
+        ramd-group3-receptor-pbcatom = 13458
+        ramd-group4-ligand-pbcatom   = 0
+        ramd-group4-receptor-pbcatom = 18841
+        ramd-group5-ligand-pbcatom   = 0
+        ramd-group5-receptor-pbcatom = 24224
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
