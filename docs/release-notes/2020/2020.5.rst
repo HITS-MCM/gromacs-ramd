@@ -1,0 +1,169 @@
+GROMACS 2020.5 release notes
+----------------------------
+
+This version was released on January 6th, 2021. These release notes
+document the changes that have taken place in GROMACS since the
+previous 2020.4 version, to fix known issues. It also incorporates all
+fixes made in version 2019.6 and earlier, which you can find described
+in the :ref:`release-notes`.
+
+.. Note to developers!
+   Please use """"""" to underline the individual entries for fixed issues in the subfolders,
+   otherwise the formatting on the webpage is messed up.
+   Also, please use the syntax :issue:`number` to reference issues on redmine, without the
+   a space between the colon and number!
+
+Fixes where mdrun could behave incorrectly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Fix mdrun writing zero dH/dlambda and foreign lambda energies before checkpointing
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+ 
+With free-energy runs with separate-dhdl-file=no and nstdhdl not a multiple of
+nstenergy, mdrun would write zeros for dH/dlambda and foreign energies to
+the energy file for steps between the last energy frame and the checkpoint.
+This would lead to errors in free-energy estimates which could go unnoticed
+as values only deviate for a few steps.
+
+:issue:`3763`
+
+Fixed bugs with COM pulling and domain decompostion with weight or >32 ranks
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When using COM pulling and domain decomposition, the results would be
+incorrect when using relative weights per atom or when using more than
+32 DD MPI ranks. This would usually lead to crashes or obviously wrong
+results.
+
+:issue:`3750`
+
+Fix incorrect AWH free-energies when multiple walkers share a bias
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The AWH free-energy output was incorrect when multiple walkers shared
+an AWH bias. The error went up quadratically with the free-energy update
+interval, as well as with the number of walkers. The error decreases as
+update size decreases with time. This meant that with default AWH settings
+the error was negligible. With a free-energy update interval of 2 ps,
+we observed an error about equal to the statistical error with 32 walkers
+for a rather fast reaction coordinate. For slower coordinates the error
+will be smaller than the statistical error.
+
+:issue:`3828`
+
+Fixed conserved energy for MTTK
+"""""""""""""""""""""""""""""""
+
+When using `pcoupl=MTTK` and `tcoupl=nose-hoover`, the calculated conserved
+energy was incorrect due to two errors dating back to GROMACS 4.6 and 2018,
+respectively. As a result, all reported conserved energies using this
+combination of temperature and pressure coupling algorithms in any GROMACS
+version since GROMACS 4.6 are likely to be wrong. Note that these errors did
+not impact the dynamics, as the conserved energy is only reported, but never
+used in calculations. Also note that this bug only affects this exact
+combination of temperature / pressure coupling algorithms.
+
+:issue:`3796`
+
+Fixed conserved energy for Nose-Hoover
+""""""""""""""""""""""""""""""""""""""
+
+When using `tcoupl=nose-hoover` and one or more temperature groups with
+non-integer number of degrees of freedom, the calculated conserved
+energy was incorrect due to an error dating back to GROMACS 2018.
+Reported conserved energies using Nose-Hoover temperature coupling and
+non-integer number of degrees of freedom since GROMACS 2018 are likely to
+be slightly off. Note that this error does not impact the dynamics, as the
+conserved energy is only reported, but never used in calculations. Also note
+that this will only be noticeable when using small temperature groups or
+small systems.
+
+:issue:`3831`
+
+Fixed kinetic energy and temperature reporting for MTTK
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When using `pcoupl=MTTK` and `tcoupl=nose-hoover`, the reported kinetic
+energy and temperature were very slightly off. The integration of the
+temperature coupling trailed the reporting by half a time step. Note that
+these errors did not impact the dynamics, as the quantities were correctly
+integrated and only wrongly reported. Also note that the difference is so
+small that it is unlikely to have been significant for any application
+except for rigorous algorithm validation. Finally, note that this bug
+only affects this exact combination of temperature / pressure coupling
+algorithms.
+
+:issue:`3832`
+
+Fix pull error message with angles and dihedrals
+""""""""""""""""""""""""""""""""""""""""""""""""
+
+The COM pull code could print incorrect pull group indices when mdrun exited
+with an error about a too long pull distance in angle and dihedral geometries.
+
+:issue:`3613`
+
+Fix numerical issues in expanded ensemble
+"""""""""""""""""""""""""""""""""""""""""
+
+When performing simulated tempering or expanded ensemble simulations
+with changes in the Hamiltonian that were too large, then Monte Carlo
+proposals to states that were sufficiently unlikely would underflow,
+causing division by zero errors. This was fixed by numerically
+hardening the logical flow so that such proposals would be rejected
+instead.
+
+:issue:`3304`
+
+Fix incorrect electric field strength with applied electric field
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The electric field generated by the electric field module would be incorrect when
+used together with domain decomposition due to an error with indexing the field
+to all atoms instead of just those on the current domain.
+
+In overlap regions between domains, which have the thickness of the pairlist
+cut-off distance, the electric field would be doubled (or more with 2D or
+3D domain decomposition).
+
+To validate if a simulation has been affected by the issue, users should calculate
+the actual potential across the simulation box using the Poisson equation.
+If this potential agrees with the one provided as the input, a simulation was not affected.
+
+:issue:`3800`
+
+Fixes for ``gmx`` tools
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Improve CHARMM support in gmx do_dssp
+"""""""""""""""""""""""""""""""""""""
+
+:issue:`3568`
+
+Fix non-funtioning gmx h2order -d option
+""""""""""""""""""""""""""""""""""""""""
+
+The gmx h2order tool would always take the normal along the z-axis.
+
+:issue:`3820`
+
+Fix pull group index handling
+"""""""""""""""""""""""""""""
+
+The pull code would not validate its index groups correctly, leading
+to infinite loops or assertions being triggered at grompp time.
+
+:issue:`3810`
+
+Fixes that affect portability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Fix building on OSX
+"""""""""""""""""""
+
+The code wouldn't compile due to a missing include.
+
+:issue:`3730`
+
+Miscellaneous
+^^^^^^^^^^^^^
