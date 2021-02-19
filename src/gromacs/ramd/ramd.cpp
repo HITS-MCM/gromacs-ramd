@@ -108,6 +108,9 @@ RAMD::RAMD(const RAMDParams&           params,
 void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                            ForceProviderOutput*      forceProviderOutput)
 {
+    t_pbc pbc;
+    set_pbc(&pbc, pull->ePBC, forceProviderInput.box_);
+
     if (MASTER(cr) and out and (*pstep % params.eval_freq == 0))
     {
         fprintf(out, "%.4f", forceProviderInput.t_);
@@ -139,7 +142,9 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         {
             DVec com_rec_curr = pull->group[g * 2 + 1].x;
             DVec com_lig_curr = pull->group[g * 2 + 2].x;
-            auto curr_dist = std::sqrt((com_lig_curr - com_rec_curr).norm2());
+            DVec curr_dist_vect;
+            pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
+            auto curr_dist = std::sqrt((curr_dist_vect).norm2());
 
             if (MASTER(cr) and debug)
             {
@@ -169,11 +174,10 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 ++nb_ligands_outside;
             }
 
-            // walk_dist = vector length of the vector substraction
-            // (com_lig_curr - com_rec_curr) - (com_lig_prev - com_rec_prev)
-            // during last RAMD evaluation step
-            auto walk_dist =
-                    std::sqrt(((com_lig_curr - com_rec_curr) - (com_lig_prev[g] - com_rec_prev[g])).norm2());
+            // difference of the COM ligand-receptor distance between current and the last evaluation step
+            DVec walk_dist_vect;
+            pbc_dx_d(&pbc, com_lig_curr - com_rec_curr, com_lig_prev[g] - com_rec_prev[g], walk_dist_vect);
+            auto walk_dist = std::sqrt((walk_dist_vect).norm2());
 
             if (MASTER(cr) and debug)
             {
@@ -217,9 +221,6 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             gmx_set_stop_condition(gmx_stop_cond_next);
         }
     }
-
-    t_pbc pbc;
-    set_pbc(&pbc, pull->ePBC, forceProviderInput.box_);
 
     for (int g = 0; g < params.ngroup; ++g)
     {
