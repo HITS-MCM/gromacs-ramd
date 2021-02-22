@@ -71,7 +71,8 @@ RAMD::RAMD(const RAMDParams&           params,
     com_rec_prev(params.ngroup),
     com_lig_prev(params.ngroup),
     out(nullptr),
-    cr(cr)
+    cr(cr),
+    ligand_exited(params.ngroup, 0)
 {
     for (int g = 0; g < params.ngroup; ++g)
     {
@@ -115,8 +116,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     {
         fprintf(out, "%.4f", forceProviderInput.t_);
     }
-    
-    int nb_ligands_outside = 0;
+
     if (*pstep == 0)
     {
         // Store COM positions for first evaluation
@@ -171,7 +171,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                             "==== RAMD ==== Maximal distance between ligand and receptor COM is "
                             "reached.\n");
                 }
-                ++nb_ligands_outside;
+                ligand_exited[g] = 1;
             }
 
             // difference of the COM ligand-receptor distance between current and the last evaluation step
@@ -215,7 +215,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
 
         // Exit if all ligand-receptor COM distances are larger than max_dist
-        if (nb_ligands_outside == params.ngroup)
+        if (std::accumulate(ligand_exited.begin(), ligand_exited.end(), 0) == params.ngroup)
         {
             fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
             gmx_set_stop_condition(gmx_stop_cond_next);
@@ -224,6 +224,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
 
     for (int g = 0; g < params.ngroup; ++g)
     {
+        if (ligand_exited[g]) continue;
+
         for (int i = 0; i < 3; ++i)
         {
             get_pull_coord_value(pull, g * 2 + i, &pbc);

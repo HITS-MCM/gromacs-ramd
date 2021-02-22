@@ -111,6 +111,9 @@ private:
     /// MPI communicator
     const t_commrec* cr;
 
+    /// Has the ligand left his binding site?
+    std::vector<int> ligand_exited;
+
 };
 
 } // namespace gmx
