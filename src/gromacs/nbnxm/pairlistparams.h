@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -60,7 +60,7 @@ enum class KernelType;
 static constexpr int c_nbnxnCpuIClusterSize = 4;
 
 //! The i- and j-cluster size for GPU lists, 8 atoms for CUDA, set at compile time for OpenCL
-#if GMX_GPU == GMX_GPU_OPENCL
+#if GMX_GPU_OPENCL
 static constexpr int c_nbnxnGpuClusterSize = GMX_OPENCL_NB_CLUSTER_SIZE;
 #else
 static constexpr int c_nbnxnGpuClusterSize = 8;
@@ -118,15 +118,26 @@ struct PairlistParams
      */
     PairlistParams(Nbnxm::KernelType kernelType, bool haveFep, real rlist, bool haveMultipleDomains);
 
-    PairlistType pairlistType;           //!< The type of cluster-pair list
-    bool         haveFep;                //!< Tells whether we have perturbed interactions
-    real         rlistOuter;             //!< Cut-off of the larger, outer pair-list
-    real         rlistInner;             //!< Cut-off of the smaller, inner pair-list
-    bool         haveMultipleDomains;    //!< True when using DD with multiple domains
-    bool         useDynamicPruning;      //!< Are we using dynamic pair-list pruning
-    int          nstlistPrune;           //!< Pair-list dynamic pruning interval
-    int          numRollingPruningParts; //!< The number parts to divide the pair-list into for rolling pruning, a value of 1 gives no rolling pruning
-    int          lifetime;               //!< Lifetime in steps of the pair-list
+    //! The type of cluster-pair list
+    PairlistType pairlistType;
+    //! Tells whether we have perturbed interactions
+    bool haveFep;
+    //! Cut-off of the larger, outer pair-list
+    real rlistOuter;
+    //! Cut-off of the smaller, inner pair-list
+    real rlistInner;
+    //! True when using DD with multiple domains
+    bool haveMultipleDomains;
+    //! Are we using dynamic pair-list pruning
+    bool useDynamicPruning;
+    //! The interval in steps for computing non-bonded interactions, =1 without MTS
+    int mtsFactor;
+    //! Pair-list dynamic pruning interval
+    int nstlistPrune;
+    //! The number parts to divide the pair-list into for rolling pruning, a value of 1 gives no rolling pruning
+    int numRollingPruningParts;
+    //! Lifetime in steps of the pair-list
+    int lifetime;
 };
 
 #endif

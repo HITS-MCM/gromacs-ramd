@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -140,7 +141,6 @@ void global_stat(const gmx_global_stat*  gs,
                  gmx_enerdata_t*         enerd,
                  tensor                  fvir,
                  tensor                  svir,
-                 rvec                    mu_tot,
                  const t_inputrec*       inputrec,
                  gmx_ekindata_t*         ekind,
                  const gmx::Constraints* constr,
@@ -148,13 +148,13 @@ void global_stat(const gmx_global_stat*  gs,
                  int                     nsig,
                  real*                   sig,
                  int*                    totalNumberOfBondedInteractions,
-                 gmx_bool                bSumEkinhOld,
+                 bool                    bSumEkinhOld,
                  int                     flags)
 /* instead of current system, gmx_booleans for summing virial, kinetic energy, and other terms */
 {
     t_bin* rb;
     int *  itc0, *itc1;
-    int    ie = 0, ifv = 0, isv = 0, irmsd = 0, imu = 0;
+    int    ie = 0, ifv = 0, isv = 0, irmsd = 0;
     int idedl = 0, idedlo = 0, idvdll = 0, idvdlnl = 0, iepl = 0, icm = 0, imass = 0, ica = 0, inb = 0;
     int      isig = -1;
     int      icj = -1, ici = -1, icx = -1;
@@ -247,10 +247,6 @@ void global_stat(const gmx_global_stat*  gs,
                 irmsd = add_binr(rb, 2, rmsdData.data());
             }
         }
-        if (!inputrecNeedMutot(inputrec))
-        {
-            imu = add_binr(rb, DIM, mu_tot);
-        }
 
         for (j = 0; (j < egNR); j++)
         {
@@ -260,9 +256,10 @@ void global_stat(const gmx_global_stat*  gs,
         {
             idvdll  = add_bind(rb, efptNR, enerd->dvdl_lin);
             idvdlnl = add_bind(rb, efptNR, enerd->dvdl_nonlin);
-            if (!enerd->enerpart_lambda.empty())
+            if (enerd->foreignLambdaTerms.numLambdas() > 0)
             {
-                iepl = add_bind(rb, enerd->enerpart_lambda.size(), enerd->enerpart_lambda.data());
+                iepl = add_bind(rb, enerd->foreignLambdaTerms.energies().size(),
+                                enerd->foreignLambdaTerms.energies().data());
             }
         }
     }
@@ -346,10 +343,6 @@ void global_stat(const gmx_global_stat*  gs,
         {
             extract_binr(rb, irmsd, rmsdData);
         }
-        if (!inputrecNeedMutot(inputrec))
-        {
-            extract_binr(rb, imu, DIM, mu_tot);
-        }
 
         for (j = 0; (j < egNR); j++)
         {
@@ -359,9 +352,10 @@ void global_stat(const gmx_global_stat*  gs,
         {
             extract_bind(rb, idvdll, efptNR, enerd->dvdl_lin);
             extract_bind(rb, idvdlnl, efptNR, enerd->dvdl_nonlin);
-            if (!enerd->enerpart_lambda.empty())
+            if (enerd->foreignLambdaTerms.numLambdas() > 0)
             {
-                extract_bind(rb, iepl, enerd->enerpart_lambda.size(), enerd->enerpart_lambda.data());
+                extract_bind(rb, iepl, enerd->foreignLambdaTerms.energies().size(),
+                             enerd->foreignLambdaTerms.energies().data());
             }
         }
 

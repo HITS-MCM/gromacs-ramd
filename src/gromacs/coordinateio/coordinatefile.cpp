@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -41,16 +41,18 @@
  * \ingroup module_coordinateio
  */
 
-
 #include "gmxpre.h"
 
 #include "coordinatefile.h"
 
 #include <algorithm>
 
+#include "gromacs/options.h"
 #include "gromacs/coordinateio/outputadapters.h"
 #include "gromacs/coordinateio/requirements.h"
+#include "gromacs/fileio/trxio.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/topology/mtop_util.h"
 #include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/exceptions.h"
 
@@ -322,8 +324,8 @@ deepCopy_t_trxframe(const t_trxframe& input, t_trxframe* copy, RVec* xvec, RVec*
         }
     }
     copy_mat(input.box, copy->box);
-    copy->bPBC = input.bPBC;
-    copy->ePBC = input.ePBC;
+    copy->bPBC    = input.bPBC;
+    copy->pbcType = input.pbcType;
 }
 
 /*! \brief

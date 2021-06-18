@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2013,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2013,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -51,23 +51,26 @@ class SelectionCollection;
  * \brief
  * Implements selection compilation.
  *
- * This class is used to implement SelectionCollection::compile().
+ * This function is used to implement SelectionCollection::compile().
  * It prepares the selections in a selection collection for evaluation and
  * performs some optimizations.
  *
+ * Before compilation, the selection collection should have been initialized
+ * with gmx_ana_selcollection_parse_*().
+ * The compiled selection collection can be passed to
+ * gmx_ana_selcollection_evaluate() to evaluate the selection for a frame.
+ * If an error occurs, \p coll is cleared.
+ *
+ * The covered fraction information in \p coll is initialized to
+ * \ref CFRAC_NONE.
+ *
  * See \ref page_module_selection_compiler.
+ *
+ * \param[in, out] coll Selection collection to work on.
  *
  * \ingroup module_selection
  */
-class SelectionCompiler
-{
-public:
-    //! Creates a selection compiler.
-    SelectionCompiler();
-
-    //! Compiles the given selection collection.
-    void compile(SelectionCollection* coll);
-};
+void compileSelection(SelectionCollection* coll);
 
 } // namespace gmx
 

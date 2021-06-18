@@ -1,7 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+# Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+# Copyright (c) 2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -58,7 +60,10 @@ ENDMACRO(GMX_TEST_CXXFLAG VARIABLE FLAGS CXXFLAGSVAR)
 # works the same way.
 function(gmx_target_compile_options_inner)
     set (CFLAGS "${SIMD_C_FLAGS};${MPI_COMPILE_FLAGS};${EXTRA_C_FLAGS};${GMXC_CFLAGS}" PARENT_SCOPE)
-    set (CXXFLAGS "${SIMD_CXX_FLAGS};${MPI_COMPILE_FLAGS};${EXTRA_CXX_FLAGS};${GMXC_CXXFLAGS}" PARENT_SCOPE)
+    # When SYCL support has been enabled (so the flag is non-empty), we still *disable* things
+    # by default to avoid running each file three passes through the compiler. Then we'll explicitly
+    # enable SYCL for the few files using it, as well as the linker.
+    set (CXXFLAGS "${SIMD_CXX_FLAGS};${MPI_COMPILE_FLAGS};${DISABLE_SYCL_CXX_FLAGS};${EXTRA_CXX_FLAGS};${GMXC_CXXFLAGS}" PARENT_SCOPE)
 endfunction()
 
 # Implementation function to add compiler flags expected for all
@@ -125,7 +130,31 @@ function(gmx_cuda_target_compile_options VARIABLE_NAME)
     if (GMX_SKIP_DEFAULT_CFLAGS)
         set (CXXFLAGS "")
     else()
+        # Prepare the generic compiler options
         gmx_target_compile_options_inner()
+        # CUDA headers issue lots of warnings when compiled with
+        # -Wundef because they use old-style #ifdef a lot. We'd prefer
+        # to have FindCUDA.cmake treat CUDA internal headers with
+        # -isystem so that these warnings are naturally suppressed,
+        # but there's no way to do that without bundling a modified
+        # form of FindCUDA.cmake. That creates its own problems,
+        # because people either don't know we do that, or don't
+        # remember that we don't do that in user tarballs.
+        #
+        # We have make check-source ensuring that we have included
+        # config.h any time we use such symbols in commits in a merge
+        # request. Local development could run that too. So, we can
+        # tolerate any remaining risk from accidentally using
+        # e.g. #ifdef GMX_MPI rather than #if GMX_MPI in CUDA source
+        # files.
+        #
+        # So we disable -Wundef by the simple hack of appending
+        # -Wno-undef after it. That's more maintainable than having
+        # logic to avoid adding -Wundef to GMXC_CXXFLAGS, given the
+        # current approach to adding them. Hopefully this will improve
+        # if/when we have more CMake object libraries, and/or native
+        # CUDA compilation.
+        GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NOUNDEF "-Wno-undef" CXXFLAGS)
     endif()
 
     # Only C++ compilation is supported with CUDA code in GROMACS
@@ -187,7 +216,7 @@ macro (gmx_c_flags)
         endif()
         if (GMX_COMPILER_WARNINGS)
             GMX_TEST_CFLAG(CFLAGS_WARN "-Wall;-Wno-unused;-Wunused-value;-Wunused-parameter" GMXC_CFLAGS)
-            GMX_TEST_CFLAG(CFLAGS_WARN_EXTRA "-Wextra;-Wno-missing-field-initializers;-Wno-sign-compare;-Wpointer-arith" GMXC_CFLAGS)
+            GMX_TEST_CFLAG(CFLAGS_WARN_EXTRA "-Wextra;-Wno-sign-compare;-Wpointer-arith" GMXC_CFLAGS)
             GMX_TEST_CFLAG(CFLAGS_WARN_UNDEF "-Wundef" GMXC_CFLAGS)
             GMX_TEST_CFLAG(CFLAGS_WARN_REL "-Wno-array-bounds" GMXC_CFLAGS_RELEASE_ONLY)
             if(CYGWIN)
@@ -195,6 +224,7 @@ macro (gmx_c_flags)
             endif()
             GMX_TEST_CFLAG(CFLAGS_STRINGOP_TRUNCATION "-Werror=stringop-truncation" GMXC_CFLAGS)
         endif()
+        GMX_TEST_CFLAG(CFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CFLAGS)
         # new in gcc 4.5
         GMX_TEST_CFLAG(CFLAGS_EXCESS_PREC "-fexcess-precision=fast" GMXC_CFLAGS_RELEASE)
         GMX_TEST_CFLAG(CFLAGS_COPT "-funroll-all-loops"
@@ -210,18 +240,15 @@ macro (gmx_c_flags)
             GMX_TEST_CXXFLAG(CXXFLAGS_WARN "-Wall" GMXC_CXXFLAGS)
             # Problematic with CUDA
             # GMX_TEST_CXXFLAG(CXXFLAGS_WARN_EFFCXX "-Wnon-virtual-dtor" GMXC_CXXFLAGS)
-            GMX_TEST_CXXFLAG(CXXFLAGS_WARN_EXTRA "-Wextra;-Wno-missing-field-initializers;-Wpointer-arith;-Wmissing-declarations" GMXC_CXXFLAGS)
-            # CUDA versions prior to 7.5 come with a header (math_functions.h) which uses the _MSC_VER macro
-            # unconditionally, so we don't use -Wundef for earlier CUDA versions.
-            if(NOT(GMX_GPU AND CUDA_VERSION VERSION_LESS "7.5"))
-                GMX_TEST_CXXFLAG(CXXFLAGS_WARN_UNDEF "-Wundef" GMXC_CXXFLAGS)
-            endif()
+            GMX_TEST_CXXFLAG(CXXFLAGS_WARN_EXTRA "-Wextra;-Wpointer-arith;-Wmissing-declarations" GMXC_CXXFLAGS)
+            GMX_TEST_CXXFLAG(CXXFLAGS_WARN_UNDEF "-Wundef" GMXC_CXXFLAGS)
             GMX_TEST_CFLAG(CXXFLAGS_WARN_REL "-Wno-array-bounds" GMXC_CXXFLAGS_RELEASE_ONLY)
             GMX_TEST_CXXFLAG(CXXFLAGS_STRINGOP_TRUNCATION "-Wstringop-truncation" GMXC_CXXFLAGS)
             if (CXXFLAGS_STRINGOP_TRUNCATION)
                 set(CXXFLAGS_NO_STRINGOP_TRUNCATION "-Wno-stringop-truncation")
             endif()
         endif()
+        GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CXXFLAGS)
         # new in gcc 4.5
         GMX_TEST_CXXFLAG(CXXFLAGS_EXCESS_PREC "-fexcess-precision=fast" GMXC_CXXFLAGS_RELEASE)
         GMX_TEST_CXXFLAG(CXXFLAGS_COPT "-funroll-all-loops"
@@ -289,7 +316,8 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
 # 444: destructor for base class ".." is not virtual
 # 869: was never referenced (false positives)
 #2282: unrecognized GCC pragma
-                GMX_TEST_CXXFLAG(CXXFLAGS_WARN "-w3;-wd177;-wd280;-wd304;-wd383;-wd411;-wd444;-wd869;-wd981;-wd1418;-wd1572;-wd1599;-wd2259;-wd2547;-wd3280;-wd11074;-wd11076;-wd2282" GMXC_CXXFLAGS)
+#2621: attribute "unused" does not apply here
+                GMX_TEST_CXXFLAG(CXXFLAGS_WARN "-w3;-wd177;-wd280;-wd304;-wd383;-wd411;-wd444;-wd869;-wd981;-wd1418;-wd1572;-wd1599;-wd2259;-wd2547;-wd2621;-wd3280;-wd11074;-wd11076;-wd2282" GMXC_CXXFLAGS)
             endif()
             GMX_TEST_CXXFLAG(CXXFLAGS_OPT "-ip;-funroll-all-loops;-alias-const;-ansi-alias;-no-prec-div;-fimf-domain-exclusion=14;-qoverride-limits" GMXC_CXXFLAGS_RELEASE)
             GMX_TEST_CXXFLAG(CXXFLAGS_DEBUG "-O0" GMXC_CXXFLAGS_DEBUG)
@@ -383,6 +411,7 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
         else() # MSVC projects only use the C++ flags
             GMX_TEST_CXXFLAG(CXXFLAGS_WARN "/wd4800;/wd4355;/wd4996;/wd4305;/wd4244;/wd4101;/wd4267;/wd4090;/wd4068;" GMXC_CXXFLAGS)
         endif()
+        GMX_TEST_CXXFLAG(CXXFLAGS_LANG "/permissive-" GMXC_CXXFLAGS)
     endif()
 
     if (CMAKE_C_COMPILER_ID MATCHES "Clang")
@@ -393,6 +422,7 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
             GMX_TEST_CFLAG(CFLAGS_WARN "-Wall;-Wno-unused;-Wunused-value;-Wunused-parameter" GMXC_CFLAGS)
             GMX_TEST_CFLAG(CFLAGS_WARN_EXTRA "-Wpointer-arith" GMXC_CFLAGS_EXTRA)
         endif()
+        GMX_TEST_CFLAG(CFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CFLAGS)
     endif()
 
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -402,7 +432,7 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
             if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "6.0") #LLVM BUG #21629
                 GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_BRACES "-Wno-missing-braces" GMXC_CXXFLAGS)
             endif()
-            GMX_TEST_CXXFLAG(CXXFLAGS_WARN_EXTRA "-Wextra;-Wno-missing-field-initializers;-Wpointer-arith;-Wmissing-prototypes" GMXC_CXXFLAGS)
+            GMX_TEST_CXXFLAG(CXXFLAGS_WARN_EXTRA "-Wextra;-Wpointer-arith;-Wmissing-prototypes" GMXC_CXXFLAGS)
             GMX_TEST_CXXFLAG(CXXFLAGS_DEPRECATED "-Wdeprecated" GMXC_CXXFLAGS)
             # Functions placed in headers for inlining are not always
             # used in every translation unit that includes the files,
@@ -413,6 +443,7 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
         if(NOT GMX_OPENMP)
             GMX_TEST_CXXFLAG(CXXFLAGS_PRAGMA "-Wno-unknown-pragmas" GMXC_CXXFLAGS)
         endif()
+        GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CXXFLAGS)
     endif()
 
     # Apple bastardized version of Clang

@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,6 +46,7 @@
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/forceoutput.h"
+#include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
@@ -58,6 +60,8 @@
 #include "gromacs/utility/real.h"
 
 #include "kernel_common.h"
+#include "nbnxm_gpu.h"
+#include "nbnxm_gpu_data_mgmt.h"
 #include "nbnxm_simd.h"
 #include "pairlistset.h"
 #include "pairlistsets.h"
@@ -457,7 +461,7 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernel(gmx::InteractionLocality   iLo
                                                   gmx::ForceWithShiftForces* forceWithShiftForces,
                                                   const t_mdatoms&           mdatoms,
                                                   t_lambda*                  fepvals,
-                                                  real*                      lambda,
+                                                  gmx::ArrayRef<real const>  lambda,
                                                   gmx_enerdata_t*            enerd,
                                                   const gmx::StepWorkload&   stepWork,
                                                   t_nrnb*                    nrnb)
@@ -490,7 +494,7 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernel(gmx::InteractionLocality   iLo
     nb_kernel_data_t kernel_data;
     real             dvdl_nb[efptNR] = { 0 };
     kernel_data.flags                = donb_flags;
-    kernel_data.lambda               = lambda;
+    kernel_data.lambda               = lambda.data();
     kernel_data.dvdl                 = dvdl_nb;
 
     kernel_data.energygrp_elec = enerd->grpp.ener[egCOULSR].data();
@@ -531,12 +535,13 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernel(gmx::InteractionLocality   iLo
         kernel_data.flags = (donb_flags & ~(GMX_NONBONDED_DO_FORCE | GMX_NONBONDED_DO_SHIFTFORCE))
                             | GMX_NONBONDED_DO_FOREIGNLAMBDA;
         kernel_data.lambda         = lam_i;
+        kernel_data.dvdl           = dvdl_nb;
         kernel_data.energygrp_elec = enerd->foreign_grpp.ener[egCOULSR].data();
         kernel_data.energygrp_vdw  = enerd->foreign_grpp.ener[egLJSR].data();
-        /* Note that we add to kernel_data.dvdl, but ignore the result */
 
-        for (size_t i = 0; i < enerd->enerpart_lambda.size(); i++)
+        for (gmx::index i = 0; i < 1 + enerd->foreignLambdaTerms.numLambdas(); i++)
         {
+            std::fill(std::begin(dvdl_nb), std::end(dvdl_nb), 0);
             for (int j = 0; j < efptNR; j++)
             {
                 lam_i[j] = (i == 0 ? lambda[j] : fepvals->all_lambda[j][i - 1]);
@@ -553,8 +558,9 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernel(gmx::InteractionLocality   iLo
                 GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
             }
 
-            sum_epot(&(enerd->foreign_grpp), enerd->foreign_term);
-            enerd->enerpart_lambda[i] += enerd->foreign_term[F_EPOT];
+            sum_epot(enerd->foreign_grpp, enerd->foreign_term);
+            enerd->foreignLambdaTerms.accumulate(i, enerd->foreign_term[F_EPOT],
+                                                 dvdl_nb[efptVDW] + dvdl_nb[efptCOUL]);
         }
     }
     wallcycle_sub_stop(wcycle_, ewcsNONBONDED_FEP);

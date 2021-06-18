@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,9 +47,12 @@
 #define GMX_DOMDEC_GPUHALOEXCHANGE_IMPL_H
 
 #include "gromacs/domdec/gpuhaloexchange.h"
+#include "gromacs/gpu_utils/device_context.h"
 #include "gromacs/gpu_utils/gpueventsynchronizer.cuh"
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/utility/gmxmpi.h"
+
+struct gmx_wallcycle;
 
 namespace gmx
 {
@@ -69,11 +72,22 @@ public:
     /*! \brief Creates GPU Halo Exchange object.
      *
      * \param [inout] dd                       domdec structure
+     * \param [in]    dimIndex                 the dimension index for this instance
      * \param [in]    mpi_comm_mysim           communicator used for simulation
+     * \param [in]    deviceContext            GPU device context
      * \param [in]    localStream              local NB CUDA stream
      * \param [in]    nonLocalStream           non-local NB CUDA stream
+     * \param [in]    pulse                    the communication pulse for this instance
+     * \param [in]    wcycle                   The wallclock counter
      */
-    Impl(gmx_domdec_t* dd, MPI_Comm mpi_comm_mysim, void* localStream, void* nonLocalStream);
+    Impl(gmx_domdec_t*        dd,
+         int                  dimIndex,
+         MPI_Comm             mpi_comm_mysim,
+         const DeviceContext& deviceContext,
+         const DeviceStream&  localStream,
+         const DeviceStream&  nonLocalStream,
+         int                  pulse,
+         gmx_wallcycle*       wcycle);
     ~Impl();
 
     /*! \brief
@@ -174,16 +188,26 @@ private:
     GpuEventSynchronizer* haloDataTransferLaunched_ = nullptr;
     //! MPI communicator used for simulation
     MPI_Comm mpi_comm_mysim_;
+    //! GPU context object
+    const DeviceContext& deviceContext_;
     //! CUDA stream for local non-bonded calculations
-    cudaStream_t localStream_ = nullptr;
+    const DeviceStream& localStream_;
     //! CUDA stream for non-local non-bonded calculations
-    cudaStream_t nonLocalStream_ = nullptr;
+    const DeviceStream& nonLocalStream_;
     //! full coordinates buffer in GPU memory
     float3* d_x_ = nullptr;
     //! full forces buffer in GPU memory
     float3* d_f_ = nullptr;
     //! An event recorded once the exchanged forces are ready on the GPU
     GpuEventSynchronizer fReadyOnDevice_;
+    //! The dimension index corresponding to this halo exchange instance
+    int dimIndex_ = 0;
+    //! The pulse corresponding to this halo exchange instance
+    int pulse_ = 0;
+    //! The wallclock counter
+    gmx_wallcycle* wcycle_ = nullptr;
+    //! The atom offset for receive (x) or send (f) for dimension index and pulse corresponding to this halo exchange instance
+    int atomOffset_ = 0;
 };
 
 } // namespace gmx

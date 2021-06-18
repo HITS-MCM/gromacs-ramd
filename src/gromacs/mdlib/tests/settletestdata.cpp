@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -73,6 +73,7 @@ namespace test
 {
 
 SettleTestData::SettleTestData(int numSettles) :
+    numSettles_(numSettles),
     x_(c_waterPositions.size()),
     xPrime_(c_waterPositions.size()),
     v_(c_waterPositions.size())
@@ -120,35 +121,29 @@ SettleTestData::SettleTestData(int numSettles) :
     // Set up the masses.
     mtop_.moltype[0].atoms.atom =
             static_cast<t_atom*>(calloc(numSettles * atomsPerSettle_, sizeof(t_atom)));
-    mdatoms_.homenr  = numSettles * atomsPerSettle_;
-    mdatoms_.massT   = static_cast<real*>(calloc(mdatoms_.homenr, sizeof(real)));
-    mdatoms_.invmass = static_cast<real*>(calloc(mdatoms_.homenr, sizeof(real)));
+    numAtoms_ = numSettles * atomsPerSettle_;
+    masses_.resize(numAtoms_);
+    inverseMasses_.resize(numAtoms_);
     for (int i = 0; i < numSettles; ++i)
     {
-        mdatoms_.massT[i * atomsPerSettle_ + 0] = oxygenMass_;
-        mdatoms_.massT[i * atomsPerSettle_ + 1] = hydrogenMass_;
-        mdatoms_.massT[i * atomsPerSettle_ + 2] = hydrogenMass_;
+        masses_[i * atomsPerSettle_ + 0] = oxygenMass_;
+        masses_[i * atomsPerSettle_ + 1] = hydrogenMass_;
+        masses_[i * atomsPerSettle_ + 2] = hydrogenMass_;
 
-        mdatoms_.invmass[i * atomsPerSettle_ + 0] = 1.0 / oxygenMass_;
-        mdatoms_.invmass[i * atomsPerSettle_ + 1] = 1.0 / hydrogenMass_;
-        mdatoms_.invmass[i * atomsPerSettle_ + 2] = 1.0 / hydrogenMass_;
+        inverseMasses_[i * atomsPerSettle_ + 0] = 1.0 / oxygenMass_;
+        inverseMasses_[i * atomsPerSettle_ + 1] = 1.0 / hydrogenMass_;
+        inverseMasses_[i * atomsPerSettle_ + 2] = 1.0 / hydrogenMass_;
 
         mtop_.moltype[0].atoms.atom[i * atomsPerSettle_ + 0].m = oxygenMass_;
         mtop_.moltype[0].atoms.atom[i * atomsPerSettle_ + 1].m = hydrogenMass_;
         mtop_.moltype[0].atoms.atom[i * atomsPerSettle_ + 2].m = hydrogenMass_;
     }
 
-    // Reshape some data so it can be directly used by the SETTLE constraints
-    ilist_             = { mtop_.moltype[0].ilist[F_SETTLE].size(), 0,
-               mtop_.moltype[0].ilist[F_SETTLE].iatoms.data(), 0 };
-    idef_.il[F_SETTLE] = ilist_;
+    idef_               = std::make_unique<InteractionDefinitions>(mtop_.ffparams);
+    idef_->il[F_SETTLE] = mtop_.moltype[0].ilist[F_SETTLE];
 }
 
-SettleTestData::~SettleTestData()
-{
-    free(mdatoms_.massT);
-    free(mdatoms_.invmass);
-}
+SettleTestData::~SettleTestData() {}
 
 } // namespace test
 } // namespace gmx

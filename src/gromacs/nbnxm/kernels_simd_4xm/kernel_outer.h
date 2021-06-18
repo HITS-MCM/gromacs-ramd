@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -142,7 +143,7 @@
 #endif
 #ifdef LJ_EWALD_GEOM
     real     lj_ewaldcoeff2, lj_ewaldcoeff6_6;
-    SimdReal mone_S, half_S, lje_c2_S, lje_c6_6_S;
+    SimdReal half_S, lje_c2_S, lje_c6_6_S;
 #endif
 
 #ifdef LJ_COMB_LB
@@ -310,7 +311,6 @@
 #    endif
 #endif
 #ifdef LJ_EWALD_GEOM
-    mone_S           = SimdReal(-1.0);
     half_S           = SimdReal(0.5);
     lj_ewaldcoeff2   = ic->ewaldcoeff_lj * ic->ewaldcoeff_lj;
     lj_ewaldcoeff6_6 = lj_ewaldcoeff2 * lj_ewaldcoeff2 * lj_ewaldcoeff2 / 6;
@@ -328,7 +328,7 @@
     rcvdw2_S = SimdReal(ic->rvdw * ic->rvdw);
 #endif
 
-    minRsq_S = SimdReal(NBNXN_MIN_RSQ);
+    minRsq_S = SimdReal(c_nbnxnMinDistanceSquared);
 
     const real* gmx_restrict q        = nbatParams.q.data();
     const real               facel    = ic->epsfac;

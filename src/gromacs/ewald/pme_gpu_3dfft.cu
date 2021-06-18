@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -60,7 +60,7 @@ static void handleCufftError(cufftResult_t status, const char* msg)
     }
 }
 
-GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu)
+GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu, const int gridIndex)
 {
     const PmeGpuCudaKernelParams* kernelParamsPtr = pmeGpu->kernelParams.get();
     ivec                          realGridSize, realGridSizePadded, complexGridSizePadded;
@@ -71,16 +71,17 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu)
         complexGridSizePadded[i] = kernelParamsPtr->grid.complexGridSizePadded[i];
     }
 
-    GMX_RELEASE_ASSERT(!pme_gpu_uses_dd(pmeGpu), "FFT decomposition not implemented");
+    GMX_RELEASE_ASSERT(!pme_gpu_settings(pmeGpu).useDecomposition,
+                       "FFT decomposition not implemented");
 
     const int complexGridSizePaddedTotal =
             complexGridSizePadded[XX] * complexGridSizePadded[YY] * complexGridSizePadded[ZZ];
     const int realGridSizePaddedTotal =
             realGridSizePadded[XX] * realGridSizePadded[YY] * realGridSizePadded[ZZ];
 
-    realGrid_ = (cufftReal*)kernelParamsPtr->grid.d_realGrid;
+    realGrid_ = (cufftReal*)kernelParamsPtr->grid.d_realGrid[gridIndex];
     GMX_RELEASE_ASSERT(realGrid_, "Bad (null) input real-space grid");
-    complexGrid_ = (cufftComplex*)kernelParamsPtr->grid.d_fourierGrid;
+    complexGrid_ = (cufftComplex*)kernelParamsPtr->grid.d_fourierGrid[gridIndex];
     GMX_RELEASE_ASSERT(complexGrid_, "Bad (null) input complex grid");
 
     cufftResult_t result;
@@ -103,7 +104,7 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu)
                            realGridSizePaddedTotal, CUFFT_C2R, batch);
     handleCufftError(result, "cufftPlanMany C2R plan failure");
 
-    cudaStream_t stream = pmeGpu->archSpecific->pmeStream;
+    cudaStream_t stream = pmeGpu->archSpecific->pmeStream_.stream();
     GMX_RELEASE_ASSERT(stream, "Using the default CUDA stream for PME cuFFT");
 
     result = cufftSetStream(planR2C_, stream);

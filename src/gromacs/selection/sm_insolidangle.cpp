@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -162,7 +164,7 @@ typedef struct
  *
  * \ingroup module_selection
  */
-typedef struct
+typedef struct partition
 {
     /** Number of partition items (\p p contains \p n+1 items). */
     int n;
@@ -180,7 +182,7 @@ typedef struct
  *
  * \ingroup module_selection
  */
-typedef struct
+typedef struct spheresurfacebin
 {
     /** Number of points in the array \p x, -1 if whole bin covered. */
     int n;
@@ -198,7 +200,7 @@ typedef struct
  *
  * \ingroup module_selection
  */
-typedef struct
+typedef struct methoddata_insolidangle
 {
     /** Center of the solid angle. */
     gmx_ana_pos_t center;

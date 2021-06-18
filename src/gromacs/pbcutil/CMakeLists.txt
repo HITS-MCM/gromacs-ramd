@@ -37,7 +37,7 @@ set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${PBCUTIL_SOURCES} PARENT_SCOPE)
 
 if(GMX_INSTALL_LEGACY_API)
   install(FILES
-	  pbc.h
+          pbc.h
           DESTINATION include/gromacs/pbcutil)
 endif()
 

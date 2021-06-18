@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -57,36 +57,36 @@ namespace gmx
 namespace test
 {
 
-void applySettle(SettleTestData*    testData,
-                 const t_pbc        pbc,
-                 const bool         updateVelocities,
-                 const bool         calcVirial,
-                 const std::string& testDescription)
+void SettleHostTestRunner::applySettle(SettleTestData*    testData,
+                                       const t_pbc        pbc,
+                                       const bool         updateVelocities,
+                                       const bool         calcVirial,
+                                       const std::string& testDescription)
 {
-    settledata* settled = settle_init(testData->mtop_);
+    SettleData settled(testData->mtop_);
 
-    settle_set_constraints(settled, &testData->ilist_, testData->mdatoms_);
+    settled.setConstraints(testData->idef_->il[F_SETTLE], testData->numAtoms_,
+                           testData->masses_.data(), testData->inverseMasses_.data());
 
     bool errorOccured;
     int  numThreads  = 1;
     int  threadIndex = 0;
-    csettle(settled, numThreads, threadIndex, &pbc,
-            reinterpret_cast<real*>(as_rvec_array(testData->x_.data())),
-            reinterpret_cast<real*>(as_rvec_array(testData->xPrime_.data())), testData->reciprocalTimeStep_,
-            updateVelocities ? reinterpret_cast<real*>(as_rvec_array(testData->v_.data())) : nullptr,
+    csettle(settled, numThreads, threadIndex, &pbc, testData->x_.arrayRefWithPadding(),
+            testData->xPrime_.arrayRefWithPadding(), testData->reciprocalTimeStep_,
+            updateVelocities ? testData->v_.arrayRefWithPadding() : ArrayRefWithPadding<RVec>(),
             calcVirial, testData->virial_, &errorOccured);
-    settle_free(settled);
     EXPECT_FALSE(errorOccured) << testDescription;
 }
 
-#if GMX_GPU != GMX_GPU_CUDA
+#if !GMX_GPU_CUDA
 
-void applySettleGpu(gmx_unused SettleTestData* testData,
-                    gmx_unused const t_pbc pbc,
-                    gmx_unused const bool  updateVelocities,
-                    gmx_unused const bool  calcVirial,
-                    gmx_unused const std::string& testDescription)
+void SettleDeviceTestRunner::applySettle(SettleTestData* /* testData */,
+                                         const t_pbc /* pbc */,
+                                         const bool /* updateVelocities */,
+                                         const bool /* calcVirial */,
+                                         const std::string& /* testDescription */)
 {
+    GMX_UNUSED_VALUE(testDevice_);
     FAIL() << "Dummy SETTLE GPU function was called instead of the real one in the SETTLE test.";
 }
 

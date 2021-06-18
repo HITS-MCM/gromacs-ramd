@@ -1,7 +1,7 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -38,61 +38,29 @@
 # different files and strategies for the different GPU implementation
 # flavours.
 
-# Always compiled as plain C++
-file(GLOB SOURCES_FROM_CXX
-    clfftinitializer.cpp
-    hostallocator.cpp
-    )
-
-if(GMX_USE_CUDA)
-    # CUDA-only test
-    list(APPEND SOURCES_FROM_CXX
+gmx_add_unit_test(GpuUtilsUnitTests gpu_utils-test HARDWARE_DETECTION
+    CPP_SOURCE_FILES
+        # Tests of code
+        clfftinitializer.cpp
+        device_availability.cpp
+        device_stream_manager.cpp
+        hostallocator.cpp
         pinnedmemorychecker.cpp
-        )
-    # TODO Making a separate library is heavy handed, but nothing else
-    # seems to work. Also don't use a hyphen in its name, because nvcc
-    # can't cope with that.
-    #
-    # Perhaps FindCUDA's support for single compilation units will help?
-    if (NOT GMX_CLANG_CUDA)
-        # Work around FindCUDA that prevents using target_link_libraries()
-        # with keywords otherwise...
-        set(CUDA_LIBRARIES PRIVATE ${CUDA_LIBRARIES})
-        cuda_add_library(gpu_utilstest_cuda
-            devicetransfers.cu
-            )
-    else()
-        include(gmxClangCudaUtils)
-        gmx_compile_cuda_file_with_clang(devicetransfers.cu)
-        add_library(gpu_utilstest_cuda
-            devicetransfers.cu
-            )
-    endif()
+        
+    GPU_CPP_SOURCE_FILES
+        device_buffer.cpp
+        typecasts.cpp
 
-    target_link_libraries(gpu_utilstest_cuda PRIVATE ${GMX_EXTRA_LIBRARIES} libgromacs)
+    CUDA_CU_SOURCE_FILES
+        devicetransfers.cu
+        typecasts_runner.cu
 
-elseif(GMX_USE_OPENCL)
-    # Do normal compilation of OpenCL files
-    list(APPEND SOURCES_FROM_CXX
+    OPENCL_CPP_SOURCE_FILES
         devicetransfers_ocl.cpp
-        )
-else()
-    # Do normal compilation of files with null implementations
-    list(APPEND SOURCES_FROM_CXX
+
+    SYCL_CPP_SOURCE_FILES
+        devicetransfers_sycl.cpp
+
+    NON_GPU_CPP_SOURCE_FILES
         devicetransfers.cpp
-        )
-endif()
-
-gmx_add_unit_test(GpuUtilsUnitTests gpu_utils-test
-    # Infrastructure
-    gputest.cpp
-    # Tests of code
-    ${SOURCES_FROM_CXX}
     )
-
-if(GMX_USE_CUDA)
-    target_link_libraries(gpu_utils-test PRIVATE gpu_utilstest_cuda)
-endif()
-if(GMX_USE_OPENCL)
-    target_link_libraries(gpu_utils-test PRIVATE ${OpenCL_LIBRARIES})
-endif()

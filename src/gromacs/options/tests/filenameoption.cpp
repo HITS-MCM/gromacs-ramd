@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -204,6 +205,40 @@ TEST(FileNameOptionTest, GivesErrorOnInvalidFileSuffix)
     EXPECT_NO_THROW_GMX(options.finish());
 
     EXPECT_TRUE(value.empty());
+}
+
+TEST(FileNameOptionTest, HandlesRequiredCsvValueWithoutExtension)
+{
+    gmx::Options options;
+    std::string  value;
+    ASSERT_NO_THROW_GMX(options.addOption(
+            FileNameOption("f").store(&value).required().filetype(gmx::eftCsv).outputFile().defaultBasename("testfile")));
+    EXPECT_EQ("testfile.csv", value);
+
+    gmx::OptionsAssigner assigner(&options);
+    EXPECT_NO_THROW_GMX(assigner.start());
+    EXPECT_NO_THROW_GMX(assigner.finish());
+    EXPECT_NO_THROW_GMX(options.finish());
+
+    EXPECT_EQ("testfile.csv", value);
+}
+
+TEST(FileNameOptionTest, HandlesRequiredCsvOptionWithoutValue)
+{
+    gmx::Options options;
+    std::string  value;
+    ASSERT_NO_THROW_GMX(options.addOption(
+            FileNameOption("f").store(&value).required().filetype(gmx::eftCsv).outputFile().defaultBasename("testfile")));
+    EXPECT_EQ("testfile.csv", value);
+
+    gmx::OptionsAssigner assigner(&options);
+    EXPECT_NO_THROW_GMX(assigner.start());
+    EXPECT_NO_THROW_GMX(assigner.startOption("f"));
+    EXPECT_NO_THROW_GMX(assigner.finishOption());
+    EXPECT_NO_THROW_GMX(assigner.finish());
+    EXPECT_NO_THROW_GMX(options.finish());
+
+    EXPECT_EQ("testfile.csv", value);
 }
 
 } // namespace

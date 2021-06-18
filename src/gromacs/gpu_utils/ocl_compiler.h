@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,6 +48,7 @@
 #include <string>
 
 #include "gromacs/gpu_utils/oclutils.h"
+#include "gromacs/hardware/device_information.h"
 
 namespace gmx
 {
@@ -58,7 +60,7 @@ namespace ocl
  *  This is platform implementation dependent and seems to only work on the Nvidia and AMD
  * platforms! Nvidia reports 32, AMD for GPU 64. Intel seems to report 16, but that is not correct,
  *  as it execution width can be between 8-32 and it's picked per-kernel at compile-time.
- *  Therefore, for Intel it should actually be queried separately for each kernel (Redmine #2520).
+ *  Therefore, for Intel it should actually be queried separately for each kernel (Issue #2520).
  *
  *  \param  context   Current OpenCL context
  *  \param  deviceId OpenCL device with the context
@@ -85,10 +87,12 @@ size_t getKernelWarpSize(cl_kernel kernel, cl_device_id deviceId);
  * \param[in]  kernelRelativePath    Relative path to the kernel in the source tree,
  *                                   e.g. "src/gromacs/mdlib/nbnxn_ocl" for NB kernels.
  * \param[in]  kernelBaseFilename    The name of the kernel source file to compile, e.g.
- * "nbnxn_ocl_kernels.cl" \param[in]  extraDefines          Preprocessor defines required by the
- * calling code, e.g. for configuring the kernels \param[in]  context               OpenCL context
- * on the device to compile for \param[in]  deviceId              OpenCL device id of the device to
- * compile for \param[in]  deviceVendorId        Enumerator of the device vendor to compile for
+ *                                   "nbnxn_ocl_kernels.cl"
+ * \param[in]  extraDefines          Preprocessor defines required by the calling code,
+ *                                   e.g. for configuring the kernels
+ * \param[in]  context               OpenCL context on the device to compile for
+ * \param[in]  deviceId              OpenCL device id of the device to compile for
+ * \param[in]  deviceVendor          Enumerator of the device vendor to compile for
  *
  * \returns The compiled OpenCL program
  *
@@ -106,7 +110,7 @@ cl_program compileProgram(FILE*              fplog,
                           const std::string& extraDefines,
                           cl_context         context,
                           cl_device_id       deviceId,
-                          ocl_vendor_id_t    deviceVendorId);
+                          DeviceVendor       deviceVendor);
 
 } // namespace ocl
 } // namespace gmx

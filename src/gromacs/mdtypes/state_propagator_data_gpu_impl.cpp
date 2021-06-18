@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -46,7 +46,7 @@
 
 #include "gromacs/mdtypes/state_propagator_data_gpu.h"
 
-#if GMX_GPU == GMX_GPU_NONE
+#if !GMX_GPU
 namespace gmx
 {
 
@@ -54,21 +54,18 @@ class StatePropagatorDataGpu::Impl
 {
 };
 
-StatePropagatorDataGpu::StatePropagatorDataGpu(const void* /* pmeStream       */,
-                                               const void* /* localStream     */,
-                                               const void* /* nonLocalStream  */,
-                                               const void* /* deviceContext   */,
+StatePropagatorDataGpu::StatePropagatorDataGpu(const DeviceStreamManager& /* deviceStreamManager */,
                                                GpuApiCallBehavior /* transferKind    */,
-                                               int /* paddingSize     */,
+                                               int /* allocationBlockSizeDivisor */,
                                                gmx_wallcycle* /*   wcycle */) :
     impl_(nullptr)
 {
 }
 
-StatePropagatorDataGpu::StatePropagatorDataGpu(const void* /* pmeStream       */,
-                                               const void* /* deviceContext   */,
+StatePropagatorDataGpu::StatePropagatorDataGpu(const DeviceStream* /* pmeStream       */,
+                                               const DeviceContext& /* deviceContext   */,
                                                GpuApiCallBehavior /* transferKind    */,
-                                               int /* paddingSize     */,
+                                               int /* allocationBlockSizeDivisor */,
                                                gmx_wallcycle* /*   wcycle */) :
     impl_(nullptr)
 {
@@ -82,25 +79,25 @@ StatePropagatorDataGpu::~StatePropagatorDataGpu() = default;
 
 void StatePropagatorDataGpu::reinit(int /* numAtomsLocal */, int /* numAtomsAll   */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 std::tuple<int, int> StatePropagatorDataGpu::getAtomRangesFromAtomLocality(AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return std::make_tuple(0, 0);
 }
 
-DeviceBuffer<float> StatePropagatorDataGpu::getCoordinates()
+DeviceBuffer<RVec> StatePropagatorDataGpu::getCoordinates()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
-    return DeviceBuffer<float>{};
+    return {};
 }
 
 GpuEventSynchronizer* StatePropagatorDataGpu::getCoordinatesReadyOnDeviceEvent(
@@ -108,7 +105,7 @@ GpuEventSynchronizer* StatePropagatorDataGpu::getCoordinatesReadyOnDeviceEvent(
         const SimulationWorkload& /* simulationWork */,
         const StepWorkload& /* stepWork       */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return nullptr;
@@ -116,14 +113,14 @@ GpuEventSynchronizer* StatePropagatorDataGpu::getCoordinatesReadyOnDeviceEvent(
 
 void StatePropagatorDataGpu::waitCoordinatesCopiedToDevice(AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 GpuEventSynchronizer* StatePropagatorDataGpu::xUpdatedOnDevice()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return nullptr;
@@ -132,14 +129,14 @@ GpuEventSynchronizer* StatePropagatorDataGpu::xUpdatedOnDevice()
 void StatePropagatorDataGpu::copyCoordinatesToGpu(const gmx::ArrayRef<const gmx::RVec> /* h_x */,
                                                   AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 void StatePropagatorDataGpu::waitCoordinatesReadyOnHost(AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
@@ -147,31 +144,31 @@ void StatePropagatorDataGpu::waitCoordinatesReadyOnHost(AtomLocality /* atomLoca
 void StatePropagatorDataGpu::copyCoordinatesFromGpu(gmx::ArrayRef<gmx::RVec> /* h_x          */,
                                                     AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 
-DeviceBuffer<float> StatePropagatorDataGpu::getVelocities()
+DeviceBuffer<RVec> StatePropagatorDataGpu::getVelocities()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
-    return DeviceBuffer<float>{};
+    return {};
 }
 
 void StatePropagatorDataGpu::copyVelocitiesToGpu(const gmx::ArrayRef<const gmx::RVec> /* h_v */,
                                                  AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 GpuEventSynchronizer* StatePropagatorDataGpu::getVelocitiesReadyOnDeviceEvent(AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return nullptr;
@@ -180,31 +177,31 @@ GpuEventSynchronizer* StatePropagatorDataGpu::getVelocitiesReadyOnDeviceEvent(At
 void StatePropagatorDataGpu::copyVelocitiesFromGpu(gmx::ArrayRef<gmx::RVec> /* h_v          */,
                                                    AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 void StatePropagatorDataGpu::waitVelocitiesReadyOnHost(AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 
-DeviceBuffer<float> StatePropagatorDataGpu::getForces()
+DeviceBuffer<RVec> StatePropagatorDataGpu::getForces()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
-    return DeviceBuffer<float>{};
+    return {};
 }
 
 void StatePropagatorDataGpu::copyForcesToGpu(const gmx::ArrayRef<const gmx::RVec> /* h_f          */,
                                              AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
@@ -212,7 +209,7 @@ void StatePropagatorDataGpu::copyForcesToGpu(const gmx::ArrayRef<const gmx::RVec
 GpuEventSynchronizer* StatePropagatorDataGpu::getForcesReadyOnDeviceEvent(AtomLocality /* atomLocality */,
                                                                           bool /* useGpuFBufferOps */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return nullptr;
@@ -220,7 +217,7 @@ GpuEventSynchronizer* StatePropagatorDataGpu::getForcesReadyOnDeviceEvent(AtomLo
 
 GpuEventSynchronizer* StatePropagatorDataGpu::fReducedOnDevice()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return nullptr;
@@ -229,22 +226,22 @@ GpuEventSynchronizer* StatePropagatorDataGpu::fReducedOnDevice()
 void StatePropagatorDataGpu::copyForcesFromGpu(gmx::ArrayRef<gmx::RVec> /* h_f          */,
                                                AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 void StatePropagatorDataGpu::waitForcesReadyOnHost(AtomLocality /* atomLocality */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
 }
 
 
-void* StatePropagatorDataGpu::getUpdateStream()
+const DeviceStream* StatePropagatorDataGpu::getUpdateStream()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return nullptr;
@@ -252,7 +249,7 @@ void* StatePropagatorDataGpu::getUpdateStream()
 
 int StatePropagatorDataGpu::numAtomsLocal()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return 0;
@@ -260,7 +257,7 @@ int StatePropagatorDataGpu::numAtomsLocal()
 
 int StatePropagatorDataGpu::numAtomsAll()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub method from GPU state propagator data was called instead of one from "
                "GPU implementation.");
     return 0;
@@ -268,4 +265,4 @@ int StatePropagatorDataGpu::numAtomsAll()
 
 } // namespace gmx
 
-#endif // GMX_GPU == GMX_GPU_NONE
+#endif // !GMX_GPU

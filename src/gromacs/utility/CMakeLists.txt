@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2010,2011,2012,2013,2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
+# Copyright (c) 2010,2011,2012,2013,2014 by the GROMACS development team.
+# Copyright (c) 2015,2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -33,12 +34,12 @@
 # the research papers on the package. Check out http://www.gromacs.org.
 
 file(GLOB UTILITY_SOURCES *.cpp)
-if (GMX_GPU AND NOT GMX_USE_OPENCL)
+if (GMX_GPU_CUDA)
     gmx_add_libgromacs_sources(cuda_version_information.cu)
 endif()
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${UTILITY_SOURCES} PARENT_SCOPE)
 
-# TODO: (https://redmine.gromacs.org/issues/988) Find a new convention for defining public API.
+# TODO: (https://gitlab.com/gromacs/gromacs/-/issues/988) Find a new convention for defining public API.
 install(FILES
         basedefinitions.h
         current_function.h
@@ -50,9 +51,10 @@ if(GMX_INSTALL_LEGACY_API)
   install(FILES
           arrayref.h
           baseversion.h
-	  classhelpers.h
+          classhelpers.h
           enumerationhelpers.h
-	  exceptions.h
+          exceptions.h
+          listoflists.h
 	  fileptr.h
 	  futil.h
 	  flags.h

@@ -1,8 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014, The GROMACS development team.
- * Copyright (c) 2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -108,6 +109,12 @@
 /* ARM (AArch64) NEON Advanced SIMD instruction set level was selected */
 #cmakedefine01 GMX_SIMD_ARM_NEON_ASIMD
 
+/* ARM (SVE) Scalable Vector extensions */
+#cmakedefine01 GMX_SIMD_ARM_SVE
+
+/* SVE vector length */
+#define GMX_SIMD_ARM_SVE_LENGTH_VALUE @GMX_SIMD_ARM_SVE_LENGTH_VALUE@
+
 /* IBM VMX was selected as SIMD instructions (Power 6 and later) */
 #cmakedefine01 GMX_SIMD_IBM_VMX
 
@@ -134,6 +141,9 @@
 
 /* Enable code that requires AVX-512 instruction support, without GMX_SIMD=AVX_512 */
 #cmakedefine01 SIMD_AVX_512_CXX_SUPPORTED
+
+/* Whether NBNXM and other SIMD kernels should be compiled */
+#cmakedefine01 GMX_USE_SIMD_KERNELS
 
 /* Whether a double-precision configuration may target accuracy equivalent to single precision */
 #cmakedefine01 GMX_RELAXED_DOUBLE_PRECISION
@@ -181,21 +191,6 @@
 /* Use if we cannot rename checkpoints */
 #cmakedefine01 GMX_NO_RENAME
 
-/* Use (modified) Gamess-UK for QM-MM calculations */
-#cmakedefine01 GMX_QMMM_GAMESS
-
-/* Use (modified) Gaussian0x for QM-MM calculations */
-#cmakedefine01 GMX_QMMM_GAUSSIAN
-
-/* Use (modified) Mopac 7 for QM-MM calculations */
-#cmakedefine01 GMX_QMMM_MOPAC
-
-/* Use ORCA for QM-MM calculations */
-#cmakedefine01 GMX_QMMM_ORCA
-
-/* Use cycle counters */
-#cmakedefine01 GMX_CYCLECOUNTERS
-
 /* Use sub-counters */
 #cmakedefine01 GMX_CYCLE_SUBCOUNTERS
 
@@ -238,12 +233,17 @@
 /* Enable x86 gcc inline assembly */
 #cmakedefine01 GMX_X86_GCC_INLINE_ASM
 
-/* Define constants useful for handling GPU support */
-#define GMX_GPU_NONE   0
-#define GMX_GPU_CUDA   1
-#define GMX_GPU_OPENCL 2
-/* Which kind of GPU support is configured */
-#define GMX_GPU @GMX_GPU_ACCELERATION_FRAMEWORK@
+/* Define if any type of GPU acceleration is compiled */
+#cmakedefine01 GMX_GPU
+
+/* Define if CUDA GPU acceleration is compiled */
+#cmakedefine01 GMX_GPU_CUDA
+
+/* Define if OpenCL GPU acceleration is compiled */
+#cmakedefine01 GMX_GPU_OPENCL
+
+/* Define if SYCL GPU acceleration is compiled */
+#cmakedefine01 GMX_GPU_SYCL
 
 /* Use a single compilation unit when compiling the CUDA (non-bonded) kernels.  */
 #cmakedefine01 GMX_CUDA_NB_SINGLE_COMPILATION_UNIT
@@ -262,6 +262,7 @@
 #define CMAKE_BUILD_TYPE_TSAN 8
 #define CMAKE_BUILD_TYPE_ASAN 9
 #define CMAKE_BUILD_TYPE_MSAN 10
+#define CMAKE_BUILD_TYPE_UBSAN 11
 #cmakedefine CMAKE_BUILD_TYPE CMAKE_BUILD_TYPE_@CMAKE_BUILD_TYPE_UPPER@
 
 /* Define relative path to OpenCL kernels */
@@ -295,8 +296,8 @@
 /* Define to 1 if you have the gettimeofday() function. */
 #cmakedefine01 HAVE_GETTIMEOFDAY
 
-/* Define to 1 if you have the rdtscp instruction. */
-#cmakedefine01 HAVE_RDTSCP
+/* Define to 1 if you have the rdtscp instruction (ie essentially all x86 still in use. */
+#cmakedefine01 GMX_USE_RDTSCP
 
 /* Define to 1 if you have the fsync() function. */
 #cmakedefine01 HAVE_FSYNC

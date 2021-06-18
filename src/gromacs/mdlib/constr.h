@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -63,11 +64,9 @@ struct gmx_mtop_t;
 struct gmx_multisim_t;
 struct gmx_wallcycle;
 struct pull_t;
-struct t_blocka;
 struct t_commrec;
 struct t_ilist;
 struct t_inputrec;
-struct t_mdatoms;
 struct t_nrnb;
 struct t_pbc;
 class t_state;
@@ -76,6 +75,8 @@ namespace gmx
 {
 template<typename T>
 class ArrayRefWithPadding;
+template<typename>
+class ListOfLists;
 
 //! Describes supported flavours of constrained updates.
 enum class ConstraintVariable : int
@@ -105,7 +106,6 @@ private:
                 const t_inputrec&     ir,
                 pull_t*               pull_work,
                 FILE*                 log,
-                const t_mdatoms&      md,
                 const t_commrec*      cr,
                 const gmx_multisim_t* ms,
                 t_nrnb*               nrnb,
@@ -132,12 +132,19 @@ public:
      *
      * \todo Make this a callback that is called automatically
      * once a new domain has been made. */
-    void setConstraints(const gmx_localtop_t& top, const t_mdatoms& md);
+    void setConstraints(gmx_localtop_t* top,
+                        int             numAtoms,
+                        int             numHomeAtoms,
+                        real*           masses,
+                        real*           inverseMasses,
+                        bool            hasMassPerturbedAtoms,
+                        real            lambda,
+                        unsigned short* cFREEZE);
 
     /*! \brief Applies constraints to coordinates.
      *
      * When econq=ConstraintVariable::Positions constrains
-     * coordinates xprime using th directions in x, min_proj is
+     * coordinates xprime using the directions in x, min_proj is
      * not used.
      *
      * When econq=ConstraintVariable::Derivative, calculates the
@@ -162,28 +169,31 @@ public:
      *
      * If v!=NULL also constrain v by adding the constraint corrections / dt.
      *
-     * If vir!=NULL calculate the constraint virial.
+     * If computeVirial is true, calculate the constraint virial.
      *
      * Return whether the application of constraints succeeded without error.
+     *
+     * /note x is non-const, because non-local atoms need to be communicated.
      */
-    bool apply(bool               bLog,
-               bool               bEner,
-               int64_t            step,
-               int                delta_step,
-               real               step_scaling,
-               rvec*              x,
-               rvec*              xprime,
-               rvec*              min_proj,
-               const matrix       box,
-               real               lambda,
-               real*              dvdlambda,
-               rvec*              v,
-               tensor*            vir,
-               ConstraintVariable econq);
+    bool apply(bool                      bLog,
+               bool                      bEner,
+               int64_t                   step,
+               int                       delta_step,
+               real                      step_scaling,
+               ArrayRefWithPadding<RVec> x,
+               ArrayRefWithPadding<RVec> xprime,
+               ArrayRef<RVec>            min_proj,
+               const matrix              box,
+               real                      lambda,
+               real*                     dvdlambda,
+               ArrayRefWithPadding<RVec> v,
+               bool                      computeVirial,
+               tensor                    constraintsVirial,
+               ConstraintVariable        econq);
     //! Links the essentialdynamics and constraint code.
     void saveEdsamPointer(gmx_edsam* ed);
     //! Getter for use by domain decomposition.
-    ArrayRef<const t_blocka> atom2constraints_moltype() const;
+    ArrayRef<const ListOfLists<int>> atom2constraints_moltype() const;
     //! Getter for use by domain decomposition.
     ArrayRef<const std::vector<int>> atom2settle_moltype() const;
 
@@ -211,10 +221,8 @@ private:
 [[noreturn]] void too_many_constraint_warnings(int eConstrAlg, int warncount);
 
 /*! \brief Returns whether constraint with parameter \p iparamsIndex is a flexible constraint */
-static inline bool isConstraintFlexible(const t_iparams* iparams, int iparamsIndex)
+static inline bool isConstraintFlexible(ArrayRef<const t_iparams> iparams, int iparamsIndex)
 {
-    GMX_ASSERT(iparams != nullptr, "Need a valid iparams array");
-
     return (iparams[iparamsIndex].constr.dA == 0 && iparams[iparamsIndex].constr.dB == 0);
 };
 
@@ -234,43 +242,46 @@ enum class FlexibleConstraintTreatment
 /*! \brief Returns the flexible constraint treatment depending on whether the integrator is dynamic */
 FlexibleConstraintTreatment flexibleConstraintTreatment(bool haveDynamicsIntegrator);
 
-/*! \brief Returns a block struct to go from atoms to constraints
+/*! \brief Returns a ListOfLists object to go from atoms to constraints
  *
- * The block struct will contain constraint indices with lower indices
+ * The object will contain constraint indices with lower indices
  * directly matching the order in F_CONSTR and higher indices matching
  * the order in F_CONSTRNC offset by the number of constraints in F_CONSTR.
  *
  * \param[in]  moltype   The molecule data
  * \param[in]  iparams   Interaction parameters, can be null when
- * flexibleConstraintTreatment=Include \param[in]  flexibleConstraintTreatment  The flexible
- * constraint treatment, see enum above \returns a block struct with all constraints for each atom
- */
-t_blocka make_at2con(const gmx_moltype_t&           moltype,
-                     gmx::ArrayRef<const t_iparams> iparams,
-                     FlexibleConstraintTreatment    flexibleConstraintTreatment);
-
-/*! \brief Returns a block struct to go from atoms to constraints
+ *                       \p flexibleConstraintTreatment==Include
+ * \param[in]  flexibleConstraintTreatment  The flexible constraint treatment,
+ *                                          see enum above
  *
- * The block struct will contain constraint indices with lower indices
+ * \returns a ListOfLists object with all constraints for each atom
+ */
+ListOfLists<int> make_at2con(const gmx_moltype_t&           moltype,
+                             gmx::ArrayRef<const t_iparams> iparams,
+                             FlexibleConstraintTreatment    flexibleConstraintTreatment);
+
+/*! \brief Returns a ListOfLists object to go from atoms to constraints
+ *
+ * The object will contain constraint indices with lower indices
  * directly matching the order in F_CONSTR and higher indices matching
  * the order in F_CONSTRNC offset by the number of constraints in F_CONSTR.
  *
  * \param[in]  numAtoms  The number of atoms to construct the list for
  * \param[in]  ilist     Interaction list, size F_NRE
  * \param[in]  iparams   Interaction parameters, can be null when
- * flexibleConstraintTreatment=Include \param[in]  flexibleConstraintTreatment  The flexible
- * constraint treatment, see enum above \returns a block struct with all constraints for each atom
+ *                       \p flexibleConstraintTreatment==Include
+ * \param[in]  flexibleConstraintTreatment  The flexible constraint treatment,
+ *                                          see enum above
+ *
+ * \returns a ListOfLists object with all constraints for each atom
  */
-t_blocka make_at2con(int                         numAtoms,
-                     const t_ilist*              ilist,
-                     const t_iparams*            iparams,
-                     FlexibleConstraintTreatment flexibleConstraintTreatment);
-
-/*! \brief Returns an array of atom to constraints lists for the moltypes */
-const t_blocka* atom2constraints_moltype(const Constraints* constr);
+ListOfLists<int> make_at2con(int                             numAtoms,
+                             ArrayRef<const InteractionList> ilist,
+                             ArrayRef<const t_iparams>       iparams,
+                             FlexibleConstraintTreatment     flexibleConstraintTreatment);
 
 //! Return the number of flexible constraints in the \c ilist and \c iparams.
-int countFlexibleConstraints(const t_ilist* ilist, const t_iparams* iparams);
+int countFlexibleConstraints(ArrayRef<const InteractionList> ilist, ArrayRef<const t_iparams> iparams);
 
 /*! \brief Returns the constraint iatoms for a constraint number con
  * which comes from a list where F_CONSTR and F_CONSTRNC constraints
@@ -299,12 +310,39 @@ bool inter_charge_group_settles(const gmx_mtop_t& mtop);
 void do_constrain_first(FILE*                     log,
                         gmx::Constraints*         constr,
                         const t_inputrec*         inputrec,
-                        const t_mdatoms*          md,
-                        int                       natoms,
+                        int                       numAtoms,
+                        int                       numHomeAtoms,
                         ArrayRefWithPadding<RVec> x,
                         ArrayRefWithPadding<RVec> v,
                         const matrix              box,
                         real                      lambda);
+
+/*! \brief Constrain velocities only.
+ *
+ * The dvdlambda contribution has to be added to the bonded interactions
+ */
+void constrain_velocities(gmx::Constraints* constr,
+                          bool              do_log,
+                          bool              do_ene,
+                          int64_t           step,
+                          t_state*          state,
+                          real*             dvdlambda,
+                          gmx_bool          computeVirial,
+                          tensor            constraintsVirial);
+
+/*! \brief Constraint coordinates.
+ *
+ * The dvdlambda contribution has to be added to the bonded interactions
+ */
+void constrain_coordinates(gmx::Constraints*         constr,
+                           bool                      do_log,
+                           bool                      do_ene,
+                           int64_t                   step,
+                           t_state*                  state,
+                           ArrayRefWithPadding<RVec> xp,
+                           real*                     dvdlambda,
+                           gmx_bool                  computeVirial,
+                           tensor                    constraintsVirial);
 
 } // namespace gmx
 

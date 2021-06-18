@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -53,21 +53,22 @@
 
 struct gmx_mtop_t;
 struct gmx_multisim_t;
-struct t_blocka;
+class InteractionDefinitions;
 struct t_commrec;
-struct t_idef;
 struct t_inputrec;
-struct t_mdatoms;
 struct t_nrnb;
 struct t_pbc;
 
 namespace gmx
 {
 
+template<typename>
+class ArrayRefWithPadding;
 enum class ConstraintVariable : int;
-
-/* Abstract type for LINCS that is defined only in the file that uses it */
 class Lincs;
+template<typename>
+class ListOfLists;
+
 
 /*! \brief Return the data for determining constraint RMS relative deviations. */
 ArrayRef<real> lincs_rmsdData(Lincs* lincsd);
@@ -76,45 +77,52 @@ ArrayRef<real> lincs_rmsdData(Lincs* lincsd);
 real lincs_rmsd(const Lincs* lincsd);
 
 /*! \brief Initializes and returns the lincs data struct. */
-Lincs* init_lincs(FILE*                    fplog,
-                  const gmx_mtop_t&        mtop,
-                  int                      nflexcon_global,
-                  ArrayRef<const t_blocka> at2con,
-                  bool                     bPLINCS,
-                  int                      nIter,
-                  int                      nProjOrder);
+Lincs* init_lincs(FILE*                            fplog,
+                  const gmx_mtop_t&                mtop,
+                  int                              nflexcon_global,
+                  ArrayRef<const ListOfLists<int>> atomsToConstraintsPerMolType,
+                  bool                             bPLINCS,
+                  int                              nIter,
+                  int                              nProjOrder);
 
 /*! \brief Destructs the lincs object when it is not nullptr. */
 void done_lincs(Lincs* li);
 
 /*! \brief Initialize lincs stuff */
-void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_commrec* cr, Lincs* li);
+void set_lincs(const InteractionDefinitions& idef,
+               int                           numAtoms,
+               const real*                   invmass,
+               real                          lambda,
+               bool                          bDynamics,
+               const t_commrec*              cr,
+               Lincs*                        li);
 
 /*! \brief Applies LINCS constraints.
  *
  * \returns true if the constraining succeeded. */
-bool constrain_lincs(bool                  computeRmsd,
-                     const t_inputrec&     ir,
-                     int64_t               step,
-                     Lincs*                lincsd,
-                     const t_mdatoms&      md,
-                     const t_commrec*      cr,
-                     const gmx_multisim_t* ms,
-                     const rvec*           x,
-                     rvec*                 xprime,
-                     rvec*                 min_proj,
-                     const matrix          box,
-                     t_pbc*                pbc,
-                     real                  lambda,
-                     real*                 dvdlambda,
-                     real                  invdt,
-                     rvec*                 v,
-                     bool                  bCalcVir,
-                     tensor                vir_r_m_dr,
-                     ConstraintVariable    econq,
-                     t_nrnb*               nrnb,
-                     int                   maxwarn,
-                     int*                  warncount);
+bool constrain_lincs(bool                            computeRmsd,
+                     const t_inputrec&               ir,
+                     int64_t                         step,
+                     Lincs*                          lincsd,
+                     const real*                     invmass,
+                     const t_commrec*                cr,
+                     const gmx_multisim_t*           ms,
+                     ArrayRefWithPadding<const RVec> x,
+                     ArrayRefWithPadding<RVec>       xprime,
+                     ArrayRef<RVec>                  min_proj,
+                     const matrix                    box,
+                     t_pbc*                          pbc,
+                     bool                            hasMassPerturbed,
+                     real                            lambda,
+                     real*                           dvdlambda,
+                     real                            invdt,
+                     ArrayRef<RVec>                  v,
+                     bool                            bCalcVir,
+                     tensor                          vir_r_m_dr,
+                     ConstraintVariable              econq,
+                     t_nrnb*                         nrnb,
+                     int                             maxwarn,
+                     int*                            warncount);
 
 } // namespace gmx
 

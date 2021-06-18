@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,12 +49,14 @@
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdtypes/forceoutput.h"
+#include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/nblist.h"
 #include "gromacs/tables/forcetable.h"
 #include "gromacs/topology/topology.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
@@ -104,7 +107,7 @@ void make_wall_tables(FILE*                   fplog,
     }
 }
 
-[[noreturn]] static void wall_error(int a, const rvec* x, real r)
+[[noreturn]] static void wall_error(int a, gmx::ArrayRef<const gmx::RVec> x, real r)
 {
     gmx_fatal(FARGS,
               "An atom is beyond the wall: coordinates %f %f %f, distance %f\n"
@@ -115,7 +118,7 @@ void make_wall_tables(FILE*                   fplog,
 static void tableForce(real r, const t_forcetable& tab, real Cd, real Cr, real* V, real* F)
 {
     const real  tabscale = tab.scale;
-    const real* VFtab    = tab.data;
+    const real* VFtab    = tab.data.data();
 
     real rt = r * tabscale;
     int  n0 = static_cast<int>(rt);
@@ -156,15 +159,15 @@ static void tableForce(real r, const t_forcetable& tab, real Cd, real Cr, real* 
     }
 }
 
-real do_walls(const t_inputrec&     ir,
-              const t_forcerec&     fr,
-              const matrix          box,
-              const t_mdatoms&      md,
-              const rvec*           x,
-              gmx::ForceWithVirial* forceWithVirial,
-              real                  lambda,
-              real                  Vlj[],
-              t_nrnb*               nrnb)
+real do_walls(const t_inputrec&              ir,
+              const t_forcerec&              fr,
+              const matrix                   box,
+              const t_mdatoms&               md,
+              gmx::ArrayRef<const gmx::RVec> x,
+              gmx::ForceWithVirial*          forceWithVirial,
+              real                           lambda,
+              real                           Vlj[],
+              t_nrnb*                        nrnb)
 {
     constexpr real sixth   = 1.0 / 6.0;
     constexpr real twelfth = 1.0 / 12.0;
@@ -176,7 +179,7 @@ real do_walls(const t_inputrec&     ir,
     const int   nwall     = ir.nwall;
     const int   ngid      = ir.opts.ngener;
     const int   ntype     = fr.ntype;
-    const real* nbfp      = fr.nbfp;
+    const real* nbfp      = fr.nbfp.data();
     const int*  egp_flags = fr.egp_flags;
 
     for (int w = 0; w < nwall; w++)

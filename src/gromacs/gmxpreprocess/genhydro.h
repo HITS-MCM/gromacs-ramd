@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -38,12 +38,19 @@
 #ifndef GMX_GMXPREPROCESS_GENHYDRO_H
 #define GMX_GMXPREPROCESS_GENHYDRO_H
 
+#include <vector>
+
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/arrayref.h"
 
 struct t_atoms;
 struct t_symtab;
 struct MoleculePatchDatabase;
+
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+}
 
 /*! \brief
  * Generate hydrogen atoms and N and C terminal patches.
@@ -59,6 +66,7 @@ struct MoleculePatchDatabase;
  * \param[in] rN Residue number of the N-terminus of each chain.
  * \param[in] rC Residue number of the C-terminus of each chain.
  * \param[in] bMissing If routine should continue if atoms are not found.
+ * \param[in] cyclicBondsIndex Index of cyclic bonds or empty.
  * \returns New total number of atoms.
  */
 int add_h(t_atoms**                                   initialAtoms,
@@ -71,5 +79,6 @@ int add_h(t_atoms**                                   initialAtoms,
           gmx::ArrayRef<MoleculePatchDatabase* const> ctdb,
           gmx::ArrayRef<const int>                    rN,
           gmx::ArrayRef<const int>                    rC,
-          bool                                        bMissing);
+          bool                                        bMissing,
+          gmx::ArrayRef<const int>                    cyclicBondsIndex);
 #endif

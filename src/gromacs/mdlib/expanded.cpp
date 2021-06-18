@@ -1390,8 +1390,7 @@ int ExpandedEnsembleDynamics(FILE*                 log,
             if (ir->bSimTemp)
             {
                 /* Note -- this assumes no mass changes, since kinetic energy is not added  . . . */
-                scaled_lamee[i] = (enerd->enerpart_lambda[i + 1] - enerd->enerpart_lambda[0])
-                                          / (simtemp->temperatures[i] * BOLTZ)
+                scaled_lamee[i] = enerd->foreignLambdaTerms.deltaH(i) / (simtemp->temperatures[i] * BOLTZ)
                                   + enerd->term[F_EPOT]
                                             * (1.0 / (simtemp->temperatures[i])
                                                - 1.0 / (simtemp->temperatures[fep_state]))
@@ -1399,8 +1398,7 @@ int ExpandedEnsembleDynamics(FILE*                 log,
             }
             else
             {
-                scaled_lamee[i] = (enerd->enerpart_lambda[i + 1] - enerd->enerpart_lambda[0])
-                                  / (expand->mc_temp * BOLTZ);
+                scaled_lamee[i] = enerd->foreignLambdaTerms.deltaH(i) / (expand->mc_temp * BOLTZ);
                 /* mc_temp is currently set to the system reft unless otherwise defined */
             }
 

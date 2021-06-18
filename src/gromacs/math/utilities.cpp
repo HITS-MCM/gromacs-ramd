@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,7 +46,6 @@
 #include <cmath>
 
 #include <algorithm>
-
 #include <cfenv>
 
 //! Floating point exception set that we use and care about
@@ -88,18 +88,6 @@ gmx_bool check_int_multiply_for_overflow(int64_t a, int64_t b, int64_t* result)
     }
     *result = sign * a * b;
     return TRUE;
-}
-
-int gmx_greatest_common_divisor(int p, int q)
-{
-    int tmp;
-    while (q != 0)
-    {
-        tmp = q;
-        q   = p % q;
-        p   = tmp;
-    }
-    return p;
 }
 
 int gmx_feenableexcept()
@@ -151,16 +139,4 @@ int gmx_fedisableexcept()
 #else
     return -1;
 #endif
-}
-
-real max_cutoff(real cutoff1, real cutoff2)
-{
-    if (cutoff1 == 0 || cutoff2 == 0)
-    {
-        return 0;
-    }
-    else
-    {
-        return std::max(cutoff1, cutoff2);
-    }
 }

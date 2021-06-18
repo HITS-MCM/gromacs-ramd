@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,7 +50,10 @@
 
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
+#include "gromacs/gpu_utils/device_context.h"
+#include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/devicebuffer.h"
+#include "gromacs/gpu_utils/typecasts.cuh"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/topology/forcefieldparameters.h"
@@ -59,42 +62,61 @@ struct t_forcerec;
 
 namespace gmx
 {
+// Number of CUDA threads in a block
+constexpr static int c_threadsPerBlock = 256;
 
 // ---- GpuBonded::Impl
 
-GpuBonded::Impl::Impl(const gmx_ffparams_t& ffparams, void* streamPtr, gmx_wallcycle* wcycle)
+GpuBonded::Impl::Impl(const gmx_ffparams_t& ffparams,
+                      const float           electrostaticsScaleFactor,
+                      const DeviceContext&  deviceContext,
+                      const DeviceStream&   deviceStream,
+                      gmx_wallcycle*        wcycle) :
+    deviceContext_(deviceContext),
+    deviceStream_(deviceStream)
 {
-    stream_ = *static_cast<CommandStream*>(streamPtr);
+    GMX_RELEASE_ASSERT(deviceStream.isValid(),
+                       "Can't run GPU version of bonded forces in stream that is not valid.");
+
+    static_assert(c_threadsPerBlock >= SHIFTS,
+                  "Threads per block in GPU bonded must be >= SHIFTS for the virial kernel "
+                  "(calcVir=true)");
+
     wcycle_ = wcycle;
 
-    allocateDeviceBuffer(&d_forceParams_, ffparams.numTypes(), nullptr);
+    allocateDeviceBuffer(&d_forceParams_, ffparams.numTypes(), deviceContext_);
     // This could be an async transfer (if the source is pinned), so
     // long as it uses the same stream as the kernels and we are happy
     // to consume additional pinned pages.
-    copyToDeviceBuffer(&d_forceParams_, ffparams.iparams.data(), 0, ffparams.numTypes(), stream_,
-                       GpuApiCallBehavior::Sync, nullptr);
+    copyToDeviceBuffer(&d_forceParams_, ffparams.iparams.data(), 0, ffparams.numTypes(),
+                       deviceStream_, GpuApiCallBehavior::Sync, nullptr);
     vTot_.resize(F_NRE);
-    allocateDeviceBuffer(&d_vTot_, F_NRE, nullptr);
-    clearDeviceBufferAsync(&d_vTot_, 0, F_NRE, stream_);
+    allocateDeviceBuffer(&d_vTot_, F_NRE, deviceContext_);
+    clearDeviceBufferAsync(&d_vTot_, 0, F_NRE, deviceStream_);
 
-    for (int fType = 0; fType < F_NRE; fType++)
-    {
-        d_iLists_[fType].nr     = 0;
-        d_iLists_[fType].iatoms = nullptr;
-        d_iLists_[fType].nalloc = 0;
-    }
-
-    kernelParams_.d_forceParams = d_forceParams_;
-    kernelParams_.d_xq          = d_xq_;
-    kernelParams_.d_f           = d_f_;
-    kernelParams_.d_fShift      = d_fShift_;
-    kernelParams_.d_vTot        = d_vTot_;
+    kernelParams_.electrostaticsScaleFactor = electrostaticsScaleFactor;
+    kernelParams_.d_forceParams             = d_forceParams_;
+    kernelParams_.d_xq                      = d_xq_;
+    kernelParams_.d_f                       = d_f_;
+    kernelParams_.d_fShift                  = d_fShift_;
+    kernelParams_.d_vTot                    = d_vTot_;
     for (int i = 0; i < numFTypesOnGpu; i++)
     {
         kernelParams_.d_iatoms[i]        = nullptr;
         kernelParams_.fTypeRangeStart[i] = 0;
         kernelParams_.fTypeRangeEnd[i]   = -1;
     }
+
+    int fTypeRangeEnd = kernelParams_.fTypeRangeEnd[numFTypesOnGpu - 1];
+
+    kernelLaunchConfig_.blockSize[0] = c_threadsPerBlock;
+    kernelLaunchConfig_.blockSize[1] = 1;
+    kernelLaunchConfig_.blockSize[2] = 1;
+    kernelLaunchConfig_.gridSize[0]  = (fTypeRangeEnd + c_threadsPerBlock) / c_threadsPerBlock;
+    kernelLaunchConfig_.gridSize[1]  = 1;
+    kernelLaunchConfig_.gridSize[2]  = 1;
+    kernelLaunchConfig_.sharedMemorySize =
+            SHIFTS * sizeof(float3) + (c_threadsPerBlock / warp_size) * 3 * sizeof(float);
 }
 
 GpuBonded::Impl::~Impl()
@@ -113,21 +135,21 @@ GpuBonded::Impl::~Impl()
 }
 
 //! Return whether function type \p fType in \p idef has perturbed interactions
-static bool fTypeHasPerturbedEntries(const t_idef& idef, int fType)
+static bool fTypeHasPerturbedEntries(const InteractionDefinitions& idef, int fType)
 {
     GMX_ASSERT(idef.ilsort == ilsortNO_FE || idef.ilsort == ilsortFE_SORTED,
                "Perturbed interations should be sorted here");
 
-    const t_ilist& ilist = idef.il[fType];
+    const InteractionList& ilist = idef.il[fType];
 
-    return (idef.ilsort != ilsortNO_FE && ilist.nr_nonperturbed != ilist.nr);
+    return (idef.ilsort != ilsortNO_FE && idef.numNonperturbedInteractions[fType] != ilist.size());
 }
 
 //! Converts \p src with atom indices in state order to \p dest in nbnxn order
-static void convertIlistToNbnxnOrder(const t_ilist&       src,
-                                     HostInteractionList* dest,
-                                     int                  numAtomsPerInteraction,
-                                     ArrayRef<const int>  nbnxnAtomOrder)
+static void convertIlistToNbnxnOrder(const InteractionList& src,
+                                     HostInteractionList*   dest,
+                                     int                    numAtomsPerInteraction,
+                                     ArrayRef<const int>    nbnxnAtomOrder)
 {
     GMX_ASSERT(src.size() == 0 || !nbnxnAtomOrder.empty(), "We need the nbnxn atom order");
 
@@ -170,12 +192,14 @@ static inline int roundUpToFactor(const int input, const int factor)
  *  types are assigned in blocks sized as <warp_size>. The beginning and end (thread index) of each
  *  interaction type are stored in kernelParams_. Pointers to the relevant data structures on the
  *  GPU are also stored in kernelParams_.
+ *
+ * \todo Use DeviceBuffer for the d_xqPtr.
  */
 void GpuBonded::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<const int> nbnxnAtomOrder,
-                                                             const t_idef&       idef,
-                                                             void*               d_xqPtr,
-                                                             void*               d_fPtr,
-                                                             void*               d_fShiftPtr)
+                                                             const InteractionDefinitions& idef,
+                                                             void*                         d_xqPtr,
+                                                             DeviceBuffer<RVec>            d_fPtr,
+                                                             DeviceBuffer<RVec> d_fShiftPtr)
 {
     // TODO wallcycle sub start
     haveInteractions_ = false;
@@ -189,7 +213,7 @@ void GpuBonded::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<const int>
          * But instead of doing all interactions on the CPU, we can
          * still easily handle the types that have no perturbed
          * interactions on the GPU. */
-        if (idef.il[fType].nr > 0 && !fTypeHasPerturbedEntries(idef, fType))
+        if (!idef.il[fType].empty() && !fTypeHasPerturbedEntries(idef, fType))
         {
             haveInteractions_ = true;
 
@@ -208,9 +232,10 @@ void GpuBonded::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<const int>
         {
             t_ilist& d_iList = d_iLists_[fType];
 
-            reallocateDeviceBuffer(&d_iList.iatoms, iList.size(), &d_iList.nr, &d_iList.nalloc, nullptr);
+            reallocateDeviceBuffer(&d_iList.iatoms, iList.size(), &d_iList.nr, &d_iList.nalloc,
+                                   deviceContext_);
 
-            copyToDeviceBuffer(&d_iList.iatoms, iList.iatoms.data(), 0, iList.size(), stream_,
+            copyToDeviceBuffer(&d_iList.iatoms, iList.iatoms.data(), 0, iList.size(), deviceStream_,
                                GpuApiCallBehavior::Async, nullptr);
         }
         kernelParams_.fTypesOnGpu[fTypesCounter]    = fType;
@@ -242,9 +267,12 @@ void GpuBonded::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<const int>
         fTypesCounter++;
     }
 
+    int fTypeRangeEnd               = kernelParams_.fTypeRangeEnd[numFTypesOnGpu - 1];
+    kernelLaunchConfig_.gridSize[0] = (fTypeRangeEnd + c_threadsPerBlock) / c_threadsPerBlock;
+
     d_xq_     = static_cast<float4*>(d_xqPtr);
-    d_f_      = static_cast<fvec*>(d_fPtr);
-    d_fShift_ = static_cast<fvec*>(d_fShiftPtr);
+    d_f_      = asFloat3(d_fPtr);
+    d_fShift_ = asFloat3(d_fShiftPtr);
 
     kernelParams_.d_xq          = d_xq_;
     kernelParams_.d_f           = d_f_;
@@ -253,6 +281,13 @@ void GpuBonded::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<const int>
     kernelParams_.d_vTot        = d_vTot_;
 
     // TODO wallcycle sub stop
+}
+
+void GpuBonded::Impl::setPbc(PbcType pbcType, const matrix box, bool canMoleculeSpanPbc)
+{
+    PbcAiuc pbcAiuc;
+    setPbcAiuc(canMoleculeSpanPbc ? numPbcDimensions(pbcType) : 0, box, &pbcAiuc);
+    kernelParams_.pbcAiuc = pbcAiuc;
 }
 
 bool GpuBonded::Impl::haveInteractions() const
@@ -265,11 +300,10 @@ void GpuBonded::Impl::launchEnergyTransfer()
     GMX_ASSERT(haveInteractions_,
                "No GPU bonded interactions, so no energies will be computed, so transfer should "
                "not be called");
-
     wallcycle_sub_start_nocount(wcycle_, ewcsLAUNCH_GPU_BONDED);
     // TODO add conditional on whether there has been any compute (and make sure host buffer doesn't contain garbage)
     float* h_vTot = vTot_.data();
-    copyFromDeviceBuffer(h_vTot, &d_vTot_, 0, F_NRE, stream_, GpuApiCallBehavior::Async, nullptr);
+    copyFromDeviceBuffer(h_vTot, &d_vTot_, 0, F_NRE, deviceStream_, GpuApiCallBehavior::Async, nullptr);
     wallcycle_sub_stop(wcycle_, ewcsLAUNCH_GPU_BONDED);
 }
 
@@ -280,7 +314,7 @@ void GpuBonded::Impl::waitAccumulateEnergyTerms(gmx_enerdata_t* enerd)
                "accumulation should not occur");
 
     wallcycle_start(wcycle_, ewcWAIT_GPU_BONDED);
-    cudaError_t stat = cudaStreamSynchronize(stream_);
+    cudaError_t stat = cudaStreamSynchronize(deviceStream_.stream());
     CU_RET_ERR(stat, "D2H transfer of bonded energies failed");
     wallcycle_stop(wcycle_, ewcWAIT_GPU_BONDED);
 
@@ -303,32 +337,50 @@ void GpuBonded::Impl::clearEnergies()
 {
     wallcycle_start_nocount(wcycle_, ewcLAUNCH_GPU);
     wallcycle_sub_start_nocount(wcycle_, ewcsLAUNCH_GPU_BONDED);
-    clearDeviceBufferAsync(&d_vTot_, 0, F_NRE, stream_);
+    clearDeviceBufferAsync(&d_vTot_, 0, F_NRE, deviceStream_);
     wallcycle_sub_stop(wcycle_, ewcsLAUNCH_GPU_BONDED);
     wallcycle_stop(wcycle_, ewcLAUNCH_GPU);
 }
 
 // ---- GpuBonded
 
-GpuBonded::GpuBonded(const gmx_ffparams_t& ffparams, void* streamPtr, gmx_wallcycle* wcycle) :
-    impl_(new Impl(ffparams, streamPtr, wcycle))
+GpuBonded::GpuBonded(const gmx_ffparams_t& ffparams,
+                     const float           electrostaticsScaleFactor,
+                     const DeviceContext&  deviceContext,
+                     const DeviceStream&   deviceStream,
+                     gmx_wallcycle*        wcycle) :
+    impl_(new Impl(ffparams, electrostaticsScaleFactor, deviceContext, deviceStream, wcycle))
 {
 }
 
 GpuBonded::~GpuBonded() = default;
 
-void GpuBonded::updateInteractionListsAndDeviceBuffers(ArrayRef<const int> nbnxnAtomOrder,
-                                                       const t_idef&       idef,
-                                                       void*               d_xq,
-                                                       void*               d_f,
-                                                       void*               d_fShift)
+void GpuBonded::updateInteractionListsAndDeviceBuffers(ArrayRef<const int>           nbnxnAtomOrder,
+                                                       const InteractionDefinitions& idef,
+                                                       void*                         d_xq,
+                                                       DeviceBuffer<RVec>            d_f,
+                                                       DeviceBuffer<RVec>            d_fShift)
 {
     impl_->updateInteractionListsAndDeviceBuffers(nbnxnAtomOrder, idef, d_xq, d_f, d_fShift);
+}
+
+void GpuBonded::setPbc(PbcType pbcType, const matrix box, bool canMoleculeSpanPbc)
+{
+    impl_->setPbc(pbcType, box, canMoleculeSpanPbc);
 }
 
 bool GpuBonded::haveInteractions() const
 {
     return impl_->haveInteractions();
+}
+
+void GpuBonded::setPbcAndlaunchKernel(PbcType                  pbcType,
+                                      const matrix             box,
+                                      bool                     canMoleculeSpanPbc,
+                                      const gmx::StepWorkload& stepWork)
+{
+    setPbc(pbcType, box, canMoleculeSpanPbc);
+    launchKernel(stepWork);
 }
 
 void GpuBonded::launchEnergyTransfer()

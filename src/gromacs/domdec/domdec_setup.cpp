@@ -314,7 +314,7 @@ real comm_box_frac(const gmx::IVec& dd_nc, real cutoff, const gmx_ddbox_t& ddbox
 /*! \brief Return whether the DD inhomogeneous in the z direction */
 static gmx_bool inhomogeneous_z(const t_inputrec& ir)
 {
-    return ((EEL_PME(ir.coulombtype) || ir.coulombtype == eelEWALD) && ir.ePBC == epbcXYZ
+    return ((EEL_PME(ir.coulombtype) || ir.coulombtype == eelEWALD) && ir.pbcType == PbcType::Xyz
             && ir.ewald_geometry == eewg3DC);
 }
 
@@ -364,8 +364,8 @@ static float comm_cost_est(real               limit,
     float temp;
 
     /* Check the DD algorithm restrictions */
-    if ((ir.ePBC == epbcXY && ir.nwall < 2 && nc[ZZ] > 1)
-        || (ir.ePBC == epbcSCREW && (nc[XX] == 1 || nc[YY] > 1 || nc[ZZ] > 1)))
+    if ((ir.pbcType == PbcType::XY && ir.nwall < 2 && nc[ZZ] > 1)
+        || (ir.pbcType == PbcType::Screw && (nc[XX] == 1 || nc[YY] > 1 || nc[ZZ] > 1)))
     {
         return -1;
     }
@@ -528,7 +528,7 @@ static float comm_cost_est(real               limit,
 
     /* Add cost of pbc_dx for bondeds */
     cost_pbcdx = 0;
-    if ((nc[XX] == 1 || nc[YY] == 1) || (nc[ZZ] == 1 && ir.ePBC != epbcXY))
+    if ((nc[XX] == 1 || nc[YY] == 1) || (nc[ZZ] == 1 && ir.pbcType != PbcType::XY))
     {
         if ((ddbox.tric_dir[XX] && nc[XX] == 1) || (ddbox.tric_dir[YY] && nc[YY] == 1))
         {
@@ -553,7 +553,6 @@ static float comm_cost_est(real               limit,
 /*! \brief Assign penalty factors to possible domain decompositions,
  * based on the estimated communication costs. */
 static void assign_factors(const real         limit,
-                           const bool         request1D,
                            const real         cutoff,
                            const matrix       box,
                            const gmx_ddbox_t& ddbox,
@@ -573,14 +572,6 @@ static void assign_factors(const real         limit,
 
     if (ndiv == 0)
     {
-        const int  maxDimensionSize        = std::max(ir_try[XX], std::max(ir_try[YY], ir_try[ZZ]));
-        const int  productOfDimensionSizes = ir_try[XX] * ir_try[YY] * ir_try[ZZ];
-        const bool decompositionHasOneDimension = (maxDimensionSize == productOfDimensionSizes);
-        if (request1D && !decompositionHasOneDimension)
-        {
-            /* We requested 1D DD, but got multiple dimensions */
-            return;
-        }
 
         ce = comm_cost_est(limit, cutoff, box, ddbox, natoms, ir, pbcdxr, npme, ir_try);
         if (ce >= 0
@@ -611,8 +602,8 @@ static void assign_factors(const real         limit,
             }
 
             /* recurse */
-            assign_factors(limit, request1D, cutoff, box, ddbox, natoms, ir, pbcdxr, npme, ndiv - 1,
-                           div + 1, mdiv + 1, irTryPtr, opt);
+            assign_factors(limit, cutoff, box, ddbox, natoms, ir, pbcdxr, npme, ndiv - 1, div + 1,
+                           mdiv + 1, irTryPtr, opt);
 
             for (i = 0; i < mdiv[0] - x - y; i++)
             {
@@ -639,7 +630,6 @@ static gmx::IVec optimizeDDCells(const gmx::MDLogger& mdlog,
                                  const int            numRanksRequested,
                                  const int            numPmeOnlyRanks,
                                  const real           cellSizeLimit,
-                                 const bool           request1DAnd1Pulse,
                                  const gmx_mtop_t&    mtop,
                                  const matrix         box,
                                  const gmx_ddbox_t&   ddbox,
@@ -716,24 +706,19 @@ static gmx::IVec optimizeDDCells(const gmx::MDLogger& mdlog,
 
     gmx::IVec itry       = { 1, 1, 1 };
     gmx::IVec numDomains = { 0, 0, 0 };
-    assign_factors(cellSizeLimit, request1DAnd1Pulse, systemInfo.cutoff, box, ddbox, mtop.natoms, ir,
-                   pbcdxr, numRanksDoingPmeWork, div.size(), div.data(), mdiv.data(), &itry, &numDomains);
+    assign_factors(cellSizeLimit, systemInfo.cutoff, box, ddbox, mtop.natoms, ir, pbcdxr,
+                   numRanksDoingPmeWork, div.size(), div.data(), mdiv.data(), &itry, &numDomains);
 
     return numDomains;
 }
 
 real getDDGridSetupCellSizeLimit(const gmx::MDLogger& mdlog,
-                                 const bool           request1DAnd1Pulse,
                                  const bool           bDynLoadBal,
                                  const real           dlb_scale,
                                  const t_inputrec&    ir,
-                                 const real           systemInfoCellSizeLimit)
+                                 real                 systemInfoCellSizeLimit)
 {
     real cellSizeLimit = systemInfoCellSizeLimit;
-    if (request1DAnd1Pulse)
-    {
-        cellSizeLimit = std::max(cellSizeLimit, ir.rlist);
-    }
 
     /* Add a margin for DLB and/or pressure scaling */
     if (bDynLoadBal)
@@ -904,7 +889,8 @@ static int set_dd_dim(const gmx::IVec& numDDCells, const DDSettings& ddSettings,
 }
 
 DDGridSetup getDDGridSetup(const gmx::MDLogger&           mdlog,
-                           const t_commrec*               cr,
+                           DDRole                         ddRole,
+                           MPI_Comm                       communicator,
                            const int                      numRanksRequested,
                            const DomdecOptions&           options,
                            const DDSettings&              ddSettings,
@@ -918,37 +904,29 @@ DDGridSetup getDDGridSetup(const gmx::MDLogger&           mdlog,
 {
     int numPmeOnlyRanks = getNumPmeOnlyRanksToUse(mdlog, options, mtop, ir, box, numRanksRequested);
 
-    if (ddSettings.request1DAnd1Pulse && (numRanksRequested - numPmeOnlyRanks == 1))
-    {
-        // With only one PP rank, there will not be a need for
-        // GPU-based halo exchange that wants to request that any DD
-        // has only 1 dimension and 1 pulse.
-        return DDGridSetup{};
-    }
-
     gmx::IVec numDomains;
     if (options.numCells[XX] > 0)
     {
         numDomains                      = gmx::IVec(options.numCells);
         const ivec numDomainsLegacyIvec = { numDomains[XX], numDomains[YY], numDomains[ZZ] };
-        set_ddbox_cr(*cr, &numDomainsLegacyIvec, ir, box, xGlobal, ddbox);
+        set_ddbox_cr(ddRole, communicator, &numDomainsLegacyIvec, ir, box, xGlobal, ddbox);
     }
     else
     {
-        set_ddbox_cr(*cr, nullptr, ir, box, xGlobal, ddbox);
+        set_ddbox_cr(ddRole, communicator, nullptr, ir, box, xGlobal, ddbox);
 
-        if (MASTER(cr))
+        if (ddRole == DDRole::Master)
         {
             numDomains = optimizeDDCells(mdlog, numRanksRequested, numPmeOnlyRanks, cellSizeLimit,
-                                         ddSettings.request1DAnd1Pulse, mtop, box, *ddbox, ir, systemInfo);
+                                         mtop, box, *ddbox, ir, systemInfo);
         }
     }
 
     /* Communicate the information set by the master to all ranks */
-    gmx_bcast(sizeof(numDomains), numDomains, cr);
+    gmx_bcast(sizeof(numDomains), numDomains, communicator);
     if (EEL_PME(ir.coulombtype))
     {
-        gmx_bcast(sizeof(numPmeOnlyRanks), &numPmeOnlyRanks, cr);
+        gmx_bcast(sizeof(numPmeOnlyRanks), &numPmeOnlyRanks, communicator);
     }
 
     DDGridSetup ddGridSetup;

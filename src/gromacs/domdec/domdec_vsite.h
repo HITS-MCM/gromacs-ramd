@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2005,2006,2007,2008,2009,2010,2012,2013,2014,2015,2019, by the GROMACS development team, led by
+ * Copyright (c) 2005,2006,2007,2008,2009 by the GROMACS development team.
+ * Copyright (c) 2010,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,14 +46,16 @@
 #ifndef GMX_DOMDEC_DOMDEC_VSITE_H
 #define GMX_DOMDEC_DOMDEC_VSITE_H
 
-struct t_ilist;
+#include "gromacs/utility/arrayref.h"
+
 struct gmx_domdec_t;
+struct InteractionList;
 
 /*! \brief Clears the local indices for the virtual site communication setup */
 void dd_clear_local_vsite_indices(struct gmx_domdec_t* dd);
 
 /*! \brief Sets up communication and atom indices for all local vsites */
-int dd_make_local_vsites(struct gmx_domdec_t* dd, int at_start, struct t_ilist* lil);
+int dd_make_local_vsites(struct gmx_domdec_t* dd, int at_start, gmx::ArrayRef<InteractionList> lil);
 
 /*! \brief Initializes the data structures for virtual site communication */
 void init_domdec_vsites(struct gmx_domdec_t* dd, int n_intercg_vsite);

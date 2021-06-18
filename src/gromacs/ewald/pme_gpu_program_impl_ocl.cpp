@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -53,33 +53,17 @@
 #include "pme_gpu_types_host.h"
 #include "pme_grid.h"
 
-PmeGpuProgramImpl::PmeGpuProgramImpl(const gmx_device_info_t* deviceInfo)
+PmeGpuProgramImpl::PmeGpuProgramImpl(const DeviceContext& deviceContext) :
+    deviceContext_(deviceContext)
 {
-    // Context creation (which should happen outside of this class: #2522)
-    cl_platform_id        platformId = deviceInfo->ocl_gpu_id.ocl_platform_id;
-    cl_device_id          deviceId   = deviceInfo->ocl_gpu_id.ocl_device_id;
-    cl_context_properties contextProperties[3];
-    contextProperties[0] = CL_CONTEXT_PLATFORM;
-    contextProperties[1] = reinterpret_cast<cl_context_properties>(platformId);
-    contextProperties[2] = 0; /* Terminates the list of properties */
-
-    cl_int clError;
-    context = clCreateContext(contextProperties, 1, &deviceId, nullptr, nullptr, &clError);
-    if (clError != CL_SUCCESS)
-    {
-        const std::string errorString = gmx::formatString(
-                "Failed to create context for PME on GPU #%s:\n OpenCL error %d: %s",
-                deviceInfo->device_name, clError, ocl_get_error_string(clError).c_str());
-        GMX_THROW(gmx::InternalError(errorString));
-    }
-
+    const DeviceInformation& deviceInfo = deviceContext.deviceInfo();
     // kernel parameters
-    warpSize = gmx::ocl::getDeviceWarpSize(context, deviceId);
+    warpSize_ = gmx::ocl::getDeviceWarpSize(deviceContext_.context(), deviceInfo.oclDeviceId);
     // TODO: for Intel ideally we'd want to set these based on the compiler warp size
     // but given that we've done no tuning for Intel iGPU, this is as good as anything.
-    spreadWorkGroupSize = std::min(c_spreadMaxWarpsPerBlock * warpSize, deviceInfo->maxWorkGroupSize);
-    solveMaxWorkGroupSize = std::min(c_solveMaxWarpsPerBlock * warpSize, deviceInfo->maxWorkGroupSize);
-    gatherWorkGroupSize = std::min(c_gatherMaxWarpsPerBlock * warpSize, deviceInfo->maxWorkGroupSize);
+    spreadWorkGroupSize = std::min(c_spreadMaxWarpsPerBlock * warpSize_, deviceInfo.maxWorkGroupSize);
+    solveMaxWorkGroupSize = std::min(c_solveMaxWarpsPerBlock * warpSize_, deviceInfo.maxWorkGroupSize);
+    gatherWorkGroupSize = std::min(c_gatherMaxWarpsPerBlock * warpSize_, deviceInfo.maxWorkGroupSize);
 
     compileKernels(deviceInfo);
 }
@@ -88,16 +72,22 @@ PmeGpuProgramImpl::~PmeGpuProgramImpl()
 {
     // TODO: log releasing errors
     cl_int gmx_used_in_debug stat = 0;
-    stat |= clReleaseKernel(splineAndSpreadKernel);
-    stat |= clReleaseKernel(splineKernel);
-    stat |= clReleaseKernel(spreadKernel);
-    stat |= clReleaseKernel(gatherKernel);
-    stat |= clReleaseKernel(gatherReduceWithInputKernel);
-    stat |= clReleaseKernel(solveXYZKernel);
-    stat |= clReleaseKernel(solveXYZEnergyKernel);
-    stat |= clReleaseKernel(solveYZXKernel);
-    stat |= clReleaseKernel(solveYZXEnergyKernel);
-    stat |= clReleaseContext(context);
+    stat |= clReleaseKernel(splineAndSpreadKernelSingle);
+    stat |= clReleaseKernel(splineKernelSingle);
+    stat |= clReleaseKernel(spreadKernelSingle);
+    stat |= clReleaseKernel(splineAndSpreadKernelDual);
+    stat |= clReleaseKernel(splineKernelDual);
+    stat |= clReleaseKernel(spreadKernelDual);
+    stat |= clReleaseKernel(gatherKernelSingle);
+    stat |= clReleaseKernel(gatherKernelDual);
+    stat |= clReleaseKernel(solveXYZKernelA);
+    stat |= clReleaseKernel(solveXYZEnergyKernelA);
+    stat |= clReleaseKernel(solveYZXKernelA);
+    stat |= clReleaseKernel(solveYZXEnergyKernelA);
+    stat |= clReleaseKernel(solveXYZKernelB);
+    stat |= clReleaseKernel(solveXYZEnergyKernelB);
+    stat |= clReleaseKernel(solveYZXKernelB);
+    stat |= clReleaseKernel(solveYZXEnergyKernelB);
     GMX_ASSERT(stat == CL_SUCCESS,
                gmx::formatString("Failed to release PME OpenCL resources %d: %s", stat,
                                  ocl_get_error_string(stat).c_str())
@@ -109,26 +99,30 @@ PmeGpuProgramImpl::~PmeGpuProgramImpl()
  * On Intel the exec width/warp is decided at compile-time and can be
  * smaller than the minimum order^2 required in spread/gather ATM which
  * we need to check for.
+ *
+ * Due to the one thread per atom and order=4 implementation
+ * constraints, order^2 threads should execute without synchronization
+ * needed.
  */
-static void checkRequiredWarpSize(cl_kernel kernel, const char* kernelName, const gmx_device_info_t* deviceInfo)
+static void checkRequiredWarpSize(cl_kernel kernel, const char* kernelName, const DeviceInformation& deviceInfo)
 {
-    if (deviceInfo->vendor_e == OCL_VENDOR_INTEL)
+    if (deviceInfo.deviceVendor == DeviceVendor::Intel)
     {
-        size_t kernelWarpSize = gmx::ocl::getKernelWarpSize(kernel, deviceInfo->ocl_gpu_id.ocl_device_id);
-
-        if (kernelWarpSize < c_pmeSpreadGatherMinWarpSize)
+        int       kernelWarpSize    = gmx::ocl::getKernelWarpSize(kernel, deviceInfo.oclDeviceId);
+        const int minKernelWarpSize = c_pmeGpuOrder * c_pmeGpuOrder;
+        if (kernelWarpSize < minKernelWarpSize)
         {
             const std::string errorString = gmx::formatString(
                     "PME OpenCL kernels require >=%d execution width, but the %s kernel "
-                    "has been compiled for the device %s to a %zu width and therefore it can not "
+                    "has been compiled for the device %s to a %d width and therefore it can not "
                     "execute correctly.",
-                    c_pmeSpreadGatherMinWarpSize, kernelName, deviceInfo->device_name, kernelWarpSize);
+                    minKernelWarpSize, kernelName, deviceInfo.device_name, kernelWarpSize);
             GMX_THROW(gmx::InternalError(errorString));
         }
     }
 }
 
-void PmeGpuProgramImpl::compileKernels(const gmx_device_info_t* deviceInfo)
+void PmeGpuProgramImpl::compileKernels(const DeviceInformation& deviceInfo)
 {
     // We might consider storing program as a member variable if it's needed later
     cl_program program = nullptr;
@@ -142,12 +136,10 @@ void PmeGpuProgramImpl::compileKernels(const gmx_device_info_t* deviceInfo)
         const std::string commonDefines = gmx::formatString(
                 "-Dwarp_size=%zd "
                 "-Dorder=%d "
-                "-DatomsPerWarp=%zd "
                 "-DthreadsPerAtom=%d "
                 // forwarding from pme_grid.h, used for spline computation table sizes only
                 "-Dc_pmeMaxUnitcellShift=%f "
                 // forwarding PME behavior constants from pme_gpu_constants.h
-                "-Dc_usePadding=%d "
                 "-Dc_skipNeutralAtoms=%d "
                 "-Dc_virialAndEnergyCount=%d "
                 // forwarding kernel work sizes
@@ -158,28 +150,28 @@ void PmeGpuProgramImpl::compileKernels(const gmx_device_info_t* deviceInfo)
                 "-DDIM=%d -DXX=%d -DYY=%d -DZZ=%d "
                 // decomposition parameter placeholders
                 "-DwrapX=true -DwrapY=true ",
-                warpSize, c_pmeGpuOrder, warpSize / c_pmeSpreadGatherThreadsPerAtom,
-                c_pmeSpreadGatherThreadsPerAtom, static_cast<float>(c_pmeMaxUnitcellShift),
-                static_cast<int>(c_usePadding), static_cast<int>(c_skipNeutralAtoms), c_virialAndEnergyCount,
-                spreadWorkGroupSize, solveMaxWorkGroupSize, gatherWorkGroupSize, DIM, XX, YY, ZZ);
+                warpSize_, c_pmeGpuOrder, c_pmeGpuOrder * c_pmeGpuOrder,
+                static_cast<float>(c_pmeMaxUnitcellShift), static_cast<int>(c_skipNeutralAtoms),
+                c_virialAndEnergyCount, spreadWorkGroupSize, solveMaxWorkGroupSize,
+                gatherWorkGroupSize, DIM, XX, YY, ZZ);
         try
         {
             /* TODO when we have a proper MPI-aware logging module,
                the log output here should be written there */
-            program = gmx::ocl::compileProgram(stderr, "gromacs/ewald", "pme_program.cl", commonDefines,
-                                               context, deviceInfo->ocl_gpu_id.ocl_device_id,
-                                               deviceInfo->vendor_e);
+            program = gmx::ocl::compileProgram(stderr, "gromacs/ewald", "pme_program.cl",
+                                               commonDefines, deviceContext_.context(),
+                                               deviceInfo.oclDeviceId, deviceInfo.deviceVendor);
         }
         catch (gmx::GromacsException& e)
         {
             e.prependContext(gmx::formatString("Failed to compile PME kernels for GPU #%s\n",
-                                               deviceInfo->device_name));
+                                               deviceInfo.device_name));
             throw;
         }
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
 
-    constexpr cl_uint expectedKernelCount = 9;
+    constexpr cl_uint expectedKernelCount = 18;
     // Has to be equal or larger than the number of kernel instances.
     // If it is not, CL_INVALID_VALUE will be thrown.
     std::vector<cl_kernel> kernels(expectedKernelCount, nullptr);
@@ -189,7 +181,7 @@ void PmeGpuProgramImpl::compileKernels(const gmx_device_info_t* deviceInfo)
     {
         const std::string errorString = gmx::formatString(
                 "Failed to create kernels for PME on GPU #%s:\n OpenCL error %d: %s",
-                deviceInfo->device_name, clError, ocl_get_error_string(clError).c_str());
+                deviceInfo.device_name, clError, ocl_get_error_string(clError).c_str());
         GMX_THROW(gmx::InternalError(errorString));
     }
     kernels.resize(actualKernelCount);
@@ -203,54 +195,85 @@ void PmeGpuProgramImpl::compileKernels(const gmx_device_info_t* deviceInfo)
         {
             const std::string errorString = gmx::formatString(
                     "Failed to parse kernels for PME on GPU #%s:\n OpenCL error %d: %s",
-                    deviceInfo->device_name, clError, ocl_get_error_string(clError).c_str());
+                    deviceInfo.device_name, clError, ocl_get_error_string(clError).c_str());
             GMX_THROW(gmx::InternalError(errorString));
         }
 
         // The names below must correspond to those defined in pme_program.cl
         // TODO use a map with string key instead?
-        if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernel"))
+        if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernelSingle"))
         {
-            splineKernel = kernel;
+            splineKernelSingle = kernel;
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernelSingle"))
         {
-            splineAndSpreadKernel             = kernel;
-            splineAndSpreadKernelWriteSplines = kernel;
-            checkRequiredWarpSize(splineAndSpreadKernel, kernelNamesBuffer.data(), deviceInfo);
+            splineAndSpreadKernelSingle             = kernel;
+            splineAndSpreadKernelWriteSplinesSingle = kernel;
+            checkRequiredWarpSize(splineAndSpreadKernelSingle, kernelNamesBuffer.data(), deviceInfo);
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernelSingle"))
         {
-            spreadKernel = kernel;
-            checkRequiredWarpSize(spreadKernel, kernelNamesBuffer.data(), deviceInfo);
+            spreadKernelSingle = kernel;
+            checkRequiredWarpSize(spreadKernelSingle, kernelNamesBuffer.data(), deviceInfo);
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeGatherKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSplineKernelDual"))
         {
-            gatherKernel            = kernel;
-            gatherKernelReadSplines = kernel;
-            checkRequiredWarpSize(gatherKernel, kernelNamesBuffer.data(), deviceInfo);
+            splineKernelDual = kernel;
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeGatherReduceWithInputKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSplineAndSpreadKernelDual"))
         {
-            gatherReduceWithInputKernel            = kernel;
-            gatherReduceWithInputKernelReadSplines = kernel;
-            checkRequiredWarpSize(gatherReduceWithInputKernel, kernelNamesBuffer.data(), deviceInfo);
+            splineAndSpreadKernelDual             = kernel;
+            splineAndSpreadKernelWriteSplinesDual = kernel;
+            checkRequiredWarpSize(splineAndSpreadKernelDual, kernelNamesBuffer.data(), deviceInfo);
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSpreadKernelDual"))
         {
-            solveYZXKernel = kernel;
+            spreadKernelDual = kernel;
+            checkRequiredWarpSize(spreadKernelDual, kernelNamesBuffer.data(), deviceInfo);
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXEnergyKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeGatherKernelSingle"))
         {
-            solveYZXEnergyKernel = kernel;
+            gatherKernelSingle            = kernel;
+            gatherKernelReadSplinesSingle = kernel;
+            checkRequiredWarpSize(gatherKernelSingle, kernelNamesBuffer.data(), deviceInfo);
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeGatherKernelDual"))
         {
-            solveXYZKernel = kernel;
+            gatherKernelDual            = kernel;
+            gatherKernelReadSplinesDual = kernel;
+            checkRequiredWarpSize(gatherKernelDual, kernelNamesBuffer.data(), deviceInfo);
         }
-        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZEnergyKernel"))
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXKernelA"))
         {
-            solveXYZEnergyKernel = kernel;
+            solveYZXKernelA = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXEnergyKernelA"))
+        {
+            solveYZXEnergyKernelA = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZKernelA"))
+        {
+            solveXYZKernelA = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZEnergyKernelA"))
+        {
+            solveXYZEnergyKernelA = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXKernelB"))
+        {
+            solveYZXKernelB = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveYZXEnergyKernelB"))
+        {
+            solveYZXEnergyKernelB = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZKernelB"))
+        {
+            solveXYZKernelB = kernel;
+        }
+        else if (!strcmp(kernelNamesBuffer.data(), "pmeSolveXYZEnergyKernelB"))
+        {
+            solveXYZEnergyKernelB = kernel;
         }
     }
     clReleaseProgram(program);

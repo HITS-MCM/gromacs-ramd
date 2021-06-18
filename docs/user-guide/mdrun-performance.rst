@@ -213,6 +213,20 @@ of the better clock frequency available. Consider building :ref:`mdrun <gmx mdru
 configured with ``GMX_SIMD=AVX2_256`` instead of ``GMX_SIMD=AVX512`` for better
 performance in GPU accelerated or highly parallel MPI runs.
 
+Some of the latest ARM based CPU, such as the Fujitsu A64fx, support the Scalable Vector Extensions (SVE).
+Though SVE can be used to generate fairly efficient Vector Length Agnostic (VLA) code,
+this is not a good fit for |Gromacs| (as the SIMD vector length assumed to be known at
+CMake time). Consequently, the SVE vector length must be fixed at CMake time. The default
+is to automatically detect the default vector length at CMake time
+(via the ``/proc/sys/abi/sve_default_vector_length`` pseudo-file, and this can be changed by
+configuring with ``GMX_SIMD_ARM_SVE_LENGTH=<len>``.
+The supported vector lengths are 128, 256, 512 and 1024. Since the SIMD short-range non-bonded kernels
+only support up to 16 floating point numbers per SIMD vector, 1024 bits vector length is only
+valid in double precision (e.g. ``-DGMX_DOUBLE=on``).
+Note that even if `mdrun` does check the SIMD vector length at runtime, running with a different
+vector length than the one used at CMake time is undefined behavior, and `mdrun` might crash before reaching
+the check (that would abort with a user-friendly error message).
+
 Process(-or) level parallelization via OpenMP
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -531,9 +545,10 @@ behavior.
     Setting "gpu" requires that a compatible CUDA GPU is available,
     the simulation uses a single rank.
     Update and constraints on a GPU is currently not supported
-    with domain decomposition, free-energy, virtual sites,
-    Ewald surface correction, replica exchange, constraint pulling,
-    orientation restraints and computational electrophysiology.
+    with mass and constraints free-energy perturbation, domain
+    decomposition, virtual sites, Ewald surface correction,
+    replica exchange, constraint pulling, orientation restraints
+    and computational electrophysiology.
 
 ``-gpu_id``
     A string that specifies the ID numbers of the GPUs that
@@ -998,9 +1013,11 @@ An additional set of subcounters can offer more fine-grained inspection of perfo
 Subcounters are geared toward developers and have to be enabled during compilation. See
 :doc:`/dev-manual/build-system` for more information.
 
-.. TODO In future patch:
-   - red flags in log files, how to interpret wallcycle output
-   - hints to devs how to extend wallcycles
+..  todo::
+
+    In future patch:
+    - red flags in log files, how to interpret wallcycle output
+    - hints to devs how to extend wallcycles
 
 .. _gmx-mdrun-on-gpu:
 
@@ -1057,7 +1074,7 @@ compatibility (please see the :ref:`section below <gmx-pme-gpu-limitations>`).
 GPU computation of short range nonbonded interactions
 .....................................................
 
-.. TODO make this more elaborate and include figures
+.. todo:: make this more elaborate and include figures
 
 Using the GPU for the short-ranged nonbonded interactions provides
 the majority of the available speed-up compared to run using only the CPU.
@@ -1069,7 +1086,7 @@ this problem and thus reduce the calculation time.
 GPU accelerated calculation of PME
 ..................................
 
-.. TODO again, extend this and add some actual useful information concerning performance etc...
+.. todo:: again, extend this and add some actual useful information concerning performance etc...
 
 |Gromacs| now allows the offloading of the PME calculation
 to the GPU, to further reduce the load on the CPU and improve usage overlap between
@@ -1090,9 +1107,6 @@ Known limitations
 
 - Only single precision is supported.
 
-- Free energy calculations where charges are perturbed are not supported,
-  because only single PME grids can be calculated.
-
 - Only dynamical integrators are supported (ie. leap-frog, Velocity Verlet,
   stochastic dynamics)
 
@@ -1103,7 +1117,7 @@ Known limitations
 GPU accelerated calculation of bonded interactions (CUDA only)
 ..............................................................
 
-.. TODO again, extend this and add some actual useful information concerning performance etc...
+.. todo:: again, extend this and add some actual useful information concerning performance etc...
 
 |Gromacs| now allows the offloading of the bonded part of the PP
 workload to a CUDA-compatible GPU. This is treated as part of the PP
@@ -1211,9 +1225,9 @@ Performance considerations for GPU tasks
 #) The only way to know for sure what alternative is best for
    your machine is to test and check performance.
 
-.. TODO: we need to be more concrete here, i.e. what machine/software aspects to take into consideration, when will default run mode be using PME-GPU and when will it not, when/how should the user reason about testing different settings than the default.
+.. todo:: we need to be more concrete here, i.e. what machine/software aspects to take into consideration, when will default run mode be using PME-GPU and when will it not, when/how should the user reason about testing different settings than the default.
 
-.. TODO someone who knows about the mixed mode should comment further.
+.. todo:: someone who knows about the mixed mode should comment further.
 
 Reducing overheads in GPU accelerated runs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1264,7 +1278,7 @@ Note that assigning fewer resources to :ref:`gmx mdrun` CPU computation
 involves a tradeoff which may outweigh the benefits of reduced GPU driver overhead,
 in particular without HyperThreading and with few CPU cores.
 
-.. TODO In future patch: any tips not covered above
+.. todo:: In future patch: any tips not covered above
 
 Running the OpenCL version of mdrun
 -----------------------------------
@@ -1284,7 +1298,8 @@ required as the open source nouveau driver (available in Mesa) does not
 provide the OpenCL support.
 For Intel integrated GPUs, the `Neo driver <https://github.com/intel/compute-runtime/releases>`_ is
 recommended.
-TODO: add more Intel driver recommendations
+.. seealso:: :issue:`3268` add more Intel driver recommendations
+
 The minimum OpenCL version required is |REQUIRED_OPENCL_MIN_VERSION|. See
 also the :ref:`known limitations <opencl-known-limitations>`.
 
@@ -1355,7 +1370,7 @@ of 2. So it can be useful go through the checklist.
 * Make sure your compiler supports OpenMP (some versions of Clang don't).
 * If you have GPUs that support either CUDA or OpenCL, use them.
 
-  * Configure with ``-DGMX_GPU=ON`` (add ``-DGMX_USE_OPENCL=ON`` for OpenCL).
+  * Configure with ``-DGMX_GPU=CUDA `` or ``-DGMX_GPU=OpenCL``.
   * For CUDA, use the newest CUDA available for your GPU to take advantage of the
     latest performance enhancements.
   * Use a recent GPU driver.

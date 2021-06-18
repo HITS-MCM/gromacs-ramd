@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2017 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -66,15 +67,15 @@ static void clearBufferAll(gmx::ArrayRef<real> buffer)
 template<int numComponentsPerElement>
 static void clearBufferFlagged(const nbnxn_atomdata_t& nbat, int outputIndex, gmx::ArrayRef<real> buffer)
 {
-    const nbnxn_buffer_flags_t& flags = nbat.buffer_flags;
-    gmx_bitmask_t               our_flag;
+    gmx::ArrayRef<const gmx_bitmask_t> flags = nbat.buffer_flags;
+    gmx_bitmask_t                      our_flag;
     bitmask_init_bit(&our_flag, outputIndex);
 
     constexpr size_t numComponentsPerBlock = NBNXN_BUFFERFLAG_SIZE * numComponentsPerElement;
 
-    for (int b = 0; b < flags.nflag; b++)
+    for (size_t b = 0; b < flags.size(); b++)
     {
-        if (!bitmask_is_disjoint(flags.flag[b], our_flag))
+        if (!bitmask_is_disjoint(flags[b], our_flag))
         {
             clearBufferAll(buffer.subArray(b * numComponentsPerBlock, numComponentsPerBlock));
         }

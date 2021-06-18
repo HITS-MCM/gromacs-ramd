@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,10 +44,11 @@
 
 #include "config.h"
 
-#include "gromacs/gpu_utils/gputraits.h"
+#include "gromacs/gpu_utils/device_context.h"
 #include "gromacs/utility/classhelpers.h"
 
-struct gmx_device_info_t;
+class DeviceContext;
+struct DeviceInformation;
 
 /*! \internal
  * \brief
@@ -67,22 +68,20 @@ struct gmx_device_info_t;
  * This also doesn't manage cuFFT/clFFT kernels, which depend on the PME grid dimensions.
  *
  * TODO: pass cl_context to the constructor and not create it inside.
- * See also Redmine #2522.
+ * See also Issue #2522.
  */
 struct PmeGpuProgramImpl
 {
     /*! \brief
      * This is a handle to the GPU context, which is just a dummy in CUDA,
      * but is created/destroyed by this class in OpenCL.
-     * TODO: Later we want to be able to own the context at a higher level and not here,
-     * but this class would still need the non-owning context handle to build the kernels.
      */
-    DeviceContext context;
+    const DeviceContext& deviceContext_;
 
     //! Conveniently all the PME kernels use the same single argument type
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU_CUDA
     using PmeKernelHandle = void (*)(const struct PmeGpuCudaKernelParams);
-#elif GMX_GPU == GMX_GPU_OPENCL
+#elif GMX_GPU_OPENCL
     using PmeKernelHandle = cl_kernel;
 #else
     using PmeKernelHandle = void*;
@@ -94,7 +93,7 @@ struct PmeGpuProgramImpl
      * For CUDA, this is a static value that comes from gromacs/gpu_utils/cuda_arch_utils.cuh;
      * for OpenCL, we have to query it dynamically.
      */
-    size_t warpSize;
+    size_t warpSize_;
 
     //@{
     /**
@@ -105,17 +104,28 @@ struct PmeGpuProgramImpl
      *   or recalculated in the gather.
      * Spreading kernels also have hardcoded X/Y indices wrapping parameters,
      * as a placeholder for implementing 1/2D decomposition.
+     * The kernels are templated separately for spreading on one grid (one or
+     * two sets of coefficients) or on two grids (required for energy and virial
+     * calculations).
      */
     size_t spreadWorkGroupSize;
 
-    PmeKernelHandle splineKernel;
-    PmeKernelHandle splineKernelThPerAtom4;
-    PmeKernelHandle spreadKernel;
-    PmeKernelHandle spreadKernelThPerAtom4;
-    PmeKernelHandle splineAndSpreadKernel;
-    PmeKernelHandle splineAndSpreadKernelThPerAtom4;
-    PmeKernelHandle splineAndSpreadKernelWriteSplines;
-    PmeKernelHandle splineAndSpreadKernelWriteSplinesThPerAtom4;
+    PmeKernelHandle splineKernelSingle;
+    PmeKernelHandle splineKernelThPerAtom4Single;
+    PmeKernelHandle spreadKernelSingle;
+    PmeKernelHandle spreadKernelThPerAtom4Single;
+    PmeKernelHandle splineAndSpreadKernelSingle;
+    PmeKernelHandle splineAndSpreadKernelThPerAtom4Single;
+    PmeKernelHandle splineAndSpreadKernelWriteSplinesSingle;
+    PmeKernelHandle splineAndSpreadKernelWriteSplinesThPerAtom4Single;
+    PmeKernelHandle splineKernelDual;
+    PmeKernelHandle splineKernelThPerAtom4Dual;
+    PmeKernelHandle spreadKernelDual;
+    PmeKernelHandle spreadKernelThPerAtom4Dual;
+    PmeKernelHandle splineAndSpreadKernelDual;
+    PmeKernelHandle splineAndSpreadKernelThPerAtom4Dual;
+    PmeKernelHandle splineAndSpreadKernelWriteSplinesDual;
+    PmeKernelHandle splineAndSpreadKernelWriteSplinesThPerAtom4Dual;
     //@}
 
     //@{
@@ -123,40 +133,50 @@ struct PmeGpuProgramImpl
      * it can either reduce with previous forces in the host buffer, or ignore them.
      * Also similarly to the gather we can use either order(4) or order*order (16) threads per atom
      * and either recalculate the splines or read the ones written by the spread
+     * The kernels are templated separately for using one or two grids (required for
+     * calculating energies and virial).
      */
     size_t gatherWorkGroupSize;
 
-    PmeKernelHandle gatherReduceWithInputKernel;
-    PmeKernelHandle gatherReduceWithInputKernelThPerAtom4;
-    PmeKernelHandle gatherKernel;
-    PmeKernelHandle gatherKernelThPerAtom4;
-    PmeKernelHandle gatherReduceWithInputKernelReadSplines;
-    PmeKernelHandle gatherReduceWithInputKernelReadSplinesThPerAtom4;
-    PmeKernelHandle gatherKernelReadSplines;
-    PmeKernelHandle gatherKernelReadSplinesThPerAtom4;
+    PmeKernelHandle gatherKernelSingle;
+    PmeKernelHandle gatherKernelThPerAtom4Single;
+    PmeKernelHandle gatherKernelReadSplinesSingle;
+    PmeKernelHandle gatherKernelReadSplinesThPerAtom4Single;
+    PmeKernelHandle gatherKernelDual;
+    PmeKernelHandle gatherKernelThPerAtom4Dual;
+    PmeKernelHandle gatherKernelReadSplinesDual;
+    PmeKernelHandle gatherKernelReadSplinesThPerAtom4Dual;
     //@}
 
     //@{
     /** Solve kernel doesn't care about the interpolation order, but can optionally
      * compute energy and virial, and supports XYZ and YZX grid orderings.
+     * The kernels are templated separately for grids in state A and B.
      */
     size_t solveMaxWorkGroupSize;
 
-    PmeKernelHandle solveYZXKernel;
-    PmeKernelHandle solveXYZKernel;
-    PmeKernelHandle solveYZXEnergyKernel;
-    PmeKernelHandle solveXYZEnergyKernel;
+    PmeKernelHandle solveYZXKernelA;
+    PmeKernelHandle solveXYZKernelA;
+    PmeKernelHandle solveYZXEnergyKernelA;
+    PmeKernelHandle solveXYZEnergyKernelA;
+    PmeKernelHandle solveYZXKernelB;
+    PmeKernelHandle solveXYZKernelB;
+    PmeKernelHandle solveYZXEnergyKernelB;
+    PmeKernelHandle solveXYZEnergyKernelB;
     //@}
 
     PmeGpuProgramImpl() = delete;
     //! Constructor for the given device
-    explicit PmeGpuProgramImpl(const gmx_device_info_t* deviceInfo);
+    explicit PmeGpuProgramImpl(const DeviceContext& deviceContext);
     ~PmeGpuProgramImpl();
     GMX_DISALLOW_COPY_AND_ASSIGN(PmeGpuProgramImpl);
 
+    //! Return the warp size for which the kernels were compiled
+    int warpSize() const { return warpSize_; }
+
 private:
     // Compiles kernels, if supported. Called by the constructor.
-    void compileKernels(const gmx_device_info_t* deviceInfo);
+    void compileKernels(const DeviceInformation& deviceInfo);
 };
 
 #endif

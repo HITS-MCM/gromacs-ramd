@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2015,2016,2017,2018,2019,2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -53,6 +53,7 @@
 
 #include "config.h"
 
+#include <cerrno>
 #include <cstring>
 
 #include <fcntl.h>
@@ -64,10 +65,10 @@
 #include <algorithm>
 #include <exception>
 #include <functional>
+#include <optional>
 #include <tuple>
 
 #include "gromacs/commandline/filenm.h"
-#include "gromacs/compat/optional.h"
 #include "gromacs/fileio/checkpoint.h"
 #include "gromacs/fileio/gmxfio.h"
 #include "gromacs/mdrunutility/multisim.h"
@@ -119,15 +120,16 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
 {
     StringOutputStream stream;
     TextWriter         writer(&stream);
-    writer.writeStringFormatted(
+    writer.writeLineFormatted(
             "Some output files listed in the checkpoint file %s are not present or not named "
             "as the output files by the current program:)",
             checkpointFilename);
-    auto settings  = writer.wrapperSettings();
-    auto oldIndent = settings.indent(), newIndent = 2;
+    auto& settings  = writer.wrapperSettings();
+    auto  oldIndent = settings.indent(), newIndent = 2;
 
     writer.writeLine("Expected output files that are present:");
     settings.setIndent(newIndent);
+    settings.setLineLength(78);
     for (const auto& outputfile : outputfiles)
     {
         if (exist_output_file(outputfile.filename, nfile, fnm))
@@ -138,6 +140,15 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
     settings.setIndent(oldIndent);
     writer.ensureEmptyLine();
 
+    // The implementation of -deffnm does not handle properly the
+    // naming of output files that share a common suffix, such as
+    // pullx.xvg and pullf.xvg from the pull module. Such output files
+    // will be sought by the wrong name by the code that handles the
+    // restart, even though the pull module would later work out what
+    // they should have been called. Since there is a straightforward
+    // way to work around that, we help the user with that. This can
+    // be removed when gitlab issue #3875 is resolved.
+    bool missingFilesIncludedPullOutputFiles = false;
     writer.writeLine("Expected output files that are not present or named differently:");
     settings.setIndent(newIndent);
     for (const auto& outputfile : outputfiles)
@@ -145,16 +156,38 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
         if (!exist_output_file(outputfile.filename, nfile, fnm))
         {
             writer.writeLine(outputfile.filename);
+            // If this was a pull file, then we have a known issue and
+            // work-around (See gitlab issue #3442).
+            if (!missingFilesIncludedPullOutputFiles
+                && (contains(outputfile.filename, "pullx")
+                    || contains(outputfile.filename, "pullf")))
+            {
+                missingFilesIncludedPullOutputFiles = true;
+            }
         }
+    }
+    if (missingFilesIncludedPullOutputFiles)
+    {
+        writer.ensureEmptyLine();
+        writer.writeLineFormatted(
+                "It appears that pull output files were not found. It is known that "
+                "using gmx mdrun -deffnm test with pulling and later "
+                "gmx mdrun -deffnm test -cpi will fail to consider the changed default "
+                "filename when checking the pull output files for restarting with "
+                "appending. You may be able to work around this by using a command like "
+                "gmx mdrun -deffnm test -px test_pullx -pf test_pullf -cpi.");
     }
     settings.setIndent(oldIndent);
 
+    writer.ensureEmptyLine();
     writer.writeLineFormatted(
-            R"(To keep your simulation files safe, this simulation will not restart. Either name your
-output files exactly the same as the previous simulation part (e.g. with -deffnm), or
-make sure all the output files are present (e.g. run from the same directory as the
-previous simulation part), or instruct mdrun to write new output files with mdrun -noappend.
-In the last case, you will not be able to use appending in future for this simulation.)",
+            "To keep your simulation files safe, this simulation will not restart. "
+            "Either name your output files exactly the same as the previous simulation "
+            "part (e.g. with -deffnm or explicit naming), or make sure all the output "
+            "files are present (e.g. run from the same directory as the previous simulation "
+            "part), or instruct mdrun to write new output files with mdrun -noappend. In "
+            "the last case, you will not be able to use appending in future for this "
+            "simulation.",
             numFilesMissing, outputfiles.size());
     GMX_THROW(InconsistentInputError(stream.toString()));
 }
@@ -191,14 +224,14 @@ public:
      *                                (relevant only when restarting)
      *
      * Does not throw */
-    compat::optional<int> makeIndexOfNextPart(AppendingBehavior appendingBehavior) const;
+    std::optional<int> makeIndexOfNextPart(AppendingBehavior appendingBehavior) const;
 
     //! Describes how mdrun will (re)start
     StartingBehavior startingBehavior = StartingBehavior::NewSimulation;
     //! When restarting from a checkpoint, contains the contents of its header
-    compat::optional<CheckpointHeaderContents> headerContents;
+    std::optional<CheckpointHeaderContents> headerContents;
     //! When restarting from a checkpoint, contains the names of expected output files
-    compat::optional<std::vector<gmx_file_position_t>> outputFiles;
+    std::optional<std::vector<gmx_file_position_t>> outputFiles;
 };
 
 /*! \brief Choose the starting behaviour for this simulation
@@ -532,7 +565,7 @@ checkpoint file was written).
 To help you identify which directories need attention, the %d
 simulations wanted the following respective behaviors:
 )",
-                                           ms->nsim);
+                                           ms->numSimulations_);
         for (index simIndex = 0; simIndex != ssize(startingBehaviors); ++simIndex)
         {
             auto behavior = static_cast<StartingBehavior>(startingBehaviors[simIndex]);
@@ -572,7 +605,7 @@ To help you identify which directories need attention, the %d
 simulation checkpoint files were from the following respective
 simulation parts:
 )",
-                                           ms->nsim);
+                                           ms->numSimulations_);
         for (index partIndex = 0; partIndex != ssize(simulationParts); ++partIndex)
         {
             message += formatString("  Simulation %6zd: %d\n", partIndex, simulationParts[partIndex]);
@@ -581,9 +614,9 @@ simulation parts:
     }
 }
 
-compat::optional<int> StartingBehaviorHandler::makeIndexOfNextPart(const AppendingBehavior appendingBehavior) const
+std::optional<int> StartingBehaviorHandler::makeIndexOfNextPart(const AppendingBehavior appendingBehavior) const
 {
-    compat::optional<int> indexOfNextPart;
+    std::optional<int> indexOfNextPart;
 
     if (startingBehavior == StartingBehavior::RestartWithoutAppending)
     {
@@ -627,7 +660,7 @@ std::tuple<StartingBehavior, LogFilePtr> handleRestart(const bool              i
             handler.ensureMultiSimBehaviorsMatch(ms);
 
             // When not appending, prepare a suffix for the part number
-            compat::optional<int> indexOfNextPart = handler.makeIndexOfNextPart(appendingBehavior);
+            std::optional<int> indexOfNextPart = handler.makeIndexOfNextPart(appendingBehavior);
 
             // If a part suffix is used, change the file names accordingly.
             if (indexOfNextPart)

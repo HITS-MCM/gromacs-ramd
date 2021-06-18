@@ -38,7 +38,7 @@ endif()
 # ${gmock_BINARY_DIR}.
 # Language "C" is required for find_package(Threads).
 project(gmock CXX C)
-cmake_minimum_required(VERSION 2.6.2)
+#cmake_minimum_required(VERSION 2.6.2)
 
 if (COMMAND set_up_hermetic_build)
   set_up_hermetic_build()
@@ -85,7 +85,7 @@ cxx_library(gmock
             "${cxx_strict}"
 #            "${gtest_dir}/src/gtest-all.cc"
             src/gmock-all.cc)
-target_link_libraries(gmock gtest)
+target_link_libraries(gmock PUBLIC gtest)
 
 #cxx_library(gmock_main
 #            "${cxx_strict}"

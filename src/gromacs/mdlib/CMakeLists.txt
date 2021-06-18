@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2010,2012,2013,2014,2015,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2010,2012,2013,2014,2015 by the GROMACS development team.
+# Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -33,17 +34,27 @@
 # the research papers on the package. Check out http://www.gromacs.org.
 
 file(GLOB MDLIB_SOURCES *.cpp)
+# To avoid listing all the necessary files manually, we will remove SYCL-specfific one here:
+list(REMOVE_ITEM MDLIB_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/leapfrog_gpu_sycl.cpp)
 
 set(MDLIB_SOURCES ${MDLIB_SOURCES} PARENT_SCOPE)
 if (BUILD_TESTING)
     add_subdirectory(tests)
 endif()
-if(GMX_USE_CUDA)
+if(GMX_GPU_CUDA)
     gmx_add_libgromacs_sources(
-       lincs_cuda.cu
-       settle_cuda.cu
-       leapfrog_cuda.cu
-       update_constrain_cuda_impl.cu
+       leapfrog_gpu.cu
+       lincs_gpu.cu
+       settle_gpu.cu
+       update_constrain_gpu_impl.cu
+       gpuforcereduction_impl.cu
        )
 endif()
-
+if(GMX_GPU_SYCL)
+    gmx_add_libgromacs_sources(
+        leapfrog_gpu_sycl.cpp
+    )
+    _gmx_add_files_to_property(SYCL_SOURCES
+        leapfrog_gpu_sycl.cpp
+    )
+endif()

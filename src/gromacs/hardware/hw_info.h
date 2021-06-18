@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,7 +40,7 @@
 #include <string>
 #include <vector>
 
-#include "gromacs/hardware/gpu_hw_info.h"
+#include "gromacs/hardware/device_management.h"
 #include "gromacs/utility/basedefinitions.h"
 
 namespace gmx
@@ -47,6 +48,7 @@ namespace gmx
 class CpuInfo;
 class HardwareTopology;
 } // namespace gmx
+struct DeviceInformation;
 
 /* Hardware information structure with CPU and GPU information.
  * It is initialized by gmx_detect_hardware().
@@ -60,8 +62,6 @@ struct gmx_hw_info_t
     ~gmx_hw_info_t();
 
     /* Data for our local physical node */
-    //! Information about GPUs detected on this physical node
-    gmx_gpu_info_t gpu_info;
 
     /*! \brief Number of hardware threads available.
      *
@@ -72,6 +72,7 @@ struct gmx_hw_info_t
 
     std::unique_ptr<gmx::CpuInfo>          cpuInfo; /* Information about CPU capabilities */
     std::unique_ptr<gmx::HardwareTopology> hardwareTopology; /* Information about hardware topology */
+    std::vector<std::unique_ptr<DeviceInformation>> deviceInfoList; /* Information about GPUs detected on this physical node */
 
 
     /* Data reduced through MPI over all physical nodes */
@@ -91,6 +92,9 @@ struct gmx_hw_info_t
 
     gmx_bool bIdenticalGPUs; /* TRUE if all ranks have the same type(s) and order of GPUs */
     bool     haveAmdZen1Cpu; /* TRUE when at least one CPU in any of the nodes is AMD Zen of the first generation */
+
+    //! Container of warning strings to log later when that is possible.
+    std::vector<std::string> hardwareDetectionWarnings_;
 };
 
 

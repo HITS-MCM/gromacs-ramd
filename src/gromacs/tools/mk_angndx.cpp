@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -119,9 +120,7 @@ static void fill_ft_ind(int nft, const int* ft, const t_idef* idef, int ft_ind[]
                         sprintf(buf, "RB-A1=%.2f", idef->iparams[i].rbdihs.rbcA[1]);
                         break;
                     case F_RESTRANGLES:
-                        sprintf(buf, "Theta=%.1f_%.2f", idef->iparams[i].harmonic.rA,
-                                idef->iparams[i].harmonic.krA);
-                        break;
+                        // Fall through intended
                     case F_RESTRDIHS:
                         sprintf(buf, "Theta=%.1f_%.2f", idef->iparams[i].harmonic.rA,
                                 idef->iparams[i].harmonic.krA);

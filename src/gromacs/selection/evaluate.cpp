@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -417,6 +419,7 @@ SelectionEvaluator::SelectionEvaluator() {}
  * This is the only function that user code should call if they want to
  * evaluate a selection for a new frame.
  */
+// NOLINTNEXTLINE readability-convert-member-functions-to-static
 void SelectionEvaluator::evaluate(SelectionCollection* coll, t_trxframe* fr, t_pbc* pbc)
 {
     gmx_ana_selcollection_t* sc = &coll->impl_->sc_;
@@ -462,6 +465,7 @@ void SelectionEvaluator::evaluate(SelectionCollection* coll, t_trxframe* fr, t_p
  * \param[in,out] coll  The selection collection to evaluate.
  * \param[in]     nframes Total number of frames.
  */
+// NOLINTNEXTLINE readability-convert-member-functions-to-static
 void SelectionEvaluator::evaluateFinal(SelectionCollection* coll, int nframes)
 {
     gmx_ana_selcollection_t* sc = &coll->impl_->sc_;

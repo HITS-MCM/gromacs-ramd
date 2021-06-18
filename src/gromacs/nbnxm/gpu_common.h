@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,11 +47,11 @@
 
 #include <string>
 
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU_CUDA
 #    include "cuda/nbnxm_cuda_types.h"
 #endif
 
-#if GMX_GPU == GMX_GPU_OPENCL
+#if GMX_GPU_OPENCL
 #    include "opencl/nbnxm_ocl_types.h"
 #endif
 
@@ -124,9 +124,7 @@ static inline InteractionLocality gpuAtomToInteractionLocality(const AtomLocalit
 
 
 //NOLINTNEXTLINE(misc-definitions-in-headers)
-void setupGpuShortRangeWork(gmx_nbnxn_gpu_t*               nb,
-                            const gmx::GpuBonded*          gpuBonded,
-                            const gmx::InteractionLocality iLocality)
+void setupGpuShortRangeWork(NbnxmGpu* nb, const gmx::GpuBonded* gpuBonded, const gmx::InteractionLocality iLocality)
 {
     GMX_ASSERT(nb, "Need a valid nbnxn_gpu object");
 
@@ -146,13 +144,13 @@ void setupGpuShortRangeWork(gmx_nbnxn_gpu_t*               nb,
  * \param[inout]  nb        Pointer to the nonbonded GPU data structure
  * \param[in]     iLocality Interaction locality identifier
  */
-static bool haveGpuShortRangeWork(const gmx_nbnxn_gpu_t& nb, const gmx::InteractionLocality iLocality)
+static bool haveGpuShortRangeWork(const NbnxmGpu& nb, const gmx::InteractionLocality iLocality)
 {
     return nb.haveWork[iLocality];
 }
 
 //NOLINTNEXTLINE(misc-definitions-in-headers)
-bool haveGpuShortRangeWork(const gmx_nbnxn_gpu_t* nb, const gmx::AtomLocality aLocality)
+bool haveGpuShortRangeWork(const NbnxmGpu* nb, const gmx::AtomLocality aLocality)
 {
     GMX_ASSERT(nb, "Need a valid nbnxn_gpu object");
 
@@ -359,10 +357,12 @@ static inline void gpu_accumulate_timings(gmx_wallclock_gpu_nbnxn_t* timings,
  *
  * See documentation in nbnxm_gpu.h for details.
  *
- * \todo Move into shared source file with gmx_compile_cpp_as_cuda
+ * \todo Move into shared source file, perhaps including
+ * cuda_runtime.h if needed for any remaining CUDA-specific
+ * objects.
  */
 //NOLINTNEXTLINE(misc-definitions-in-headers)
-bool gpu_try_finish_task(gmx_nbnxn_gpu_t*         nb,
+bool gpu_try_finish_task(NbnxmGpu*                nb,
                          const gmx::StepWorkload& stepWork,
                          const AtomLocality       aloc,
                          real*                    e_lj,
@@ -401,7 +401,7 @@ bool gpu_try_finish_task(gmx_nbnxn_gpu_t*         nb,
             // GpuTaskCompletion::Wait mode the timing is expected to be done in the caller.
             wallcycle_start_nocount(wcycle, ewcWAIT_GPU_NB_L);
 
-            if (!haveStreamTasksCompleted(nb->stream[iLocality]))
+            if (!haveStreamTasksCompleted(*nb->deviceStreams[iLocality]))
             {
                 wallcycle_stop(wcycle, ewcWAIT_GPU_NB_L);
 
@@ -414,14 +414,13 @@ bool gpu_try_finish_task(gmx_nbnxn_gpu_t*         nb,
         }
         else if (haveResultToWaitFor)
         {
-            gpuStreamSynchronize(nb->stream[iLocality]);
+            nb->deviceStreams[iLocality]->synchronize();
         }
 
         // TODO: this needs to be moved later because conditional wait could brake timing
         // with a future OpenCL implementation, but with CUDA timing is anyway disabled
         // in all cases where we skip the wait.
-        gpu_accumulate_timings(nb->timings, nb->timers, nb->plist[iLocality], aloc, stepWork,
-                               nb->bDoTime != 0);
+        gpu_accumulate_timings(nb->timings, nb->timers, nb->plist[iLocality], aloc, stepWork, nb->bDoTime);
 
         if (stepWork.computeEnergy || stepWork.computeVirial)
         {
@@ -458,7 +457,7 @@ bool gpu_try_finish_task(gmx_nbnxn_gpu_t*         nb,
  * \return            The number of cycles the gpu wait took
  */
 //NOLINTNEXTLINE(misc-definitions-in-headers) TODO: move into source file
-float gpu_wait_finish_task(gmx_nbnxn_gpu_t*         nb,
+float gpu_wait_finish_task(NbnxmGpu*                nb,
                            const gmx::StepWorkload& stepWork,
                            AtomLocality             aloc,
                            real*                    e_lj,

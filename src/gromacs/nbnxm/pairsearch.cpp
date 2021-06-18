@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,6 +45,7 @@
 
 #include "pairsearch.h"
 
+#include "gromacs/mdtypes/nblist.h"
 #include "gromacs/utility/smalloc.h"
 
 #include "pairlist.h"
@@ -84,12 +85,7 @@ static void free_nblist(t_nblist* nl)
 
 #ifndef DOXYGEN
 
-PairsearchWork::PairsearchWork() :
-    cp0({ { 0 } }),
-    buffer_flags({ 0, nullptr, 0 }),
-    ndistc(0),
-    nbl_fep(new t_nblist),
-    cp1({ { 0 } })
+PairsearchWork::PairsearchWork() : cp0({ { 0 } }), ndistc(0), nbl_fep(new t_nblist), cp1({ { 0 } })
 {
     nbnxn_init_pairlist_fep(nbl_fep.get());
 }
@@ -98,12 +94,10 @@ PairsearchWork::PairsearchWork() :
 
 PairsearchWork::~PairsearchWork()
 {
-    sfree(buffer_flags.flag);
-
     free_nblist(nbl_fep.get());
 }
 
-PairSearch::PairSearch(const int                 ePBC,
+PairSearch::PairSearch(const PbcType             pbcType,
                        const bool                doTestParticleInsertion,
                        const ivec*               numDDCells,
                        const gmx_domdec_zones_t* ddZones,
@@ -111,7 +105,7 @@ PairSearch::PairSearch(const int                 ePBC,
                        const bool                haveFep,
                        const int                 maxNumThreads,
                        gmx::PinningPolicy        pinningPolicy) :
-    gridSet_(ePBC, doTestParticleInsertion, numDDCells, ddZones, pairlistType, haveFep, maxNumThreads, pinningPolicy),
+    gridSet_(pbcType, doTestParticleInsertion, numDDCells, ddZones, pairlistType, haveFep, maxNumThreads, pinningPolicy),
     work_(maxNumThreads)
 {
     cycleCounting_.recordCycles_ = (getenv("GMX_NBNXN_CYCLE") != nullptr);

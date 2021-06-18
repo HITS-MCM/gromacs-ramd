@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2011,2012,2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2011,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2016,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -58,10 +59,7 @@
 #include <vector>
 
 #include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/classhelpers.h"
 #include "gromacs/utility/gmxassert.h"
-
-#include "current_function.h"
 
 namespace gmx
 {
@@ -87,7 +85,11 @@ class IExceptionInfo
 {
 public:
     virtual ~IExceptionInfo();
-    GMX_DEFAULT_CONSTRUCTORS(IExceptionInfo);
+    IExceptionInfo()                          = default;
+    IExceptionInfo(const IExceptionInfo&)     = default;
+    IExceptionInfo(IExceptionInfo&&) noexcept = default;
+    IExceptionInfo& operator=(const IExceptionInfo&) = default;
+    IExceptionInfo& operator=(IExceptionInfo&&) noexcept = default;
 };
 
 //! Smart pointer to manage IExceptionInfo ownership.
@@ -251,7 +253,11 @@ public:
     // about missing noexcept otherwise.
     ~GromacsException() noexcept override {}
 
-    GMX_DEFAULT_CONSTRUCTORS(GromacsException);
+    GromacsException()                            = default;
+    GromacsException(const GromacsException&)     = default;
+    GromacsException(GromacsException&&) noexcept = default;
+    GromacsException& operator=(const GromacsException&) = default;
+    GromacsException& operator=(GromacsException&&) noexcept = default;
 
     /*! \brief
      * Returns the reason string for the exception.
@@ -371,6 +377,8 @@ private:
  * other overloads of `operator<<` for ExceptionInfo objects, in case someone
  * would like to declare those.  But currently we do not have such overloads, so
  * if the enable_if causes problems with some compilers, it can be removed.
+ *
+ * \todo Use std::is_base_of_v when CUDA 11 is a requirement.
  */
 template<class Exception, class Tag, class T>
 inline std::enable_if_t<std::is_base_of<GromacsException, Exception>::value, Exception>
@@ -561,6 +569,22 @@ public:
     explicit ParallelConsistencyError(const ExceptionInitializer& details) : APIError(details) {}
 
     int errorCode() const override;
+};
+
+/*! \brief
+ * Exception class for modular simulator.
+ *
+ * \inpublicapi
+ */
+class ModularSimulatorError : public GromacsException
+{
+public:
+    //! \copydoc FileIOError::FileIOError()
+    explicit ModularSimulatorError(const ExceptionInitializer& details) : GromacsException(details)
+    {
+    }
+
+    [[nodiscard]] int errorCode() const override;
 };
 
 /*! \brief

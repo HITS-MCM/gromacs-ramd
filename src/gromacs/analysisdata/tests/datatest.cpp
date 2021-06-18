@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2011,2012,2013,2014,2015,2019, by the GROMACS development team, led by
+ * Copyright (c) 2011,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -206,7 +207,7 @@ void AnalysisDataTestFixture::presentAllData(const AnalysisDataTestInput& input,
 void AnalysisDataTestFixture::presentDataFrame(const AnalysisDataTestInput& input, int row, AnalysisDataHandle handle)
 {
     const AnalysisDataTestInputFrame& frame = input.frame(row);
-    handle.startFrame(row, frame.x(), frame.dx());
+    handle.startFrame(row, frame.x(), AnalysisDataTestInputFrame::dx());
     for (int i = 0; i < frame.pointSetCount(); ++i)
     {
         const AnalysisDataTestInputPointSet& points = frame.pointSet(i);
@@ -215,11 +216,13 @@ void AnalysisDataTestFixture::presentDataFrame(const AnalysisDataTestInput& inpu
         {
             if (points.hasError(j))
             {
-                handle.setPoint(j + points.firstColumn(), points.y(j), points.error(j), points.present(j));
+                handle.setPoint(j + points.firstColumn(), points.y(j), points.error(j),
+                                AnalysisDataTestInputPointSet::present(j));
             }
             else
             {
-                handle.setPoint(j + points.firstColumn(), points.y(j), points.present(j));
+                handle.setPoint(j + points.firstColumn(), points.y(j),
+                                AnalysisDataTestInputPointSet::present(j));
             }
         }
         if (input.isMultipoint())

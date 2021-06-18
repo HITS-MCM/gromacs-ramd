@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,7 +50,6 @@
  */
 
 // Assert placeholders, to not rip them out from OpenCL implementation - hopefully they come in handy some day with OpenCL 2
-#define static_assert(a, b)
 #define assert(a)
 
 #define PmeOpenCLKernelParams PmeGpuKernelParamsBase
@@ -58,32 +57,72 @@
 /* SPREAD/SPLINE */
 
 #define atomsPerBlock (c_spreadWorkGroupSize / threadsPerAtom)
+#define atomsPerWarp (warp_size / threadsPerAtom)
 
-// spline/spread fused
+// spline/spread fused single grid (without FEP or FEP without energy and virial calculation at this step)
 #define computeSplines 1
 #define spreadCharges 1
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSplineAndSpreadKernel
+#define numGrids 1 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSplineAndSpreadKernelSingle
 #include "pme_spread.clh"
 #undef computeSplines
 #undef spreadCharges
+#undef numGrids
 #undef CUSTOMIZED_KERNEL_NAME
 
-// spline
+// spline on single grid (without FEP or FEP without energy and virial calculation at this step)
 #define computeSplines 1
 #define spreadCharges 0
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSplineKernel
+#define numGrids 1 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSplineKernelSingle
 #include "pme_spread.clh"
 #undef computeSplines
 #undef spreadCharges
+#undef numGrids
 #undef CUSTOMIZED_KERNEL_NAME
 
-// spread
+// spread on single grid (without FEP or FEP without energy and virial calculation at this step)
 #define computeSplines 0
 #define spreadCharges 1
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSpreadKernel
+#define numGrids 1 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSpreadKernelSingle
 #include "pme_spread.clh"
 #undef computeSplines
 #undef spreadCharges
+#undef numGrids
+#undef CUSTOMIZED_KERNEL_NAME
+
+// spline/spread fused on two grids (FEP with energy and virial calculation at this step)
+#define computeSplines 1
+#define spreadCharges 1
+#define numGrids 2 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSplineAndSpreadKernelDual
+#include "pme_spread.clh"
+#undef computeSplines
+#undef spreadCharges
+#undef numGrids
+#undef CUSTOMIZED_KERNEL_NAME
+
+// spline on two grids (FEP with energy and virial calculation at this step)
+#define computeSplines 1
+#define spreadCharges 0
+#define numGrids 2 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSplineKernelDual
+#include "pme_spread.clh"
+#undef computeSplines
+#undef spreadCharges
+#undef numGrids
+#undef CUSTOMIZED_KERNEL_NAME
+
+// spread on two grids (FEP with energy and virial calculation at this step)
+#define computeSplines 0
+#define spreadCharges 1
+#define numGrids 2 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSpreadKernelDual
+#include "pme_spread.clh"
+#undef computeSplines
+#undef spreadCharges
+#undef numGrids
 #undef CUSTOMIZED_KERNEL_NAME
 
 
@@ -94,20 +133,19 @@
 
 #define atomsPerBlock (c_gatherWorkGroupSize / threadsPerAtom)
 
-// gather
-#define overwriteForces 1
-#define CUSTOMIZED_KERNEL_NAME(x) pmeGatherKernel
+// gather using single grid
+#define numGrids 1 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeGatherKernelSingle
 #include "pme_gather.clh"
-#undef overwriteForces
+#undef numGrids
 #undef CUSTOMIZED_KERNEL_NAME
 
-// gather with reduction
-#define overwriteForces 0
-#define CUSTOMIZED_KERNEL_NAME(x) pmeGatherReduceWithInputKernel
+// gather using two grids
+#define numGrids 2 /* Using define to avoid a conditional inside the function. */
+#define CUSTOMIZED_KERNEL_NAME(x) pmeGatherKernelDual
 #include "pme_gather.clh"
-#undef overwriteForces
+#undef numGrids
 #undef CUSTOMIZED_KERNEL_NAME
-
 
 #undef atomsPerBlock
 
@@ -117,37 +155,73 @@
 #define YZX 1
 #define XYZ 2
 
-// solve, YZX dimension order
+// solve, YZX dimension order state A
 #define gridOrdering YZX
 #define computeEnergyAndVirial 0
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXKernel
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXKernelA
 #include "pme_solve.clh"
 #undef gridOrdering
 #undef computeEnergyAndVirial
 #undef CUSTOMIZED_KERNEL_NAME
 
-// solve with reduction, YZX dimension order
+// solve with reduction, YZX dimension order state A
 #define gridOrdering YZX
 #define computeEnergyAndVirial 1
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXEnergyKernel
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXEnergyKernelA
 #include "pme_solve.clh"
 #undef gridOrdering
 #undef computeEnergyAndVirial
 #undef CUSTOMIZED_KERNEL_NAME
 
-// solve, XYZ dimension order
+// solve, XYZ dimension order state A
 #define gridOrdering XYZ
 #define computeEnergyAndVirial 0
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZKernel
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZKernelA
 #include "pme_solve.clh"
 #undef gridOrdering
 #undef computeEnergyAndVirial
 #undef CUSTOMIZED_KERNEL_NAME
 
-// solve with reduction, XYZ dimension order
+// solve with reduction, XYZ dimension order state A
 #define gridOrdering XYZ
 #define computeEnergyAndVirial 1
-#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZEnergyKernel
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZEnergyKernelA
+#include "pme_solve.clh"
+#undef gridOrdering
+#undef computeEnergyAndVirial
+#undef CUSTOMIZED_KERNEL_NAME
+
+// solve, YZX dimension order state B
+#define gridOrdering YZX
+#define computeEnergyAndVirial 0
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXKernelB
+#include "pme_solve.clh"
+#undef gridOrdering
+#undef computeEnergyAndVirial
+#undef CUSTOMIZED_KERNEL_NAME
+
+// solve with reduction, YZX dimension order state B
+#define gridOrdering YZX
+#define computeEnergyAndVirial 1
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveYZXEnergyKernelB
+#include "pme_solve.clh"
+#undef gridOrdering
+#undef computeEnergyAndVirial
+#undef CUSTOMIZED_KERNEL_NAME
+
+// solve, XYZ dimension order state B
+#define gridOrdering XYZ
+#define computeEnergyAndVirial 0
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZKernelB
+#include "pme_solve.clh"
+#undef gridOrdering
+#undef computeEnergyAndVirial
+#undef CUSTOMIZED_KERNEL_NAME
+
+// solve with reduction, XYZ dimension order state B
+#define gridOrdering XYZ
+#define computeEnergyAndVirial 1
+#define CUSTOMIZED_KERNEL_NAME(x) pmeSolveXYZEnergyKernelB
 #include "pme_solve.clh"
 #undef gridOrdering
 #undef computeEnergyAndVirial

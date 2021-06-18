@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2012,2013,2014,2015,2018 by the GROMACS development team.
+# Copyright (c) 2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -32,7 +33,7 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out http://www.gromacs.org.
 
-if(GMX_USE_OPENCL)
+if(GMX_GPU_OPENCL)
     file(GLOB OPENCL_NB_SOURCES *.cpp)
     set(NBNXM_SOURCES ${NBNXM_SOURCES} ${OPENCL_NB_SOURCES} PARENT_SCOPE)
 endif()
@@ -70,11 +71,18 @@ foreach(ELEC_DEF IN LISTS ELEC_DEFS)
             string(REGEX REPLACE ".*=" "" ELEC_NAME "${ELEC_DEF}")
             string(REGEX REPLACE ".*=" "" VDW_NAME "${VDW_DEF}")
             set(OBJ_FILE nbnxm_ocl_kernel${ELEC_NAME}${VDW_NAME}_${VENDOR}.o)
+            # The constants below duplicate various others (e.g. from pairlist.h)
+            # but as the kernels compiled here are not used for production,
+            # it will be OK if the values would fall out of sync.
             add_custom_command(OUTPUT ${OBJ_FILE} COMMAND ${OCL_COMPILER}
                 ${CMAKE_CURRENT_SOURCE_DIR}/nbnxm_ocl_kernels.cl ${CLANG_TIDY_ARGS}
                 -Xclang -finclude-default-header  -D_${VENDOR}_SOURCE_
                 -DGMX_OCL_FASTGEN ${ELEC_DEF} ${VDW_DEF}
-                -DNBNXN_GPU_CLUSTER_SIZE=${CLUSTER_SIZE} -DIATYPE_SHMEM
+                -Dc_nbnxnGpuClusterSize=${CLUSTER_SIZE}
+                -DNBNXM_MIN_DISTANCE_SQUARED_VALUE_FLOAT=3.82e-07
+                -Dc_nbnxnGpuNumClusterPerSupercluster=8
+                -Dc_nbnxnGpuJgroupSize=4
+                -DIATYPE_SHMEM
                 -c -I ${CMAKE_SOURCE_DIR}/src -std=cl1.2
                 -Weverything  -Wno-conversion -Wno-missing-variable-declarations -Wno-used-but-marked-unused
                 -Wno-cast-align -Wno-incompatible-pointer-types

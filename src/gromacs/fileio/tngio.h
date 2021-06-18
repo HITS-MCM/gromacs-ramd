@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,7 +40,6 @@
 #include <cstdio>
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
@@ -49,6 +49,11 @@ struct gmx_tng_trajectory;
 typedef struct gmx_tng_trajectory* gmx_tng_trajectory_t;
 struct t_trxframe;
 
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+}
 /*! \brief Open a TNG trajectory file
  *
  * \param filename   Name of file to open

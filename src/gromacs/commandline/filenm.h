@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,16 +46,21 @@
 #define GMX_COMMANDLINE_FILENM_H
 
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "gromacs/compat/string_view.h"
 #include "gromacs/fileio/filetypes.h"
-#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 
 
 //! \addtogroup module_commandline
 //! \{
+
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+} // namespace gmx
 
 /*! \brief
  * File name option definition for C code.
@@ -176,7 +182,7 @@ gmx_bool is_set(const t_filenm* fnm);
  *
  * If so, it must match "prefix.partNNNN.extension", for four decimal
  * digits N and non-empty prefix and extension. */
-bool hasSuffixFromNoAppend(gmx::compat::string_view filename);
+bool hasSuffixFromNoAppend(std::string_view filename);
 
 /*! \brief
  * When we do checkpointing, this routine is called to check for previous

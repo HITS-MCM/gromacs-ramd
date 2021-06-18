@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2014,2015,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -40,17 +41,22 @@
 #include <stdio.h>
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 
-void calc_mu(int                      start,
-             int                      homenr,
-             gmx::ArrayRef<gmx::RVec> x,
-             const real               q[],
-             const real               qB[],
-             int                      nChargePerturbed,
-             dvec                     mu,
-             dvec                     mu_B);
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+}
+
+void calc_mu(int                            start,
+             int                            homenr,
+             gmx::ArrayRef<const gmx::RVec> x,
+             const real                     q[],
+             const real                     qB[],
+             int                            nChargePerturbed,
+             dvec                           mu,
+             dvec                           mu_B);
 
 gmx_bool read_mu(FILE* fp, rvec mu, real* vol);
 /* Return true on succes */

@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -401,6 +402,7 @@ static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<con
             newparam->settle.doh = old[0];
             newparam->settle.dhh = old[1];
             break;
+        case F_VSITE1:
         case F_VSITE2:
         case F_VSITE2FD:
         case F_VSITE3:
@@ -449,7 +451,6 @@ static int enter_params(gmx_ffparams_t*           ffparams,
                         bool                      bAppend)
 {
     t_iparams newparam;
-    int       type;
     int       rc;
 
     if ((rc = assign_param(ftype, &newparam, forceparams, comb, reppow)) < 0)
@@ -460,21 +461,33 @@ static int enter_params(gmx_ffparams_t*           ffparams,
 
     if (!bAppend)
     {
-        for (type = start; (type < ffparams->numTypes()); type++)
+        if (ftype != F_DISRES)
         {
-            if (ffparams->functype[type] == ftype)
+            for (int type = start; type < ffparams->numTypes(); type++)
             {
-                if (memcmp(&newparam, &ffparams->iparams[type], static_cast<size_t>(sizeof(newparam))) == 0)
+                // Note that the first condition is always met by starting the loop at start
+                if (ffparams->functype[type] == ftype
+                    && memcmp(&newparam, &ffparams->iparams[type], static_cast<size_t>(sizeof(newparam))) == 0)
                 {
                     return type;
                 }
             }
         }
+        else
+        {
+            // Distance restraints should have unique labels and pairs with the same label
+            // should be consecutive, so we here we only need to check the last type in the list.
+            // This changes the complexity from quadratic to linear in the number of restraints.
+            const int type = ffparams->numTypes() - 1;
+            if (type >= 0 && ffparams->functype[type] == ftype
+                && memcmp(&newparam, &ffparams->iparams[type], static_cast<size_t>(sizeof(newparam))) == 0)
+            {
+                return type;
+            }
+        }
     }
-    else
-    {
-        type = ffparams->numTypes();
-    }
+
+    const int type = ffparams->numTypes();
 
     ffparams->iparams.push_back(newparam);
     ffparams->functype.push_back(ftype);

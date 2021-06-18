@@ -2,7 +2,7 @@
  * This file is part of the GROMACS molecular simulation package.
  *
  * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -208,8 +208,7 @@ void TrajectoryAnalysisRunnerCommon::Impl::initFirstFrame()
     {
         return;
     }
-    time_unit_t time_unit = static_cast<time_unit_t>(settings_.timeUnit() + 1); // NOLINT(bugprone-misplaced-widening-cast)
-    output_env_init(&oenv_, getProgramContext(), time_unit, FALSE, exvgNONE, 0);
+    output_env_init(&oenv_, getProgramContext(), settings_.timeUnit(), FALSE, XvgFormat::None, 0);
 
     int frflags = settings_.frflags();
     frflags |= TRX_NEED_X;
@@ -262,7 +261,7 @@ void TrajectoryAnalysisRunnerCommon::Impl::initFirstFrame()
         copy_mat(topInfo_.boxtop_, fr->box);
     }
 
-    set_trxframe_ePBC(fr, topInfo_.ePBC());
+    setTrxFramePbcType(fr, topInfo_.pbcType());
     if (topInfo_.hasTopology() && settings_.hasRmPBC())
     {
         gpbc_ = gmx_rmpbc_init(topInfo_);

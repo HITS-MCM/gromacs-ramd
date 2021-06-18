@@ -50,30 +50,31 @@
 
 namespace gmx
 {
-TopologyHolder::TopologyHolder(const gmx_mtop_t& globalTopology,
-                               const t_commrec*  cr,
-                               const t_inputrec* inputrec,
-                               t_forcerec*       fr,
-                               MDAtoms*          mdAtoms,
-                               Constraints*      constr,
-                               gmx_vsite_t*      vsite) :
+TopologyHolder::TopologyHolder(std::vector<ITopologyHolderClient*> clients,
+                               const gmx_mtop_t&                   globalTopology,
+                               const t_commrec*                    cr,
+                               const t_inputrec*                   inputrec,
+                               t_forcerec*                         fr,
+                               MDAtoms*                            mdAtoms,
+                               Constraints*                        constr,
+                               VirtualSitesHandler*                vsite) :
     globalTopology_(globalTopology),
-    localTopology_(std::make_unique<gmx_localtop_t>())
+    localTopology_(std::make_unique<gmx_localtop_t>(globalTopology.ffparams)),
+    clients_(std::move(clients))
 {
-    if (DOMAINDECOMP(cr))
+    if (!DOMAINDECOMP(cr))
     {
-        dd_init_local_top(globalTopology, localTopology_.get());
-    }
-    else
-    {
-        t_graph* graph = nullptr;
         // Generate and initialize new topology
         // Note that most of the data needed for the constructor is used here -
         // this function should probably be simplified sooner or later.
-        mdAlgorithmsSetupAtomData(cr, inputrec, globalTopology, localTopology_.get(), fr, &graph,
+        // Note: Legacy mdrun resizes the force buffer in mdAlgorithmsSetupAtomData()
+        //       TopologyHolder has no access to the forces, so we are passing a nullptr
+        //       TODO: Find a unique approach to resizing the forces in modular simulator (#3461)
+        mdAlgorithmsSetupAtomData(cr, inputrec, globalTopology, localTopology_.get(), fr, nullptr,
                                   mdAtoms, constr, vsite, nullptr);
-        GMX_RELEASE_ASSERT(graph == nullptr, "Graph is not implemented for the modular simulator.");
     }
+    // Send copy of initial topology to clients
+    updateLocalTopology();
 }
 
 const gmx_mtop_t& TopologyHolder::globalTopology() const
@@ -89,11 +90,17 @@ void TopologyHolder::updateLocalTopology()
     }
 }
 
-void TopologyHolder::registerClient(ITopologyHolderClient* client)
+void TopologyHolder::Builder::registerClient(ITopologyHolderClient* client)
 {
     // Register client
-    clients_.emplace_back(client);
-    // Send copy of current topology
-    client->setTopology(localTopology_.get());
+    if (client)
+    {
+        if (state_ == ModularSimulatorBuilderState::NotAcceptingClientRegistrations)
+        {
+            throw SimulationAlgorithmSetupError(
+                    "Tried to register to signaller after it was built.");
+        }
+        clients_.emplace_back(client);
+    }
 }
 } // namespace gmx

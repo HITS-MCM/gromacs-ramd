@@ -2,7 +2,7 @@
 # This file is part of the GROMACS molecular simulation package.
 #
 # Copyright (c) 2012,2013,2014,2015,2016, The GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
+# Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -290,10 +290,10 @@ if(GMX_PHYSICAL_VALIDATION)
         # End copied from regression tests.
         #
 
-        if (NOT PYTHONINTERP_FOUND)
+        if (NOT Python3_Interpreter_FOUND)
             message(FATAL_ERROR
                     "Python not found. Physical validation requires python. \
-                     Install python, set PYTHON_EXECUTABLE to a valid python location, \
+                     Install python, set Python3_ROOT_DIR or PYTHON_EXECUTABLE to a valid location, \
                      or set GMX_PHYSICAL_VALIDATION=OFF to disable the physical validation tests.")
         endif()
         #

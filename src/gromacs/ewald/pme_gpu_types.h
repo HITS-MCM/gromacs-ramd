@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -82,6 +82,11 @@ static_assert(sizeof(DeviceBuffer<int>) == 8,
 #    define HIDE_FROM_OPENCL_COMPILER(x) char8
 #endif
 
+#ifndef NUMFEPSTATES
+//! Number of FEP states.
+#    define NUMFEPSTATES 2
+#endif
+
 /* What follows is all the PME GPU function arguments,
  * sorted into several device-side structures depending on the update rate.
  * This is GPU agnostic (float3 replaced by float[3], etc.).
@@ -97,9 +102,9 @@ struct PmeGpuConstParams
 {
     /*! \brief Electrostatics coefficient = ONE_4PI_EPS0 / pme->epsilon_r */
     float elFactor;
-    /*! \brief Virial and energy GPU array. Size is PME_GPU_ENERGY_AND_VIRIAL_COUNT (7) floats.
+    /*! \brief Virial and energy GPU array. Size is c_virialAndEnergyCount (7) floats.
      * The element order is virxx, viryy, virzz, virxy, virxz, viryz, energy. */
-    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_virialAndEnergy;
+    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_virialAndEnergy[NUMFEPSTATES];
 };
 
 /*! \internal \brief
@@ -130,14 +135,14 @@ struct PmeGpuGridParams
 
     /* Grid arrays */
     /*! \brief Real space grid. */
-    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_realGrid;
+    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_realGrid[NUMFEPSTATES];
     /*! \brief Complex grid - used in FFT/solve. If inplace cu/clFFT is used, then it is the same handle as realGrid. */
-    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_fourierGrid;
+    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_fourierGrid[NUMFEPSTATES];
 
     /*! \brief Grid spline values as in pme->bsp_mod
      * (laid out sequentially (XXX....XYYY......YZZZ.....Z))
      */
-    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_splineModuli;
+    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_splineModuli[NUMFEPSTATES];
     /*! \brief Fractional shifts lookup table as in pme->fshx/fshy/fshz, laid out sequentially (XXX....XYYY......YZZZ.....Z) */
     HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_fractShiftsTable;
     /*! \brief Gridline indices lookup table
@@ -157,11 +162,11 @@ struct PmeGpuAtomParams
      * The coordinates themselves change and need to be copied to the GPU for every PME computation,
      * but reallocation happens only at DD.
      */
-    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_coordinates;
-    /*! \brief Global GPU memory array handle with input atom charges.
+    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<gmx::RVec>) d_coordinates;
+    /*! \brief Global GPU memory array handle with input atom charges in states A and B.
      * The charges only need to be reallocated and copied to the GPU at DD step.
      */
-    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_coefficients;
+    HIDE_FROM_OPENCL_COMPILER(DeviceBuffer<float>) d_coefficients[NUMFEPSTATES];
     /*! \brief Global GPU memory array handle with input/output rvec atom forces.
      * The forces change and need to be copied from (and possibly to) the GPU for every PME
      * computation, but reallocation happens only at DD.
@@ -196,14 +201,15 @@ struct PmeGpuDynamicParams
     float recipBox[DIM][DIM];
     /*! \brief The unit cell volume for solving. */
     float boxVolume;
+
+    /*! \brief The current coefficient scaling value. */
+    float scale;
 };
 
 /*! \internal \brief
- * A single structure encompassing almost all the PME data used in GPU kernels on device.
- * This is inherited by the GPU framework-specific structure
- * (PmeGpuCudaKernelParams in pme.cuh).
- * This way, most code preparing the kernel parameters can be GPU-agnostic by casting
- * the kernel parameter data pointer to PmeGpuKernelParamsBase.
+ * A single structure encompassing all the PME data used in GPU kernels on device.
+ * To extend the list with platform-specific parameters, this can be inherited by the
+ * GPU framework-specific structure.
  */
 struct PmeGpuKernelParamsBase
 {
@@ -218,6 +224,11 @@ struct PmeGpuKernelParamsBase
      * before launching spreading.
      */
     struct PmeGpuDynamicParams current;
+    /* These texture objects are only used in CUDA and are related to the grid size. */
+    /*! \brief Texture object for accessing grid.d_fractShiftsTable */
+    HIDE_FROM_OPENCL_COMPILER(DeviceTexture) fractShiftsTableTexture;
+    /*! \brief Texture object for accessing grid.d_gridlineIndicesTable */
+    HIDE_FROM_OPENCL_COMPILER(DeviceTexture) gridlineIndicesTableTexture;
 };
 
 #endif

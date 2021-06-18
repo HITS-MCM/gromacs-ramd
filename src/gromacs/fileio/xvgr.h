@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2014,2015,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -42,6 +43,8 @@
 #include <string>
 #include <vector>
 
+#include "gromacs/math/multidimarray.h"
+#include "gromacs/mdspan/extensions.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
@@ -212,8 +215,27 @@ int read_xvg_legend(const char* fn, double*** y, int* ny, char** subtitle, char*
  * 0 is the first y legend, the legend string will be NULL when not present.
  */
 
+/* \brief Read only the data from an xvg file for post processing.
+ *
+ * Note: this function is deprecated in favor of readXvg, which is
+ *       used under the hood in this function.
+ *
+ * \param[out]    nx Number of rows.
+ * \param[in]     fn Xvg file to read.
+ * \param[in/out] y  Pointer to 2D array (allocated by the routine).
+ * \param[in/out] ny Number of columns.
+ *
+ * Todo: Port all read_xvg calls to use readXvgData
+ */
 int read_xvg(const char* fn, double*** y, int* ny);
-/* As read_xvg_legend, but does not read legends. */
+
+/* \brief Read only the data from an xvg file for post processing.
+ *
+ * \param[out] XvgData Data in row major.
+ * \param[in]  fn      Xvg file to read.
+ */
+gmx::MultiDimArray<std::vector<double>, gmx::dynamicExtents2D> readXvgData(const std::string& fn);
+
 
 void write_xvg(const char*                    fn,
                const char*                    title,

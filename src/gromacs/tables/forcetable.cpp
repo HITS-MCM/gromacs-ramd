@@ -45,10 +45,13 @@
 
 #include "gromacs/fileio/xvgr.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/multidimarray.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/mdspan/extensions.h"
 #include "gromacs/mdtypes/fcdata.h"
+#include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/nblist.h"
 #include "gromacs/utility/arrayref.h"
@@ -76,9 +79,6 @@ enum
     etabLJ6Switch,
     etabLJ12Switch,
     etabCOULSwitch,
-    etabLJ6Encad,
-    etabLJ12Encad,
-    etabCOULEncad,
     etabEXPMIN,
     etabUSER,
     etabNR
@@ -96,27 +96,12 @@ typedef struct
 /* This structure holds name and a flag that tells whether
    this is a Coulomb type funtion */
 static const t_tab_props tprops[etabNR] = {
-    { "LJ6", FALSE },
-    { "LJ12", FALSE },
-    { "LJ6Shift", FALSE },
-    { "LJ12Shift", FALSE },
-    { "Shift", TRUE },
-    { "RF", TRUE },
-    { "RF-zero", TRUE },
-    { "COUL", TRUE },
-    { "Ewald", TRUE },
-    { "Ewald-Switch", TRUE },
-    { "Ewald-User", TRUE },
-    { "Ewald-User-Switch", TRUE },
-    { "LJ6Ewald", FALSE },
-    { "LJ6Switch", FALSE },
-    { "LJ12Switch", FALSE },
-    { "COULSwitch", TRUE },
-    { "LJ6-Encad shift", FALSE },
-    { "LJ12-Encad shift", FALSE },
-    { "COUL-Encad shift", TRUE },
-    { "EXPMIN", FALSE },
-    { "USER", FALSE },
+    { "LJ6", FALSE },         { "LJ12", FALSE },      { "LJ6Shift", FALSE },
+    { "LJ12Shift", FALSE },   { "Shift", TRUE },      { "RF", TRUE },
+    { "RF-zero", TRUE },      { "COUL", TRUE },       { "Ewald", TRUE },
+    { "Ewald-Switch", TRUE }, { "Ewald-User", TRUE }, { "Ewald-User-Switch", TRUE },
+    { "LJ6Ewald", FALSE },    { "LJ6Switch", FALSE }, { "LJ12Switch", FALSE },
+    { "COULSwitch", TRUE },   { "EXPMIN", FALSE },    { "USER", FALSE },
 };
 
 typedef struct
@@ -598,19 +583,23 @@ static void set_forces(FILE* fp, int angle, int nx, double h, double v[], double
 static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_tabledata td[])
 {
     char     buf[STRLEN];
-    double **yy = nullptr, start, end, dx0, dx1, ssd, vm, vp, f, numf;
-    int      k, i, nx, nx0 = 0, ny, nny, ns;
+    double   start, end, dx0, dx1, ssd, vm, vp, f, numf;
+    int      k, i, nx0 = 0, nny, ns;
     gmx_bool bAllZero, bZeroV, bZeroF;
     double   tabscale;
 
     nny               = 2 * ntab + 1;
     std::string libfn = gmx::findLibraryFile(filename);
-    nx                = read_xvg(libfn.c_str(), &yy, &ny);
-    if (ny != nny)
+    gmx::MultiDimArray<std::vector<double>, gmx::dynamicExtents2D> xvgData    = readXvgData(libfn);
+    int                                                            numColumns = xvgData.extent(0);
+    if (numColumns != nny)
     {
         gmx_fatal(FARGS, "Trying to read file %s, but nr columns = %d, should be %d", libfn.c_str(),
-                  ny, nny);
+                  numColumns, nny);
     }
+    int numRows = xvgData.extent(1);
+
+    const auto& yy = xvgData.asView();
     if (angle == 0)
     {
         if (yy[0][0] != 0.0)
@@ -630,18 +619,18 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
             start = -180.0;
         }
         end = 180.0;
-        if (yy[0][0] != start || yy[0][nx - 1] != end)
+        if (yy[0][0] != start || yy[0][numRows - 1] != end)
         {
             gmx_fatal(FARGS, "The angles in file %s should go from %f to %f instead of %f to %f\n",
-                      libfn.c_str(), start, end, yy[0][0], yy[0][nx - 1]);
+                      libfn.c_str(), start, end, yy[0][0], yy[0][numRows - 1]);
         }
     }
 
-    tabscale = (nx - 1) / (yy[0][nx - 1] - yy[0][0]);
+    tabscale = (numRows - 1) / (yy[0][numRows - 1] - yy[0][0]);
 
     if (fp)
     {
-        fprintf(fp, "Read user tables from %s with %d data points.\n", libfn.c_str(), nx);
+        fprintf(fp, "Read user tables from %s with %d data points.\n", libfn.c_str(), numRows);
         if (angle == 0)
         {
             fprintf(fp, "Tabscale = %g points/nm\n", tabscale);
@@ -653,7 +642,7 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
     {
         bZeroV = TRUE;
         bZeroF = TRUE;
-        for (i = 0; (i < nx); i++)
+        for (i = 0; (i < numRows); i++)
         {
             if (i >= 2)
             {
@@ -699,7 +688,8 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
 
         if (!bZeroV && bZeroF)
         {
-            set_forces(fp, angle, nx, 1 / tabscale, yy[1 + k * 2], yy[1 + k * 2 + 1], k);
+            set_forces(fp, angle, numRows, 1 / tabscale, yy[1 + k * 2].data(),
+                       yy[1 + k * 2 + 1].data(), k);
         }
         else
         {
@@ -708,7 +698,7 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
              */
             ssd = 0;
             ns  = 0;
-            for (i = 1; (i < nx - 1); i++)
+            for (i = 1; (i < numRows - 1); i++)
             {
                 vm = yy[1 + 2 * k][i - 1];
                 vp = yy[1 + 2 * k][i + 1];
@@ -754,19 +744,14 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
 
     for (k = 0; (k < ntab); k++)
     {
-        init_table(nx, nx0, tabscale, &(td[k]), TRUE);
-        for (i = 0; (i < nx); i++)
+        init_table(numRows, nx0, tabscale, &(td[k]), TRUE);
+        for (i = 0; (i < numRows); i++)
         {
             td[k].x[i] = yy[0][i];
             td[k].v[i] = yy[2 * k + 1][i];
             td[k].f[i] = yy[2 * k + 2][i];
         }
     }
-    for (i = 0; (i < ny); i++)
-    {
-        sfree(yy[i]);
-    }
-    sfree(yy);
 }
 
 static void done_tabledata(t_tabledata* td)
@@ -796,7 +781,7 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
     int    i;
     double reppow, p;
     double r1, rc, r12, r13;
-    double r, r2, r6, rc2, rc6, rc12;
+    double r, r2, r6, rc2;
     double expr, Vtab, Ftab;
     /* Parameters for David's function */
     double A = 0, B = 0, C = 0, A_3 = 0, B_4 = 0;
@@ -882,8 +867,9 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
 
     if (bPotentialShift)
     {
-        rc2 = rc * rc;
-        rc6 = 1.0 / (rc2 * rc2 * rc2);
+        rc2        = rc * rc;
+        double rc6 = 1.0 / (rc2 * rc2 * rc2);
+        double rc12;
         if (gmx_within_tol(reppow, 12.0, 10 * GMX_DOUBLE_EPS))
         {
             rc12 = rc6 * rc6;
@@ -979,9 +965,6 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
             swi1 = 0.0;
         }
 
-        rc6 = rc * rc * rc;
-        rc6 = 1.0 / (rc6 * rc6);
-
         switch (tp)
         {
             case etabLJ6:
@@ -1011,30 +994,6 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 {
                     Vtab = r12;
                     Ftab = reppow * Vtab / r;
-                }
-                break;
-            case etabLJ6Encad:
-                if (r < rc)
-                {
-                    Vtab = -(r6 - 6.0 * (rc - r) * rc6 / rc - rc6);
-                    Ftab = -(6.0 * r6 / r - 6.0 * rc6 / rc);
-                }
-                else /* r>rc */
-                {
-                    Vtab = 0;
-                    Ftab = 0;
-                }
-                break;
-            case etabLJ12Encad:
-                if (r < rc)
-                {
-                    Vtab = -(r6 - 6.0 * (rc - r) * rc6 / rc - rc6);
-                    Ftab = -(6.0 * r6 / r - 6.0 * rc6 / rc);
-                }
-                else /* r>rc */
-                {
-                    Vtab = 0;
-                    Ftab = 0;
                 }
                 break;
             case etabCOUL:
@@ -1080,18 +1039,6 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 expr = exp(-r);
                 Vtab = expr;
                 Ftab = expr;
-                break;
-            case etabCOULEncad:
-                if (r < rc)
-                {
-                    Vtab = 1.0 / r - (rc - r) / (rc * rc) - 1.0 / rc;
-                    Ftab = 1.0 / r2 - 1.0 / (rc * rc);
-                }
-                else /* r>rc */
-                {
-                    Vtab = 0;
-                    Ftab = 0;
-                }
                 break;
             default:
                 gmx_fatal(FARGS, "Table type %d not implemented yet. (%s,%d)", tp, __FILE__, __LINE__);
@@ -1215,7 +1162,6 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
         case eelRF_ZERO: tabsel[etiCOUL] = etabRF_ZERO; break;
         case eelSWITCH: tabsel[etiCOUL] = etabCOULSwitch; break;
         case eelUSER: tabsel[etiCOUL] = etabUSER; break;
-        case eelENCADSHIFT: tabsel[etiCOUL] = etabCOULEncad; break;
         default: gmx_fatal(FARGS, "Invalid eeltype %d", eltype);
     }
 
@@ -1253,10 +1199,6 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
             case evdwCUT:
                 tabsel[etiLJ6]  = etabLJ6;
                 tabsel[etiLJ12] = etabLJ12;
-                break;
-            case evdwENCADSHIFT:
-                tabsel[etiLJ6]  = etabLJ6Encad;
-                tabsel[etiLJ12] = etabLJ12Encad;
                 break;
             case evdwPME:
                 tabsel[etiLJ6]  = etabLJ6Ewald;
@@ -1377,9 +1319,9 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
 
     /* Each table type (e.g. coul,lj6,lj12) requires four
      * numbers per table->n+1 data points. For performance reasons we want
-     * the table data to be aligned to a 32-byte boundary.
+     * the table data to be aligned to (at least) a 32-byte boundary.
      */
-    snew_aligned(table->data, table->stride * (table->n + 1) * sizeof(real), 32);
+    table->data.resize(table->stride * (table->n + 1) * sizeof(real));
 
     for (int k = 0; (k < etiNR); k++)
     {
@@ -1425,7 +1367,7 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
         }
 
         copy2table(table->n, k * table->formatsize, table->stride, td[k].x, td[k].v, td[k].f,
-                   scalefactor, table->data);
+                   scalefactor, table->data.data());
 
         done_tabledata(&(td[k]));
     }
@@ -1454,8 +1396,8 @@ bondedtable_t make_bonded_table(FILE* fplog, const char* fn, int angle)
     }
     tab.n     = td.nx;
     tab.scale = td.tabscale;
-    snew(tab.data, tab.n * stride);
-    copy2table(tab.n, 0, stride, td.x, td.v, td.f, 1.0, tab.data);
+    tab.data.resize(tab.n * stride);
+    copy2table(tab.n, 0, stride, td.x, td.v, td.f, 1.0, tab.data.data());
     done_tabledata(&td);
 
     return tab;
@@ -1481,8 +1423,8 @@ makeDispersionCorrectionTable(FILE* fp, const interaction_const_t* ic, real rtab
     dispersionCorrectionTable->ninteractions = 2;
     dispersionCorrectionTable->stride =
             dispersionCorrectionTable->formatsize * dispersionCorrectionTable->ninteractions;
-    snew_aligned(dispersionCorrectionTable->data,
-                 dispersionCorrectionTable->stride * (dispersionCorrectionTable->n + 1), 32);
+    dispersionCorrectionTable->data.resize(dispersionCorrectionTable->stride
+                                           * (dispersionCorrectionTable->n + 1));
 
     for (int i = 0; i <= fullTable->n; i++)
     {
@@ -1502,14 +1444,8 @@ t_forcetable::t_forcetable(enum gmx_table_interaction interaction, enum gmx_tabl
     r(0),
     n(0),
     scale(0),
-    data(nullptr),
     formatsize(0),
     ninteractions(0),
     stride(0)
 {
-}
-
-t_forcetable::~t_forcetable()
-{
-    sfree_aligned(data);
 }

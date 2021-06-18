@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -43,54 +44,16 @@
 
 #include <string>
 
+#include "gromacs/gpu_utils/device_context.h"
+#include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/gmxopencl.h"
 #include "gromacs/gpu_utils/gputraits_ocl.h"
 #include "gromacs/utility/exceptions.h"
+#include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/stringutil.h"
 
 enum class GpuApiCallBehavior;
-
-/*! \brief OpenCL vendor IDs */
-typedef enum
-{
-    OCL_VENDOR_NVIDIA = 0,
-    OCL_VENDOR_AMD,
-    OCL_VENDOR_INTEL,
-    OCL_VENDOR_UNKNOWN
-} ocl_vendor_id_t;
-
-/*! \internal
- * \brief OpenCL GPU device identificator
- *
- * An OpenCL device is identified by its ID.
- * The platform ID is also included for caching reasons.
- */
-typedef struct
-{
-    cl_platform_id ocl_platform_id; /**< Platform ID */
-    cl_device_id   ocl_device_id;   /**< Device ID */
-} ocl_gpu_id_t;
-
-/*! \internal
- * \brief OpenCL device information.
- *
- * The OpenCL device information is queried and set at detection and contains
- * both information about the device/hardware returned by the runtime as well
- * as additional data like support status.
- */
-struct gmx_device_info_t
-{
-    ocl_gpu_id_t    ocl_gpu_id;          /**< device ID assigned at detection   */
-    char            device_name[256];    /**< device name */
-    char            device_version[256]; /**< device version */
-    char            device_vendor[256];  /**< device vendor */
-    int             compute_units;       /**< number of compute units */
-    int             adress_bits;         /**< number of adress bits the device is capable of */
-    int             stat;                /**< device status takes values of e_gpu_detect_res_t */
-    ocl_vendor_id_t vendor_e;            /**< device vendor as defined by ocl_vendor_id_t */
-    size_t maxWorkItemSizes[3]; /**< workgroup size limits (CL_DEVICE_MAX_WORK_ITEM_SIZES) */
-    size_t maxWorkGroupSize;    /**< workgroup total size limit (CL_DEVICE_MAX_WORK_GROUP_SIZE) */
-};
 
 /*! \internal
  * \brief OpenCL GPU runtime data
@@ -104,57 +67,9 @@ struct gmx_device_info_t
  */
 struct gmx_device_runtime_data_t
 {
-    cl_context context; /**< OpenCL context */
-    cl_program program; /**< OpenCL program */
+    //! OpenCL program
+    cl_program program;
 };
-
-/*! \brief Launches synchronous or asynchronous device to host memory copy.
- *
- *  If copy_event is not NULL, on return it will contain an event object
- *  identifying this particular device to host operation. The event can further
- *  be used to queue a wait for this operation or to query profiling information.
- */
-int ocl_copy_D2H(void*              h_dest,
-                 cl_mem             d_src,
-                 size_t             offset,
-                 size_t             bytes,
-                 GpuApiCallBehavior transferKind,
-                 cl_command_queue   command_queue,
-                 cl_event*          copy_event);
-
-
-/*! \brief Launches asynchronous device to host memory copy. */
-int ocl_copy_D2H_async(void*            h_dest,
-                       cl_mem           d_src,
-                       size_t           offset,
-                       size_t           bytes,
-                       cl_command_queue command_queue,
-                       cl_event*        copy_event);
-
-/*! \brief Launches synchronous or asynchronous host to device memory copy.
- *
- *  If copy_event is not NULL, on return it will contain an event object
- *  identifying this particular host to device operation. The event can further
- *  be used to queue a wait for this operation or to query profiling information.
- */
-int ocl_copy_H2D(cl_mem             d_dest,
-                 const void*        h_src,
-                 size_t             offset,
-                 size_t             bytes,
-                 GpuApiCallBehavior transferKind,
-                 cl_command_queue   command_queue,
-                 cl_event*          copy_event);
-
-/*! \brief Launches asynchronous host to device memory copy. */
-int ocl_copy_H2D_async(cl_mem           d_dest,
-                       const void*      h_src,
-                       size_t           offset,
-                       size_t           bytes,
-                       cl_command_queue command_queue,
-                       cl_event*        copy_event);
-
-/*! \brief Launches synchronous host to device memory copy. */
-int ocl_copy_H2D_sync(cl_mem d_dest, const void* h_src, size_t offset, size_t bytes, cl_command_queue command_queue);
 
 /*! \brief Allocate host memory in malloc style */
 void pmalloc(void** h_ptr, size_t nbytes);
@@ -165,37 +80,11 @@ void pfree(void* h_ptr);
 /*! \brief Convert error code to diagnostic string */
 std::string ocl_get_error_string(cl_int error);
 
-/*! \brief Calls clFinish() in the stream \p s.
- *
- * \param[in] s stream to synchronize with
- */
-static inline void gpuStreamSynchronize(cl_command_queue s)
-{
-    cl_int cl_error = clFinish(s);
-    GMX_RELEASE_ASSERT(CL_SUCCESS == cl_error,
-                       ("Error caught during clFinish:" + ocl_get_error_string(cl_error)).c_str());
-}
-
-//! A debug checker to track cl_events being released correctly
-inline void ensureReferenceCount(const cl_event& event, unsigned int refCount)
-{
-#ifndef NDEBUG
-    cl_int clError = clGetEventInfo(event, CL_EVENT_REFERENCE_COUNT, sizeof(refCount), &refCount, nullptr);
-    GMX_ASSERT(CL_SUCCESS == clError, ocl_get_error_string(clError).c_str());
-    GMX_ASSERT(refCount == refCount, "Unexpected reference count");
-#else
-    GMX_UNUSED_VALUE(event);
-    GMX_UNUSED_VALUE(refCount);
-#endif
-}
-
 /*! \brief Pretend to synchronize an OpenCL stream (dummy implementation).
  *
- * \param[in] s queue to check
- *
- *  \returns     True if all tasks enqueued in the stream \p s (at the time of this call) have completed.
+ *  \returns  Not implemented in OpenCL.
  */
-static inline bool haveStreamTasksCompleted(cl_command_queue gmx_unused s)
+static inline bool haveStreamTasksCompleted(const DeviceStream& /* deviceStream */)
 {
     GMX_RELEASE_ASSERT(false, "haveStreamTasksCompleted is not implemented for OpenCL");
     return false;
@@ -249,11 +138,10 @@ void prepareGpuKernelArgument(cl_kernel                 kernel,
 
     // Assert on types not allowed to be passed to a kernel
     // (as per section 6.9 of the OpenCL spec).
-    static_assert(!std::is_same<CurrentArg, bool>::value && !std::is_same<CurrentArg, size_t>::value
-                          && !std::is_same<CurrentArg, ptrdiff_t>::value
-                          && !std::is_same<CurrentArg, intptr_t>::value
-                          && !std::is_same<CurrentArg, uintptr_t>::value,
-                  "Invalid type passed to OpenCL kernel functions (see OpenCL spec section 6.9).");
+    static_assert(
+            !std::is_same_v<CurrentArg,
+                            bool> && !std::is_same_v<CurrentArg, size_t> && !std::is_same_v<CurrentArg, ptrdiff_t> && !std::is_same_v<CurrentArg, intptr_t> && !std::is_same_v<CurrentArg, uintptr_t>,
+            "Invalid type passed to OpenCL kernel functions (see OpenCL spec section 6.9).");
 
     prepareGpuKernelArgument(kernel, config, argIndex + 1, otherArgsPtrs...);
 }
@@ -280,12 +168,14 @@ void* prepareGpuKernelArguments(cl_kernel kernel, const KernelLaunchConfig& conf
  *
  * \param[in] kernel          Kernel function handle
  * \param[in] config          Kernel configuration for launching
+ * \param[in] deviceStream    GPU stream to launch kernel in
  * \param[in] timingEvent     Timing event, fetched from GpuRegionTimer
  * \param[in] kernelName      Human readable kernel description, for error handling only
  * \throws gmx::InternalError on kernel launch failure
  */
 inline void launchGpuKernel(cl_kernel                 kernel,
                             const KernelLaunchConfig& config,
+                            const DeviceStream&       deviceStream,
                             CommandEvent*             timingEvent,
                             const char*               kernelName,
                             const void* /*kernelArgs*/)
@@ -299,9 +189,9 @@ inline void launchGpuKernel(cl_kernel                 kernel,
     {
         globalWorkSize[i] = config.gridSize[i] * config.blockSize[i];
     }
-    cl_int clError = clEnqueueNDRangeKernel(config.stream, kernel, workDimensions, globalWorkOffset,
-                                            globalWorkSize, config.blockSize, waitListSize,
-                                            waitList, timingEvent);
+    cl_int clError = clEnqueueNDRangeKernel(deviceStream.stream(), kernel, workDimensions,
+                                            globalWorkOffset, globalWorkSize, config.blockSize,
+                                            waitListSize, waitList, timingEvent);
     if (CL_SUCCESS != clError)
     {
         const std::string errorMessage = "GPU kernel (" + std::string(kernelName)

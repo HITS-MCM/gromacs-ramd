@@ -15,9 +15,9 @@ in the official `GitLab documentation <https://docs.gitlab.com/ee/ci/yaml/>`_.
 The new configuration for the builds and tests can be found in the file
 ``.gitlab-ci.yml``, with the templates for configuring is found in the files in the
 ``admin/ci-templates/`` directory. This section is going to be extended
-with individual build information as it comes available. For now we are
-using a combination of building with the previous system on Jenkins
-and post-submit verification on GitLab.
+with individual build information as it comes available.
+
+.. seealso:: :doc:`../infrastructure`
 
 .. _releng-triggering-builds:
 

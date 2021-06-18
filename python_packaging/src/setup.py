@@ -1,7 +1,7 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019, by the GROMACS development team, led by
+# Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -50,7 +50,16 @@
 
 import os
 
-from skbuild import setup
+# Import setuptools early to avoid UserWarning from Distutils.
+# Ref: https://gitlab.com/gromacs/gromacs/-/issues/3715
+import setuptools
+
+# Allow setup.py to be run when scikit-build is not installed, such as to
+# produce source distribution archives with `python setup.py sdist`
+try:
+    from skbuild import setup
+except ImportError:
+    from distutils.core import setup
 
 usage = """
 The `gmxapi` package requires an existing GROMACS installation, version 2020 or higher.
@@ -96,11 +105,13 @@ if gmxapi_DIR is None:
     # Infer from GMXRC exports, if available.
     gmxapi_DIR = os.getenv('GROMACS_DIR')
 
+
 def _find_first_gromacs_suffix(directory):
     dir_contents = os.listdir(directory)
     for entry in dir_contents:
         if entry.startswith('gromacs'):
             return entry.strip('gromacs')
+
 
 if gmx_toolchain_dir is None:
     # Try to guess from standard GMXRC environment variables.
@@ -149,14 +160,14 @@ cmake_args = [cmake_platform_hints, cmake_gmxapi_hint]
 setup(
     name='gmxapi',
 
-    # TODO: (pending infrastructure and further discussion) Replace with CMake variables from GMXAPI version.
-    version='0.1.0.1',
-    python_requires='>=3.5, <3.9',
-    setup_requires=['cmake>=3.12',
-                    'setuptools>=28',
-                    'scikit-build>=0.7'],
+    # TODO: single-source version information (currently repeated in gmxapi/version.py and CMakeLists.txt)
+    version='0.2.0',
+    python_requires='>=3.6',
+    install_requires=['networkx>=2.0',
+                      'numpy>=1'],
 
     packages=['gmxapi', 'gmxapi.simulation'],
+    package_data={'gmxapi': ['gmxconfig.json']},
 
     cmake_args=cmake_args,
 

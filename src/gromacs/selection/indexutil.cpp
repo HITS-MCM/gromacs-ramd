@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -847,7 +849,10 @@ void gmx_ana_index_make_block(t_blocka* t, const gmx_mtop_t* top, gmx_ana_index_
             srenew(t->a, g->isize);
             t->nalloc_a = g->isize;
         }
-        std::memcpy(t->a, g->index, g->isize * sizeof(*(t->a)));
+        if (t->nra > 0)
+        {
+            std::memcpy(t->a, g->index, g->isize * sizeof(*(t->a)));
+        }
     }
 
     /* Allocate memory for the block index. We don't know in advance
@@ -1293,7 +1298,10 @@ void gmx_ana_indexmap_copy(gmx_ana_indexmap_t* dest, gmx_ana_indexmap_t* src, bo
         dest->b.nra = src->b.nra;
         std::memcpy(dest->orgid, src->orgid, dest->b.nr * sizeof(*dest->orgid));
         std::memcpy(dest->b.index, src->b.index, (dest->b.nr + 1) * sizeof(*dest->b.index));
-        std::memcpy(dest->b.a, src->b.a, dest->b.nra * sizeof(*dest->b.a));
+        if (dest->b.nra > 0)
+        {
+            std::memcpy(dest->b.a, src->b.a, dest->b.nra * sizeof(*dest->b.a));
+        }
     }
     dest->mapb.nr  = src->mapb.nr;
     dest->mapb.nra = src->mapb.nra;

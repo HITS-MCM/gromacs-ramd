@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -77,11 +78,7 @@ static bool acomp(const InteractionOfType& a1, const InteractionOfType& a2)
 {
     int ac;
 
-    if ((ac = (a1.aj() - a2.aj())) != 0)
-    {
-        return ac < 0;
-    }
-    else if ((ac = (a1.ai() - a2.ai())) != 0)
+    if (((ac = (a1.aj() - a2.aj())) != 0) || ((ac = (a1.ai() - a2.ai())) != 0))
     {
         return ac < 0;
     }
@@ -110,12 +107,8 @@ static bool dcomp(const InteractionOfType& d1, const InteractionOfType& d2)
     int dc;
 
     /* First sort by J & K (the two central) atoms */
-    if ((dc = (d1.aj() - d2.aj())) != 0)
-    {
-        return dc < 0;
-    }
-    else if ((dc = (d1.ak() - d2.ak())) != 0)
-    {
+    if (((dc = (d1.aj() - d2.aj())) != 0) || ((dc = (d1.ak() - d2.ak())) != 0))
+    { // NOLINT bugprone-branch-clone
         return dc < 0;
     }
     /* Then make sure to put rtp dihedrals before generated ones */
@@ -128,11 +121,7 @@ static bool dcomp(const InteractionOfType& d1, const InteractionOfType& d2)
         return false;
     }
     /* Then sort by I and J (two outer) atoms */
-    else if ((dc = (d1.ai() - d2.ai())) != 0)
-    {
-        return dc < 0;
-    }
-    else if ((dc = (d1.al() - d2.al())) != 0)
+    else if (((dc = (d1.ai() - d2.ai())) != 0) || ((dc = (d1.al() - d2.al())) != 0))
     {
         return dc < 0;
     }
@@ -193,15 +182,7 @@ static bool idcomp(const InteractionOfType& a, const InteractionOfType& b)
 {
     int d;
 
-    if ((d = (a.ai() - b.ai())) != 0)
-    {
-        return d < 0;
-    }
-    else if ((d = (a.al() - b.al())) != 0)
-    {
-        return d < 0;
-    }
-    else if ((d = (a.aj() - b.aj())) != 0)
+    if (((d = (a.ai() - b.ai())) != 0) || ((d = (a.al() - b.al())) != 0) || ((d = (a.aj() - b.aj())) != 0))
     {
         return d < 0;
     }
@@ -355,7 +336,8 @@ static std::vector<InteractionOfType> clean_dih(gmx::ArrayRef<const InteractionO
 
 static std::vector<InteractionOfType> get_impropers(t_atoms*                             atoms,
                                                     gmx::ArrayRef<MoleculePatchDatabase> globalPatches,
-                                                    bool bAllowMissing)
+                                                    bool                     bAllowMissing,
+                                                    gmx::ArrayRef<const int> cyclicBondsIndex)
 {
     std::vector<InteractionOfType> improper;
 
@@ -372,7 +354,8 @@ static std::vector<InteractionOfType> get_impropers(t_atoms*                    
                 std::vector<int> ai;
                 for (int k = 0; (k < 4) && !bStop; k++)
                 {
-                    int entry = search_atom(bondeds.a[k].c_str(), start, atoms, "improper", bAllowMissing);
+                    const int entry = search_atom(bondeds.a[k].c_str(), start, atoms, "improper",
+                                                  bAllowMissing, cyclicBondsIndex);
 
                     if (entry != -1)
                     {
@@ -456,7 +439,11 @@ static void get_atomnames_min(int                        n,
     }
 }
 
-static void gen_excls(t_atoms* atoms, t_excls* excls, gmx::ArrayRef<MoleculePatchDatabase> globalPatches, bool bAllowMissing)
+static void gen_excls(t_atoms*                             atoms,
+                      t_excls*                             excls,
+                      gmx::ArrayRef<MoleculePatchDatabase> globalPatches,
+                      bool                                 bAllowMissing,
+                      gmx::ArrayRef<const int>             cyclicBondsIndex)
 {
     int astart = 0;
     for (int a = 0; a < atoms->nr; a++)
@@ -469,9 +456,9 @@ static void gen_excls(t_atoms* atoms, t_excls* excls, gmx::ArrayRef<MoleculePatc
             for (const auto& bondeds : hbexcl->b)
             {
                 const char* anm = bondeds.a[0].c_str();
-                int         i1  = search_atom(anm, astart, atoms, "exclusion", bAllowMissing);
-                anm             = bondeds.a[1].c_str();
-                int i2          = search_atom(anm, astart, atoms, "exclusion", bAllowMissing);
+                int i1 = search_atom(anm, astart, atoms, "exclusion", bAllowMissing, cyclicBondsIndex);
+                anm    = bondeds.a[1].c_str();
+                int i2 = search_atom(anm, astart, atoms, "exclusion", bAllowMissing, cyclicBondsIndex);
                 if (i1 != -1 && i2 != -1)
                 {
                     if (i1 > i2)
@@ -575,13 +562,26 @@ static void clean_excls(t_nextnb* nnb, int nrexcl, t_excls excls[])
     }
 }
 
-/* Generate pairs, angles and dihedrals from .rtp settings */
+/*! \brief
+ * Generate pairs, angles and dihedrals from .rtp settings
+ *
+ * \param[in,out] atoms            Global information about atoms in topology.
+ * \param[in]     rtpFFDB          Residue type database from force field.
+ * \param[in,out] plist            Information about listed interactions.
+ * \param[in,out] excls            Pair interaction exclusions.
+ * \param[in,out] globalPatches    Information about possible residue modifications.
+ * \param[in]     bAllowMissing    True if missing interaction information is allowed.
+ *                                 AKA allow cartoon physics
+ * \param[in]     cyclicBondsIndex Information about bonds creating cyclic molecules.
+ *                                 Empty if no such bonds exist.
+ */
 void gen_pad(t_atoms*                               atoms,
              gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
              gmx::ArrayRef<InteractionsOfType>      plist,
              t_excls                                excls[],
              gmx::ArrayRef<MoleculePatchDatabase>   globalPatches,
-             bool                                   bAllowMissing)
+             bool                                   bAllowMissing,
+             gmx::ArrayRef<const int>               cyclicBondsIndex)
 {
     t_nextnb nnb;
     init_nnb(&nnb, atoms->nr, 4);
@@ -601,7 +601,7 @@ void gen_pad(t_atoms*                               atoms,
 
     if (!globalPatches.empty())
     {
-        gen_excls(atoms, excls, globalPatches, bAllowMissing);
+        gen_excls(atoms, excls, globalPatches, bAllowMissing, cyclicBondsIndex);
         /* mark all entries as not matched yet */
         for (int i = 0; i < atoms->nres; i++)
         {
@@ -782,8 +782,9 @@ void gen_pad(t_atoms*                               atoms,
                     continue;
                 }
                 /* Hm - entry not used, let's see if we can find all atoms */
-                std::vector<int> atomNumbers;
-                bool             bFound = true;
+                std::vector<int>                   atomNumbers;
+                bool                               bFound = true;
+                gmx::ArrayRef<const int>::iterator cyclicBondsIterator;
                 for (int k = 0; k < 3 && bFound; k++)
                 {
                     const char* p   = bondeds.a[k].c_str();
@@ -791,12 +792,24 @@ void gen_pad(t_atoms*                               atoms,
                     if (p[0] == '-')
                     {
                         p++;
-                        res--;
+                        cyclicBondsIterator =
+                                std::find(cyclicBondsIndex.begin(), cyclicBondsIndex.end(), res--);
+                        if (cyclicBondsIterator != cyclicBondsIndex.end()
+                            && !((cyclicBondsIterator - cyclicBondsIndex.begin()) & 1))
+                        {
+                            res = *(++cyclicBondsIterator);
+                        }
                     }
                     else if (p[0] == '+')
                     {
                         p++;
-                        res++;
+                        cyclicBondsIterator =
+                                std::find(cyclicBondsIndex.begin(), cyclicBondsIndex.end(), res++);
+                        if (cyclicBondsIterator != cyclicBondsIndex.end()
+                            && ((cyclicBondsIterator - cyclicBondsIndex.begin()) & 1))
+                        {
+                            res = *(--cyclicBondsIterator);
+                        }
                     }
                     atomNumbers.emplace_back(search_res_atom(p, res, atoms, "angle", TRUE));
                     bFound = (atomNumbers.back() != -1);
@@ -820,8 +833,9 @@ void gen_pad(t_atoms*                               atoms,
                     continue;
                 }
                 /* Hm - entry not used, let's see if we can find all atoms */
-                std::vector<int> atomNumbers;
-                bool             bFound = true;
+                std::vector<int>                   atomNumbers;
+                bool                               bFound = true;
+                gmx::ArrayRef<const int>::iterator cyclicBondsIterator;
                 for (int k = 0; k < 4 && bFound; k++)
                 {
                     const char* p   = bondeds.a[k].c_str();
@@ -829,12 +843,26 @@ void gen_pad(t_atoms*                               atoms,
                     if (p[0] == '-')
                     {
                         p++;
+                        cyclicBondsIterator =
+                                std::find(cyclicBondsIndex.begin(), cyclicBondsIndex.end(), res);
                         res--;
+                        if (cyclicBondsIterator != cyclicBondsIndex.end()
+                            && !((cyclicBondsIterator - cyclicBondsIndex.begin()) & 1))
+                        {
+                            res = *(++cyclicBondsIterator);
+                        }
                     }
                     else if (p[0] == '+')
                     {
                         p++;
+                        cyclicBondsIterator =
+                                std::find(cyclicBondsIndex.begin(), cyclicBondsIndex.end(), res);
                         res++;
+                        if (cyclicBondsIterator != cyclicBondsIndex.end()
+                            && ((cyclicBondsIterator - cyclicBondsIndex.begin()) & 1))
+                        {
+                            res = *(--cyclicBondsIterator);
+                        }
                     }
                     atomNumbers.emplace_back(search_res_atom(p, res, atoms, "dihedral", TRUE));
                     bFound = (atomNumbers.back() != -1);
@@ -877,7 +905,7 @@ void gen_pad(t_atoms*                               atoms,
     }
 
     /* Get the impropers from the database */
-    improper = get_impropers(atoms, globalPatches, bAllowMissing);
+    improper = get_impropers(atoms, globalPatches, bAllowMissing, cyclicBondsIndex);
 
     /* Sort the impropers */
     sort_id(improper);

@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,11 +47,11 @@
 
 #include <vector>
 
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU_CUDA
 #    include <cufft.h>
 
 #    include "gromacs/gpu_utils/gputraits.cuh"
-#elif GMX_GPU == GMX_GPU_OPENCL
+#elif GMX_GPU_OPENCL
 #    include <clFFT.h>
 
 #    include "gromacs/gpu_utils/gmxopencl.h"
@@ -73,8 +73,9 @@ public:
      * Constructs CUDA/OpenCL FFT plans for performing 3D FFT on a PME grid.
      *
      * \param[in] pmeGpu                  The PME GPU structure.
+     * \param[in] gridIndex               The index of the grid on which to perform the calculations.
      */
-    GpuParallel3dFft(const PmeGpu* pmeGpu);
+    GpuParallel3dFft(const PmeGpu* pmeGpu, int gridIndex);
     /*! \brief Destroys the FFT plans. */
     ~GpuParallel3dFft();
     /*! \brief Performs the FFT transform in given direction
@@ -85,15 +86,15 @@ public:
     void perform3dFft(gmx_fft_direction dir, CommandEvent* timingEvent);
 
 private:
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU_CUDA
     cufftHandle   planR2C_;
     cufftHandle   planC2R_;
     cufftReal*    realGrid_;
     cufftComplex* complexGrid_;
-#elif GMX_GPU == GMX_GPU_OPENCL
+#elif GMX_GPU_OPENCL
     clfftPlanHandle               planR2C_;
     clfftPlanHandle               planC2R_;
-    std::vector<cl_command_queue> commandStreams_;
+    std::vector<cl_command_queue> deviceStreams_;
     cl_mem                        realGrid_;
     cl_mem                        complexGrid_;
 #endif

@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -59,7 +60,7 @@ namespace
 // shifting. Currently up to 8 is accelerated. Could be accelerated for any
 // number with a constexpr log2 function.
 template<int n>
-SimdFInt32 fastMultiply(SimdFInt32 x)
+static inline SimdFInt32 fastMultiply(SimdFInt32 x)
 {
     if (n == 2)
     {
@@ -83,6 +84,21 @@ template<int align>
 static inline void gmx_simdcall gatherLoadBySimdIntTranspose(const float*, SimdFInt32)
 {
     // Nothing to do. Termination of recursion.
+}
+
+/* This is an internal helper function used by decr3Hsimd(...).
+ */
+inline void gmx_simdcall decrHsimd(float* m, SimdFloat a)
+{
+    __m256 t;
+
+    assert(std::size_t(m) % 32 == 0);
+
+    a.simdInternal_ = _mm512_add_ps(a.simdInternal_,
+                                    _mm512_shuffle_f32x4(a.simdInternal_, a.simdInternal_, 0xEE));
+    t               = _mm256_load_ps(m);
+    t               = _mm256_sub_ps(t, _mm512_castps512_ps256(a.simdInternal_));
+    _mm256_store_ps(m, t);
 }
 } // namespace
 
@@ -383,17 +399,11 @@ static inline void gmx_simdcall incrDualHsimd(float* m0, float* m1, SimdFloat a)
     _mm256_store_ps(m1, x);
 }
 
-static inline void gmx_simdcall decrHsimd(float* m, SimdFloat a)
+static inline void gmx_simdcall decr3Hsimd(float* m, SimdFloat a0, SimdFloat a1, SimdFloat a2)
 {
-    __m256 t;
-
-    assert(std::size_t(m) % 32 == 0);
-
-    a.simdInternal_ = _mm512_add_ps(a.simdInternal_,
-                                    _mm512_shuffle_f32x4(a.simdInternal_, a.simdInternal_, 0xEE));
-    t               = _mm256_load_ps(m);
-    t               = _mm256_sub_ps(t, _mm512_castps512_ps256(a.simdInternal_));
-    _mm256_store_ps(m, t);
+    decrHsimd(m, a0);
+    decrHsimd(m + GMX_SIMD_FLOAT_WIDTH / 2, a1);
+    decrHsimd(m + GMX_SIMD_FLOAT_WIDTH, a2);
 }
 
 

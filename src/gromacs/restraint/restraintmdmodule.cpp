@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -72,9 +72,9 @@ void RestraintForceProvider::calculateForces(const ForceProviderInput& forceProv
     GMX_ASSERT(mdatoms.homenr >= 0, "number of home atoms must be non-negative.");
 
     const auto& box = forceProviderInput.box_;
-    GMX_ASSERT(check_box(-1, box) == nullptr, "Invalid box.");
+    GMX_ASSERT(check_box(PbcType::Unset, box) == nullptr, "Invalid box.");
     t_pbc pbc{};
-    set_pbc(&pbc, -1, box);
+    set_pbc(&pbc, PbcType::Unset, box);
 
     const auto& x  = forceProviderInput.x_;
     const auto& cr = forceProviderInput.cr_;
@@ -119,7 +119,7 @@ void RestraintForceProvider::calculateForces(const ForceProviderInput& forceProv
     {
         // Note: this assumes that all ranks are hitting this line, which is not generally true.
         // I need to find the right subcommunicator. What I really want is a _scoped_ communicator...
-        gmx_barrier(&cr);
+        gmx_barrier(cr.mpi_comm_mygroup);
     }
 
     // Apply restraint on all thread ranks only after any updates have been made.
@@ -158,16 +158,6 @@ RestraintMDModuleImpl::RestraintMDModuleImpl(std::shared_ptr<IRestraintPotential
     GMX_ASSERT(forceProvider_, "Class invariant implies non-null ForceProvider.");
 }
 
-IMdpOptionProvider* RestraintMDModuleImpl::mdpOptionProvider()
-{
-    return nullptr;
-}
-
-IMDOutputProvider* RestraintMDModuleImpl::outputProvider()
-{
-    return nullptr;
-}
-
 void RestraintMDModuleImpl::initForceProviders(ForceProviders* forceProviders)
 {
     GMX_ASSERT(forceProvider_, "Class invariant implies non-null ForceProvider member.");
@@ -203,6 +193,10 @@ std::unique_ptr<RestraintMDModule> RestraintMDModule::create(std::shared_ptr<IRe
     auto newModule      = std::make_unique<RestraintMDModule>(std::move(implementation));
     return newModule;
 }
+
+void RestraintMDModule::subscribeToSimulationSetupNotifications(MdModulesNotifier* /*notifier*/) {}
+
+void RestraintMDModule::subscribeToPreProcessingNotifications(MdModulesNotifier* /*notifier*/) {}
 
 // private constructor to implement static create() method.
 RestraintMDModule::RestraintMDModule(std::unique_ptr<RestraintMDModuleImpl> restraint) :

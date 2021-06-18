@@ -2,7 +2,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+# Copyright (c) 2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -940,10 +941,13 @@ class GromacsTree(object):
     def load_git_attributes(self):
         """Load git attribute information for files."""
         args = ['git', 'check-attr', '--stdin', 'filter']
-        git_check_attr = subprocess.Popen(args, stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, cwd=self._source_root)
-        filelist = '\n'.join(map(File.get_relpath, self._files.values()))
-        filters = git_check_attr.communicate(filelist.encode())[0].decode()
+        filelist = '\n'.join(map(File.get_relpath, self._files.values())) + '\n'
+        git_check_attr = subprocess.run(args,
+                                        input=filelist,
+                                        stdout=subprocess.PIPE,
+                                        universal_newlines=True,
+                                        cwd=self._source_root)
+        filters = git_check_attr.stdout
         for fileinfo in filters.splitlines():
             path, dummy, value = fileinfo.split(': ')
             fileobj = self._files.get(path)
@@ -963,8 +967,11 @@ class GromacsTree(object):
                 args.extend(['-e', define])
             args.extend(['--', '*.cpp', '*.c', '*.cu', '*.h', '*.cuh'])
             define_re = r'\b(?:' + '|'.join(all_defines)+ r')\b'
-            output = subprocess.check_output(args, cwd=self._source_root).decode()
-            for line in output.splitlines():
+            completed_process = subprocess.run(args,
+                                               cwd=self._source_root,
+                                               universal_newlines=True,
+                                               stdout=subprocess.PIPE)
+            for line in completed_process.stdout.splitlines():
                 (filename, text) = line.split('\0')
                 fileobj = self._files.get(filename)
                 if fileobj is not None and fileobj not in excluded_files:

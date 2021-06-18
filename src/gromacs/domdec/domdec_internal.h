@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -144,7 +145,7 @@ struct DDCellsizesWithDlb
  * Here floats are accurate enough, since these variables
  * only influence the load balancing, not the actual MD results.
  */
-typedef struct
+typedef struct domdec_load
 {
     /**< The number of load recordings */
     int nload = 0;
@@ -167,7 +168,7 @@ typedef struct
 } domdec_load_t;
 
 /*! \brief Data needed to sort an atom to the desired location in the local state */
-typedef struct
+typedef struct gmx_cgsort
 {
     /**< Neighborsearch grid cell index */
     int nsc = 0;
@@ -178,7 +179,7 @@ typedef struct
 } gmx_cgsort_t;
 
 /*! \brief Temporary buffers for sorting atoms */
-typedef struct
+typedef struct gmx_domdec_sort
 {
     /**< Sorted array of indices */
     std::vector<gmx_cgsort_t> sorted;
@@ -283,7 +284,7 @@ enum class DlbState
 };
 
 /*! \brief The PME domain decomposition for one dimension */
-typedef struct
+typedef struct gmx_ddpme
 {
     /**< The dimension */
     int dim = 0;
@@ -471,9 +472,6 @@ struct DDSettings
     int dlb_scale_lim = 0;
     //! Flop counter (0=no,1=yes,2=with (eFlop-1)*5% noise
     int eFlop = 0;
-
-    //! Request 1D domain decomposition with maximum one communication pulse
-    bool request1DAnd1Pulse;
 
     //! Whether to order the DD dimensions from z to x
     bool useDDOrderZYX = false;
@@ -778,7 +776,7 @@ static inline int dd_index(const ivec numDomains, const ivec domainCoordinates)
 /*! Returns the size of the buffer to hold fractional cell boundaries for DD dimension index dimIndex */
 static inline int ddCellFractionBufferSize(const gmx_domdec_t* dd, int dimIndex)
 {
-    return dd->nc[dd->dim[dimIndex]] + 1 + dimIndex * 2 + 1 + dimIndex;
+    return dd->numCells[dd->dim[dimIndex]] + 1 + dimIndex * 2 + 1 + dimIndex;
 }
 
 /*! \brief Maximum number of ranks for using send/recv for state scattering and gathering

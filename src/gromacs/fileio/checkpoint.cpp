@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2008,2009,2010,2011,2012 by the GROMACS development team.
  * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -41,8 +41,6 @@
 
 #include "checkpoint.h"
 
-#include "config.h"
-
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -62,6 +60,7 @@
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/awh_correlation_history.h"
 #include "gromacs/mdtypes/awh_history.h"
+#include "gromacs/mdtypes/checkpointdata.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/df_history.h"
 #include "gromacs/mdtypes/edsamhistory.h"
@@ -73,6 +72,7 @@
 #include "gromacs/mdtypes/pullhistory.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/mdtypes/swaphistory.h"
+#include "gromacs/modularsimulator/modularsimulator.h"
 #include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/baseversion.h"
@@ -88,10 +88,59 @@
 #include "gromacs/utility/programcontext.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/sysinfo.h"
+#include "gromacs/utility/textwriter.h"
 #include "gromacs/utility/txtdump.h"
 
 #define CPT_MAGIC1 171817
 #define CPT_MAGIC2 171819
+
+namespace gmx
+{
+
+template<typename ValueType>
+void readKvtCheckpointValue(compat::not_null<ValueType*> value,
+                            const std::string&           name,
+                            const std::string&           identifier,
+                            const KeyValueTreeObject&    kvt)
+{
+    const std::string key = identifier + "-" + name;
+    if (!kvt.keyExists(key))
+    {
+        std::string errorMessage = "Cannot read requested checkpoint value " + key + " .";
+        GMX_THROW(InternalError(errorMessage));
+    }
+    *value = kvt[key].cast<ValueType>();
+}
+
+template void readKvtCheckpointValue(compat::not_null<std::int64_t*> value,
+                                     const std::string&              name,
+                                     const std::string&              identifier,
+                                     const KeyValueTreeObject&       kvt);
+template void readKvtCheckpointValue(compat::not_null<real*>   value,
+                                     const std::string&        name,
+                                     const std::string&        identifier,
+                                     const KeyValueTreeObject& kvt);
+
+template<typename ValueType>
+void writeKvtCheckpointValue(const ValueType&          value,
+                             const std::string&        name,
+                             const std::string&        identifier,
+                             KeyValueTreeObjectBuilder kvtBuilder)
+{
+    kvtBuilder.addValue<ValueType>(identifier + "-" + name, value);
+}
+
+template void writeKvtCheckpointValue(const std::int64_t&       value,
+                                      const std::string&        name,
+                                      const std::string&        identifier,
+                                      KeyValueTreeObjectBuilder kvtBuilder);
+template void writeKvtCheckpointValue(const real&               value,
+                                      const std::string&        name,
+                                      const std::string&        identifier,
+                                      KeyValueTreeObjectBuilder kvtBuilder);
+
+
+} // namespace gmx
 
 /*! \brief Enum of values that describe the contents of a cpt file
  * whose format matches a version number
@@ -107,9 +156,10 @@ enum cptv
     cptv_Unknown = 17,                  /**< Version before numbering scheme */
     cptv_RemoveBuildMachineInformation, /**< remove functionality that makes mdrun builds non-reproducible */
     cptv_ComPrevStepAsPullGroupReference, /**< Allow using COM of previous step as pull group PBC reference */
-    cptv_PullAverage, /**< Added possibility to output average pull force and position */
-    cptv_MdModules,   /**< Added checkpointing for MdModules */
-    cptv_Count        /**< the total number of cptv versions */
+    cptv_PullAverage,      /**< Added possibility to output average pull force and position */
+    cptv_MdModules,        /**< Added checkpointing for MdModules */
+    cptv_ModularSimulator, /**< Added checkpointing for modular simulator */
+    cptv_Count             /**< the total number of cptv versions */
 };
 
 /*! \brief Version number of the file format written to checkpoint
@@ -1178,6 +1228,16 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     {
         contents->flagsPullHistory = 0;
     }
+
+    if (contents->file_version >= cptv_ModularSimulator)
+    {
+        do_cpt_bool_err(xd, "Is modular simulator checkpoint",
+                        &contents->isModularSimulatorCheckpoint, list);
+    }
+    else
+    {
+        contents->isModularSimulatorCheckpoint = false;
+    }
 }
 
 static int do_cpt_footer(XDR* xd, int file_version)
@@ -1268,16 +1328,11 @@ static int do_cpt_state(XDR* xd, int fflags, t_state* state, FILE* list)
                     break;
                 /* The RNG entries are no longer written,
                  * the next 4 lines are only for reading old files.
+                 * It's OK that three case statements fall through.
                  */
                 case estLD_RNG_NOTSUPPORTED:
-                    ret = do_cpte_ints(xd, part, i, sflags, 0, nullptr, list);
-                    break;
                 case estLD_RNGI_NOTSUPPORTED:
-                    ret = do_cpte_ints(xd, part, i, sflags, 0, nullptr, list);
-                    break;
                 case estMC_RNG_NOTSUPPORTED:
-                    ret = do_cpte_ints(xd, part, i, sflags, 0, nullptr, list);
-                    break;
                 case estMC_RNGI_NOTSUPPORTED:
                     ret = do_cpte_ints(xd, part, i, sflags, 0, nullptr, list);
                     break;
@@ -2075,17 +2130,23 @@ static int do_cpt_awh(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhHistory* awhH
 
 static void do_cpt_mdmodules(int                           fileVersion,
                              t_fileio*                     checkpointFileHandle,
-                             const gmx::MdModulesNotifier& mdModulesNotifier)
+                             const gmx::MdModulesNotifier& mdModulesNotifier,
+                             FILE*                         outputFile)
 {
     if (fileVersion >= cptv_MdModules)
     {
         gmx::FileIOXdrSerializer serializer(checkpointFileHandle);
         gmx::KeyValueTreeObject  mdModuleCheckpointParameterTree =
                 gmx::deserializeKeyValueTree(&serializer);
+        if (outputFile)
+        {
+            gmx::TextWriter textWriter(outputFile);
+            gmx::dumpKeyValueTree(&textWriter, mdModuleCheckpointParameterTree);
+        }
         gmx::MdModulesCheckpointReadingDataOnMaster mdModuleCheckpointReadingDataOnMaster = {
             mdModuleCheckpointParameterTree, fileVersion
         };
-        mdModulesNotifier.notifier_.notify(mdModuleCheckpointReadingDataOnMaster);
+        mdModulesNotifier.checkpointingNotifications_.notify(mdModuleCheckpointReadingDataOnMaster);
     }
 }
 
@@ -2173,211 +2234,103 @@ static int do_cpt_files(XDR* xd, gmx_bool bRead, std::vector<gmx_file_position_t
     return 0;
 }
 
-static void mpiBarrierBeforeRename(const bool applyMpiBarrierBeforeRename, MPI_Comm mpiBarrierCommunicator)
+void write_checkpoint_data(t_fileio*                         fp,
+                           CheckpointHeaderContents          headerContents,
+                           gmx_bool                          bExpanded,
+                           int                               elamstats,
+                           t_state*                          state,
+                           ObservablesHistory*               observablesHistory,
+                           const gmx::MdModulesNotifier&     mdModulesNotifier,
+                           std::vector<gmx_file_position_t>* outputfiles,
+                           gmx::WriteCheckpointDataHolder*   modularSimulatorCheckpointData)
 {
-    if (applyMpiBarrierBeforeRename)
-    {
-#if GMX_MPI
-        MPI_Barrier(mpiBarrierCommunicator);
-#else
-        GMX_RELEASE_ASSERT(false, "Should not request a barrier without MPI");
-        GMX_UNUSED_VALUE(mpiBarrierCommunicator);
-#endif
-    }
-}
-
-void write_checkpoint(const char*                   fn,
-                      gmx_bool                      bNumberAndKeep,
-                      FILE*                         fplog,
-                      const t_commrec*              cr,
-                      ivec                          domdecCells,
-                      int                           nppnodes,
-                      int                           eIntegrator,
-                      int                           simulation_part,
-                      gmx_bool                      bExpanded,
-                      int                           elamstats,
-                      int64_t                       step,
-                      double                        t,
-                      t_state*                      state,
-                      ObservablesHistory*           observablesHistory,
-                      const gmx::MdModulesNotifier& mdModulesNotifier,
-                      bool                          applyMpiBarrierBeforeRename,
-                      MPI_Comm                      mpiBarrierCommunicator)
-{
-    t_fileio* fp;
-    char*     fntemp; /* the temporary checkpoint file name */
-    int       npmenodes;
-    char      buf[1024], suffix[5 + STEPSTRSIZE], sbuf[STEPSTRSIZE];
-    t_fileio* ret;
-
-    if (DOMAINDECOMP(cr))
-    {
-        npmenodes = cr->npmenodes;
-    }
-    else
-    {
-        npmenodes = 0;
-    }
-
-#if !GMX_NO_RENAME
-    /* make the new temporary filename */
-    snew(fntemp, std::strlen(fn) + 5 + STEPSTRSIZE);
-    std::strcpy(fntemp, fn);
-    fntemp[std::strlen(fn) - std::strlen(ftp2ext(fn2ftp(fn))) - 1] = '\0';
-    sprintf(suffix, "_%s%s", "step", gmx_step_str(step, sbuf));
-    std::strcat(fntemp, suffix);
-    std::strcat(fntemp, fn + std::strlen(fn) - std::strlen(ftp2ext(fn2ftp(fn))) - 1);
-#else
-    /* if we can't rename, we just overwrite the cpt file.
-     * dangerous if interrupted.
-     */
-    snew(fntemp, std::strlen(fn));
-    std::strcpy(fntemp, fn);
-#endif
-    std::string timebuf = gmx_format_current_time();
-
-    if (fplog)
-    {
-        fprintf(fplog, "Writing checkpoint, step %s at %s\n\n", gmx_step_str(step, buf), timebuf.c_str());
-    }
-
-    /* Get offsets for open files */
-    auto outputfiles = gmx_fio_get_output_file_positions();
-
-    fp = gmx_fio_open(fntemp, "w");
-
-    int flags_eks;
+    headerContents.flags_eks = 0;
     if (state->ekinstate.bUpToDate)
     {
-        flags_eks = ((1 << eeksEKIN_N) | (1 << eeksEKINH) | (1 << eeksEKINF) | (1 << eeksEKINO)
-                     | (1 << eeksEKINSCALEF) | (1 << eeksEKINSCALEH) | (1 << eeksVSCALE)
-                     | (1 << eeksDEKINDL) | (1 << eeksMVCOS));
+        headerContents.flags_eks = ((1 << eeksEKIN_N) | (1 << eeksEKINH) | (1 << eeksEKINF)
+                                    | (1 << eeksEKINO) | (1 << eeksEKINSCALEF) | (1 << eeksEKINSCALEH)
+                                    | (1 << eeksVSCALE) | (1 << eeksDEKINDL) | (1 << eeksMVCOS));
     }
-    else
-    {
-        flags_eks = 0;
-    }
+    headerContents.isModularSimulatorCheckpoint = !modularSimulatorCheckpointData->empty();
 
-    energyhistory_t* enerhist  = observablesHistory->energyHistory.get();
-    int              flags_enh = 0;
+    energyhistory_t* enerhist = observablesHistory->energyHistory.get();
+    headerContents.flags_enh  = 0;
     if (enerhist != nullptr && (enerhist->nsum > 0 || enerhist->nsum_sim > 0))
     {
-        flags_enh |= (1 << eenhENERGY_N) | (1 << eenhENERGY_NSTEPS) | (1 << eenhENERGY_NSTEPS_SIM);
+        headerContents.flags_enh |=
+                (1 << eenhENERGY_N) | (1 << eenhENERGY_NSTEPS) | (1 << eenhENERGY_NSTEPS_SIM);
         if (enerhist->nsum > 0)
         {
-            flags_enh |= ((1 << eenhENERGY_AVER) | (1 << eenhENERGY_SUM) | (1 << eenhENERGY_NSUM));
+            headerContents.flags_enh |=
+                    ((1 << eenhENERGY_AVER) | (1 << eenhENERGY_SUM) | (1 << eenhENERGY_NSUM));
         }
         if (enerhist->nsum_sim > 0)
         {
-            flags_enh |= ((1 << eenhENERGY_SUM_SIM) | (1 << eenhENERGY_NSUM_SIM));
+            headerContents.flags_enh |= ((1 << eenhENERGY_SUM_SIM) | (1 << eenhENERGY_NSUM_SIM));
         }
         if (enerhist->deltaHForeignLambdas != nullptr)
         {
-            flags_enh |= ((1 << eenhENERGY_DELTA_H_NN) | (1 << eenhENERGY_DELTA_H_LIST)
-                          | (1 << eenhENERGY_DELTA_H_STARTTIME) | (1 << eenhENERGY_DELTA_H_STARTLAMBDA));
+            headerContents.flags_enh |=
+                    ((1 << eenhENERGY_DELTA_H_NN) | (1 << eenhENERGY_DELTA_H_LIST)
+                     | (1 << eenhENERGY_DELTA_H_STARTTIME) | (1 << eenhENERGY_DELTA_H_STARTLAMBDA));
         }
     }
 
-    PullHistory* pullHist         = observablesHistory->pullHistory.get();
-    int          flagsPullHistory = 0;
+    PullHistory* pullHist           = observablesHistory->pullHistory.get();
+    headerContents.flagsPullHistory = 0;
     if (pullHist != nullptr && (pullHist->numValuesInXSum > 0 || pullHist->numValuesInFSum > 0))
     {
-        flagsPullHistory |= (1 << epullhPULL_NUMCOORDINATES);
-        flagsPullHistory |= ((1 << epullhPULL_NUMGROUPS) | (1 << epullhPULL_NUMVALUESINXSUM)
-                             | (1 << epullhPULL_NUMVALUESINFSUM));
+        headerContents.flagsPullHistory |= (1 << epullhPULL_NUMCOORDINATES);
+        headerContents.flagsPullHistory |= ((1 << epullhPULL_NUMGROUPS) | (1 << epullhPULL_NUMVALUESINXSUM)
+                                            | (1 << epullhPULL_NUMVALUESINFSUM));
     }
 
-    int flags_dfh;
+    headerContents.flags_dfh = 0;
     if (bExpanded)
     {
-        flags_dfh = ((1 << edfhBEQUIL) | (1 << edfhNATLAMBDA) | (1 << edfhSUMWEIGHTS)
-                     | (1 << edfhSUMDG) | (1 << edfhTIJ) | (1 << edfhTIJEMP));
+        headerContents.flags_dfh = ((1 << edfhBEQUIL) | (1 << edfhNATLAMBDA) | (1 << edfhSUMWEIGHTS)
+                                    | (1 << edfhSUMDG) | (1 << edfhTIJ) | (1 << edfhTIJEMP));
         if (EWL(elamstats))
         {
-            flags_dfh |= ((1 << edfhWLDELTA) | (1 << edfhWLHISTO));
+            headerContents.flags_dfh |= ((1 << edfhWLDELTA) | (1 << edfhWLHISTO));
         }
         if ((elamstats == elamstatsMINVAR) || (elamstats == elamstatsBARKER)
             || (elamstats == elamstatsMETROPOLIS))
         {
-            flags_dfh |= ((1 << edfhACCUMP) | (1 << edfhACCUMM) | (1 << edfhACCUMP2)
-                          | (1 << edfhACCUMM2) | (1 << edfhSUMMINVAR) | (1 << edfhSUMVAR));
+            headerContents.flags_dfh |= ((1 << edfhACCUMP) | (1 << edfhACCUMM) | (1 << edfhACCUMP2)
+                                         | (1 << edfhACCUMM2) | (1 << edfhSUMMINVAR) | (1 << edfhSUMVAR));
         }
     }
-    else
-    {
-        flags_dfh = 0;
-    }
 
-    int flags_awhh = 0;
+    headerContents.flags_awhh = 0;
     if (state->awhHistory != nullptr && !state->awhHistory->bias.empty())
     {
-        flags_awhh |= ((1 << eawhhIN_INITIAL) | (1 << eawhhEQUILIBRATEHISTOGRAM) | (1 << eawhhHISTSIZE)
-                       | (1 << eawhhNPOINTS) | (1 << eawhhCOORDPOINT) | (1 << eawhhUMBRELLAGRIDPOINT)
-                       | (1 << eawhhUPDATELIST) | (1 << eawhhLOGSCALEDSAMPLEWEIGHT)
-                       | (1 << eawhhNUMUPDATES) | (1 << eawhhFORCECORRELATIONGRID));
-    }
-
-    /* We can check many more things now (CPU, acceleration, etc), but
-     * it is highly unlikely to have two separate builds with exactly
-     * the same version, user, time, and build host!
-     */
-
-    int nlambda = (state->dfhist ? state->dfhist->nlambda : 0);
-
-    edsamhistory_t* edsamhist = observablesHistory->edsamHistory.get();
-    int             nED       = (edsamhist ? edsamhist->nED : 0);
-
-    swaphistory_t* swaphist    = observablesHistory->swapHistory.get();
-    int            eSwapCoords = (swaphist ? swaphist->eSwapCoords : eswapNO);
-
-    CheckpointHeaderContents headerContents = { 0,
-                                                { 0 },
-                                                { 0 },
-                                                { 0 },
-                                                { 0 },
-                                                GMX_DOUBLE,
-                                                { 0 },
-                                                { 0 },
-                                                eIntegrator,
-                                                simulation_part,
-                                                step,
-                                                t,
-                                                nppnodes,
-                                                { 0 },
-                                                npmenodes,
-                                                state->natoms,
-                                                state->ngtc,
-                                                state->nnhpres,
-                                                state->nhchainlength,
-                                                nlambda,
-                                                state->flags,
-                                                flags_eks,
-                                                flags_enh,
-                                                flagsPullHistory,
-                                                flags_dfh,
-                                                flags_awhh,
-                                                nED,
-                                                eSwapCoords };
-    std::strcpy(headerContents.version, gmx_version());
-    std::strcpy(headerContents.fprog, gmx::getProgramContext().fullBinaryPath());
-    std::strcpy(headerContents.ftime, timebuf.c_str());
-    if (DOMAINDECOMP(cr))
-    {
-        copy_ivec(domdecCells, headerContents.dd_nc);
+        headerContents.flags_awhh |=
+                ((1 << eawhhIN_INITIAL) | (1 << eawhhEQUILIBRATEHISTOGRAM) | (1 << eawhhHISTSIZE)
+                 | (1 << eawhhNPOINTS) | (1 << eawhhCOORDPOINT) | (1 << eawhhUMBRELLAGRIDPOINT)
+                 | (1 << eawhhUPDATELIST) | (1 << eawhhLOGSCALEDSAMPLEWEIGHT)
+                 | (1 << eawhhNUMUPDATES) | (1 << eawhhFORCECORRELATIONGRID));
     }
 
     do_cpt_header(gmx_fio_getxdr(fp), FALSE, nullptr, &headerContents);
 
     if ((do_cpt_state(gmx_fio_getxdr(fp), state->flags, state, nullptr) < 0)
-        || (do_cpt_ekinstate(gmx_fio_getxdr(fp), flags_eks, &state->ekinstate, nullptr) < 0)
-        || (do_cpt_enerhist(gmx_fio_getxdr(fp), FALSE, flags_enh, enerhist, nullptr) < 0)
-        || (doCptPullHist(gmx_fio_getxdr(fp), FALSE, flagsPullHistory, pullHist, StatePart::pullHistory, nullptr)
+        || (do_cpt_ekinstate(gmx_fio_getxdr(fp), headerContents.flags_eks, &state->ekinstate, nullptr) < 0)
+        || (do_cpt_enerhist(gmx_fio_getxdr(fp), FALSE, headerContents.flags_enh, enerhist, nullptr) < 0)
+        || (doCptPullHist(gmx_fio_getxdr(fp), FALSE, headerContents.flagsPullHistory, pullHist,
+                          StatePart::pullHistory, nullptr)
             < 0)
-        || (do_cpt_df_hist(gmx_fio_getxdr(fp), flags_dfh, nlambda, &state->dfhist, nullptr) < 0)
-        || (do_cpt_EDstate(gmx_fio_getxdr(fp), FALSE, nED, edsamhist, nullptr) < 0)
-        || (do_cpt_awh(gmx_fio_getxdr(fp), FALSE, flags_awhh, state->awhHistory.get(), nullptr) < 0)
-        || (do_cpt_swapstate(gmx_fio_getxdr(fp), FALSE, eSwapCoords, swaphist, nullptr) < 0)
-        || (do_cpt_files(gmx_fio_getxdr(fp), FALSE, &outputfiles, nullptr, headerContents.file_version) < 0))
+        || (do_cpt_df_hist(gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda,
+                           &state->dfhist, nullptr)
+            < 0)
+        || (do_cpt_EDstate(gmx_fio_getxdr(fp), FALSE, headerContents.nED,
+                           observablesHistory->edsamHistory.get(), nullptr)
+            < 0)
+        || (do_cpt_awh(gmx_fio_getxdr(fp), FALSE, headerContents.flags_awhh, state->awhHistory.get(), nullptr) < 0)
+        || (do_cpt_swapstate(gmx_fio_getxdr(fp), FALSE, headerContents.eSwapCoords,
+                             observablesHistory->swapHistory.get(), nullptr)
+            < 0)
+        || (do_cpt_files(gmx_fio_getxdr(fp), FALSE, outputfiles, nullptr, headerContents.file_version) < 0))
     {
         gmx_file("Cannot read/write checkpoint; corrupt file, or maybe you are out of disk space?");
     }
@@ -2387,84 +2340,19 @@ void write_checkpoint(const char*                   fn,
         gmx::KeyValueTreeBuilder          builder;
         gmx::MdModulesWriteCheckpointData mdModulesWriteCheckpoint = { builder.rootObject(),
                                                                        headerContents.file_version };
-        mdModulesNotifier.notifier_.notify(mdModulesWriteCheckpoint);
+        mdModulesNotifier.checkpointingNotifications_.notify(mdModulesWriteCheckpoint);
         auto                     tree = builder.build();
         gmx::FileIOXdrSerializer serializer(fp);
         gmx::serializeKeyValueTree(tree, &serializer);
     }
 
+    // Checkpointing modular simulator
+    {
+        gmx::FileIOXdrSerializer serializer(fp);
+        modularSimulatorCheckpointData->serialize(&serializer);
+    }
+
     do_cpt_footer(gmx_fio_getxdr(fp), headerContents.file_version);
-
-    /* we really, REALLY, want to make sure to physically write the checkpoint,
-       and all the files it depends on, out to disk. Because we've
-       opened the checkpoint with gmx_fio_open(), it's in our list
-       of open files.  */
-    ret = gmx_fio_all_output_fsync();
-
-    if (ret)
-    {
-        char buf[STRLEN];
-        sprintf(buf, "Cannot fsync '%s'; maybe you are out of disk space?", gmx_fio_getname(ret));
-
-        if (getenv(GMX_IGNORE_FSYNC_FAILURE_ENV) == nullptr)
-        {
-            gmx_file(buf);
-        }
-        else
-        {
-            gmx_warning("%s", buf);
-        }
-    }
-
-    if (gmx_fio_close(fp) != 0)
-    {
-        gmx_file("Cannot read/write checkpoint; corrupt file, or maybe you are out of disk space?");
-    }
-
-    /* we don't move the checkpoint if the user specified they didn't want it,
-       or if the fsyncs failed */
-#if !GMX_NO_RENAME
-    if (!bNumberAndKeep && !ret)
-    {
-        if (gmx_fexist(fn))
-        {
-            /* Rename the previous checkpoint file */
-            mpiBarrierBeforeRename(applyMpiBarrierBeforeRename, mpiBarrierCommunicator);
-
-            std::strcpy(buf, fn);
-            buf[std::strlen(fn) - std::strlen(ftp2ext(fn2ftp(fn))) - 1] = '\0';
-            std::strcat(buf, "_prev");
-            std::strcat(buf, fn + std::strlen(fn) - std::strlen(ftp2ext(fn2ftp(fn))) - 1);
-            if (!GMX_FAHCORE)
-            {
-                /* we copy here so that if something goes wrong between now and
-                 * the rename below, there's always a state.cpt.
-                 * If renames are atomic (such as in POSIX systems),
-                 * this copying should be unneccesary.
-                 */
-                gmx_file_copy(fn, buf, FALSE);
-                /* We don't really care if this fails:
-                 * there's already a new checkpoint.
-                 */
-            }
-            else
-            {
-                gmx_file_rename(fn, buf);
-            }
-        }
-
-        /* Rename the checkpoint file from the temporary to the final name */
-        mpiBarrierBeforeRename(applyMpiBarrierBeforeRename, mpiBarrierCommunicator);
-
-        if (gmx_file_rename(fntemp, fn) != 0)
-        {
-            gmx_file("Cannot rename checkpoint file; maybe you are out of disk space?");
-        }
-    }
-#endif /* GMX_NO_RENAME */
-
-    sfree(fntemp);
-
 #if GMX_FAHCORE
     /* Always FAH checkpoint immediately after a Gromacs checkpoint.
      *
@@ -2536,7 +2424,7 @@ static void check_match(FILE*                           fplog,
     {
         const char msg_precision_difference[] =
                 "You are continuing a simulation with a different precision. Not matching\n"
-                "single/double precision will lead to precision or performance loss.\n";
+                "mixed/double precision will lead to precision or performance loss.\n";
         if (fplog)
         {
             fprintf(fplog, "%s\n", msg_precision_difference);
@@ -2553,11 +2441,12 @@ static void check_match(FILE*                           fplog,
         check_int(fplog, "#ranks", cr->nnodes, headerContents.nnodes, &mm);
     }
 
-    if (cr->nnodes > 1 && reproducibilityRequested)
+    if (cr->sizeOfDefaultCommunicator > 1 && reproducibilityRequested)
     {
+        // TODO: These checks are incorrect (see redmine #3309)
         check_int(fplog, "#PME-ranks", cr->npmenodes, headerContents.npme, &mm);
 
-        int npp = cr->nnodes;
+        int npp = cr->sizeOfDefaultCommunicator;
         if (cr->npmenodes >= 0)
         {
             npp -= cr->npmenodes;
@@ -2618,17 +2507,19 @@ static void check_match(FILE*                           fplog,
     }
 }
 
-static void read_checkpoint(const char*                   fn,
-                            t_fileio*                     logfio,
-                            const t_commrec*              cr,
-                            const ivec                    dd_nc,
-                            int                           eIntegrator,
-                            int*                          init_fep_state,
-                            CheckpointHeaderContents*     headerContents,
-                            t_state*                      state,
-                            ObservablesHistory*           observablesHistory,
-                            gmx_bool                      reproducibilityRequested,
-                            const gmx::MdModulesNotifier& mdModulesNotifier)
+static void read_checkpoint(const char*                    fn,
+                            t_fileio*                      logfio,
+                            const t_commrec*               cr,
+                            const ivec                     dd_nc,
+                            int                            eIntegrator,
+                            int*                           init_fep_state,
+                            CheckpointHeaderContents*      headerContents,
+                            t_state*                       state,
+                            ObservablesHistory*            observablesHistory,
+                            gmx_bool                       reproducibilityRequested,
+                            const gmx::MdModulesNotifier&  mdModulesNotifier,
+                            gmx::ReadCheckpointDataHolder* modularSimulatorCheckpointData,
+                            bool                           useModularSimulator)
 {
     t_fileio* fp;
     char      buf[STEPSTRSIZE];
@@ -2699,13 +2590,33 @@ static void read_checkpoint(const char*                   fn,
                   fn);
     }
 
-    if (headerContents->flags_state != state->flags)
+    // For modular simulator, no state object is populated, so we cannot do this check here!
+    if (headerContents->flags_state != state->flags && !useModularSimulator)
     {
         gmx_fatal(FARGS,
                   "Cannot change a simulation algorithm during a checkpoint restart. Perhaps you "
                   "should make a new .tpr with grompp -f new.mdp -t %s",
                   fn);
     }
+
+    GMX_RELEASE_ASSERT(!(headerContents->isModularSimulatorCheckpoint && !useModularSimulator),
+                       "Checkpoint file was written by modular simulator, but the current "
+                       "simulation uses the legacy simulator.\n\n"
+                       "Try the following steps:\n"
+                       "1. Make sure the GMX_DISABLE_MODULAR_SIMULATOR environment variable is not "
+                       "set to return to the default behavior. Retry running the simulation.\n"
+                       "2. If the problem persists, set the environment variable "
+                       "GMX_USE_MODULAR_SIMULATOR=ON to overwrite the default behavior and use "
+                       "modular simulator for all implemented use cases.");
+    GMX_RELEASE_ASSERT(!(!headerContents->isModularSimulatorCheckpoint && useModularSimulator),
+                       "Checkpoint file was written by legacy simulator, but the current "
+                       "simulation uses the modular simulator.\n\n"
+                       "Try the following steps:\n"
+                       "1. Make sure the GMX_USE_MODULAR_SIMULATOR environment variable is not set "
+                       "to return to the default behavior. Retry running the simulation.\n"
+                       "2. If the problem persists, set the environment variable "
+                       "GMX_DISABLE_MODULAR_SIMULATOR=ON to overwrite the default behavior and use "
+                       "legacy simulator for all implemented use cases.");
 
     if (MASTER(cr))
     {
@@ -2808,7 +2719,12 @@ static void read_checkpoint(const char*                   fn,
     {
         cp_error();
     }
-    do_cpt_mdmodules(headerContents->file_version, fp, mdModulesNotifier);
+    do_cpt_mdmodules(headerContents->file_version, fp, mdModulesNotifier, nullptr);
+    if (headerContents->file_version >= cptv_ModularSimulator)
+    {
+        gmx::FileIOXdrSerializer serializer(fp);
+        modularSimulatorCheckpointData->deserialize(&serializer);
+    }
     ret = do_cpt_footer(gmx_fio_getxdr(fp), headerContents->file_version);
     if (ret)
     {
@@ -2821,28 +2737,33 @@ static void read_checkpoint(const char*                   fn,
 }
 
 
-void load_checkpoint(const char*                   fn,
-                     t_fileio*                     logfio,
-                     const t_commrec*              cr,
-                     const ivec                    dd_nc,
-                     t_inputrec*                   ir,
-                     t_state*                      state,
-                     ObservablesHistory*           observablesHistory,
-                     gmx_bool                      reproducibilityRequested,
-                     const gmx::MdModulesNotifier& mdModulesNotifier)
+void load_checkpoint(const char*                    fn,
+                     t_fileio*                      logfio,
+                     const t_commrec*               cr,
+                     const ivec                     dd_nc,
+                     t_inputrec*                    ir,
+                     t_state*                       state,
+                     ObservablesHistory*            observablesHistory,
+                     gmx_bool                       reproducibilityRequested,
+                     const gmx::MdModulesNotifier&  mdModulesNotifier,
+                     gmx::ReadCheckpointDataHolder* modularSimulatorCheckpointData,
+                     bool                           useModularSimulator)
 {
     CheckpointHeaderContents headerContents;
     if (SIMMASTER(cr))
     {
         /* Read the state from the checkpoint file */
-        read_checkpoint(fn, logfio, cr, dd_nc, ir->eI, &(ir->fepvals->init_fep_state), &headerContents,
-                        state, observablesHistory, reproducibilityRequested, mdModulesNotifier);
+        read_checkpoint(fn, logfio, cr, dd_nc, ir->eI, &(ir->fepvals->init_fep_state),
+                        &headerContents, state, observablesHistory, reproducibilityRequested,
+                        mdModulesNotifier, modularSimulatorCheckpointData, useModularSimulator);
     }
     if (PAR(cr))
     {
-        gmx_bcast(sizeof(headerContents.step), &headerContents.step, cr);
-        gmx::MdModulesCheckpointReadingBroadcast broadcastCheckPointData = { *cr, headerContents.file_version };
-        mdModulesNotifier.notifier_.notify(broadcastCheckPointData);
+        gmx_bcast(sizeof(headerContents.step), &headerContents.step, cr->mpiDefaultCommunicator);
+        gmx::MdModulesCheckpointReadingBroadcast broadcastCheckPointData = {
+            cr->mpiDefaultCommunicator, PAR(cr), headerContents.file_version
+        };
+        mdModulesNotifier.checkpointingNotifications_.notify(broadcastCheckPointData);
     }
     ir->bContinuation = TRUE;
     if (ir->nsteps >= 0)
@@ -2896,7 +2817,8 @@ void read_checkpoint_part_and_step(const char* filename, int* simulation_part, i
 
 static CheckpointHeaderContents read_checkpoint_data(t_fileio*                         fp,
                                                      t_state*                          state,
-                                                     std::vector<gmx_file_position_t>* outputfiles)
+                                                     std::vector<gmx_file_position_t>* outputfiles,
+                                                     gmx::ReadCheckpointDataHolder* modularSimulatorCheckpointData)
 {
     CheckpointHeaderContents headerContents;
     do_cpt_header(gmx_fio_getxdr(fp), TRUE, nullptr, &headerContents);
@@ -2964,7 +2886,13 @@ static CheckpointHeaderContents read_checkpoint_data(t_fileio*                  
         cp_error();
     }
     gmx::MdModulesNotifier mdModuleNotifier;
-    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifier);
+    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifier, nullptr);
+    if (headerContents.file_version >= cptv_ModularSimulator)
+    {
+        // Store modular checkpoint data into modularSimulatorCheckpointData
+        gmx::FileIOXdrSerializer serializer(fp);
+        modularSimulatorCheckpointData->deserialize(&serializer);
+    }
     ret = do_cpt_footer(gmx_fio_getxdr(fp), headerContents.file_version);
     if (ret)
     {
@@ -2977,7 +2905,14 @@ void read_checkpoint_trxframe(t_fileio* fp, t_trxframe* fr)
 {
     t_state                          state;
     std::vector<gmx_file_position_t> outputfiles;
-    CheckpointHeaderContents headerContents = read_checkpoint_data(fp, &state, &outputfiles);
+    gmx::ReadCheckpointDataHolder    modularSimulatorCheckpointData;
+    CheckpointHeaderContents         headerContents =
+            read_checkpoint_data(fp, &state, &outputfiles, &modularSimulatorCheckpointData);
+    if (headerContents.isModularSimulatorCheckpoint)
+    {
+        gmx::ModularSimulator::readCheckpointToTrxFrame(fr, &modularSimulatorCheckpointData, headerContents);
+        return;
+    }
 
     fr->natoms    = state.natoms;
     fr->bStep     = TRUE;
@@ -3070,6 +3005,15 @@ void list_checkpoint(const char* fn, FILE* out)
         std::vector<gmx_file_position_t> outputfiles;
         ret = do_cpt_files(gmx_fio_getxdr(fp), TRUE, &outputfiles, out, headerContents.file_version);
     }
+    gmx::MdModulesNotifier mdModuleNotifier;
+    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifier, out);
+    if (headerContents.file_version >= cptv_ModularSimulator)
+    {
+        gmx::FileIOXdrSerializer      serializer(fp);
+        gmx::ReadCheckpointDataHolder modularSimulatorCheckpointData;
+        modularSimulatorCheckpointData.deserialize(&serializer);
+        modularSimulatorCheckpointData.dump(out);
+    }
 
     if (ret == 0)
     {
@@ -3090,8 +3034,10 @@ void list_checkpoint(const char* fn, FILE* out)
 CheckpointHeaderContents read_checkpoint_simulation_part_and_filenames(t_fileio* fp,
                                                                        std::vector<gmx_file_position_t>* outputfiles)
 {
-    t_state                  state;
-    CheckpointHeaderContents headerContents = read_checkpoint_data(fp, &state, outputfiles);
+    t_state                       state;
+    gmx::ReadCheckpointDataHolder modularSimulatorCheckpointData;
+    CheckpointHeaderContents      headerContents =
+            read_checkpoint_data(fp, &state, outputfiles, &modularSimulatorCheckpointData);
     if (gmx_fio_close(fp) != 0)
     {
         gmx_file("Cannot read/write checkpoint; corrupt file, or maybe you are out of disk space?");

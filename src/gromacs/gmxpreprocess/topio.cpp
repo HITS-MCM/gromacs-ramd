@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,8 +49,8 @@
 
 #include <algorithm>
 #include <memory>
-
 #include <unordered_set>
+
 #include <sys/types.h>
 
 #include "gromacs/fileio/gmxfio.h"
@@ -79,6 +80,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/logger.h"
 #include "gromacs/utility/pleasecite.h"
 #include "gromacs/utility/smalloc.h"
 
@@ -381,7 +383,8 @@ static char** read_topol(const char*                           infile,
                          bool                                  bFEP,
                          bool                                  bZero,
                          bool                                  usingFullRangeElectrostatics,
-                         warninp*                              wi)
+                         warninp*                              wi,
+                         const gmx::MDLogger&                  logger)
 {
     FILE*                out;
     int                  sl, nb_funct;
@@ -631,9 +634,7 @@ static char** read_topol(const char*                           infile,
                                     bGenPairs ? &pair : nullptr, wi);
                             break;
 
-                        case Directive::d_bondtypes:
-                            push_bt(d, interactions, 2, nullptr, &bondAtomType, pline, wi);
-                            break;
+                        case Directive::d_bondtypes: // Intended to fall through
                         case Directive::d_constrainttypes:
                             push_bt(d, interactions, 2, nullptr, &bondAtomType, pline, wi);
                             break;
@@ -659,7 +660,7 @@ static char** read_topol(const char*                           infile,
                             push_nbt(d, nbparam, atypes, pline, nb_funct, wi);
                             break;
 
-                        case Directive::d_implicit_genborn_params:
+                        case Directive::d_implicit_genborn_params: // NOLINT bugprone-branch-clone
                             // Skip this line, so old topologies with
                             // GB parameters can be read.
                             break;
@@ -693,19 +694,24 @@ static char** read_topol(const char*                           infile,
                                 generate_nbparams(*combination_rule, nb_funct,
                                                   &(interactions[nb_funct]), atypes, wi);
                                 ncopy = copy_nbparams(nbparam, nb_funct, &(interactions[nb_funct]), ntype);
-                                fprintf(stderr,
-                                        "Generated %d of the %d non-bonded parameter "
-                                        "combinations\n",
-                                        ncombs - ncopy, ncombs);
+                                GMX_LOG(logger.info)
+                                        .asParagraph()
+                                        .appendTextFormatted(
+                                                "Generated %d of the %d non-bonded parameter "
+                                                "combinations",
+                                                ncombs - ncopy, ncombs);
                                 free_nbparam(nbparam, ntype);
                                 if (bGenPairs)
                                 {
                                     gen_pairs((interactions[nb_funct]), &(interactions[F_LJ14]),
                                               fudgeLJ, *combination_rule);
                                     ncopy = copy_nbparams(pair, nb_funct, &(interactions[F_LJ14]), ntype);
-                                    fprintf(stderr,
-                                            "Generated %d of the %d 1-4 parameter combinations\n",
-                                            ncombs - ncopy, ncombs);
+                                    GMX_LOG(logger.info)
+                                            .asParagraph()
+                                            .appendTextFormatted(
+                                                    "Generated %d of the %d 1-4 parameter "
+                                                    "combinations",
+                                                    ncombs - ncopy, ncombs);
                                     free_nbparam(pair, ntype);
                                 }
                                 /* Copy GBSA parameters to atomtype array? */
@@ -742,6 +748,7 @@ static char** read_topol(const char*                           infile,
                                       pline, FALSE, FALSE, 1.0, bZero, &bWarn_copy_A_B, wi);
                             break;
 
+                        case Directive::d_vsites1:
                         case Directive::d_vsites2:
                         case Directive::d_vsites3:
                         case Directive::d_vsites4:
@@ -818,14 +825,17 @@ static char** read_topol(const char*                           infile,
                             {
                                 gmx_fatal(FARGS, "Molecule type '%s' contains no atoms", *mi0->name);
                             }
-                            fprintf(stderr, "Excluding %d bonded neighbours molecule type '%s'\n",
-                                    mi0->nrexcl, *mi0->name);
+                            GMX_LOG(logger.info)
+                                    .asParagraph()
+                                    .appendTextFormatted(
+                                            "Excluding %d bonded neighbours molecule type '%s'",
+                                            mi0->nrexcl, *mi0->name);
                             sum_q(&mi0->atoms, nrcopies, &qt, &qBt);
                             if (!mi0->bProcessed)
                             {
                                 generate_excl(mi0->nrexcl, mi0->atoms.nr, mi0->interactions, &(mi0->excls));
                                 gmx::mergeExclusions(&(mi0->excls), exclusionBlocks[whichmol]);
-                                make_shake(mi0->interactions, &mi0->atoms, opts->nshake);
+                                make_shake(mi0->interactions, &mi0->atoms, opts->nshake, logger);
 
                                 if (bCouple)
                                 {
@@ -839,7 +849,9 @@ static char** read_topol(const char*                           infile,
                             break;
                         }
                         default:
-                            fprintf(stderr, "case: %d\n", static_cast<int>(d));
+                            GMX_LOG(logger.warning)
+                                    .asParagraph()
+                                    .appendTextFormatted("case: %d", static_cast<int>(d));
                             gmx_incons("unknown directive");
                     }
                 }
@@ -895,6 +907,7 @@ static char** read_topol(const char*                           infile,
                 "algorithms "
                 "can be found at https://doi.org/10.26434/chemrxiv.11474583.v1 .");
     }
+    // TODO: Update URL for Issue #2884 in conjunction with updating grompp.warn in regressiontests.
 
     cpp_done(handle);
 
@@ -904,7 +917,10 @@ static char** read_topol(const char*                           infile,
         {
             gmx_fatal(FARGS, "Did not find any molecules of type '%s' for coupling", opts->couple_moltype);
         }
-        fprintf(stderr, "Coupling %d copies of molecule type '%s'\n", nmol_couple, opts->couple_moltype);
+        GMX_LOG(logger.info)
+                .asParagraph()
+                .appendTextFormatted("Coupling %d copies of molecule type '%s'", nmol_couple,
+                                     opts->couple_moltype);
     }
 
     /* this is not very clean, but fixes core dump on empty system name */
@@ -960,7 +976,8 @@ char** do_top(bool                                  bVerbose,
               const t_inputrec*                     ir,
               std::vector<gmx_molblock_t>*          molblock,
               bool*                                 ffParametrizedWithHBondConstraints,
-              warninp*                              wi)
+              warninp*                              wi,
+              const gmx::MDLogger&                  logger)
 {
     /* Tmpfile might contain a long path */
     const char* tmpfile;
@@ -977,12 +994,12 @@ char** do_top(bool                                  bVerbose,
 
     if (bVerbose)
     {
-        printf("processing topology...\n");
+        GMX_LOG(logger.info).asParagraph().appendTextFormatted("processing topology...");
     }
     title = read_topol(topfile, tmpfile, opts->define, opts->include, symtab, atypes, molinfo,
                        intermolecular_interactions, interactions, combination_rule, repulsion_power,
                        opts, fudgeQQ, molblock, ffParametrizedWithHBondConstraints,
-                       ir->efep != efepNO, bZero, EEL_FULL(ir->coulombtype), wi);
+                       ir->efep != efepNO, bZero, EEL_FULL(ir->coulombtype), wi, logger);
 
     if ((*combination_rule != eCOMB_GEOMETRIC) && (ir->vdwtype == evdwUSER))
     {
@@ -996,19 +1013,21 @@ char** do_top(bool                                  bVerbose,
 }
 
 /*! \brief
- * Generate exclusion lists for QM/MM.
+ * Exclude molecular interactions for QM atoms handled by MiMic.
  *
- * This routine updates the exclusion lists for QM atoms in order to include all other QM
- * atoms of this molecule. Moreover, this routine replaces bonds between QM atoms with
- * CONNBOND and, when MiMiC is not used, removes bonded interactions between QM and link atoms.
- * Finally, in case if MiMiC QM/MM is used - charges of QM atoms are set to 0
+ * Update the exclusion lists to include all QM atoms of this molecule,
+ * replace bonds between QM atoms with CONNBOND and
+ * set charges of QM atoms to 0.
  *
- * @param molt molecule type with QM atoms
- * @param grpnr group informatio
- * @param ir input record
- * @param qmmmMode QM/MM mode switch: original/MiMiC
+ * \param[in,out] molt molecule type with QM atoms
+ * \param[in] grpnr group informatio
+ * \param[in,out] ir input record
+ * \param[in] logger Handle to logging interface.
  */
-static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* grpnr, t_inputrec* ir, GmxQmmmMode qmmmMode)
+static void generate_qmexcl_moltype(gmx_moltype_t*       molt,
+                                    const unsigned char* grpnr,
+                                    t_inputrec*          ir,
+                                    const gmx::MDLogger& logger)
 {
     /* This routine expects molt->ilist to be of size F_NRE and ordered. */
 
@@ -1016,9 +1035,9 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
      * these interactions should be handled by the QM subroutines and
      * not by the gromacs routines
      */
-    int   qm_max = 0, qm_nr = 0, link_nr = 0, link_max = 0;
+    int   qm_max = 0, qm_nr = 0, link_nr = 0;
     int * qm_arr = nullptr, *link_arr = nullptr;
-    bool *bQMMM, *blink;
+    bool* bQMMM;
 
     /* First we search and select the QM atoms in an qm_arr array that
      * we use to create the exclusions.
@@ -1080,9 +1099,12 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
      */
     int ftype_connbond = 0;
     int ind_connbond   = 0;
-    if (molt->ilist[F_CONNBONDS].size() != 0)
+    if (!molt->ilist[F_CONNBONDS].empty())
     {
-        fprintf(stderr, "nr. of CONNBONDS present already: %d\n", molt->ilist[F_CONNBONDS].size() / 3);
+        GMX_LOG(logger.info)
+                .asParagraph()
+                .appendTextFormatted("nr. of CONNBONDS present already: %d",
+                                     molt->ilist[F_CONNBONDS].size() / 3);
         ftype_connbond = molt->ilist[F_CONNBONDS].iatoms[0];
         ind_connbond   = molt->ilist[F_CONNBONDS].size();
     }
@@ -1142,14 +1164,7 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
 
                 /* MiMiC treats link atoms as quantum atoms - therefore
                  * we do not need do additional exclusions here */
-                if (qmmmMode == GmxQmmmMode::GMX_QMMM_MIMIC)
-                {
-                    bexcl = numQmAtoms == nratoms;
-                }
-                else
-                {
-                    bexcl = (numQmAtoms >= nratoms - 1);
-                }
+                bexcl = numQmAtoms == nratoms;
 
                 if (bexcl && ftype == F_SETTLE)
                 {
@@ -1182,51 +1197,6 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
      * linkatoms interaction with the QMatoms and would be counted
      * twice.  */
 
-    if (qmmmMode != GmxQmmmMode::GMX_QMMM_MIMIC)
-    {
-        for (int i = 0; i < F_NRE; i++)
-        {
-            if (IS_CHEMBOND(i))
-            {
-                int j = 0;
-                while (j < molt->ilist[i].size())
-                {
-                    int a1 = molt->ilist[i].iatoms[j + 1];
-                    int a2 = molt->ilist[i].iatoms[j + 2];
-                    if ((bQMMM[a1] && !bQMMM[a2]) || (!bQMMM[a1] && bQMMM[a2]))
-                    {
-                        if (link_nr >= link_max)
-                        {
-                            link_max += 10;
-                            srenew(link_arr, link_max);
-                        }
-                        if (bQMMM[a1])
-                        {
-                            link_arr[link_nr++] = a2;
-                        }
-                        else
-                        {
-                            link_arr[link_nr++] = a1;
-                        }
-                    }
-                    j += 3;
-                }
-            }
-        }
-    }
-    snew(blink, molt->atoms.nr);
-    for (int i = 0; i < molt->atoms.nr; i++)
-    {
-        blink[i] = FALSE;
-    }
-
-    if (qmmmMode != GmxQmmmMode::GMX_QMMM_MIMIC)
-    {
-        for (int i = 0; i < link_nr; i++)
-        {
-            blink[link_arr[i]] = TRUE;
-        }
-    }
     /* creating the exclusion block for the QM atoms. Each QM atom has
      * as excluded elements all the other QMatoms (and itself).
      */
@@ -1251,14 +1221,6 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
             }
             j += (qm_nr + link_nr);
         }
-        if (blink[i])
-        {
-            for (int k = 0; k < qm_nr; k++)
-            {
-                qmexcl.a[k + j] = qm_arr[k];
-            }
-            j += qm_nr;
-        }
     }
     qmexcl.index[qmexcl.nr] = j;
 
@@ -1280,10 +1242,9 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
         int j       = 0;
         while (j < molt->ilist[i].size())
         {
-            int  a1 = molt->ilist[i].iatoms[j + 1];
-            int  a2 = molt->ilist[i].iatoms[j + 2];
-            bool bexcl =
-                    ((bQMMM[a1] && bQMMM[a2]) || (blink[a1] && bQMMM[a2]) || (bQMMM[a1] && blink[a2]));
+            int  a1    = molt->ilist[i].iatoms[j + 1];
+            int  a2    = molt->ilist[i].iatoms[j + 2];
+            bool bexcl = (bQMMM[a1] && bQMMM[a2]);
             if (bexcl)
             {
                 /* since the interaction involves QM atoms, these should be
@@ -1306,10 +1267,9 @@ static void generate_qmexcl_moltype(gmx_moltype_t* molt, const unsigned char* gr
     free(qm_arr);
     free(bQMMM);
     free(link_arr);
-    free(blink);
 } /* generate_qmexcl */
 
-void generate_qmexcl(gmx_mtop_t* sys, t_inputrec* ir, warninp* wi, GmxQmmmMode qmmmMode)
+void generate_qmexcl(gmx_mtop_t* sys, t_inputrec* ir, const gmx::MDLogger& logger)
 {
     /* This routine expects molt->molt[m].ilist to be of size F_NRE and ordered.
      */
@@ -1382,11 +1342,11 @@ void generate_qmexcl(gmx_mtop_t* sys, t_inputrec* ir, warninp* wi, GmxQmmmMode q
                     /* Copy the exclusions to a new array, since this is the only
                      * thing that needs to be modified for QMMM.
                      */
-                    copy_blocka(&sys->moltype[molb->type].excls, &sys->moltype.back().excls);
+                    sys->moltype.back().excls = sys->moltype[molb->type].excls;
                     /* Set the molecule type for the QMMM molblock */
                     molb->type = sys->moltype.size() - 1;
                 }
-                generate_qmexcl_moltype(&sys->moltype[molb->type], grpnr, ir, qmmmMode);
+                generate_qmexcl_moltype(&sys->moltype[molb->type], grpnr, ir, logger);
             }
             if (grpnr)
             {
@@ -1394,25 +1354,5 @@ void generate_qmexcl(gmx_mtop_t* sys, t_inputrec* ir, warninp* wi, GmxQmmmMode q
             }
             index_offset += nat_mol;
         }
-    }
-    if (qmmmMode == GmxQmmmMode::GMX_QMMM_ORIGINAL && nr_mol_with_qm_atoms > 1)
-    {
-        /* generate a warning is there are QM atoms in different
-         * topologies. In this case it is not possible at this stage to
-         * mutualy exclude the non-bonded interactions via the
-         * exclusions (AFAIK). Instead, the user is advised to use the
-         * energy group exclusions in the mdp file
-         */
-        warning_note(wi,
-                     "\nThe QM subsystem is divided over multiple topologies. "
-                     "The mutual non-bonded interactions cannot be excluded. "
-                     "There are two ways to achieve this:\n\n"
-                     "1) merge the topologies, such that the atoms of the QM "
-                     "subsystem are all present in one single topology file. "
-                     "In this case this warning will dissappear\n\n"
-                     "2) exclude the non-bonded interactions explicitly via the "
-                     "energygrp-excl option in the mdp file. if this is the case "
-                     "this warning may be ignored"
-                     "\n\n");
     }
 }

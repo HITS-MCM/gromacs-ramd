@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,34 +44,44 @@
 #include "decidesimulationworkload.h"
 
 #include "gromacs/ewald/pme.h"
+#include "gromacs/mdtypes/multipletimestepping.h"
+#include "gromacs/taskassignment/decidegpuusage.h"
 #include "gromacs/taskassignment/taskassignment.h"
 #include "gromacs/utility/arrayref.h"
 
 namespace gmx
 {
 
-SimulationWorkload createSimulationWorkload(bool       useGpuForNonbonded,
-                                            PmeRunMode pmeRunMode,
-                                            bool       useGpuForBonded,
-                                            bool       useGpuForUpdate,
-                                            bool       useGpuForBufferOps,
-                                            bool       useGpuHaloExchange,
-                                            bool       useGpuPmePpComm,
-                                            bool       haveEwaldSurfaceContribution)
+SimulationWorkload createSimulationWorkload(const t_inputrec& inputrec,
+                                            const bool        disableNonbondedCalculation,
+                                            const DevelopmentFeatureFlags& devFlags,
+                                            bool                           useGpuForNonbonded,
+                                            PmeRunMode                     pmeRunMode,
+                                            bool                           useGpuForBonded,
+                                            bool                           useGpuForUpdate,
+                                            bool                           useGpuDirectHalo)
 {
     SimulationWorkload simulationWorkload;
+    simulationWorkload.computeNonbonded = !disableNonbondedCalculation;
+    simulationWorkload.computeNonbondedAtMtsLevel1 =
+            simulationWorkload.computeNonbonded && inputrec.useMts
+            && inputrec.mtsLevels.back().forceGroups[static_cast<int>(MtsForceGroups::Nonbonded)];
+    simulationWorkload.computeMuTot    = inputrecNeedMutot(&inputrec);
     simulationWorkload.useCpuNonbonded = !useGpuForNonbonded;
     simulationWorkload.useGpuNonbonded = useGpuForNonbonded;
     simulationWorkload.useCpuPme       = (pmeRunMode == PmeRunMode::CPU);
     simulationWorkload.useGpuPme = (pmeRunMode == PmeRunMode::GPU || pmeRunMode == PmeRunMode::Mixed);
-    simulationWorkload.useGpuPmeFft             = (pmeRunMode == PmeRunMode::Mixed);
-    simulationWorkload.useGpuBonded             = useGpuForBonded;
-    simulationWorkload.useGpuUpdate             = useGpuForUpdate;
-    simulationWorkload.useGpuBufferOps          = useGpuForBufferOps || useGpuForUpdate;
-    simulationWorkload.useGpuHaloExchange       = useGpuHaloExchange;
-    simulationWorkload.useGpuPmePpCommunication = useGpuPmePpComm && (pmeRunMode == PmeRunMode::GPU);
-    simulationWorkload.useGpuDirectCommunication    = useGpuHaloExchange || useGpuPmePpComm;
-    simulationWorkload.haveEwaldSurfaceContribution = haveEwaldSurfaceContribution;
+    simulationWorkload.useGpuPmeFft    = (pmeRunMode == PmeRunMode::Mixed);
+    simulationWorkload.useGpuBonded    = useGpuForBonded;
+    simulationWorkload.useGpuUpdate    = useGpuForUpdate;
+    simulationWorkload.useGpuBufferOps = (devFlags.enableGpuBufferOps || useGpuForUpdate)
+                                         && !simulationWorkload.computeNonbondedAtMtsLevel1;
+    simulationWorkload.useGpuHaloExchange = useGpuDirectHalo;
+    simulationWorkload.useGpuPmePpCommunication =
+            devFlags.enableGpuPmePPComm && (pmeRunMode == PmeRunMode::GPU);
+    simulationWorkload.useGpuDirectCommunication =
+            devFlags.enableGpuHaloExchange || devFlags.enableGpuPmePPComm;
+    simulationWorkload.haveEwaldSurfaceContribution = haveEwaldSurfaceContribution(inputrec);
 
     return simulationWorkload;
 }

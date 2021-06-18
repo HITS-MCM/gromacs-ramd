@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -52,8 +52,8 @@
 #include <vector>
 
 #include "gromacs/gpu_utils/devicebuffer.cuh"
-#include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/mdlib/lincs_cuda.cuh"
+#include "gromacs/hardware/device_information.h"
+#include "gromacs/mdlib/lincs_gpu.cuh"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/utility/unique_cptr.h"
 
@@ -62,45 +62,44 @@ namespace gmx
 namespace test
 {
 
-/*! \brief
- * Initialize and apply LINCS constraints on CUDA-enabled GPU.
- *
- * \param[in] testData        Test data structure.
- * \param[in] pbc             Periodic boundary data.
- */
-void applyLincsCuda(ConstraintsTestData* testData, t_pbc pbc)
+void LincsDeviceConstraintsRunner::applyConstraints(ConstraintsTestData* testData, t_pbc pbc)
 {
-    auto lincsCuda =
-            std::make_unique<LincsCuda>(testData->ir_.nLincsIter, testData->ir_.nProjOrder, nullptr);
+    const DeviceContext& deviceContext = testDevice_.deviceContext();
+    const DeviceStream&  deviceStream  = testDevice_.deviceStream();
+    setActiveDevice(testDevice_.deviceInfo());
+
+    auto lincsGpu = std::make_unique<LincsGpu>(testData->ir_.nLincsIter, testData->ir_.nProjOrder,
+                                               deviceContext, deviceStream);
 
     bool    updateVelocities = true;
     int     numAtoms         = testData->numAtoms_;
     float3 *d_x, *d_xp, *d_v;
 
-    lincsCuda->set(testData->idef_, testData->md_);
-    lincsCuda->setPbc(&pbc);
+    lincsGpu->set(*testData->idef_, testData->numAtoms_, testData->invmass_.data());
+    PbcAiuc pbcAiuc;
+    setPbcAiuc(pbc.ndim_ePBC, pbc.box, &pbcAiuc);
 
-    allocateDeviceBuffer(&d_x, numAtoms, nullptr);
-    allocateDeviceBuffer(&d_xp, numAtoms, nullptr);
-    allocateDeviceBuffer(&d_v, numAtoms, nullptr);
+    allocateDeviceBuffer(&d_x, numAtoms, deviceContext);
+    allocateDeviceBuffer(&d_xp, numAtoms, deviceContext);
+    allocateDeviceBuffer(&d_v, numAtoms, deviceContext);
 
-    copyToDeviceBuffer(&d_x, (float3*)(testData->x_.data()), 0, numAtoms, nullptr,
+    copyToDeviceBuffer(&d_x, (float3*)(testData->x_.data()), 0, numAtoms, deviceStream,
                        GpuApiCallBehavior::Sync, nullptr);
-    copyToDeviceBuffer(&d_xp, (float3*)(testData->xPrime_.data()), 0, numAtoms, nullptr,
+    copyToDeviceBuffer(&d_xp, (float3*)(testData->xPrime_.data()), 0, numAtoms, deviceStream,
                        GpuApiCallBehavior::Sync, nullptr);
     if (updateVelocities)
     {
-        copyToDeviceBuffer(&d_v, (float3*)(testData->v_.data()), 0, numAtoms, nullptr,
+        copyToDeviceBuffer(&d_v, (float3*)(testData->v_.data()), 0, numAtoms, deviceStream,
                            GpuApiCallBehavior::Sync, nullptr);
     }
-    lincsCuda->apply(d_x, d_xp, updateVelocities, d_v, testData->invdt_, testData->computeVirial_,
-                     testData->virialScaled_);
+    lincsGpu->apply(d_x, d_xp, updateVelocities, d_v, testData->invdt_, testData->computeVirial_,
+                    testData->virialScaled_, pbcAiuc);
 
-    copyFromDeviceBuffer((float3*)(testData->xPrime_.data()), &d_xp, 0, numAtoms, nullptr,
+    copyFromDeviceBuffer((float3*)(testData->xPrime_.data()), &d_xp, 0, numAtoms, deviceStream,
                          GpuApiCallBehavior::Sync, nullptr);
     if (updateVelocities)
     {
-        copyFromDeviceBuffer((float3*)(testData->v_.data()), &d_v, 0, numAtoms, nullptr,
+        copyFromDeviceBuffer((float3*)(testData->v_.data()), &d_v, 0, numAtoms, deviceStream,
                              GpuApiCallBehavior::Sync, nullptr);
     }
 

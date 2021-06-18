@@ -1,7 +1,7 @@
 # Python package sources
 
 This directory exists as a staging area supporting GROMACS enhancement
-[#2045](https://redmine.gromacs.org/issues/2045),
+[#2045](https://gitlab.com/gromacs/gromacs/-/issues/2045),
 which attempts to update the gmxapi efforts from GROMACS 2019,
 merge external repositories from
 https://github.com/kassonlab/gmxapi
@@ -42,7 +42,7 @@ Use `pytest` to run unit tests and integration tests.
     pytest test
 
 For additional discussion on packaging and distribution, see
-https://redmine.gromacs.org/issues/2896
+https://gitlab.com/gromacs/gromacs/-/issues/2896
 
 ## Sample MD extension code
 
@@ -107,7 +107,7 @@ Additional information in `python_packaging/docker/README.md`.
 
 Hint: the fork point from `master` and the current git ref can be set as environment variables:
 
-    FORKPOINT=$(git show -s --pretty=format:"%h" `git merge-base gerrit_master HEAD`)
+    FORKPOINT=$(git show -s --pretty=format:"%h" `git merge-base master HEAD`)
     REF=`git show -s --pretty=format:"%h"`
 
 ## External project code
@@ -124,7 +124,7 @@ Scikit-build is installed with Python packaging tools automatically with
 `pip install -r requirements.txt`, as above.
 
 Note: scikit-build is only required for convenient management of the Python
-build environment and packaging. See https://redmine.gromacs.org/issues/2896
+build environment and packaging. See https://gitlab.com/gromacs/gromacs/-/issues/2896
 
 # pybind11
 
@@ -155,3 +155,42 @@ satisfying dependencies for a new virtualenv does not require network access or 
 Some dependencies (notably, a Python installation itself) may require some fiddling
 with the XCode SDK.
 https://developer.apple.com/documentation/xcode_release_notes/xcode_10_release_notes#3035624
+
+# Tests for gmxapi Python packages distributed with GROMACS
+
+## Requirements
+
+Python tests use the `unittest` standard library module and the `unittest.mock`
+submodule, included in Python 3.3+.
+
+The additional `pytest` package allows tests to be written more easily and
+concisely, with easier test fixtures (through decorators), log handling, and
+other output handling.
+
+## Files
+
+Python files beginning with `test_` are collected by the Python testing
+framework during automatic test discovery.
+
+`conftest.py` and `pytest.ini` provide configuration for `pytest`.
+
+## Usage
+
+For basic tests, install the Python package(s) (presumably into a virtualenv),
+then use the `pytest` executable to run these tests against the installed
+package(s).
+
+`pytest $LOCAL_REPO_DIR/python_packaging/src/test`
+
+where `$LOCAL_REPO_DIR` is the path to the local copy of the GROMACS source repository.
+
+For multi-process tests, run with an MPI execution wrapper and the `mpi4py` module.
+
+`mpiexec -n 2 python -m mpi4py -m pytest $LOCAL_REPO_DIR/python_packaging/test`
+
+## Controlling output
+
+Refer to pytest documentation for command line options to control the type and detail of output.
+Some high level overview and basic tasks are online at https://docs.pytest.org/en/3.9.3/usage.html
+but you should run `pytest -h` in a terminal to get the complete set of available options
+(in particular, note *log_cli* and *log_level*).

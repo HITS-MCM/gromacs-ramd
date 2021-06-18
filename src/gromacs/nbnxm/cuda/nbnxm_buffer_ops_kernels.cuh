@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,23 +48,22 @@
 /*! \brief CUDA kernel for transforming position coordinates from rvec to nbnxm layout.
  *
  * TODO:
- *  - improve/simplify/document use of cxy_na and na_round
  *  - rename kernel so naming matches with the other NBNXM kernels;
  *  - enable separate compilation unit
 
  * \param[in]     numColumns          Extent of cell-level parallelism.
  * \param[out]    gm_xq               Coordinates buffer in nbnxm layout.
- * \param[in]     setFillerCoords     Whether to set the coordinates of the filler particles.
+ * \tparam        setFillerCoords     Whether to set the coordinates of the filler particles.
  * \param[in]     gm_x                Coordinates buffer.
  * \param[in]     gm_atomIndex        Atom index mapping.
  * \param[in]     gm_numAtoms         Array of number of atoms.
  * \param[in]     gm_cellIndex        Array of cell indices.
- * \param[in]     cellOffset          Airst cell.
+ * \param[in]     cellOffset          First cell.
  * \param[in]     numAtomsPerCell     Number of atoms per cell.
  */
+template<bool setFillerCoords>
 static __global__ void nbnxn_gpu_x_to_nbat_x_kernel(int numColumns,
                                                     float4* __restrict__ gm_xq,
-                                                    bool setFillerCoords,
                                                     const float3* __restrict__ gm_x,
                                                     const int* __restrict__ gm_atomIndex,
                                                     const int* __restrict__ gm_numAtoms,
@@ -117,54 +116,4 @@ static __global__ void nbnxn_gpu_x_to_nbat_x_kernel(int numColumns,
             }
         }
     }
-}
-
-/*! \brief CUDA kernel to sum up the force components
- *
- * \tparam        accumulateForce  If the initial forces in \p gm_fTotal should be saved.
- * \tparam        addPmeForce      Whether the PME force should be added to the total.
- *
- * \param[in]     gm_fNB     Non-bonded forces in nbnxm format.
- * \param[in]     gm_fPme    PME forces.
- * \param[in,out] gm_fTotal  Force buffer to be reduced into.
- * \param[in]     cell       Cell index mapping.
- * \param[in]     atomStart  Start atom index.
- * \param[in]     numAtoms   Number of atoms.
- */
-template<bool accumulateForce, bool addPmeForce>
-static __global__ void nbnxn_gpu_add_nbat_f_to_f_kernel(const float3* __restrict__ gm_fNB,
-                                                        const float3* __restrict__ gm_fPme,
-                                                        float3* gm_fTotal,
-                                                        const int* __restrict__ gm_cell,
-                                                        const int atomStart,
-                                                        const int numAtoms)
-{
-
-    /* map particle-level parallelism to 1D CUDA thread and block index */
-    const int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-
-    /* perform addition for each particle*/
-    if (threadIndex < numAtoms)
-    {
-
-        const int i        = gm_cell[atomStart + threadIndex];
-        float3*   gm_fDest = &gm_fTotal[atomStart + threadIndex];
-        float3    temp;
-
-        if (accumulateForce)
-        {
-            temp = *gm_fDest;
-            temp += gm_fNB[i];
-        }
-        else
-        {
-            temp = gm_fNB[i];
-        }
-        if (addPmeForce)
-        {
-            temp += gm_fPme[atomStart + threadIndex];
-        }
-        *gm_fDest = temp;
-    }
-    return;
 }

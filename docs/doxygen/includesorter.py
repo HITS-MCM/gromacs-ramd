@@ -2,7 +2,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -112,14 +113,68 @@ class GroupedSorter(object):
             'stddef.h', 'stdint.h', 'stdio.h', 'stdlib.h', 'string.h',
             'time.h']
     _std_c_cpp_headers = ['c' + x[:-2] for x in _std_c_headers]
-    _std_cpp_headers = ['algorithm', 'array', 'chrono', 'deque', 'exception', 'fstream',
-            'functional', 'initializer_list', 'iomanip', 'ios', 'iosfwd',
-            'iostream', 'istream', 'iterator',
-            'limits', 'list', 'map', 'memory', 'mutex',
-            'new', 'numeric', 'ostream', 'random',
-            'regex', 'set', 'sstream', 'stdexcept', 'streambuf', 'string', 'strstream',
-            'thread', 'tuple', 'type_traits', 'typeindex', 'typeinfo', 'vector',
-            'unordered_map', 'utility']
+    _std_cpp_headers = ['algorithm',
+                        'any',
+                        'array',
+                        'atomic',
+                        'charconv',
+                        'chrono',
+                        'cinttypes',
+                        'cfenv',
+                        'complex',
+                        'cstdint',
+                        'deque',
+                        'exception',
+                        'execution',
+                        'filesystem',
+                        'forward_list',
+                        'fstream',
+                        'functional',
+                        'future',
+                        'initializer_list',
+                        'iomanip',
+                        'ios',
+                        'iosfwd',
+                        'iostream',
+                        'istream',
+                        'iterator',
+                        'limits',
+                        'list',
+                        'locale',
+                        'map',
+                        'memory',
+                        'memory_resource',
+                        'mutex',
+                        'new',
+                        'numeric',
+                        'optional',
+                        'ostream',
+                        'queue',
+                        'random',
+                        'ratio',
+                        'regex',
+                        'scoped_allocator',
+                        'set',
+                        'sstream',
+                        'stack',
+                        'stdexcept',
+                        'streambuf',
+                        'string',
+                        'string_view',
+                        'strstream',
+                        'system_error',
+                        'thread',
+                        'tuple',
+                        'type_traits',
+                        'typeindex',
+                        'typeinfo',
+                        'unordered_map',
+                        'unordered_set',
+                        'valarray',
+                        'variant',
+                        'vector',
+                        'unordered_map',
+                        'utility']
 
     def __init__(self, style='pub-priv', absolute=False):
         """Initialize a sorted with the given style."""

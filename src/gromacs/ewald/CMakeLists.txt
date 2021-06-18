@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+# Copyright (c) 2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -53,7 +54,7 @@ gmx_add_libgromacs_sources(
     pme_coordinate_receiver_gpu_impl.cpp
     pme_force_sender_gpu_impl.cpp
     )
-if (GMX_USE_CUDA)
+if (GMX_GPU_CUDA)
     gmx_add_libgromacs_sources(
         # CUDA-specific sources
         pme_gather.cu
@@ -69,12 +70,12 @@ if (GMX_USE_CUDA)
         pme_gpu_internal.cpp
         pme_gpu_timings.cpp
         )
-    gmx_compile_cpp_as_cuda(
+    _gmx_add_files_to_property(CUDA_SOURCES
+        # Must add these files so they can include device_information.h
         pme_gpu_internal.cpp
-        pme_gpu_program.cpp
         pme_gpu_timings.cpp
-        )
-elseif (GMX_USE_OPENCL)
+	)
+elseif (GMX_GPU_OPENCL)
     gmx_add_libgromacs_sources(
         # OpenCL-specific sources
         pme_gpu_3dfft_ocl.cpp
@@ -83,6 +84,15 @@ elseif (GMX_USE_OPENCL)
         pme_gpu.cpp
         pme_gpu_internal.cpp
         pme_gpu_timings.cpp
+        )
+elseif (GMX_GPU_SYCL)
+    # SYCL-TODO: proper implementation
+    gmx_add_libgromacs_sources(
+        pme_gpu_program_impl.cpp
+        )
+    _gmx_add_files_to_property(SYCL_SOURCES
+        pme_gpu_program_impl.cpp
+        pme_gpu_program.cpp
         )
 else()
     gmx_add_libgromacs_sources(
@@ -94,3 +104,54 @@ endif()
 if (BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+
+set(PME_OCL_KERNEL_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/pme_gpu_calculate_splines.clh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/pme_solve.clh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/pme_gather.clh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/pme_spread.clh")
+
+if(CLANG_TIDY_EXE)
+   set(OCL_COMPILER "${CLANG_TIDY_EXE}")
+   set(CLANG_TIDY_ARGS "-quiet;-checks=*,-readability-implicit-bool-conversion,-llvm-header-guard,-hicpp-signed-bitwise,-clang-analyzer-deadcode.DeadStores,-google-readability-todo,-clang-diagnostic-padded,-fcomment-block-commands=internal;--;${CMAKE_C_COMPILER}")
+else()
+   set(OCL_COMPILER "${CMAKE_C_COMPILER}")
+endif()
+
+# TODO: test all warp sizes on all vendor targets?
+foreach(VENDOR AMD NVIDIA INTEL)
+    foreach(WARPSIZE 16 32 64)
+        math(EXPR SPREAD_WG_SIZE "8*${WARPSIZE}")
+        math(EXPR SOLVE_WG_SIZE "8*${WARPSIZE}")
+        math(EXPR GATHER_WG_SIZE "4*${WARPSIZE}")
+        set(OBJ_FILE pme_ocl_kernel_warpSize${WARPSIZE}_${VENDOR}.o)
+        add_custom_command(OUTPUT ${OBJ_FILE} COMMAND ${OCL_COMPILER}
+        ${CMAKE_CURRENT_SOURCE_DIR}/pme_program.cl ${CLANG_TIDY_ARGS}
+        -Xclang -finclude-default-header  -D_${VENDOR}_SOURCE_
+        -Dwarp_size=${WARPSIZE}
+        -Dorder=4
+        -DthreadsPerAtom=16
+        -Dc_pmeMaxUnitcellShift=2
+        -Dc_skipNeutralAtoms=false
+        -Dc_virialAndEnergyCount=7
+        -Dc_spreadWorkGroupSize=${SPREAD_WG_SIZE}
+        -Dc_solveMaxWorkGroupSize=${SOLVE_WG_SIZE}
+        -Dc_gatherWorkGroupSize=${GATHER_WG_SIZE}
+        -DDIM=3 -DXX=0 -DYY=1 -DZZ=2
+        -DwrapX=true -DwrapY=true
+        -c -I ${CMAKE_SOURCE_DIR}/src -std=cl1.2
+        -Weverything  -Wno-conversion -Wno-missing-variable-declarations -Wno-used-but-marked-unused
+        -Wno-cast-align -Wno-incompatible-pointer-types
+        # to avoid  "warning: unknown command tag name" for \internal
+        -Wno-documentation-unknown-command
+        # to avoid pme_gpu_types.h:100:52: warning: padding struct 'struct PmeGpuConstParams' with 4 bytes to align 'd_virialAndEnergy'
+        -Wno-padded
+        -o${OBJ_FILE}
+        )
+        list(APPEND PME_OCL_KERNELS ${OBJ_FILE})
+    endforeach()
+endforeach()
+
+add_custom_target(ocl_pme_kernels DEPENDS ${PME_OCL_KERNELS} )
+gmx_set_custom_target_output(ocl_pme_kernels ${PME_OCL_KERNELS})

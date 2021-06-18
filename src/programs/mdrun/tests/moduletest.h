@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,9 +51,12 @@
 #include <gtest/gtest.h>
 
 #include "gromacs/utility/classhelpers.h"
+#include "gromacs/utility/gmxmpi.h"
 
 #include "testutils/cmdlinetest.h"
 #include "testutils/testfilemanager.h"
+
+struct gmx_hw_info_t;
 
 namespace gmx
 {
@@ -60,12 +64,27 @@ namespace test
 {
 
 /*! \internal
+ * \brief How the mdp file of the SimulationRunner is defined
+ */
+enum class SimulationRunnerMdpSource
+{
+    //! The default behavior. Will result in an empty mdp file.
+    Undefined,
+    //! Mdp options are set via string using SimulationRunner::useStringAsMdpFile
+    String,
+    //! Mdp options are read from a file set in SimulationRunner::useTopGroAndMdpFromFepTestDatabase
+    File,
+    //! Signals the last enum entry
+    Count
+};
+
+/*! \internal
  * \brief Helper object for running grompp and mdrun in
  * integration tests of mdrun functionality
  *
- * Objects of this class are intended to be owned by
- * IntegrationTestFixture objects, and an IntegrationTestFixture
- * object might own more than one SimulationRunner.
+ * Objects of this class must be owned by objects descended from
+ * MdrunTestFixtureBase, which sets up necessary infrastructure for
+ * it. Such an object may own more than one SimulationRunner.
  *
  * The setup phase creates various temporary files for input and
  * output that are common for mdrun tests, using the file manager
@@ -104,6 +123,8 @@ public:
     void useTopGroAndNdxFromDatabase(const std::string& name);
     //! Use a standard .gro file as input to grompp
     void useGroFromDatabase(const char* name);
+    //! Use .top, .gro, and .mdp from FEP test database
+    void useTopGroAndMdpFromFepTestDatabase(const std::string& name);
     //! Calls grompp (on rank 0, with a customized command line) to prepare for the mdrun test
     int callGrompp(const CommandLine& callerRef);
     //! Convenience wrapper for a default call to \c callGrompp
@@ -135,6 +156,7 @@ public:
      */
     std::string topFileName_;
     std::string groFileName_;
+    std::string mdpFileName_;
     std::string fullPrecisionTrajectoryFileName_;
     std::string reducedPrecisionTrajectoryFileName_;
     std::string groOutputFileName_;
@@ -146,12 +168,16 @@ public:
     std::string mtxFileName_;
     std::string cptFileName_;
     std::string swapFileName_;
+    std::string dhdlFileName_;
     int         nsteps_;
     //@}
+    //! How the mdp options are defined
+    SimulationRunnerMdpSource mdpSource_;
     //! What will be written into a temporary mdp file before the grompp call
     std::string mdpInputContents_;
 
 private:
+    //! The file manager used to manage I/O
     TestFileManager& fileManager_;
 
     GMX_DISALLOW_COPY_AND_ASSIGN(SimulationRunner);
@@ -161,31 +187,31 @@ private:
  * \brief Declares test fixture base class for
  * integration tests of mdrun functionality
  *
- * Derived fixture classes (or individual test cases) that might have
- * specific requirements should assert that behaviour, rather than
- * hard-code the requirements. A test that (for example) can't run
- * with more than one thread should report that as a diagnostic, so the
- * person running the test (or designing the test harness) can get
- * feedback on what tests need what conditions without having to read
- * the code of lots of tests.
- *
- * Specifying the execution context (such as numbers of threads and
- * processors) is normally sensible to specify from the test harness
- * (i.e. when CMake/CTest/the user runs a test executable), because
- * only there is information about the hardware available. The default
- * values for such context provided in test fixtures for mdrun should
- * mirror the defaults for mdrun, but currently mdrun.c hard-codes
- * those in a gmx_hw_opt_t.
- *
- * Any method in this class may throw std::bad_alloc if out of memory.
+ * Heavyweight resources are set up here and shared
+ * across all tests in the test case fixture, e.g.
+ * the MPI communicator for the tests and the hardware
+ * detected that is available to it.
  *
  * \ingroup module_mdrun_integration_tests
  */
 class MdrunTestFixtureBase : public ::testing::Test
 {
 public:
+    //! Per-test-case setup for lengthy processes that need run only once.
+    static void SetUpTestCase();
+    //! Per-test-case tear down
+    static void TearDownTestCase();
+
     MdrunTestFixtureBase();
     ~MdrunTestFixtureBase() override;
+
+    //! Communicator over which the test fixture works
+    static MPI_Comm communicator_;
+    /*! \brief Hardware information object
+     *
+     * Detected within \c communicator_ and available to re-use
+     * over all tests in the test case of this text fixture. */
+    static std::unique_ptr<gmx_hw_info_t> hwinfo_;
 };
 
 /*! \internal
@@ -196,7 +222,7 @@ public:
  *
  * \ingroup module_mdrun_integration_tests
  */
-class MdrunTestFixture : public ::testing::Test
+class MdrunTestFixture : public MdrunTestFixtureBase
 {
 public:
     MdrunTestFixture();

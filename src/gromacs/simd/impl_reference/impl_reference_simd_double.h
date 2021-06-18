@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -68,7 +68,7 @@ namespace gmx
 /*! \addtogroup module_simd */
 /*! \{ */
 
-/* \name SIMD implementation data types
+/*! \name SIMD implementation data types
  * \{
  */
 
@@ -814,10 +814,18 @@ static inline SimdDouble gmx_simdcall trunc(SimdDouble a)
 
 /*! \brief Extract (integer) exponent and fraction from double precision SIMD.
  *
+ * \tparam      opt       By default this function behaves like the standard
+ *                        library such that frexp(+-0,exp) returns +-0 and
+ *                        stores 0 in the exponent when value is 0. If you
+ *                        know the argument is always nonzero, you can set
+ *                        the template parameter to MathOptimization::Unsafe
+ *                        to make it slightly faster.
+ *
  * \param       value     Floating-point value to extract from
  * \param[out]  exponent  Returned exponent of value, integer SIMD format.
  * \return      Fraction of value, floating-point SIMD format.
  */
+template<MathOptimization opt = MathOptimization::Safe>
 static inline SimdDouble gmx_simdcall frexp(SimdDouble value, SimdDInt32* exponent)
 {
     SimdDouble fraction;

@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2016,2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,14 +51,14 @@
  */
 
 /* Small grid size array */
-#define g_initNR 15
-const int grid_init[g_initNR] = { 6, 8, 10, 12, 14, 16, 20, 24, 25, 28, 32, 36, 40, 42, 44 };
+constexpr int g_initNR            = 15;
+constexpr int grid_init[g_initNR] = { 6, 8, 10, 12, 14, 16, 20, 24, 25, 28, 32, 36, 40, 42, 44 };
 
 /* For larger grid sizes, a prefactor with any power of 2 can be added.
  * Only sizes divisible by 4 should be used, 90 is allowed, 140 not.
  */
-#define g_baseNR 14
-const int grid_base[g_baseNR] = { 45, 48, 50, 52, 54, 56, 60, 64, 70, 72, 75, 80, 81, 84 };
+constexpr int g_baseNR            = 14;
+constexpr int grid_base[g_baseNR] = { 45, 48, 50, 52, 54, 56, 60, 64, 70, 72, 75, 80, 81, 84 };
 
 real calcFftGrid(FILE* fp, const matrix box, real gridSpacing, int minGridPointsPerDim, int* nx, int* ny, int* nz)
 {
@@ -73,10 +74,8 @@ real calcFftGrid(FILE* fp, const matrix box, real gridSpacing, int minGridPoints
         gmx_fatal(FARGS, "invalid fourier grid spacing: %g", gridSpacing);
     }
 
-    if (grid_base[g_baseNR - 1] % 4 != 0)
-    {
-        gmx_incons("the last entry in grid_base is not a multiple of 4");
-    }
+    static_assert(grid_base[g_baseNR - 1] % 4 == 0,
+                  "the last entry in grid_base is not a multiple of 4");
 
     /* New grid calculation setup:
      *

@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2016,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -41,7 +42,6 @@
 #include <memory>
 #include <vector>
 
-#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/real.h"
 
 struct gmx_molblock_t;
@@ -53,8 +53,14 @@ struct MoleculeInformation;
 struct InteractionsOfType;
 struct t_symtab;
 struct warninp;
-enum struct GmxQmmmMode;
 typedef warninp* warninp_t;
+
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+class MDLogger;
+} // namespace gmx
 
 double check_mol(const gmx_mtop_t* mtop, warninp_t wi);
 /* Check mass and charge */
@@ -75,9 +81,10 @@ char** do_top(bool                                  bVerbose,
               const t_inputrec*                     ir,
               std::vector<gmx_molblock_t>*          molblock,
               bool*                                 ffParametrizedWithHBondConstraints,
-              warninp_t                             wi);
+              warninp_t                             wi,
+              const gmx::MDLogger&                  logger);
 
 /* This routine expects sys->molt[m].ilist to be of size F_NRE and ordered. */
-void generate_qmexcl(gmx_mtop_t* sys, t_inputrec* ir, warninp_t wi, GmxQmmmMode qmmmMode);
+void generate_qmexcl(gmx_mtop_t* sys, t_inputrec* ir, const gmx::MDLogger& logger);
 
 #endif

@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -60,10 +61,10 @@ namespace
 TEST(TimeUnitManagerTest, BasicOperations)
 {
     gmx::TimeUnitManager manager;
-    EXPECT_EQ(gmx::TimeUnit_ps, manager.timeUnit());
+    EXPECT_EQ(gmx::TimeUnit::Picoseconds, manager.timeUnit());
     EXPECT_DOUBLE_EQ(1.0, manager.timeScaleFactor());
-    manager.setTimeUnit(gmx::TimeUnit_ns);
-    EXPECT_EQ(gmx::TimeUnit_ns, manager.timeUnit());
+    manager.setTimeUnit(gmx::TimeUnit::Nanoseconds);
+    EXPECT_EQ(gmx::TimeUnit::Nanoseconds, manager.timeUnit());
     EXPECT_DOUBLE_EQ(1e3, manager.timeScaleFactor());
     EXPECT_DOUBLE_EQ(1e-3, manager.inverseTimeScaleFactor());
 }
@@ -85,21 +86,21 @@ TEST(TimeUnitBehaviorTest, ScalesAssignedOptionValue)
     EXPECT_NO_THROW_GMX(assigner.finish());
 
     EXPECT_DOUBLE_EQ(1.5, value);
-    behavior.setTimeUnit(gmx::TimeUnit_ns);
+    behavior.setTimeUnit(gmx::TimeUnit::Nanoseconds);
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(1500, value);
 
     EXPECT_NO_THROW_GMX(options.finish());
 
-    behavior.setTimeUnit(gmx::TimeUnit_us);
+    behavior.setTimeUnit(gmx::TimeUnit::Microseconds);
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(1500000, value);
 
-    behavior.setTimeUnit(gmx::TimeUnit_fs);
+    behavior.setTimeUnit(gmx::TimeUnit::Femtoseconds);
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(0.0015, value);
 
-    behavior.setTimeUnit(gmx::TimeUnit_ps);
+    behavior.setTimeUnit(gmx::TimeUnit::Picoseconds);
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(1.5, value);
 }
@@ -123,7 +124,7 @@ TEST(TimeUnitBehaviorTest, DoesNotScaleDefaultValues)
     EXPECT_NO_THROW_GMX(options.finish());
 
     EXPECT_DOUBLE_EQ(2.5, value2);
-    behavior.setTimeUnit(gmx::TimeUnit_ns);
+    behavior.setTimeUnit(gmx::TimeUnit::Nanoseconds);
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(1.5, value);
     EXPECT_DOUBLE_EQ(2.5, value2);
@@ -150,7 +151,7 @@ TEST(TimeUnitBehaviorTest, ScalesUserInputWithMultipleSources)
     EXPECT_NO_THROW_GMX(options.finish());
 
     EXPECT_DOUBLE_EQ(1.5, value);
-    behavior.setTimeUnit(gmx::TimeUnit_ns);
+    behavior.setTimeUnit(gmx::TimeUnit::Nanoseconds);
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(1500, value);
 }
@@ -176,7 +177,7 @@ TEST(TimeUnitBehaviorTest, TimeUnitOptionWorks)
     EXPECT_NO_THROW_GMX(assigner.finish());
 
     EXPECT_DOUBLE_EQ(1.5, value);
-    EXPECT_EQ(gmx::TimeUnit_ns, behavior.timeUnit());
+    EXPECT_EQ(gmx::TimeUnit::Nanoseconds, behavior.timeUnit());
     behavior.optionsFinishing(&options);
     EXPECT_DOUBLE_EQ(1500, value);
 

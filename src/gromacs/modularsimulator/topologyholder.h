@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -32,11 +32,13 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
-/*! \libinternal \file
+/*! \internal \file
  * \brief Declares the topology class for the modular simulator
  *
  * \author Pascal Merz <pascal.merz@me.com>
  * \ingroup module_modularsimulator
+ *
+ * This header is only used within the modular simulator module
  */
 
 
@@ -45,11 +47,12 @@
 
 #include <vector>
 
+#include "gromacs/compat/pointers.h"
+
 #include "modularsimulatorinterfaces.h"
 
 struct gmx_localtop_t;
 struct gmx_mtop_t;
-struct gmx_vsite_t;
 struct t_commrec;
 struct t_forcerec;
 struct t_inputrec;
@@ -58,8 +61,9 @@ namespace gmx
 {
 class Constraints;
 class MDAtoms;
+class VirtualSitesHandler;
 
-/*! \libinternal
+/*! \internal
  * \ingroup module_modularsimulator
  * \brief Object holding the topology
  *
@@ -70,25 +74,26 @@ class TopologyHolder final
 {
 public:
     //! Constructor
-    TopologyHolder(const gmx_mtop_t& globalTopology,
-                   const t_commrec*  cr,
-                   const t_inputrec* inputrec,
-                   t_forcerec*       fr,
-                   MDAtoms*          mdAtoms,
-                   Constraints*      constr,
-                   gmx_vsite_t*      vsite);
+    TopologyHolder(std::vector<ITopologyHolderClient*> clients,
+                   const gmx_mtop_t&                   globalTopology,
+                   const t_commrec*                    cr,
+                   const t_inputrec*                   inputrec,
+                   t_forcerec*                         fr,
+                   MDAtoms*                            mdAtoms,
+                   Constraints*                        constr,
+                   VirtualSitesHandler*                vsite);
 
     //! Get global topology
     const gmx_mtop_t& globalTopology() const;
 
-    //! Register topology client
-    void registerClient(ITopologyHolderClient* client);
-
     //! Allow domdec to update local topology
     friend class DomDecHelper;
 
+    //! The builder
+    class Builder;
+
 private:
-    //! Constant reference to the global topolgy
+    //! Constant reference to the global topology
     const gmx_mtop_t& globalTopology_;
     //! Pointer to the currently valid local topology
     std::unique_ptr<gmx_localtop_t> localTopology_;
@@ -99,6 +104,34 @@ private:
     //! Update local topology
     void updateLocalTopology();
 };
+
+/*! \internal
+ * \ingroup module_modularsimulator
+ * \brief Builder for the topology holder
+ */
+class TopologyHolder::Builder
+{
+public:
+    //! Register topology client
+    void registerClient(ITopologyHolderClient* client);
+
+    //! Build TopologyHolder
+    template<typename... Args>
+    std::unique_ptr<TopologyHolder> build(Args&&... args);
+
+private:
+    //! List of clients to be updated if local topology changes
+    std::vector<ITopologyHolderClient*> clients_;
+    //! The state of the builder
+    ModularSimulatorBuilderState state_ = ModularSimulatorBuilderState::AcceptingClientRegistrations;
+};
+
+template<typename... Args>
+std::unique_ptr<TopologyHolder> TopologyHolder::Builder::build(Args&&... args)
+{
+    state_ = ModularSimulatorBuilderState::NotAcceptingClientRegistrations;
+    return std::make_unique<TopologyHolder>(std::move(clients_), std::forward<Args>(args)...);
+}
 
 } // namespace gmx
 

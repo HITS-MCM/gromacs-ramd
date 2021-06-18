@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -89,7 +90,7 @@ static void print_bt(FILE*                                   out,
     int f = 0;
     switch (ftype)
     {
-        case F_G96ANGLES: f = 1; break;
+        case F_G96ANGLES: // Intended to fall through
         case F_G96BONDS: f = 1; break;
         case F_MORSE: f = 2; break;
         case F_CUBICBONDS: f = 3; break;
@@ -98,18 +99,18 @@ static void print_bt(FILE*                                   out,
         case F_CROSS_BOND_ANGLES: f = 2; break;
         case F_CROSS_BOND_BONDS: f = 3; break;
         case F_UREY_BRADLEY: f = 4; break;
-        case F_PDIHS:
-        case F_RBDIHS:
+        case F_PDIHS:  // Intended to fall through
+        case F_RBDIHS: // Intended to fall through
         case F_FOURDIHS: bDih = TRUE; break;
         case F_IDIHS:
             f    = 1;
             bDih = TRUE;
             break;
-        case F_CONSTRNC: f = 1; break;
+        case F_CONSTRNC: // Intended to fall through
         case F_VSITE3FD: f = 1; break;
         case F_VSITE3FAD: f = 2; break;
         case F_VSITE3OUT: f = 3; break;
-        case F_VSITE4FDN: f = 1; break;
+        case F_VSITE4FDN: // Intended to fall through
         case F_CMAP: f = 1; break;
 
         default: bDih = FALSE;

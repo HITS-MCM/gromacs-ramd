@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -106,6 +107,7 @@ enum
     ewcsDD_MAKETOP,
     ewcsDD_MAKECONSTR,
     ewcsDD_TOPOTHER,
+    ewcsDD_GPU,
     ewcsNBS_GRID_LOCAL,
     ewcsNBS_GRID_NONLOCAL,
     ewcsNBS_SEARCH_LOCAL,
@@ -126,6 +128,11 @@ enum
     ewcsNB_X_BUF_OPS,
     ewcsNB_F_BUF_OPS,
     ewcsCLEAR_FORCE_BUFFER,
+    ewcsLAUNCH_GPU_NB_X_BUF_OPS,
+    ewcsLAUNCH_GPU_NB_F_BUF_OPS,
+    ewcsLAUNCH_GPU_MOVEX,
+    ewcsLAUNCH_GPU_MOVEF,
+    ewcsLAUNCH_GPU_UPDATE_CONSTRAIN,
     ewcsTEST,
     ewcsNR
 };

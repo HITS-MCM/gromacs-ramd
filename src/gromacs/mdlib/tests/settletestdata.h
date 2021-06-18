@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,7 +45,6 @@
 
 #include "gromacs/math/paddedvector.h"
 #include "gromacs/math/vectypes.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/topology.h"
@@ -63,6 +62,8 @@ namespace test
 class SettleTestData
 {
 public:
+    //! Number of settles
+    int numSettles_;
     //! Initial (undisturbed) positions
     PaddedVector<gmx::RVec> x_;
     //! Updated water atom positions to constrain
@@ -74,12 +75,14 @@ public:
 
     //! Global topology
     gmx_mtop_t mtop_;
-    //! Atoms data
-    t_mdatoms mdatoms_;
-    //! Interactions list
-    t_ilist ilist_;
+    //! Number of atoms
+    int numAtoms_ = 0;
+    //! Atom masses
+    std::vector<real> masses_;
+    //! Reciprocal masses
+    std::vector<real> inverseMasses_;
     //! Local topology
-    t_idef idef_;
+    std::unique_ptr<InteractionDefinitions> idef_;
 
     //! Inverse timestep
     const real reciprocalTimeStep_ = 1.0 / 0.002;

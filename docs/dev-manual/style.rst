@@ -31,8 +31,8 @@ this page.
   Guidelines for using Doxygen to document the source code are currently in a
   section on the page on general Doxygen usage.
 :doc:`reportstyle`
-  Guidelines for preparing and formatting bug reports on redmine.
+  Guidelines for preparing and formatting bug reports.
 :doc:`commitstyle`
   Guidelines for formatting git commits when sending in proposed fixes for code review.
 
-.. TODO: Add more guidelines
+.. todo:: Add more guidelines

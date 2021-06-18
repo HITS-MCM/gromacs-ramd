@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011,2014,2015,2016,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2011,2014,2015,2016,2018, The GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,6 +49,7 @@
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/symtab.h"
 #include "gromacs/utility/enumerationhelpers.h"
+#include "gromacs/utility/listoflists.h"
 #include "gromacs/utility/unique_cptr.h"
 
 enum class SimulationAtomGroupType : int
@@ -83,10 +85,10 @@ struct gmx_moltype_t
     /*! \brief Default copy constructor */
     gmx_moltype_t(const gmx_moltype_t&) = default;
 
-    char**           name;  /**< Name of the molecule type            */
-    t_atoms          atoms; /**< The atoms in this molecule           */
-    InteractionLists ilist; /**< Interaction list with local indices  */
-    t_blocka         excls; /**< The exclusions                       */
+    char**                name;  /**< Name of the molecule type            */
+    t_atoms               atoms; /**< The atoms in this molecule           */
+    InteractionLists      ilist; /**< Interaction list with local indices  */
+    gmx::ListOfLists<int> excls; /**< The exclusions                       */
 };
 
 /*! \brief Block of molecules of the same type, used in gmx_mtop_t */
@@ -131,7 +133,7 @@ struct SimulationGroups
      */
     int numberOfGroupNumbers(SimulationAtomGroupType group) const
     {
-        return gmx::ssize(groupNumbers[group]);
+        return static_cast<int>(groupNumbers[group].size());
     }
 };
 
@@ -176,15 +178,11 @@ struct gmx_mtop_t //NOLINT(clang-analyzer-optin.performance.Padding)
     std::unique_ptr<InteractionLists> intermolecular_ilist = nullptr;
     //! Number of global atoms.
     int natoms = 0;
-    //! Parameter for residue numbering.
-    int maxres_renum = 0;
-    //! The maximum residue number in moltype
-    int maxresnr = -1;
     //! Atomtype properties
     t_atomtypes atomtypes;
     //! Groups of atoms for different purposes
     SimulationGroups groups;
-    //! The symbol table
+    //! The legacy symbol table
     t_symtab symtab;
     //! Tells whether we have valid molecule indices
     bool haveMoleculeIndices = false;
@@ -193,9 +191,33 @@ struct gmx_mtop_t //NOLINT(clang-analyzer-optin.performance.Padding)
      */
     std::vector<int> intermolecularExclusionGroup;
 
-    /* Derived data  below */
+    //! Maximum number of residues in molecule to trigger renumbering of residues
+    int maxResiduesPerMoleculeToTriggerRenumber() const
+    {
+        return maxResiduesPerMoleculeToTriggerRenumber_;
+    }
+    //! Maximum residue number that is not renumbered.
+    int maxResNumberNotRenumbered() const { return maxResNumberNotRenumbered_; }
+    /*! \brief Finalize this data structure.
+     *
+     * Should be called after generating or reading mtop, to set some compute
+     * intesive variables to avoid N^2 operations later on.
+     *
+     * \todo Move into a builder class, once available.
+     */
+    void finalize();
+
+    /* Derived data below */
     //! Indices for each molblock entry for fast lookup of atom properties
     std::vector<MoleculeBlockIndices> moleculeBlockIndices;
+
+private:
+    //! Build the molblock indices
+    void buildMolblockIndices();
+    //! Maximum number of residues in molecule to trigger renumbering of residues
+    int maxResiduesPerMoleculeToTriggerRenumber_ = 0;
+    //! The maximum residue number in moltype that is not renumbered
+    int maxResNumberNotRenumbered_ = -1;
 };
 
 /*! \brief
@@ -206,18 +228,12 @@ struct gmx_mtop_t //NOLINT(clang-analyzer-optin.performance.Padding)
 struct gmx_localtop_t
 {
     //! Constructor used for normal operation, manages own resources.
-    gmx_localtop_t();
-
-    ~gmx_localtop_t();
+    gmx_localtop_t(const gmx_ffparams_t& ffparams);
 
     //! The interaction function definition
-    t_idef idef;
-    //! Atomtype properties
-    t_atomtypes atomtypes;
+    InteractionDefinitions idef;
     //! The exclusions
-    t_blocka excls;
-    //! Flag for domain decomposition so we don't free already freed memory.
-    bool useInDomainDecomp_ = false;
+    gmx::ListOfLists<int> excls;
 };
 
 /* The old topology struct, completely written out, used in analysis tools */
@@ -229,8 +245,8 @@ typedef struct t_topology
     t_atomtypes atomtypes;                   /* Atomtype properties                  */
     t_block     mols;                        /* The molecules                        */
     gmx_bool    bIntermolecularInteractions; /* Inter.mol. int. ?   */
-    t_blocka    excls;                       /* The exclusions                       */
-    t_symtab    symtab;                      /* The symbol table                     */
+    /* Note that the exclusions are not stored in t_topology */
+    t_symtab symtab; /* The symbol table                     */
 } t_topology;
 
 void init_top(t_topology* top);

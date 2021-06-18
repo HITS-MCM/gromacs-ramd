@@ -1,7 +1,7 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2020, by the GROMACS development team, led by
+# Copyright (c) 2020,2021, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -32,9 +32,37 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out http://www.gromacs.org.
 
-"""A `utility` module helps manage the matrix of configurations for CI testing and build containers.
+"""A utility module to help manage the matrix of configurations for CI testing and build containers.
 
-Provides importable argument parser.
+When called as a stand alone script, prints a Docker image name based on the
+command line arguments. The Docker image name is of the form used in the GROMACS
+CI pipeline jobs.
+
+Example::
+
+    $ python3 -m utility --llvm --doxygen
+    gromacs/ci-ubuntu-18.04-llvm-7-docs
+
+See Also:
+    :file:`buildall.sh`
+
+As a module, provides importable argument parser and docker image name generator.
+
+Note that the parser is created with ``add_help=False`` to make it friendly as a
+parent parser, but this means that you must derive a new parser from it if you
+want to see the full generated command line help.
+
+Example::
+
+    import utility.parser
+    # utility.parser does not support `-h` or `--help`
+    parser = argparse.ArgumentParser(
+        description='GROMACS CI image creation script',
+        parents=[utility.parser])
+    # ArgumentParser(add_help=True) is default, so parser supports `-h` and `--help`
+
+See Also:
+    :file:`scripted_gmx_docker_builds.py`
 
 Authors:
     * Paul Bauer <paul.bauer.q@gmail.com>
@@ -58,52 +86,103 @@ parsers for tools.
     Instead, inherit from it with the *parents* argument to :py:class:`argparse.ArgumentParser`
 """
 
-# TODO: Try using distutils.version.StrictVersion.
-parser.add_argument('--cmake', type=str, default='3.9.6',
-                    choices=['3.9.6', '3.11.4', '3.15.7'],
+parser.add_argument('--cmake', nargs='*', type=str, default=['3.13.0', '3.15.7', '3.17.2'],
                     help='Selection of CMake version to provide to base image')
+
 compiler_group = parser.add_mutually_exclusive_group()
 compiler_group.add_argument('--gcc', type=int, nargs='?', const=7, default=7,
-                            choices=[5, 6, 7, 8, 9],
                             help='Select GNU compiler tool chain. (Default) '
                                  'Some checking is implemented to avoid incompatible combinations')
 compiler_group.add_argument('--llvm', type=str, nargs='?', const='7', default=None,
-                            choices=['3.6', '6', '7', '8'],
                             help='Select LLVM compiler tool chain. '
                                  'Some checking is implemented to avoid incompatible combinations')
 compiler_group.add_argument('--icc', type=int, nargs='?', const=19, default=None,
-                            choices=[19],
                             help='Select Intel compiler tool chain. '
                                  'Some checking is implemented to avoid incompatible combinations')
+# TODO currently the installation merely gets the latest beta version of oneAPI,
+# not a specific version. GROMACS probably doesn't need to address that until
+# oneAPI makes an official release. Also, the resulting container is a mix
+# of packages with different betaXY version numbers, which hopefully works and
+# is what Intel intends...
+compiler_group.add_argument('--oneapi', type=str, nargs='?', const="2021.1.1", default=None,
+                            help='Select Intel oneAPI package version.')
 
 linux_group = parser.add_mutually_exclusive_group()
+# Ubuntu 20+ is not yet tested. See issue #3680
 linux_group.add_argument('--ubuntu', type=str, nargs='?', const='18.04', default='18.04',
-                         choices=['16.04', '18.04'],
                          help='Select Ubuntu Linux base image. (default: ubuntu 18.04)')
 linux_group.add_argument('--centos', type=str, nargs='?', const='7', default=None,
-                         choices=['6', '7'],
                          help='Select Centos Linux base image.')
 
 parser.add_argument('--cuda', type=str, nargs='?', const='10.2', default=None,
-                    choices=['9.0', '10.0', '10.1', '10.2'],
                     help='Select a CUDA version for a base Linux image from NVIDIA.')
 
 parser.add_argument('--mpi', type=str, nargs='?', const='openmpi', default=None,
-                    choices=['openmpi', 'impi'],
                     help='Enable MPI (default disabled) and optionally select distribution (default: openmpi)')
 
 parser.add_argument('--tsan', type=str, nargs='?', const='llvm', default=None,
-                    choices=['llvm'],
                     help='Build special compiler versions with TSAN OpenMP support')
 
-parser.add_argument('--opencl', type=str, nargs='?', const='nvidia', default=None,
-                    choices=['nvidia', 'intel', 'amd'],
-                    help='Provide environment for OpenCL builds')
-
 parser.add_argument('--clfft', type=str, nargs='?', const='master', default=None,
-                    choices=['master', 'develop'],
                     help='Add external clFFT libraries to the build image')
 
 parser.add_argument('--doxygen', type=str, nargs='?', const='1.8.5', default=None,
-                    choices=['1.8.5', '1.8.11'],
                     help='Add doxygen environment for documentation builds. Also adds other requirements needed for final docs images.')
+
+# Supported Python versions for maintained branches.
+_python_versions = ['3.6.10', '3.7.7', '3.8.2', '3.9.1']
+parser.add_argument('--venvs', nargs='*', type=str, default=_python_versions,
+                    help='List of Python versions ("major.minor.patch") for which to install venvs. '
+                         'Default: {}'.format(' '.join(_python_versions)))
+
+
+def image_name(configuration: argparse.Namespace) -> str:
+    """Generate docker image name.
+
+    Image names have the form ``ci-<slug>``, where the configuration slug has the form::
+
+        <distro>-<version>-<compiler>-<major version>[-<gpusdk>-<version>][-<use case>]
+
+    This function also applies an appropriate Docker image repository prefix.
+
+    Arguments:
+        configuration: Docker image configuration as described by the parsed arguments.
+
+    """
+    elements = []
+    for distro in ('centos', 'ubuntu'):
+        version = getattr(configuration, distro, None)
+        if version is not None:
+            elements.append(distro + '-' + version)
+            break
+    for compiler in ('icc', 'llvm', 'gcc'):
+        version = getattr(configuration, compiler, None)
+        if version is not None:
+            elements.append(compiler + '-' + str(version).split('.')[0])
+            break
+    for gpusdk in ('cuda',):
+        version = getattr(configuration, gpusdk, None)
+        if version is not None:
+            elements.append(gpusdk + '-' + version)
+    if configuration.oneapi is not None:
+        elements.append('oneapi-' + configuration.oneapi)
+
+    # Check for special cases
+    # The following attribute keys indicate the image is built for the named
+    # special use case.
+    cases = {'doxygen': 'docs',
+             'tsan': 'tsan'}
+    for attr in cases:
+        value = getattr(configuration, attr, None)
+        if value is not None:
+            elements.append(cases[attr])
+    slug = '-'.join(elements)
+    # we are using the GitLab container registry to store the images
+    # to get around issues with pulling them repeatedly from DockerHub
+    # and running into the image pull limitation there.
+    return 'registry.gitlab.com/gromacs/gromacs/ci-' + slug
+
+
+if __name__ == "__main__":
+    args = argparse.ArgumentParser(parents=[parser]).parse_args()
+    print(image_name(args))

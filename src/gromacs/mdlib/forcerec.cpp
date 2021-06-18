@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013-2020, by the GROMACS development team, led by
+ * Copyright (c) 2013-2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -60,7 +60,7 @@
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/hardware/hw_info.h"
 #include "gromacs/listed_forces/gpubonded.h"
-#include "gromacs/listed_forces/manage_threading.h"
+#include "gromacs/listed_forces/listed_forces.h"
 #include "gromacs/listed_forces/pairs.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
@@ -71,18 +71,19 @@
 #include "gromacs/mdlib/forcerec_threading.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/md_support.h"
-#include "gromacs/mdlib/qmmm.h"
 #include "gromacs/mdlib/rf_util.h"
 #include "gromacs/mdlib/wall.h"
+#include "gromacs/mdlib/wholemoleculetransform.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/fcdata.h"
+#include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/group.h"
 #include "gromacs/mdtypes/iforceprovider.h"
 #include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/nbnxm/gpu_data_mgmt.h"
+#include "gromacs/mdtypes/multipletimestepping.h"
 #include "gromacs/nbnxm/nbnxm.h"
-#include "gromacs/nbnxm/nbnxm_geometry.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/tables/forcetable.h"
@@ -98,22 +99,35 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strconvert.h"
 
-/*! \brief environment variable to enable GPU P2P communication */
-static const bool c_enableGpuPmePpComms =
-        (getenv("GMX_GPU_PME_PP_COMMS") != nullptr) && GMX_THREAD_MPI && (GMX_GPU == GMX_GPU_CUDA);
+#include "gpuforcereduction.h"
 
-static real* mk_nbfp(const gmx_ffparams_t* idef, gmx_bool bBHAM)
+ForceHelperBuffers::ForceHelperBuffers(bool haveDirectVirialContributions) :
+    haveDirectVirialContributions_(haveDirectVirialContributions)
 {
-    real* nbfp;
-    int   i, j, k, atnr;
+    shiftForces_.resize(SHIFTS);
+}
+
+void ForceHelperBuffers::resize(int numAtoms)
+{
+    if (haveDirectVirialContributions_)
+    {
+        forceBufferForDirectVirialContributions_.resize(numAtoms);
+    }
+}
+
+static std::vector<real> mk_nbfp(const gmx_ffparams_t* idef, gmx_bool bBHAM)
+{
+    std::vector<real> nbfp;
+    int               atnr;
 
     atnr = idef->atnr;
     if (bBHAM)
     {
-        snew(nbfp, 3 * atnr * atnr);
-        for (i = k = 0; (i < atnr); i++)
+        nbfp.resize(3 * atnr * atnr);
+        int k = 0;
+        for (int i = 0; (i < atnr); i++)
         {
-            for (j = 0; (j < atnr); j++, k++)
+            for (int j = 0; (j < atnr); j++, k++)
             {
                 BHAMA(nbfp, atnr, i, j) = idef->iparams[k].bham.a;
                 BHAMB(nbfp, atnr, i, j) = idef->iparams[k].bham.b;
@@ -124,10 +138,11 @@ static real* mk_nbfp(const gmx_ffparams_t* idef, gmx_bool bBHAM)
     }
     else
     {
-        snew(nbfp, 2 * atnr * atnr);
-        for (i = k = 0; (i < atnr); i++)
+        nbfp.resize(2 * atnr * atnr);
+        int k = 0;
+        for (int i = 0; (i < atnr); i++)
         {
-            for (j = 0; (j < atnr); j++, k++)
+            for (int j = 0; (j < atnr); j++, k++)
             {
                 /* nbfp now includes the 6.0/12.0 derivative prefactors */
                 C6(nbfp, atnr, i, j)  = idef->iparams[k].lj.c6 * 6.0;
@@ -186,14 +201,10 @@ enum
     acSETTLE
 };
 
-static cginfo_mb_t* init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr, gmx_bool* bFEP_NonBonded)
+static std::vector<cginfo_mb_t> init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr)
 {
-    cginfo_mb_t* cginfo_mb;
-    gmx_bool*    type_VDW;
-    int*         cginfo;
-    int*         a_con;
-
-    snew(cginfo_mb, mtop->molblock.size());
+    gmx_bool* type_VDW;
+    int*      a_con;
 
     snew(type_VDW, fr->ntype);
     for (int ai = 0; ai < fr->ntype; ai++)
@@ -206,14 +217,13 @@ static cginfo_mb_t* init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr,
         }
     }
 
-    *bFEP_NonBonded = FALSE;
-
-    int a_offset = 0;
+    std::vector<cginfo_mb_t> cginfoPerMolblock;
+    int                      a_offset = 0;
     for (size_t mb = 0; mb < mtop->molblock.size(); mb++)
     {
         const gmx_molblock_t& molb = mtop->molblock[mb];
         const gmx_moltype_t&  molt = mtop->moltype[molb.type];
-        const t_blocka&       excl = molt.excls;
+        const auto&           excl = molt.excls;
 
         /* Check if the cginfo is identical for all molecules in this block.
          * If so, we only need an array of the size of one molecule.
@@ -241,11 +251,12 @@ static cginfo_mb_t* init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr,
             }
         }
 
-        cginfo_mb[mb].cg_start = a_offset;
-        cginfo_mb[mb].cg_end   = a_offset + molb.nmol * molt.atoms.nr;
-        cginfo_mb[mb].cg_mod   = (bId ? 1 : molb.nmol) * molt.atoms.nr;
-        snew(cginfo_mb[mb].cginfo, cginfo_mb[mb].cg_mod);
-        cginfo = cginfo_mb[mb].cginfo;
+        cginfo_mb_t cginfo_mb;
+        cginfo_mb.cg_start = a_offset;
+        cginfo_mb.cg_end   = a_offset + molb.nmol * molt.atoms.nr;
+        cginfo_mb.cg_mod   = (bId ? 1 : molb.nmol) * molt.atoms.nr;
+        cginfo_mb.cginfo.resize(cginfo_mb.cg_mod);
+        gmx::ArrayRef<int> cginfo = cginfo_mb.cginfo;
 
         /* Set constraints flags for constrained atoms */
         snew(a_con, molt.atoms.nr);
@@ -285,9 +296,9 @@ static cginfo_mb_t* init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr,
 
                 bool haveExclusions = false;
                 /* Loop over all the exclusions of atom ai */
-                for (int j = excl.index[a]; j < excl.index[a + 1]; j++)
+                for (const int j : excl[a])
                 {
-                    if (excl.a[j] != a)
+                    if (j != a)
                     {
                         haveExclusions = true;
                         break;
@@ -315,21 +326,22 @@ static cginfo_mb_t* init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr,
                 if (fr->efep != efepNO && PERTURBED(atom))
                 {
                     SET_CGINFO_FEP(atomInfo);
-                    *bFEP_NonBonded = TRUE;
                 }
             }
         }
 
         sfree(a_con);
 
+        cginfoPerMolblock.push_back(cginfo_mb);
+
         a_offset += molb.nmol * molt.atoms.nr;
     }
     sfree(type_VDW);
 
-    return cginfo_mb;
+    return cginfoPerMolblock;
 }
 
-static std::vector<int> cginfo_expand(const int nmb, const cginfo_mb_t* cgi_mb)
+static std::vector<int> cginfo_expand(const int nmb, gmx::ArrayRef<const cginfo_mb_t> cgi_mb)
 {
     const int ncg = cgi_mb[nmb - 1].cg_end;
 
@@ -346,19 +358,6 @@ static std::vector<int> cginfo_expand(const int nmb, const cginfo_mb_t* cgi_mb)
     }
 
     return cginfo;
-}
-
-static void done_cginfo_mb(cginfo_mb_t* cginfo_mb, int numMolBlocks)
-{
-    if (cginfo_mb == nullptr)
-    {
-        return;
-    }
-    for (int mb = 0; mb < numMolBlocks; ++mb)
-    {
-        sfree(cginfo_mb[mb].cginfo);
-    }
-    sfree(cginfo_mb);
 }
 
 /* Sets the sum of charges (squared) and C6 in the system in fr.
@@ -554,26 +553,23 @@ static void count_tables(int ftype1, int ftype2, const gmx_mtop_t* mtop, int* nc
  *
  * A fatal error occurs if no matching filename is found.
  */
-static bondedtable_t* make_bonded_tables(FILE*                            fplog,
-                                         int                              ftype1,
-                                         int                              ftype2,
-                                         const gmx_mtop_t*                mtop,
-                                         gmx::ArrayRef<const std::string> tabbfnm,
-                                         const char*                      tabext)
+static std::vector<bondedtable_t> make_bonded_tables(FILE*                            fplog,
+                                                     int                              ftype1,
+                                                     int                              ftype2,
+                                                     const gmx_mtop_t*                mtop,
+                                                     gmx::ArrayRef<const std::string> tabbfnm,
+                                                     const char*                      tabext)
 {
-    int            ncount, *count;
-    bondedtable_t* tab;
+    std::vector<bondedtable_t> tab;
 
-    tab = nullptr;
-
-    ncount = 0;
-    count  = nullptr;
+    int  ncount = 0;
+    int* count  = nullptr;
     count_tables(ftype1, ftype2, mtop, &ncount, &count);
 
     // Are there any relevant tabulated bond interactions?
     if (ncount > 0)
     {
-        snew(tab, ncount);
+        tab.resize(ncount);
         for (int i = 0; i < ncount; i++)
         {
             // Do any interactions exist that requires this table?
@@ -618,14 +614,9 @@ void forcerec_set_ranges(t_forcerec* fr, int natoms_force, int natoms_force_cons
     fr->natoms_force        = natoms_force;
     fr->natoms_force_constr = natoms_force_constr;
 
-    if (fr->natoms_force_constr > fr->nalloc_force)
+    for (auto& forceHelperBuffers : fr->forceHelperBuffers)
     {
-        fr->nalloc_force = over_alloc_dd(fr->natoms_force_constr);
-    }
-
-    if (fr->haveDirectVirialContributions)
-    {
-        fr->forceBufferForDirectVirialContributions.resize(natoms_f_novirsum);
+        forceHelperBuffers.resize(natoms_f_novirsum);
     }
 }
 
@@ -733,6 +724,8 @@ static void initVdwEwaldParameters(FILE* fp, const t_inputrec* ir, interaction_c
  * both accuracy requirements, when relevant.
  */
 static void init_ewald_f_table(const interaction_const_t& ic,
+                               const real                 rlist,
+                               const real                 tabext,
                                EwaldCorrectionTables*     coulombTables,
                                EwaldCorrectionTables*     vdwTables)
 {
@@ -744,7 +737,20 @@ static void init_ewald_f_table(const interaction_const_t& ic,
      */
     const real tableScale = ewald_spline3_table_scale(ic, useCoulombTable, useVdwTable);
 
-    const int tableSize = static_cast<int>(ic.rcoulomb * tableScale) + 2;
+    const bool havePerturbedNonbondeds = (ic.softCoreParameters != nullptr);
+
+    real tableLen = ic.rcoulomb;
+    if ((useCoulombTable || useVdwTable) && havePerturbedNonbondeds && rlist + tabext > 0.0)
+    {
+        /* TODO: Ideally this should also check if couple-intramol == no, but that isn't
+         * stored in ir. Grompp puts that info into an opts structure that doesn't make it into the tpr.
+         * The alternative is to look through all the exclusions and check if they come from
+         * couple-intramol == no. Meanwhile, always having larger tables should only affect
+         * memory consumption, not speed (barring cache issues).
+         */
+        tableLen = rlist + tabext;
+    }
+    const int tableSize = static_cast<int>(tableLen * tableScale) + 2;
 
     if (useCoulombTable)
     {
@@ -758,11 +764,12 @@ static void init_ewald_f_table(const interaction_const_t& ic,
     }
 }
 
-void init_interaction_const_tables(FILE* fp, interaction_const_t* ic)
+void init_interaction_const_tables(FILE* fp, interaction_const_t* ic, const real rlist, const real tableExtensionLength)
 {
     if (EEL_PME_EWALD(ic->eeltype) || EVDW_PME(ic->vdwtype))
     {
-        init_ewald_f_table(*ic, ic->coulombEwaldTables.get(), ic->vdwEwaldTables.get());
+        init_ewald_f_table(*ic, rlist, tableExtensionLength, ic->coulombEwaldTables.get(),
+                           ic->vdwEwaldTables.get());
         if (fp != nullptr)
         {
             fprintf(fp, "Initialized non-bonded Ewald tables, spacing: %.2e size: %zu\n\n",
@@ -822,8 +829,6 @@ static void init_interaction_const(FILE*                 fp,
                                    bool                  systemHasNetCharge)
 {
     interaction_const_t* ic = new interaction_const_t;
-
-    ic->cutoff_scheme = ir->cutoff_scheme;
 
     ic->coulombEwaldTables = std::make_unique<EwaldCorrectionTables>();
     ic->vdwEwaldTables     = std::make_unique<EwaldCorrectionTables>();
@@ -934,82 +939,18 @@ static void init_interaction_const(FILE*                 fp,
         fprintf(fp, "\n");
     }
 
+    if (ir->efep != efepNO)
+    {
+        GMX_RELEASE_ASSERT(ir->fepvals, "ir->fepvals should be set wth free-energy");
+        ic->softCoreParameters = std::make_unique<interaction_const_t::SoftCoreParameters>(*ir->fepvals);
+    }
+
     *interaction_const = ic;
-}
-
-bool areMoleculesDistributedOverPbc(const t_inputrec& ir, const gmx_mtop_t& mtop, const gmx::MDLogger& mdlog)
-{
-    bool       areMoleculesDistributedOverPbc = false;
-    const bool useEwaldSurfaceCorrection = (EEL_PME_EWALD(ir.coulombtype) && ir.epsilon_surface != 0);
-
-    const bool bSHAKE =
-            (ir.eConstrAlg == econtSHAKE
-             && (gmx_mtop_ftype_count(mtop, F_CONSTR) > 0 || gmx_mtop_ftype_count(mtop, F_CONSTRNC) > 0));
-
-    /* The group cut-off scheme and SHAKE assume charge groups
-     * are whole, but not using molpbc is faster in most cases.
-     * With intermolecular interactions we need PBC for calculating
-     * distances between atoms in different molecules.
-     */
-    if (bSHAKE && !mtop.bIntermolecularInteractions)
-    {
-        areMoleculesDistributedOverPbc = ir.bPeriodicMols;
-
-        if (areMoleculesDistributedOverPbc)
-        {
-            gmx_fatal(FARGS, "SHAKE is not supported with periodic molecules");
-        }
-    }
-    else
-    {
-        /* Not making molecules whole is faster in most cases,
-         * but with orientation restraints or non-tinfoil boundary
-         * conditions we need whole molecules.
-         */
-        areMoleculesDistributedOverPbc =
-                (gmx_mtop_ftype_count(mtop, F_ORIRES) == 0 && !useEwaldSurfaceCorrection);
-
-        if (getenv("GMX_USE_GRAPH") != nullptr)
-        {
-            areMoleculesDistributedOverPbc = false;
-
-            GMX_LOG(mdlog.warning)
-                    .asParagraph()
-                    .appendText(
-                            "GMX_USE_GRAPH is set, using the graph for bonded "
-                            "interactions");
-
-            if (mtop.bIntermolecularInteractions)
-            {
-                GMX_LOG(mdlog.warning)
-                        .asParagraph()
-                        .appendText(
-                                "WARNING: Molecules linked by intermolecular interactions "
-                                "have to reside in the same periodic image, otherwise "
-                                "artifacts will occur!");
-            }
-        }
-
-        GMX_RELEASE_ASSERT(areMoleculesDistributedOverPbc || !mtop.bIntermolecularInteractions,
-                           "We need to use PBC within molecules with inter-molecular interactions");
-
-        if (bSHAKE && areMoleculesDistributedOverPbc)
-        {
-            gmx_fatal(FARGS,
-                      "SHAKE is not properly supported with intermolecular interactions. "
-                      "For short simulations where linked molecules remain in the same "
-                      "periodic image, the environment variable GMX_USE_GRAPH can be used "
-                      "to override this check.\n");
-        }
-    }
-
-    return areMoleculesDistributedOverPbc;
 }
 
 void init_forcerec(FILE*                            fp,
                    const gmx::MDLogger&             mdlog,
                    t_forcerec*                      fr,
-                   t_fcdata*                        fcd,
                    const t_inputrec*                ir,
                    const gmx_mtop_t*                mtop,
                    const t_commrec*                 cr,
@@ -1017,24 +958,14 @@ void init_forcerec(FILE*                            fp,
                    const char*                      tabfn,
                    const char*                      tabpfn,
                    gmx::ArrayRef<const std::string> tabbfnm,
-                   const gmx_hw_info_t&             hardwareInfo,
-                   const gmx_device_info_t*         deviceInfo,
-                   const bool                       useGpuForBonded,
-                   const bool                       pmeOnlyRankUsesGpu,
-                   real                             print_force,
-                   gmx_wallcycle*                   wcycle)
+                   real                             print_force)
 {
-    real     rtab;
-    char*    env;
-    double   dbl;
-    gmx_bool bFEP_NonBonded;
+    /* The CMake default turns SIMD kernels on, but it might be turned off further down... */
+    fr->use_simd_kernels = GMX_USE_SIMD_KERNELS;
 
-    /* By default we turn SIMD kernels on, but it might be turned off further down... */
-    fr->use_simd_kernels = TRUE;
-
-    if (check_box(ir->ePBC, box))
+    if (check_box(ir->pbcType, box))
     {
-        gmx_fatal(FARGS, "%s", check_box(ir->ePBC, box));
+        gmx_fatal(FARGS, "%s", check_box(ir->pbcType, box));
     }
 
     /* Test particle insertion ? */
@@ -1076,45 +1007,7 @@ void init_forcerec(FILE*                            fp,
     fr->fc_stepsize = ir->fc_stepsize;
 
     /* Free energy */
-    fr->efep        = ir->efep;
-    fr->sc_alphavdw = ir->fepvals->sc_alpha;
-    if (ir->fepvals->bScCoul)
-    {
-        fr->sc_alphacoul  = ir->fepvals->sc_alpha;
-        fr->sc_sigma6_min = gmx::power6(ir->fepvals->sc_sigma_min);
-    }
-    else
-    {
-        fr->sc_alphacoul  = 0;
-        fr->sc_sigma6_min = 0; /* only needed when bScCoul is on */
-    }
-    fr->sc_power      = ir->fepvals->sc_power;
-    fr->sc_r_power    = ir->fepvals->sc_r_power;
-    fr->sc_sigma6_def = gmx::power6(ir->fepvals->sc_sigma);
-
-    env = getenv("GMX_SCSIGMA_MIN");
-    if (env != nullptr)
-    {
-        dbl = 0;
-        sscanf(env, "%20lf", &dbl);
-        fr->sc_sigma6_min = gmx::power6(dbl);
-        if (fp)
-        {
-            fprintf(fp, "Setting the minimum soft core sigma to %g nm\n", dbl);
-        }
-    }
-
-    fr->bNonbonded = TRUE;
-    if (getenv("GMX_NO_NONBONDED") != nullptr)
-    {
-        /* turn off non-bonded calculations */
-        fr->bNonbonded = FALSE;
-        GMX_LOG(mdlog.warning)
-                .asParagraph()
-                .appendText(
-                        "Found environment variable GMX_NO_NONBONDED.\n"
-                        "Disabling nonbonded calculations.");
-    }
+    fr->efep = ir->efep;
 
     if ((getenv("GMX_DISABLE_SIMD_KERNELS") != nullptr) || (getenv("GMX_NOOPTIMIZEDKERNELS") != nullptr))
     {
@@ -1131,11 +1024,10 @@ void init_forcerec(FILE*                            fp,
     fr->bBHAM = (mtop->ffparams.functype[0] == F_BHAM);
 
     /* Neighbour searching stuff */
-    fr->cutoff_scheme = ir->cutoff_scheme;
-    fr->ePBC          = ir->ePBC;
+    fr->pbcType = ir->pbcType;
 
     /* Determine if we will do PBC for distances in bonded interactions */
-    if (fr->ePBC == epbcNONE)
+    if (fr->pbcType == PbcType::No)
     {
         fr->bMolPBC = FALSE;
     }
@@ -1143,33 +1035,30 @@ void init_forcerec(FILE*                            fp,
     {
         const bool useEwaldSurfaceCorrection =
                 (EEL_PME_EWALD(ir->coulombtype) && ir->epsilon_surface != 0);
+        const bool haveOrientationRestraints = (gmx_mtop_ftype_count(mtop, F_ORIRES) > 0);
         if (!DOMAINDECOMP(cr))
         {
-            fr->bMolPBC = areMoleculesDistributedOverPbc(*ir, *mtop, mdlog);
-            // The assert below is equivalent to fcd->orires.nr != gmx_mtop_ftype_count(mtop, F_ORIRES)
-            GMX_RELEASE_ASSERT(!fr->bMolPBC || fcd->orires.nr == 0,
-                               "Molecules broken over PBC exist in a simulation including "
-                               "orientation restraints. "
-                               "This likely means that the global topology and the force constant "
-                               "data have gotten out of sync.");
-            if (useEwaldSurfaceCorrection)
+            fr->bMolPBC = true;
+
+            if (useEwaldSurfaceCorrection || haveOrientationRestraints)
             {
-                gmx_fatal(FARGS,
-                          "In GROMACS 2020, Ewald dipole correction is disabled when not "
-                          "using domain decomposition. With domain decomposition, it only works "
-                          "when each molecule consists of a single update group (e.g. water). "
-                          "This will be fixed in GROMACS 2021.");
+                fr->wholeMoleculeTransform =
+                        std::make_unique<gmx::WholeMoleculeTransform>(*mtop, ir->pbcType);
             }
         }
         else
         {
-            fr->bMolPBC = dd_bonded_molpbc(cr->dd, fr->ePBC);
+            fr->bMolPBC = dd_bonded_molpbc(cr->dd, fr->pbcType);
 
-            if (useEwaldSurfaceCorrection && !dd_moleculesAreAlwaysWhole(*cr->dd))
+            /* With Ewald surface correction it is useful to support e.g. running water
+             * in parallel with update groups.
+             * With orientation restraints there is no sensible use case supported with DD.
+             */
+            if ((useEwaldSurfaceCorrection && !dd_moleculesAreAlwaysWhole(*cr->dd)) || haveOrientationRestraints)
             {
                 gmx_fatal(FARGS,
-                          "You requested dipole correction (epsilon_surface > 0), but molecules "
-                          "are broken "
+                          "You requested Ewald surface correction or orientation restraints, "
+                          "but molecules are broken "
                           "over periodic boundary conditions by the domain decomposition. "
                           "Run without domain decomposition instead.");
             }
@@ -1177,8 +1066,7 @@ void init_forcerec(FILE*                            fp,
 
         if (useEwaldSurfaceCorrection)
         {
-            GMX_RELEASE_ASSERT((!DOMAINDECOMP(cr) && !fr->bMolPBC)
-                                       || (DOMAINDECOMP(cr) && dd_moleculesAreAlwaysWhole(*cr->dd)),
+            GMX_RELEASE_ASSERT(!DOMAINDECOMP(cr) || dd_moleculesAreAlwaysWhole(*cr->dd),
                                "Molecules can not be broken by PBC with epsilon_surface > 0");
         }
     }
@@ -1194,7 +1082,7 @@ void init_forcerec(FILE*                            fp,
 
     /* fr->ic is used both by verlet and group kernels (to some extent) now */
     init_interaction_const(fp, &fr->ic, ir, mtop, systemHasNetCharge);
-    init_interaction_const_tables(fp, fr->ic);
+    init_interaction_const_tables(fp, fr->ic, fr->rlist, ir->tabext);
 
     const interaction_const_t* ic = fr->ic;
 
@@ -1215,7 +1103,6 @@ void init_forcerec(FILE*                            fp,
         case eelSWITCH:
         case eelSHIFT:
         case eelUSER:
-        case eelENCADSHIFT:
         case eelPMESWITCH:
         case eelPMEUSER:
         case eelPMEUSERSWITCH:
@@ -1248,51 +1135,57 @@ void init_forcerec(FILE*                            fp,
 
         case evdwSWITCH:
         case evdwSHIFT:
-        case evdwUSER:
-        case evdwENCADSHIFT:
-            fr->nbkernel_vdw_interaction = GMX_NBKERNEL_VDW_CUBICSPLINETABLE;
-            break;
+        case evdwUSER: fr->nbkernel_vdw_interaction = GMX_NBKERNEL_VDW_CUBICSPLINETABLE; break;
 
         default: gmx_fatal(FARGS, "Unsupported vdw interaction: %s", evdw_names[ic->vdwtype]);
     }
     fr->nbkernel_vdw_modifier = ic->vdw_modifier;
 
-    if (ir->cutoff_scheme == ecutsVERLET)
+    if (!gmx_within_tol(ic->reppow, 12.0, 10 * GMX_DOUBLE_EPS))
     {
-        if (!gmx_within_tol(ic->reppow, 12.0, 10 * GMX_DOUBLE_EPS))
-        {
-            gmx_fatal(FARGS, "Cut-off scheme %s only supports LJ repulsion power 12",
-                      ecutscheme_names[ir->cutoff_scheme]);
-        }
-        /* Older tpr files can contain Coulomb user tables with the Verlet cutoff-scheme,
-         * while mdrun does not (and never did) support this.
-         */
-        if (EEL_USER(fr->ic->eeltype))
-        {
-            gmx_fatal(FARGS, "Combination of %s and cutoff scheme %s is not supported",
-                      eel_names[ir->coulombtype], ecutscheme_names[ir->cutoff_scheme]);
-        }
-
-        fr->bvdwtab  = FALSE;
-        fr->bcoultab = FALSE;
+        gmx_fatal(FARGS, "Only LJ repulsion power 12 is supported");
     }
+    /* Older tpr files can contain Coulomb user tables with the Verlet cutoff-scheme,
+     * while mdrun does not (and never did) support this.
+     */
+    if (EEL_USER(fr->ic->eeltype))
+    {
+        gmx_fatal(FARGS, "Electrostatics type %s is currently not supported", eel_names[ir->coulombtype]);
+    }
+
+    fr->bvdwtab  = FALSE;
+    fr->bcoultab = FALSE;
 
     /* 1-4 interaction electrostatics */
     fr->fudgeQQ = mtop->ffparams.fudgeQQ;
 
-    fr->haveDirectVirialContributions =
-            (EEL_FULL(ic->eeltype) || EVDW_PME(ic->vdwtype) || fr->forceProviders->hasForceProvider()
-             || gmx_mtop_ftype_count(mtop, F_POSRES) > 0 || gmx_mtop_ftype_count(mtop, F_FBPOSRES) > 0
-             || ir->nwall > 0 || ir->bPull || ir->bRot || ir->bIMD);
+    // Multiple time stepping
+    fr->useMts = ir->useMts;
+
+    if (fr->useMts)
+    {
+        gmx::assertMtsRequirements(*ir);
+    }
+
+    const bool haveDirectVirialContributionsFast =
+            fr->forceProviders->hasForceProvider() || gmx_mtop_ftype_count(mtop, F_POSRES) > 0
+            || gmx_mtop_ftype_count(mtop, F_FBPOSRES) > 0 || ir->nwall > 0 || ir->bPull || ir->bRot
+            || ir->bIMD;
+    const bool haveDirectVirialContributionsSlow = EEL_FULL(ic->eeltype) || EVDW_PME(ic->vdwtype);
+    for (int i = 0; i < (fr->useMts ? 2 : 1); i++)
+    {
+        bool haveDirectVirialContributions =
+                (((!fr->useMts || i == 0) && haveDirectVirialContributionsFast)
+                 || ((!fr->useMts || i == 1) && haveDirectVirialContributionsSlow));
+        fr->forceHelperBuffers.emplace_back(haveDirectVirialContributions);
+    }
 
     if (fr->shift_vec == nullptr)
     {
         snew(fr->shift_vec, SHIFTS);
     }
 
-    fr->shiftForces.resize(SHIFTS);
-
-    if (fr->nbfp == nullptr)
+    if (fr->nbfp.empty())
     {
         fr->ntype = mtop->ffparams.atnr;
         fr->nbfp  = mk_nbfp(&mtop->ffparams, fr->bBHAM);
@@ -1329,15 +1222,9 @@ void init_forcerec(FILE*                            fp,
         gmx_fatal(FARGS, "Switch/shift interaction not supported with Buckingham");
     }
 
-    if (fr->bBHAM && fr->cutoff_scheme == ecutsVERLET)
+    if (fr->bBHAM)
     {
-        gmx_fatal(FARGS, "Verlet cutoff-scheme is not supported with Buckingham");
-    }
-
-    if (fp && fr->cutoff_scheme == ecutsGROUP)
-    {
-        fprintf(fp, "Cut-off's:   NS: %g   Coulomb: %g   %s: %g\n", fr->rlist, ic->rcoulomb,
-                fr->bBHAM ? "BHAM" : "LJ", ic->rvdw);
+        gmx_fatal(FARGS, "The Verlet cutoff-scheme does not (yet) support Buckingham");
     }
 
     if (ir->implicit_solvent)
@@ -1350,7 +1237,7 @@ void init_forcerec(FILE*                            fp,
      * in that case grompp should already have checked that we do not need
      * normal tables and we only generate tables for 1-4 interactions.
      */
-    rtab = ir->rlist + ir->tabext;
+    real rtab = ir->rlist + ir->tabext;
 
     /* We want to use unmodified tables for 1-4 coulombic
      * interactions, so we must in general have an extra set of
@@ -1368,15 +1255,19 @@ void init_forcerec(FILE*                            fp,
         make_wall_tables(fp, ir, tabfn, &mtop->groups, fr);
     }
 
-    if (fcd && !tabbfnm.empty())
+    fr->fcdata = std::make_unique<t_fcdata>();
+
+    if (!tabbfnm.empty())
     {
+        t_fcdata& fcdata = *fr->fcdata;
         // Need to catch std::bad_alloc
         // TODO Don't need to catch this here, when merging with master branch
         try
         {
-            fcd->bondtab  = make_bonded_tables(fp, F_TABBONDS, F_TABBONDSNC, mtop, tabbfnm, "b");
-            fcd->angletab = make_bonded_tables(fp, F_TABANGLES, -1, mtop, tabbfnm, "a");
-            fcd->dihtab   = make_bonded_tables(fp, F_TABDIHS, -1, mtop, tabbfnm, "d");
+            // TODO move these tables into a separate struct and store reference in ListedForces
+            fcdata.bondtab  = make_bonded_tables(fp, F_TABBONDS, F_TABBONDSNC, mtop, tabbfnm, "b");
+            fcdata.angletab = make_bonded_tables(fp, F_TABANGLES, -1, mtop, tabbfnm, "a");
+            fcdata.dihtab   = make_bonded_tables(fp, F_TABDIHS, -1, mtop, tabbfnm, "d");
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
     }
@@ -1390,35 +1281,53 @@ void init_forcerec(FILE*                            fp,
         }
     }
 
-    // QM/MM initialization if requested
-    fr->bQMMM = ir->bQMMM;
-    if (fr->bQMMM)
+    /* Initialize the thread working data for bonded interactions */
+    if (fr->useMts)
     {
-        // Initialize QM/MM if supported
-        if (GMX_QMMM)
+        // Add one ListedForces object for each MTS level
+        bool isFirstLevel = true;
+        for (const auto& mtsLevel : ir->mtsLevels)
         {
-            GMX_LOG(mdlog.info)
-                    .asParagraph()
-                    .appendText(
-                            "Large parts of the QM/MM support is deprecated, and may be removed in "
-                            "a future "
-                            "version. Please get in touch with the developers if you find the "
-                            "support useful, "
-                            "as help is needed if the functionality is to continue to be "
-                            "available.");
-            fr->qr = mk_QMMMrec();
-            init_QMMMrec(cr, mtop, ir, fr);
+            ListedForces::InteractionSelection interactionSelection;
+            const auto&                        forceGroups = mtsLevel.forceGroups;
+            if (forceGroups[static_cast<int>(gmx::MtsForceGroups::Pair)])
+            {
+                interactionSelection.set(static_cast<int>(ListedForces::InteractionGroup::Pairs));
+            }
+            if (forceGroups[static_cast<int>(gmx::MtsForceGroups::Dihedral)])
+            {
+                interactionSelection.set(static_cast<int>(ListedForces::InteractionGroup::Dihedrals));
+            }
+            if (forceGroups[static_cast<int>(gmx::MtsForceGroups::Angle)])
+            {
+                interactionSelection.set(static_cast<int>(ListedForces::InteractionGroup::Angles));
+            }
+            if (isFirstLevel)
+            {
+                interactionSelection.set(static_cast<int>(ListedForces::InteractionGroup::Rest));
+                isFirstLevel = false;
+            }
+            fr->listedForces.emplace_back(
+                    mtop->ffparams, mtop->groups.groups[SimulationAtomGroupType::EnergyOutput].size(),
+                    gmx_omp_nthreads_get(emntBonded), interactionSelection, fp);
         }
-        else
-        {
-            gmx_incons(
-                    "QM/MM was requested, but is only available when GROMACS "
-                    "is configured with QM/MM support");
-        }
+    }
+    else
+    {
+        // Add one ListedForces object with all listed interactions
+        fr->listedForces.emplace_back(
+                mtop->ffparams, mtop->groups.groups[SimulationAtomGroupType::EnergyOutput].size(),
+                gmx_omp_nthreads_get(emntBonded), ListedForces::interactionSelectionAll(), fp);
+    }
+
+    // QM/MM initialization if requested
+    if (ir->bQMMM)
+    {
+        gmx_incons("QM/MM was requested, but is no longer available in GROMACS");
     }
 
     /* Set all the static charge group info */
-    fr->cginfo_mb = init_cginfo_mb(mtop, fr, &bFEP_NonBonded);
+    fr->cginfo_mb = init_cginfo_mb(mtop, fr);
     if (!DOMAINDECOMP(cr))
     {
         fr->cginfo = cginfo_expand(mtop->molblock.size(), fr->cginfo_mb);
@@ -1431,50 +1340,13 @@ void init_forcerec(FILE*                            fp,
 
     fr->print_force = print_force;
 
-    /* Initialize the thread working data for bonded interactions */
-    fr->bondedThreading = init_bonded_threading(
-            fp, mtop->groups.groups[SimulationAtomGroupType::EnergyOutput].size());
-
     fr->nthread_ewc = gmx_omp_nthreads_get(emntBonded);
     snew(fr->ewc_t, fr->nthread_ewc);
-
-    if (fr->cutoff_scheme == ecutsVERLET)
-    {
-        // We checked the cut-offs in grompp, but double-check here.
-        // We have PME+LJcutoff kernels for rcoulomb>rvdw.
-        if (EEL_PME_EWALD(ir->coulombtype) && ir->vdwtype == eelCUT)
-        {
-            GMX_RELEASE_ASSERT(ir->rcoulomb >= ir->rvdw,
-                               "With Verlet lists and PME we should have rcoulomb>=rvdw");
-        }
-        else
-        {
-            GMX_RELEASE_ASSERT(
-                    ir->rcoulomb == ir->rvdw,
-                    "With Verlet lists and no PME rcoulomb and rvdw should be identical");
-        }
-
-        fr->nbv = Nbnxm::init_nb_verlet(mdlog, bFEP_NonBonded, ir, fr, cr, hardwareInfo, deviceInfo,
-                                        mtop, box, wcycle);
-
-        if (useGpuForBonded)
-        {
-            auto stream = havePPDomainDecomposition(cr)
-                                  ? Nbnxm::gpu_get_command_stream(
-                                            fr->nbv->gpu_nbv, gmx::InteractionLocality::NonLocal)
-                                  : Nbnxm::gpu_get_command_stream(fr->nbv->gpu_nbv,
-                                                                  gmx::InteractionLocality::Local);
-            // TODO the heap allocation is only needed while
-            // t_forcerec lacks a constructor.
-            fr->gpuBonded = new gmx::GpuBonded(mtop->ffparams, stream, wcycle);
-        }
-    }
 
     if (ir->eDispCorr != edispcNO)
     {
         fr->dispersionCorrection = std::make_unique<DispersionCorrection>(
-                *mtop, *ir, fr->bBHAM, fr->ntype,
-                gmx::arrayRefFromArray(fr->nbfp, fr->ntype * fr->ntype * 2), *fr->ic, tabfn);
+                *mtop, *ir, fr->bBHAM, fr->ntype, fr->nbfp, *fr->ic, tabfn);
         fr->dispersionCorrection->print(mdlog);
     }
 
@@ -1486,76 +1358,13 @@ void init_forcerec(FILE*                            fp,
          */
         fprintf(fp, "\n");
     }
-
-    if (pmeOnlyRankUsesGpu && c_enableGpuPmePpComms)
-    {
-        fr->pmePpCommGpu = std::make_unique<gmx::PmePpCommGpu>(cr->mpi_comm_mysim, cr->dd->pme_nodeid);
-    }
 }
 
 t_forcerec::t_forcerec() = default;
 
-t_forcerec::~t_forcerec() = default;
-
-/* Frees GPU memory and sets a tMPI node barrier.
- *
- * Note that this function needs to be called even if GPUs are not used
- * in this run because the PME ranks have no knowledge of whether GPUs
- * are used or not, but all ranks need to enter the barrier below.
- * \todo Remove physical node barrier from this function after making sure
- * that it's not needed anymore (with a shared GPU run).
- */
-void free_gpu_resources(t_forcerec*                          fr,
-                        const gmx::PhysicalNodeCommunicator& physicalNodeCommunicator,
-                        const gmx_gpu_info_t&                gpu_info)
+t_forcerec::~t_forcerec()
 {
-    bool isPPrankUsingGPU = (fr != nullptr) && (fr->nbv != nullptr) && fr->nbv->useGpu();
-
-    /* stop the GPU profiler (only CUDA) */
-    if (gpu_info.n_dev > 0)
-    {
-        stopGpuProfiler();
-    }
-
-    if (isPPrankUsingGPU)
-    {
-        /* Free data in GPU memory and pinned memory before destroying the GPU context */
-        fr->nbv.reset();
-
-        delete fr->gpuBonded;
-        fr->gpuBonded = nullptr;
-    }
-
-    /* With tMPI we need to wait for all ranks to finish deallocation before
-     * destroying the CUDA context in free_gpu() as some tMPI ranks may be sharing
-     * GPU and context.
-     *
-     * This is not a concern in OpenCL where we use one context per rank which
-     * is freed in nbnxn_gpu_free().
-     *
-     * Note: it is safe to not call the barrier on the ranks which do not use GPU,
-     * but it is easier and more futureproof to call it on the whole node.
-     */
-    if (GMX_THREAD_MPI)
-    {
-        physicalNodeCommunicator.barrier();
-    }
-}
-
-void done_forcerec(t_forcerec* fr, int numMolBlocks)
-{
-    if (fr == nullptr)
-    {
-        // PME-only ranks don't have a forcerec
-        return;
-    }
-    done_cginfo_mb(fr->cginfo_mb, numMolBlocks);
-    sfree(fr->nbfp);
-    delete fr->ic;
-    sfree(fr->shift_vec);
-    sfree(fr->ewc_t);
-    tear_down_bonded_threading(fr->bondedThreading);
-    GMX_RELEASE_ASSERT(fr->gpuBonded == nullptr, "Should have been deleted earlier, when used");
-    fr->bondedThreading = nullptr;
-    delete fr;
+    /* Note: This code will disappear when types are converted to C++ */
+    sfree(shift_vec);
+    sfree(ewc_t);
 }

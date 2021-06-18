@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -108,14 +108,11 @@ public:
             expectAffinitySet(core);
         }
     }
+    // NOLINTNEXTLINE readability-convert-member-functions-to-static
     void expectAffinitySetThatFails(int core)
     {
         using ::testing::Return;
-#ifndef __clang_analyzer__
         EXPECT_CALL(affinityAccess_, setCurrentThreadAffinityToCore(core)).WillOnce(Return(false));
-#else
-        GMX_UNUSED_VALUE(core);
-#endif
     }
 
     void expectWarningMatchingRegex(const char* re) { expectWarningMatchingRegexIf(re, true); }

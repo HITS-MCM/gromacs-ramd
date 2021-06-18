@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -255,22 +257,26 @@ void IndexFileWriterModule::dataFinished()
  */
 
 //! How to identify residues in output files.
-enum ResidueNumbering
+enum class ResidueNumbering : int
 {
-    ResidueNumbering_ByNumber,
-    ResidueNumbering_ByIndex
+    ByNumber,
+    ByIndex,
+    Count
 };
 //! Which atoms to write out to PDB files.
-enum PdbAtomsSelection
+enum class PdbAtomsSelection : int
 {
-    PdbAtomsSelection_All,
-    PdbAtomsSelection_MaxSelection,
-    PdbAtomsSelection_Selected
+    All,
+    MaxSelection,
+    Selected,
+    Count
 };
 //! String values corresponding to ResidueNumbering.
-const char* const cResNumberEnum[] = { "number", "index" };
+const EnumerationArray<ResidueNumbering, const char*> c_residueNumberingTypeNames = { { "number",
+                                                                                        "index" } };
 //! String values corresponding to PdbAtomsSelection.
-const char* const cPDBAtomsEnum[] = { "all", "maxsel", "selected" };
+const EnumerationArray<PdbAtomsSelection, const char*> c_pdbAtomsTypeNames = { { "all", "maxsel",
+                                                                                 "selected" } };
 
 class Select : public TrajectoryAnalysisModule
 {
@@ -320,8 +326,8 @@ Select::Select() :
     bFracNorm_(false),
     bResInd_(false),
     bCumulativeLifetimes_(true),
-    resNumberType_(ResidueNumbering_ByNumber),
-    pdbAtoms_(PdbAtomsSelection_All),
+    resNumberType_(ResidueNumbering::ByNumber),
+    pdbAtoms_(PdbAtomsSelection::All),
     top_(nullptr),
     occupancyModule_(new AnalysisDataAverageModule()),
     lifetimeModule_(new AnalysisDataLifetimeModule())
@@ -480,11 +486,11 @@ void Select::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings*
             BooleanOption("cfnorm").store(&bFracNorm_).description("Normalize by covered fraction with -os"));
     options->addOption(EnumOption<ResidueNumbering>("resnr")
                                .store(&resNumberType_)
-                               .enumValue(cResNumberEnum)
+                               .enumValue(c_residueNumberingTypeNames)
                                .description("Residue number output type with -oi and -on"));
     options->addOption(EnumOption<PdbAtomsSelection>("pdbatoms")
                                .store(&pdbAtoms_)
-                               .enumValue(cPDBAtomsEnum)
+                               .enumValue(c_pdbAtomsTypeNames)
                                .description("Atoms to write with -ofpdb"));
     options->addOption(BooleanOption("cumlt")
                                .store(&bCumulativeLifetimes_)
@@ -502,7 +508,7 @@ void Select::optionsFinished(TrajectoryAnalysisSettings* settings)
 
 void Select::initAnalysis(const TrajectoryAnalysisSettings& settings, const TopologyInformation& top)
 {
-    bResInd_ = (resNumberType_ == ResidueNumbering_ByIndex);
+    bResInd_ = (resNumberType_ == ResidueNumbering::ByIndex);
 
     for (SelectionList::iterator i = sel_.begin(); i != sel_.end(); ++i)
     {
@@ -620,7 +626,7 @@ void Select::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* /* pbc */, Traj
     AnalysisDataHandle   cdh = pdata->dataHandle(cdata_);
     AnalysisDataHandle   idh = pdata->dataHandle(idata_);
     AnalysisDataHandle   mdh = pdata->dataHandle(mdata_);
-    const SelectionList& sel = pdata->parallelSelections(sel_);
+    const SelectionList& sel = TrajectoryAnalysisModuleData::parallelSelections(sel_);
 
     sdh.startFrame(frnr, fr.time);
     for (size_t g = 0; g < sel.size(); ++g)
@@ -723,14 +729,14 @@ void Select::writeOutput()
 
         switch (pdbAtoms_)
         {
-            case PdbAtomsSelection_All:
+            case PdbAtomsSelection::All:
             {
                 t_trxstatus* status = open_trx(fnPDB_.c_str(), "w");
                 write_trxframe(status, &fr, nullptr);
                 close_trx(status);
                 break;
             }
-            case PdbAtomsSelection_MaxSelection:
+            case PdbAtomsSelection::MaxSelection:
             {
                 std::set<int> atomIndicesSet;
                 for (size_t g = 0; g < sel_.size(); ++g)
@@ -744,7 +750,7 @@ void Select::writeOutput()
                 close_trx(status);
                 break;
             }
-            case PdbAtomsSelection_Selected:
+            case PdbAtomsSelection::Selected:
             {
                 std::vector<int> indices;
                 for (int i = 0; i < atoms->nr; ++i)
@@ -759,7 +765,7 @@ void Select::writeOutput()
                 close_trx(status);
                 break;
             }
-            default:
+            case PdbAtomsSelection::Count:
                 GMX_RELEASE_ASSERT(false,
                                    "Mismatch between -pdbatoms enum values and implementation");
         }

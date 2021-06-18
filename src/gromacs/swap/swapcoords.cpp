@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -125,6 +126,8 @@ class SwapCoordinates final : public IMDModule
     IMdpOptionProvider* mdpOptionProvider() override { return nullptr; }
     IMDOutputProvider*  outputProvider() override { return nullptr; }
     void                initForceProviders(ForceProviders* /* forceProviders */) override {}
+    void subscribeToSimulationSetupNotifications(MdModulesNotifier* /* notifier */) override {}
+    void subscribeToPreProcessingNotifications(MdModulesNotifier* /* notifier */) override {}
 };
 
 std::unique_ptr<IMDModule> createSwapCoordinatesModule()
@@ -930,9 +933,10 @@ static void bc_initial_concentrations(t_commrec* cr, t_swapcoords* swap, t_swap*
 
         for (ic = 0; ic < eCompNR; ic++)
         {
-            gmx_bcast(sizeof(g->comp[ic].nMolReq), &(g->comp[ic].nMolReq), cr);
-            gmx_bcast(sizeof(g->comp[ic].nMol), &(g->comp[ic].nMol), cr);
-            gmx_bcast(swap->nAverage * sizeof(g->comp[ic].nMolPast[0]), g->comp[ic].nMolPast, cr);
+            gmx_bcast(sizeof(g->comp[ic].nMolReq), &(g->comp[ic].nMolReq), cr->mpi_comm_mygroup);
+            gmx_bcast(sizeof(g->comp[ic].nMol), &(g->comp[ic].nMol), cr->mpi_comm_mygroup);
+            gmx_bcast(swap->nAverage * sizeof(g->comp[ic].nMolPast[0]), g->comp[ic].nMolPast,
+                      cr->mpi_comm_mygroup);
         }
     }
 }
@@ -1208,7 +1212,7 @@ static void detect_flux_per_channel_init(t_swap* s, swaphistory_t* swapstate, co
  * If this is not correct, the ion counts per channel will be very likely
  * wrong.
  */
-static void outputStartStructureIfWanted(gmx_mtop_t* mtop, rvec* x, int ePBC, const matrix box)
+static void outputStartStructureIfWanted(gmx_mtop_t* mtop, rvec* x, PbcType pbcType, const matrix box)
 {
     char* env = getenv("GMX_COMPELDUMP");
 
@@ -1222,7 +1226,7 @@ static void outputStartStructureIfWanted(gmx_mtop_t* mtop, rvec* x, int ePBC, co
                 SwS, SwSEmpty);
 
         write_sto_conf_mtop("CompELAssumedWholeConfiguration.pdb", *mtop->name, mtop, x, nullptr,
-                            ePBC, box);
+                            pbcType, box);
     }
 }
 
@@ -1288,10 +1292,10 @@ static void init_swapstate(swaphistory_t*    swapstate,
         copy_rvecn(x, x_pbc, 0, mtop->natoms);
 
         /* This can only make individual molecules whole, not multimers */
-        do_pbc_mtop(ir->ePBC, box, mtop, x_pbc);
+        do_pbc_mtop(ir->pbcType, box, mtop, x_pbc);
 
         /* Output the starting structure? */
-        outputStartStructureIfWanted(mtop, x_pbc, ir->ePBC, box);
+        outputStartStructureIfWanted(mtop, x_pbc, ir->pbcType, box);
 
         /* If this is the first run (i.e. no checkpoint present) we assume
          * that the starting positions give us the correct PBC representation */
@@ -1559,7 +1563,8 @@ t_swap* init_swapcoords(FILE*                       fplog,
         for (int ig = eGrpSplit0; ig <= eGrpSplit1; ig++)
         {
             g = &(s->group[ig]);
-            gmx_bcast((g->atomset.numAtomsGlobal()) * sizeof((g->xc_old)[0]), g->xc_old, (cr));
+            gmx_bcast((g->atomset.numAtomsGlobal()) * sizeof((g->xc_old)[0]), g->xc_old,
+                      cr->mpi_comm_mygroup);
         }
     }
 
@@ -1943,7 +1948,7 @@ gmx_bool do_swapcoords(t_commrec*     cr,
 
     sc = ir->swap;
 
-    set_pbc(s->pbc, ir->ePBC, box);
+    set_pbc(s->pbc, ir->pbcType, box);
 
     /* Assemble the positions of the split groups, i.e. the channels.
      * Here we also pass a shifts array to communicate_group_positions(), so that it can make

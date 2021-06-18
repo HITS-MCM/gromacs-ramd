@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -67,13 +68,11 @@
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/pbc_simd.h"
 #include "gromacs/simd/simd.h"
 #include "gromacs/simd/simd_math.h"
 #include "gromacs/simd/vector_operations.h"
-#include "gromacs/topology/block.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/utility/alignedallocator.h"
 #include "gromacs/utility/arrayref.h"
@@ -83,6 +82,7 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxomp.h"
+#include "gromacs/utility/listoflists.h"
 #include "gromacs/utility/pleasecite.h"
 
 using namespace gmx; // TODO: Remove when this file is moved into gmx namespace
@@ -568,17 +568,17 @@ static void gmx_simdcall calc_dr_x_f_simd(int                           b0,
 #endif // GMX_SIMD_HAVE_REAL
 
 /*! \brief LINCS projection, works on derivatives of the coordinates. */
-static void do_lincsp(const rvec*        x,
-                      rvec*              f,
-                      rvec*              fp,
-                      t_pbc*             pbc,
-                      Lincs*             lincsd,
-                      int                th,
-                      real*              invmass,
-                      ConstraintVariable econq,
-                      bool               bCalcDHDL,
-                      bool               bCalcVir,
-                      tensor             rmdf)
+static void do_lincsp(ArrayRefWithPadding<const RVec> xPadded,
+                      ArrayRefWithPadding<RVec>       fPadded,
+                      ArrayRef<RVec>                  fp,
+                      t_pbc*                          pbc,
+                      Lincs*                          lincsd,
+                      int                             th,
+                      const real*                     invmass,
+                      ConstraintVariable              econq,
+                      bool                            bCalcDHDL,
+                      bool                            bCalcVir,
+                      tensor                          rmdf)
 {
     const int b0 = lincsd->task[th].b0;
     const int b1 = lincsd->task[th].b1;
@@ -606,6 +606,9 @@ static void do_lincsp(const rvec*        x,
     gmx::ArrayRef<real> rhs1 = lincsd->tmp1;
     gmx::ArrayRef<real> rhs2 = lincsd->tmp2;
     gmx::ArrayRef<real> sol  = lincsd->tmp3;
+
+    const rvec* x = as_rvec_array(xPadded.paddedArrayRef().data());
+    rvec*       f = as_rvec_array(fPadded.paddedArrayRef().data());
 
 #if GMX_SIMD_HAVE_REAL
     /* This SIMD code does the same as the plain-C code after the #else.
@@ -705,8 +708,8 @@ static void do_lincsp(const rvec*        x,
     /* When constraining forces, we should not use mass weighting,
      * so we pass invmass=NULL, which results in the use of 1 for all atoms.
      */
-    lincs_update_atoms(lincsd, th, 1.0, sol, r,
-                       (econq != ConstraintVariable::Force) ? invmass : nullptr, fp);
+    lincs_update_atoms(lincsd, th, 1.0, sol, r, (econq != ConstraintVariable::Force) ? invmass : nullptr,
+                       as_rvec_array(fp.data()));
 
     if (bCalcDHDL)
     {
@@ -944,22 +947,26 @@ static void gmx_simdcall calc_dist_iter_simd(int                           b0,
 #endif // GMX_SIMD_HAVE_REAL
 
 //! Implements LINCS constraining.
-static void do_lincs(const rvec*      x,
-                     rvec*            xp,
-                     const matrix     box,
-                     t_pbc*           pbc,
-                     Lincs*           lincsd,
-                     int              th,
-                     const real*      invmass,
-                     const t_commrec* cr,
-                     bool             bCalcDHDL,
-                     real             wangle,
-                     bool*            bWarn,
-                     real             invdt,
-                     rvec* gmx_restrict v,
-                     bool               bCalcVir,
-                     tensor             vir_r_m_dr)
+static void do_lincs(ArrayRefWithPadding<const RVec> xPadded,
+                     ArrayRefWithPadding<RVec>       xpPadded,
+                     const matrix                    box,
+                     t_pbc*                          pbc,
+                     Lincs*                          lincsd,
+                     int                             th,
+                     const real*                     invmass,
+                     const t_commrec*                cr,
+                     bool                            bCalcDHDL,
+                     real                            wangle,
+                     bool*                           bWarn,
+                     real                            invdt,
+                     ArrayRef<RVec>                  vRef,
+                     bool                            bCalcVir,
+                     tensor                          vir_r_m_dr)
 {
+    const rvec* x        = as_rvec_array(xPadded.paddedArrayRef().data());
+    rvec*       xp       = as_rvec_array(xpPadded.paddedArrayRef().data());
+    rvec* gmx_restrict v = as_rvec_array(vRef.data());
+
     const int b0 = lincsd->task[th].b0;
     const int b1 = lincsd->task[th].b1;
 
@@ -1097,7 +1104,7 @@ static void do_lincs(const rvec*      x,
                 /* Communicate the corrected non-local coordinates */
                 if (DOMAINDECOMP(cr))
                 {
-                    dd_move_x_constraints(cr->dd, box, xp, nullptr, FALSE);
+                    dd_move_x_constraints(cr->dd, box, xpPadded.unpaddedArrayRef(), ArrayRef<RVec>(), FALSE);
                 }
             }
 #pragma omp barrier
@@ -1294,7 +1301,7 @@ static void set_lincs_matrix_task(Lincs* li, Task* li_task, const real* invmass,
 }
 
 /*! \brief Sets the elements in the LINCS matrix. */
-static void set_lincs_matrix(Lincs* li, real* invmass, real lambda)
+static void set_lincs_matrix(Lincs* li, const real* invmass, real lambda)
 {
     const real invsqrt2 = 0.7071067811865475244;
 
@@ -1342,33 +1349,29 @@ static void set_lincs_matrix(Lincs* li, real* invmass, real lambda)
 }
 
 //! Finds all triangles of atoms that share constraints to a central atom.
-static int count_triangle_constraints(const InteractionLists& ilist, const t_blocka& at2con)
+static int count_triangle_constraints(const InteractionLists& ilist, const ListOfLists<int>& at2con)
 {
-    int ncon1, ncon_tot;
-    int c0, n1, c1, ac1, n2, c2;
-    int ncon_triangle;
-
-    ncon1    = ilist[F_CONSTR].size() / 3;
-    ncon_tot = ncon1 + ilist[F_CONSTRNC].size() / 3;
+    const int ncon1    = ilist[F_CONSTR].size() / 3;
+    const int ncon_tot = ncon1 + ilist[F_CONSTRNC].size() / 3;
 
     gmx::ArrayRef<const int> ia1 = ilist[F_CONSTR].iatoms;
     gmx::ArrayRef<const int> ia2 = ilist[F_CONSTRNC].iatoms;
 
-    ncon_triangle = 0;
-    for (c0 = 0; c0 < ncon_tot; c0++)
+    int ncon_triangle = 0;
+    for (int c0 = 0; c0 < ncon_tot; c0++)
     {
         bool       bTriangle = FALSE;
         const int* iap       = constr_iatomptr(ia1, ia2, c0);
         const int  a00       = iap[1];
         const int  a01       = iap[2];
-        for (n1 = at2con.index[a01]; n1 < at2con.index[a01 + 1]; n1++)
+        for (const int c1 : at2con[a01])
         {
-            c1 = at2con.a[n1];
             if (c1 != c0)
             {
                 const int* iap = constr_iatomptr(ia1, ia2, c1);
                 const int  a10 = iap[1];
                 const int  a11 = iap[2];
+                int        ac1;
                 if (a10 == a01)
                 {
                     ac1 = a11;
@@ -1377,9 +1380,8 @@ static int count_triangle_constraints(const InteractionLists& ilist, const t_blo
                 {
                     ac1 = a10;
                 }
-                for (n2 = at2con.index[ac1]; n2 < at2con.index[ac1 + 1]; n2++)
+                for (const int c2 : at2con[ac1])
                 {
-                    c2 = at2con.a[n2];
                     if (c2 != c0 && c2 != c1)
                     {
                         const int* iap = constr_iatomptr(ia1, ia2, c2);
@@ -1403,40 +1405,36 @@ static int count_triangle_constraints(const InteractionLists& ilist, const t_blo
 }
 
 //! Finds sequences of sequential constraints.
-static bool more_than_two_sequential_constraints(const InteractionLists& ilist, const t_blocka& at2con)
+static bool more_than_two_sequential_constraints(const InteractionLists& ilist, const ListOfLists<int>& at2con)
 {
-    int  ncon1, ncon_tot, c;
-    bool bMoreThanTwoSequentialConstraints;
-
-    ncon1    = ilist[F_CONSTR].size() / 3;
-    ncon_tot = ncon1 + ilist[F_CONSTRNC].size() / 3;
+    const int ncon1    = ilist[F_CONSTR].size() / 3;
+    const int ncon_tot = ncon1 + ilist[F_CONSTRNC].size() / 3;
 
     gmx::ArrayRef<const int> ia1 = ilist[F_CONSTR].iatoms;
     gmx::ArrayRef<const int> ia2 = ilist[F_CONSTRNC].iatoms;
 
-    bMoreThanTwoSequentialConstraints = FALSE;
-    for (c = 0; c < ncon_tot && !bMoreThanTwoSequentialConstraints; c++)
+    for (int c = 0; c < ncon_tot; c++)
     {
         const int* iap = constr_iatomptr(ia1, ia2, c);
         const int  a1  = iap[1];
         const int  a2  = iap[2];
         /* Check if this constraint has constraints connected at both atoms */
-        if (at2con.index[a1 + 1] - at2con.index[a1] > 1 && at2con.index[a2 + 1] - at2con.index[a2] > 1)
+        if (at2con[a1].ssize() > 1 && at2con[a2].ssize() > 1)
         {
-            bMoreThanTwoSequentialConstraints = TRUE;
+            return true;
         }
     }
 
-    return bMoreThanTwoSequentialConstraints;
+    return false;
 }
 
-Lincs* init_lincs(FILE*                    fplog,
-                  const gmx_mtop_t&        mtop,
-                  int                      nflexcon_global,
-                  ArrayRef<const t_blocka> at2con,
-                  bool                     bPLINCS,
-                  int                      nIter,
-                  int                      nProjOrder)
+Lincs* init_lincs(FILE*                            fplog,
+                  const gmx_mtop_t&                mtop,
+                  int                              nflexcon_global,
+                  ArrayRef<const ListOfLists<int>> atomToConstraintsPerMolType,
+                  bool                             bPLINCS,
+                  int                              nIter,
+                  int                              nProjOrder)
 {
     // TODO this should become a unique_ptr
     Lincs* li;
@@ -1458,9 +1456,10 @@ Lincs* init_lincs(FILE*                    fplog,
     li->max_connect = 0;
     for (size_t mt = 0; mt < mtop.moltype.size(); mt++)
     {
+        const auto& at2con = atomToConstraintsPerMolType[mt];
         for (int a = 0; a < mtop.moltype[mt].atoms.nr; a++)
         {
-            li->max_connect = std::max(li->max_connect, at2con[mt].index[a + 1] - at2con[mt].index[a]);
+            li->max_connect = std::max(li->max_connect, int(at2con[a].ssize()));
         }
     }
 
@@ -1468,11 +1467,12 @@ Lincs* init_lincs(FILE*                    fplog,
     bMoreThanTwoSeq  = FALSE;
     for (const gmx_molblock_t& molb : mtop.molblock)
     {
-        const gmx_moltype_t& molt = mtop.moltype[molb.type];
+        const gmx_moltype_t& molt   = mtop.moltype[molb.type];
+        const auto&          at2con = atomToConstraintsPerMolType[molb.type];
 
-        li->ncg_triangle += molb.nmol * count_triangle_constraints(molt.ilist, at2con[molb.type]);
+        li->ncg_triangle += molb.nmol * count_triangle_constraints(molt.ilist, at2con);
 
-        if (!bMoreThanTwoSeq && more_than_two_sequential_constraints(molt.ilist, at2con[molb.type]))
+        if (!bMoreThanTwoSeq && more_than_two_sequential_constraints(molt.ilist, at2con))
         {
             bMoreThanTwoSeq = TRUE;
         }
@@ -1645,7 +1645,13 @@ static void lincs_thread_setup(Lincs* li, int natoms)
 }
 
 //! Assign a constraint.
-static void assign_constraint(Lincs* li, int constraint_index, int a1, int a2, real lenA, real lenB, const t_blocka* at2con)
+static void assign_constraint(Lincs*                  li,
+                              int                     constraint_index,
+                              int                     a1,
+                              int                     a2,
+                              real                    lenA,
+                              real                    lenB,
+                              const ListOfLists<int>& at2con)
 {
     int con;
 
@@ -1664,8 +1670,7 @@ static void assign_constraint(Lincs* li, int constraint_index, int a1, int a2, r
     /* Make space in the constraint connection matrix for constraints
      * connected to both end of the current constraint.
      */
-    li->ncc += at2con->index[a1 + 1] - at2con->index[a1] - 1 + at2con->index[a2 + 1]
-               - at2con->index[a2] - 1;
+    li->ncc += at2con[a1].ssize() - 1 + at2con[a2].ssize() - 1;
 
     li->blnr[con + 1] = li->ncc;
 
@@ -1675,13 +1680,13 @@ static void assign_constraint(Lincs* li, int constraint_index, int a1, int a2, r
 
 /*! \brief Check if constraint with topology index constraint_index is connected
  * to other constraints, and if so add those connected constraints to our task. */
-static void check_assign_connected(Lincs*          li,
-                                   const t_iatom*  iatom,
-                                   const t_idef&   idef,
-                                   bool            bDynamics,
-                                   int             a1,
-                                   int             a2,
-                                   const t_blocka* at2con)
+static void check_assign_connected(Lincs*                        li,
+                                   gmx::ArrayRef<const int>      iatom,
+                                   const InteractionDefinitions& idef,
+                                   bool                          bDynamics,
+                                   int                           a1,
+                                   int                           a2,
+                                   const ListOfLists<int>&       at2con)
 {
     /* Currently this function only supports constraint groups
      * in which all constraints share at least one atom
@@ -1690,28 +1695,18 @@ static void check_assign_connected(Lincs*          li,
      * connected constraints. We need to assign those
      * to the same task.
      */
-    int end;
-
-    for (end = 0; end < 2; end++)
+    for (int end = 0; end < 2; end++)
     {
-        int a, k;
+        const int a = (end == 0 ? a1 : a2);
 
-        a = (end == 0 ? a1 : a2);
-
-        for (k = at2con->index[a]; k < at2con->index[a + 1]; k++)
+        for (const int cc : at2con[a])
         {
-            int cc;
-
-            cc = at2con->a[k];
             /* Check if constraint cc has not yet been assigned */
             if (li->con_index[cc] == -1)
             {
-                int  type;
-                real lenA, lenB;
-
-                type = iatom[cc * 3];
-                lenA = idef.iparams[type].constr.dA;
-                lenB = idef.iparams[type].constr.dB;
+                const int  type = iatom[cc * 3];
+                const real lenA = idef.iparams[type].constr.dA;
+                const real lenB = idef.iparams[type].constr.dB;
 
                 if (bDynamics || lenA != 0 || lenB != 0)
                 {
@@ -1725,24 +1720,21 @@ static void check_assign_connected(Lincs*          li,
 /*! \brief Check if constraint with topology index constraint_index is involved
  * in a constraint triangle, and if so add the other two constraints
  * in the triangle to our task. */
-static void check_assign_triangle(Lincs*          li,
-                                  const t_iatom*  iatom,
-                                  const t_idef&   idef,
-                                  bool            bDynamics,
-                                  int             constraint_index,
-                                  int             a1,
-                                  int             a2,
-                                  const t_blocka* at2con)
+static void check_assign_triangle(Lincs*                        li,
+                                  gmx::ArrayRef<const int>      iatom,
+                                  const InteractionDefinitions& idef,
+                                  bool                          bDynamics,
+                                  int                           constraint_index,
+                                  int                           a1,
+                                  int                           a2,
+                                  const ListOfLists<int>&       at2con)
 {
-    int nca, cc[32], ca[32], k;
+    int nca, cc[32], ca[32];
     int c_triangle[2] = { -1, -1 };
 
     nca = 0;
-    for (k = at2con->index[a1]; k < at2con->index[a1 + 1]; k++)
+    for (const int c : at2con[a1])
     {
-        int c;
-
-        c = at2con->a[k];
         if (c != constraint_index)
         {
             int aa1, aa2;
@@ -1764,11 +1756,8 @@ static void check_assign_triangle(Lincs*          li,
         }
     }
 
-    for (k = at2con->index[a2]; k < at2con->index[a2 + 1]; k++)
+    for (const int c : at2con[a2])
     {
-        int c;
-
-        c = at2con->a[k];
         if (c != constraint_index)
         {
             int aa1, aa2, i;
@@ -1827,7 +1816,7 @@ static void check_assign_triangle(Lincs*          li,
 }
 
 //! Sets matrix indices.
-static void set_matrix_indices(Lincs* li, const Task& li_task, const t_blocka* at2con, bool bSortMatrix)
+static void set_matrix_indices(Lincs* li, const Task& li_task, const ListOfLists<int>& at2con, bool bSortMatrix)
 {
     for (int b = li_task.b0; b < li_task.b1; b++)
     {
@@ -1835,17 +1824,17 @@ static void set_matrix_indices(Lincs* li, const Task& li_task, const t_blocka* a
         const int a2 = li->atoms[b].index2;
 
         int i = li->blnr[b];
-        for (int k = at2con->index[a1]; k < at2con->index[a1 + 1]; k++)
+        for (const int constraint : at2con[a1])
         {
-            int concon = li->con_index[at2con->a[k]];
+            const int concon = li->con_index[constraint];
             if (concon != b)
             {
                 li->blbnb[i++] = concon;
             }
         }
-        for (int k = at2con->index[a2]; k < at2con->index[a2 + 1]; k++)
+        for (const int constraint : at2con[a2])
         {
-            int concon = li->con_index[at2con->a[k]];
+            const int concon = li->con_index[constraint];
             if (concon != b)
             {
                 li->blbnb[i++] = concon;
@@ -1860,12 +1849,14 @@ static void set_matrix_indices(Lincs* li, const Task& li_task, const t_blocka* a
     }
 }
 
-void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_commrec* cr, Lincs* li)
+void set_lincs(const InteractionDefinitions& idef,
+               const int                     numAtoms,
+               const real*                   invmass,
+               const real                    lambda,
+               bool                          bDynamics,
+               const t_commrec*              cr,
+               Lincs*                        li)
 {
-    int      natoms;
-    t_blocka at2con;
-    t_iatom* iatom;
-
     li->nc_real = 0;
     li->nc      = 0;
     li->ncc     = 0;
@@ -1884,7 +1875,7 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
     }
 
     /* This is the local topology, so there are only F_CONSTR constraints */
-    if (idef.il[F_CONSTR].nr == 0)
+    if (idef.il[F_CONSTR].empty())
     {
         /* There are no constraints,
          * we do not need to fill any data structures.
@@ -1897,6 +1888,7 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
         fprintf(debug, "Building the LINCS connectivity\n");
     }
 
+    int natoms;
     if (DOMAINDECOMP(cr))
     {
         if (cr->dd->constraints)
@@ -1912,12 +1904,13 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
     }
     else
     {
-        natoms = md.homenr;
+        natoms = numAtoms;
     }
 
-    at2con = make_at2con(natoms, idef.il, idef.iparams, flexibleConstraintTreatment(bDynamics));
+    const ListOfLists<int> at2con =
+            make_at2con(natoms, idef.il, idef.iparams, flexibleConstraintTreatment(bDynamics));
 
-    const int ncon_tot = idef.il[F_CONSTR].nr / 3;
+    const int ncon_tot = idef.il[F_CONSTR].size() / 3;
 
     /* Ensure we have enough padding for aligned loads for each thread */
     const int numEntries = ncon_tot + li->ntask * simd_width;
@@ -1940,7 +1933,7 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
     li->tmp4.resize(numEntries);
     li->mlambda.resize(numEntries);
 
-    iatom = idef.il[F_CONSTR].iatoms;
+    gmx::ArrayRef<const int> iatom = idef.il[F_CONSTR].iatoms;
 
     li->blnr[0] = li->ncc;
 
@@ -2003,6 +1996,8 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
          */
         li_task->b0 = li->nc;
 
+        gmx::ArrayRef<const t_iparams> iparams = idef.iparams;
+
         while (con < ncon_tot && li->nc - li_task->b0 < ncon_target)
         {
             if (li->con_index[con] == -1)
@@ -2013,26 +2008,26 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
                 type = iatom[3 * con];
                 a1   = iatom[3 * con + 1];
                 a2   = iatom[3 * con + 2];
-                lenA = idef.iparams[type].constr.dA;
-                lenB = idef.iparams[type].constr.dB;
+                lenA = iparams[type].constr.dA;
+                lenB = iparams[type].constr.dB;
                 /* Skip the flexible constraints when not doing dynamics */
                 if (bDynamics || lenA != 0 || lenB != 0)
                 {
-                    assign_constraint(li, con, a1, a2, lenA, lenB, &at2con);
+                    assign_constraint(li, con, a1, a2, lenA, lenB, at2con);
 
                     if (li->ntask > 1 && !li->bTaskDep)
                     {
                         /* We can generate independent tasks. Check if we
                          * need to assign connected constraints to our task.
                          */
-                        check_assign_connected(li, iatom, idef, bDynamics, a1, a2, &at2con);
+                        check_assign_connected(li, iatom, idef, bDynamics, a1, a2, at2con);
                     }
                     if (li->ntask > 1 && li->ncg_triangle > 0)
                     {
                         /* Ensure constraints in one triangle are assigned
                          * to the same task.
                          */
-                        check_assign_triangle(li, iatom, idef, bDynamics, con, a1, a2, &at2con);
+                        check_assign_triangle(li, iatom, idef, bDynamics, con, a1, a2, at2con);
                     }
                 }
             }
@@ -2096,12 +2091,10 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
                 li_task.tri_bits.resize(li_task.b1 - li_task.b0);
             }
 
-            set_matrix_indices(li, li_task, &at2con, bSortMatrix);
+            set_matrix_indices(li, li_task, at2con, bSortMatrix);
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
     }
-
-    done_blocka(&at2con);
 
     if (cr->dd == nullptr)
     {
@@ -2135,16 +2128,19 @@ void set_lincs(const t_idef& idef, const t_mdatoms& md, bool bDynamics, const t_
 
     if (li->ntask > 1)
     {
-        lincs_thread_setup(li, md.nr);
+        lincs_thread_setup(li, numAtoms);
     }
 
-    set_lincs_matrix(li, md.invmass, md.lambda);
+    set_lincs_matrix(li, invmass, lambda);
+
+    li->rmsdData[0] = 0.0;
+    li->rmsdData[1] = 0.0;
 }
 
 //! Issues a warning when LINCS constraints cannot be satisfied.
 static void lincs_warning(gmx_domdec_t*                 dd,
-                          const rvec*                   x,
-                          rvec*                         xprime,
+                          ArrayRef<const RVec>          x,
+                          ArrayRef<const RVec>          xprime,
                           t_pbc*                        pbc,
                           int                           ncons,
                           gmx::ArrayRef<const AtomPair> atoms,
@@ -2211,7 +2207,7 @@ struct LincsDeviations
 };
 
 //! Determine how well the constraints have been satisfied.
-static LincsDeviations makeLincsDeviations(const Lincs& lincsd, const rvec* x, const t_pbc* pbc)
+static LincsDeviations makeLincsDeviations(const Lincs& lincsd, ArrayRef<const RVec> x, const t_pbc* pbc)
 {
     LincsDeviations                result;
     const ArrayRef<const AtomPair> atoms  = lincsd.atoms;
@@ -2260,28 +2256,29 @@ static LincsDeviations makeLincsDeviations(const Lincs& lincsd, const rvec* x, c
     return result;
 }
 
-bool constrain_lincs(bool                  computeRmsd,
-                     const t_inputrec&     ir,
-                     int64_t               step,
-                     Lincs*                lincsd,
-                     const t_mdatoms&      md,
-                     const t_commrec*      cr,
-                     const gmx_multisim_t* ms,
-                     const rvec*           x,
-                     rvec*                 xprime,
-                     rvec*                 min_proj,
-                     const matrix          box,
-                     t_pbc*                pbc,
-                     real                  lambda,
-                     real*                 dvdlambda,
-                     real                  invdt,
-                     rvec*                 v,
-                     bool                  bCalcVir,
-                     tensor                vir_r_m_dr,
-                     ConstraintVariable    econq,
-                     t_nrnb*               nrnb,
-                     int                   maxwarn,
-                     int*                  warncount)
+bool constrain_lincs(bool                            computeRmsd,
+                     const t_inputrec&               ir,
+                     int64_t                         step,
+                     Lincs*                          lincsd,
+                     const real*                     invmass,
+                     const t_commrec*                cr,
+                     const gmx_multisim_t*           ms,
+                     ArrayRefWithPadding<const RVec> xPadded,
+                     ArrayRefWithPadding<RVec>       xprimePadded,
+                     ArrayRef<RVec>                  min_proj,
+                     const matrix                    box,
+                     t_pbc*                          pbc,
+                     const bool                      hasMassPerturbed,
+                     real                            lambda,
+                     real*                           dvdlambda,
+                     real                            invdt,
+                     ArrayRef<RVec>                  v,
+                     bool                            bCalcVir,
+                     tensor                          vir_r_m_dr,
+                     ConstraintVariable              econq,
+                     t_nrnb*                         nrnb,
+                     int                             maxwarn,
+                     int*                            warncount)
 {
     bool bOK = TRUE;
 
@@ -2301,6 +2298,9 @@ bool constrain_lincs(bool                  computeRmsd,
         return bOK;
     }
 
+    ArrayRef<const RVec> x      = xPadded.unpaddedArrayRef();
+    ArrayRef<RVec>       xprime = xprimePadded.unpaddedArrayRef();
+
     if (econq == ConstraintVariable::Positions)
     {
         /* We can't use bCalcDHDL here, since NULL can be passed for dvdlambda
@@ -2308,9 +2308,9 @@ bool constrain_lincs(bool                  computeRmsd,
          */
         if (ir.efep != efepNO)
         {
-            if (md.nMassPerturbed && lincsd->matlam != md.lambda)
+            if (hasMassPerturbed && lincsd->matlam != lambda)
             {
-                set_lincs_matrix(lincsd, md.invmass, md.lambda);
+                set_lincs_matrix(lincsd, invmass, lambda);
             }
 
             for (int i = 0; i < lincsd->nc; i++)
@@ -2374,8 +2374,9 @@ bool constrain_lincs(bool                  computeRmsd,
 
                 clear_mat(lincsd->task[th].vir_r_m_dr);
 
-                do_lincs(x, xprime, box, pbc, lincsd, th, md.invmass, cr, bCalcDHDL, ir.LincsWarnAngle,
-                         &bWarn, invdt, v, bCalcVir, th == 0 ? vir_r_m_dr : lincsd->task[th].vir_r_m_dr);
+                do_lincs(xPadded, xprimePadded, box, pbc, lincsd, th, invmass, cr, bCalcDHDL,
+                         ir.LincsWarnAngle, &bWarn, invdt, v, bCalcVir,
+                         th == 0 ? vir_r_m_dr : lincsd->task[th].vir_r_m_dr);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }
@@ -2412,7 +2413,7 @@ bool constrain_lincs(bool                  computeRmsd,
                     std::string simMesg;
                     if (isMultiSim(ms))
                     {
-                        simMesg += gmx::formatString(" in simulation %d", ms->sim);
+                        simMesg += gmx::formatString(" in simulation %d", ms->simulationIndex_);
                     }
                     fprintf(stderr,
                             "\nStep %" PRId64
@@ -2452,8 +2453,8 @@ bool constrain_lincs(bool                  computeRmsd,
             {
                 int th = gmx_omp_get_thread_num();
 
-                do_lincsp(x, xprime, min_proj, pbc, lincsd, th, md.invmass, econq, bCalcDHDL,
-                          bCalcVir, th == 0 ? vir_r_m_dr : lincsd->task[th].vir_r_m_dr);
+                do_lincsp(xPadded, xprimePadded, min_proj, pbc, lincsd, th, invmass, econq,
+                          bCalcDHDL, bCalcVir, th == 0 ? vir_r_m_dr : lincsd->task[th].vir_r_m_dr);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }
@@ -2494,7 +2495,7 @@ bool constrain_lincs(bool                  computeRmsd,
     {
         inc_nrnb(nrnb, eNR_LINCSMAT, lincsd->nOrder * lincsd->ncc_triangle);
     }
-    if (v)
+    if (!v.empty())
     {
         inc_nrnb(nrnb, eNR_CONSTR_V, lincsd->nc_real * 2);
     }

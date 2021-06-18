@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -98,6 +99,7 @@ extern const char* eawhpotential_names[eawhpotentialNR + 1];
 enum
 {
     eawhcoordproviderPULL,
+    eawhcoordproviderFREE_ENERGY_LAMBDA,
     eawhcoordproviderNR
 };
 //! String for AWH bias reaction coordinate provider.
@@ -116,7 +118,7 @@ struct AwhDimParams
     double end;            /**< End value of the interval. */
     double period;         /**< The period of this dimension (= 0 if not periodic). */
     double forceConstant;  /**< The force constant in kJ/mol/nm^2, kJ/mol/rad^2 */
-    double diffusion;      /**< Estimated diffusion constant in units of nm^2/ps or rad^2/ps. */
+    double diffusion; /**< Estimated diffusion constant in units of nm^2/ps, rad^2/ps or ps^-1. */
     double coordValueInit; /**< The initial coordinate value. */
     double coverDiameter; /**< The diameter that needs to be sampled around a point before it is considered covered. */
 };

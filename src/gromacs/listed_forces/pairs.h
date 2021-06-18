@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,14 +46,12 @@
 #define GMX_LISTED_FORCES_PAIRS_H
 
 #include "gromacs/math/vec.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
 struct gmx_grppairener_t;
 struct t_forcerec;
-struct t_graph;
 struct t_pbc;
 
 namespace gmx
@@ -73,7 +72,6 @@ void do_pairs(int                      ftype,
               rvec4                    f[],
               rvec                     fshift[],
               const struct t_pbc*      pbc,
-              const struct t_graph*    g,
               const real*              lambda,
               real*                    dvdl,
               const t_mdatoms*         md,

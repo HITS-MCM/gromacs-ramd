@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,6 +50,7 @@
 #include "gromacs/utility/stringutil.h"
 
 #include "testutils/refdata.h"
+#include "testutils/test_hardware_environment.h"
 #include "testutils/testasserts.h"
 
 #include "pmetestcommon.h"
@@ -214,7 +215,7 @@ typedef std::map<size_t, AtomSizedData> InputDataByAtomCount;
  * The rest of the atom-related input data - gridline indices, spline theta values, spline dtheta
  * values, atom charges - is looked up in the inputAtomDataSets_ test fixture variable.
  */
-typedef std::tuple<Matrix3x3, int, IVec, SparseRealGridValuesInput, PmeForceOutputHandling, size_t> GatherInputParameters;
+typedef std::tuple<Matrix3x3, int, IVec, SparseRealGridValuesInput, size_t> GatherInputParameters;
 
 //! Test fixture
 class PmeGatherTest : public ::testing::TestWithParam<GatherInputParameters>
@@ -225,7 +226,7 @@ private:
 
 public:
     PmeGatherTest() = default;
-    //! Sets the input atom data references once
+    //! Sets the input atom data references and programs once
     static void SetUpTestCase()
     {
         size_t start = 0;
@@ -253,7 +254,9 @@ public:
             }
             s_inputAtomDataSets_[atomCount] = atomData;
         }
+        s_pmeTestHardwareContexts = createPmeTestHardwareContextList();
     }
+
     //! The test
     void runTest()
     {
@@ -263,8 +266,7 @@ public:
         IVec                      gridSize;
         size_t                    atomCount;
         SparseRealGridValuesInput nonZeroGridValues;
-        PmeForceOutputHandling    inputForceTreatment;
-        std::tie(box, pmeOrder, gridSize, nonZeroGridValues, inputForceTreatment, atomCount) = GetParam();
+        std::tie(box, pmeOrder, gridSize, nonZeroGridValues, atomCount) = GetParam();
         auto inputAtomData       = s_inputAtomDataSets_[atomCount];
         auto inputAtomSplineData = inputAtomData.splineDataByPmeOrder[pmeOrder];
 
@@ -278,32 +280,37 @@ public:
         inputRec.epsilon_r   = 1.0;
 
         TestReferenceData refData;
-        for (const auto& context : getPmeTestEnv()->getHardwareContexts())
+        for (const auto& pmeTestHardwareContext : s_pmeTestHardwareContexts)
         {
-            CodePath   codePath = context->getCodePath();
-            const bool supportedInput =
-                    pmeSupportsInputForMode(*getPmeTestEnv()->hwinfo(), &inputRec, codePath);
+            pmeTestHardwareContext->activate();
+            CodePath   codePath       = pmeTestHardwareContext->codePath();
+            const bool supportedInput = pmeSupportsInputForMode(
+                    *getTestHardwareEnvironment()->hwinfo(), &inputRec, codePath);
             if (!supportedInput)
             {
                 /* Testing the failure for the unsupported input */
-                EXPECT_THROW(pmeInitWrapper(&inputRec, codePath, nullptr, nullptr, box), NotImplementedError);
+                EXPECT_THROW_GMX(pmeInitWrapper(&inputRec, codePath, nullptr, nullptr, nullptr, box),
+                                 NotImplementedError);
                 continue;
             }
 
             /* Describing the test uniquely */
             SCOPED_TRACE(
-                    formatString("Testing force gathering with %s %sfor PME grid size %d %d %d"
-                                 ", order %d, %zu atoms, %s",
-                                 codePathToString(codePath), context->getDescription().c_str(),
-                                 gridSize[XX], gridSize[YY], gridSize[ZZ], pmeOrder, atomCount,
-                                 (inputForceTreatment == PmeForceOutputHandling::ReduceWithInput)
-                                         ? "with reduction"
-                                         : "without reduction"));
+                    formatString("Testing force gathering on %s for PME grid size %d %d %d"
+                                 ", order %d, %zu atoms",
+                                 pmeTestHardwareContext->description().c_str(), gridSize[XX],
+                                 gridSize[YY], gridSize[ZZ], pmeOrder, atomCount));
 
-            PmeSafePointer pmeSafe = pmeInitWrapper(&inputRec, codePath, context->getDeviceInfo(),
-                                                    context->getPmeGpuProgram(), box);
+            PmeSafePointer pmeSafe =
+                    pmeInitWrapper(&inputRec, codePath, pmeTestHardwareContext->deviceContext(),
+                                   pmeTestHardwareContext->deviceStream(),
+                                   pmeTestHardwareContext->pmeGpuProgram(), box);
             std::unique_ptr<StatePropagatorDataGpu> stateGpu =
-                    (codePath == CodePath::GPU) ? makeStatePropagatorDataGpu(*pmeSafe.get()) : nullptr;
+                    (codePath == CodePath::GPU)
+                            ? makeStatePropagatorDataGpu(*pmeSafe.get(),
+                                                         pmeTestHardwareContext->deviceContext(),
+                                                         pmeTestHardwareContext->deviceStream())
+                            : nullptr;
 
             pmeInitAtoms(pmeSafe.get(), stateGpu.get(), codePath, inputAtomData.coordinates,
                          inputAtomData.charges);
@@ -325,7 +332,7 @@ public:
             auto forces = ForcesVector(inputForcesFull).subArray(0, atomCount);
 
             /* Running the force gathering itself */
-            pmePerformGather(pmeSafe.get(), codePath, inputForceTreatment, forces);
+            pmePerformGather(pmeSafe.get(), codePath, forces);
             pmeFinalizeTest(pmeSafe.get(), codePath);
 
             /* Check the output forces correctness */
@@ -335,7 +342,11 @@ public:
             forceChecker.checkSequence(forces.begin(), forces.end(), "Forces");
         }
     }
+
+    static std::vector<std::unique_ptr<PmeTestHardwareContext>> s_pmeTestHardwareContexts;
 };
+
+std::vector<std::unique_ptr<PmeTestHardwareContext>> PmeGatherTest::s_pmeTestHardwareContexts;
 
 // An instance of static atom data
 InputDataByAtomCount PmeGatherTest::s_inputAtomDataSets_;
@@ -343,7 +354,7 @@ InputDataByAtomCount PmeGatherTest::s_inputAtomDataSets_;
 //! Test for PME force gathering
 TEST_P(PmeGatherTest, ReproducesOutputs)
 {
-    EXPECT_NO_THROW(runTest());
+    EXPECT_NO_THROW_GMX(runTest());
 }
 
 //! Instantiation of the PME gathering test
@@ -353,8 +364,6 @@ INSTANTIATE_TEST_CASE_P(SaneInput,
                                            ::testing::ValuesIn(pmeOrders),
                                            ::testing::ValuesIn(c_sampleGridSizes),
                                            ::testing::ValuesIn(c_sampleGrids),
-                                           ::testing::Values(PmeForceOutputHandling::Set,
-                                                             PmeForceOutputHandling::ReduceWithInput),
                                            ::testing::ValuesIn(atomCounts)));
 
 } // namespace

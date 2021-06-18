@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -126,7 +127,7 @@ t_dlist* mk_dlist(FILE*          log,
                      || (std::strcmp(*(atoms->atomname[i]), "SD") == 0)
                      || (std::strcmp(*(atoms->atomname[i]), "OD1") == 0)
                      || (std::strcmp(*(atoms->atomname[i]), "ND1") == 0))
-            {
+            { // NOLINT bugprone-branch-clone
                 atm.Cn[4] = i;
             }
             /* by grs - split the Cn[4] into 2 bits to check allowing dih to H */

@@ -60,7 +60,7 @@
 
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/gmxlib/network.h"
-#include "gromacs/gpu_utils/gpu_utils.h"
+#include "gromacs/hardware/device_management.h"
 #include "gromacs/hardware/hw_info.h"
 #include "gromacs/mdrunutility/multisim.h"
 #include "gromacs/mdtypes/commrec.h"
@@ -330,7 +330,7 @@ GpuTaskAssignments GpuTaskAssignmentsBuilder::build(const std::vector<int>& gpuI
                         userGpuTaskAssignment.size(), host, numGpuTasksOnThisNode)));
             }
             // Did the user choose compatible GPUs?
-            checkUserGpuIds(hardwareInfo.gpu_info, gpuIdsToUse, userGpuTaskAssignment);
+            checkUserGpuIds(hardwareInfo.deviceInfoList, gpuIdsToUse, userGpuTaskAssignment);
 
             gpuIdsForTaskAssignment = userGpuTaskAssignment;
         }
@@ -400,44 +400,41 @@ void GpuTaskAssignments::reportGpuUsage(const MDLogger& mdlog,
                         numRanksOnThisNode_, printHostName, useGpuForBonded, pmeRunMode, useGpuForUpdate);
 }
 
-gmx_device_info_t* GpuTaskAssignments::initNonbondedDevice(const t_commrec* cr) const
+/*! \brief Function for whether the task of \c mapping has value \c TaskType.
+ *
+ * \param[in] mapping  Current GPU task mapping.
+ * \returns If \c TaskType task was assigned to the \c mapping.
+ */
+template<GpuTask TaskType>
+static bool hasTaskType(const GpuTaskMapping& mapping)
 {
-    gmx_device_info_t*       deviceInfo        = nullptr;
+    return mapping.task_ == TaskType;
+}
+
+/*! \brief Function for whether the \c mapping has the GPU PME or Nonbonded task.
+ *
+ * \param[in] mapping  Current GPU task mapping.
+ * \returns If PME on Nonbonded GPU task was assigned to this mapping.
+ */
+static bool hasPmeOrNonbondedTask(const GpuTaskMapping& mapping)
+{
+    return hasTaskType<GpuTask::Pme>(mapping) || hasTaskType<GpuTask::Nonbonded>(mapping);
+}
+
+DeviceInformation* GpuTaskAssignments::initDevice(int* deviceId) const
+{
+    DeviceInformation*       deviceInfo        = nullptr;
     const GpuTaskAssignment& gpuTaskAssignment = assignmentForAllRanksOnThisNode_[indexOfThisRank_];
 
     // This works because only one task of each type per rank is currently permitted.
-    auto nbGpuTaskMapping = std::find_if(gpuTaskAssignment.begin(), gpuTaskAssignment.end(),
-                                         hasTaskType<GpuTask::Nonbonded>);
-    if (nbGpuTaskMapping != gpuTaskAssignment.end())
+    auto gpuTaskMapping =
+            std::find_if(gpuTaskAssignment.begin(), gpuTaskAssignment.end(), hasPmeOrNonbondedTask);
+
+    if (gpuTaskMapping != gpuTaskAssignment.end())
     {
-        int deviceId = nbGpuTaskMapping->deviceId_;
-        deviceInfo   = getDeviceInfo(hardwareInfo_.gpu_info, deviceId);
-        init_gpu(deviceInfo);
-
-        // TODO Setting up this sharing should probably part of
-        // init_domain_decomposition after further refactoring.
-        if (DOMAINDECOMP(cr))
-        {
-            /* When we share GPUs over ranks, we need to know this for the DLB */
-            dd_setup_dlb_resource_sharing(cr, deviceId);
-        }
-    }
-    return deviceInfo;
-}
-
-gmx_device_info_t* GpuTaskAssignments::initPmeDevice() const
-{
-    gmx_device_info_t*       deviceInfo        = nullptr;
-    const GpuTaskAssignment& gpuTaskAssignment = assignmentForAllRanksOnThisNode_[indexOfThisRank_];
-
-    // This works because only one task of each type is currently permitted.
-    auto       pmeGpuTaskMapping = std::find_if(gpuTaskAssignment.begin(), gpuTaskAssignment.end(),
-                                          hasTaskType<GpuTask::Pme>);
-    const bool thisRankHasPmeGpuTask = (pmeGpuTaskMapping != gpuTaskAssignment.end());
-    if (thisRankHasPmeGpuTask)
-    {
-        deviceInfo = getDeviceInfo(hardwareInfo_.gpu_info, pmeGpuTaskMapping->deviceId_);
-        init_gpu(deviceInfo);
+        *deviceId  = gpuTaskMapping->deviceId_;
+        deviceInfo = hardwareInfo_.deviceInfoList[*deviceId].get();
+        setActiveDevice(*deviceInfo);
     }
     return deviceInfo;
 }

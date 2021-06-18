@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,10 +50,12 @@
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h" // TODO: this is only for over_alloc_large
 
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU_CUDA
 #    include "gromacs/gpu_utils/devicebuffer.cuh"
-#elif GMX_GPU == GMX_GPU_OPENCL
+#elif GMX_GPU_OPENCL
 #    include "gromacs/gpu_utils/devicebuffer_ocl.h"
+#elif GMX_GPU_SYCL
+#    include "gromacs/gpu_utils/devicebuffer_sycl.h"
 #else
 #    error "devicebuffer.h included on non-GPU build!"
 #endif
@@ -80,7 +82,7 @@ void reallocateDeviceBuffer(DeviceBuffer<ValueType>* buffer,
                             size_t                   numValues,
                             int*                     currentNumValues,
                             int*                     currentMaxNumValues,
-                            DeviceContext            deviceContext)
+                            const DeviceContext&     deviceContext)
 {
     GMX_ASSERT(buffer, "needs a buffer pointer");
     GMX_ASSERT(currentNumValues, "needs a size pointer");

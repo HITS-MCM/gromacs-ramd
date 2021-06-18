@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -69,6 +69,8 @@ public:
     bool haveDynamicBox = false;
     //! Whether neighbor searching needs to be done this step
     bool doNeighborSearch = false;
+    //! Whether the slow forces need to be computed this step (in addition to the faster forces)
+    bool computeSlowForces = false;
     //! Whether virial needs to be computed this step
     bool computeVirial = false;
     //! Whether energies need to be computed this step this step
@@ -91,6 +93,10 @@ public:
     bool useGpuFBufferOps = false;
     //! Whether PME forces are reduced with other contributions on the GPU this step
     bool useGpuPmeFReduction = false; // TODO: add this flag to the internal PME GPU data structures too
+    //! Whether GPU coordinates halo exchange is active this step
+    bool useGpuXHalo = false;
+    //! Whether GPU forces halo exchange is active this step
+    bool useGpuFHalo = false;
 };
 
 /*! \libinternal
@@ -111,12 +117,9 @@ class DomainLifetimeWorkload
 public:
     //! Whether the current nstlist step-range has bonded work to run on a GPU.
     bool haveGpuBondedWork = false;
-    //! Whether the current nstlist step-range has bonded work to run on he CPU.
+    //! Whether the current nstlist step-range has bonded work to run on the CPU.
     bool haveCpuBondedWork = false;
-    //! Whether the current nstlist step-range has restraints work to run on he CPU.
-    bool haveRestraintsWork = false;
-    //! Whether the current nstlist step-range has listed forces work to run on he CPU.
-    //  Note: currently this is haveCpuBondedWork | haveRestraintsWork
+    //! Whether the current nstlist step-range has listed (bonded + restraints) forces work to run on the CPU.
     bool haveCpuListedForceWork = false;
     //! Whether the current nstlist step-range has special forces on the CPU.
     bool haveSpecialForces = false;
@@ -142,6 +145,12 @@ public:
 class SimulationWorkload
 {
 public:
+    //! Whether to compute nonbonded pair interactions
+    bool computeNonbonded = false;
+    //! Wether nonbonded pair forces are to be computed at slow MTS steps only
+    bool computeNonbondedAtMtsLevel1 = false;
+    //! Whether total dipole needs to be computed
+    bool computeMuTot = false;
     //! If we have calculation of short range nonbondeds on CPU
     bool useCpuNonbonded = false;
     //! If we have calculation of short range nonbondeds on GPU

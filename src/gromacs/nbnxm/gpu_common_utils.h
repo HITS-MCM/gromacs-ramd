@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2017,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -46,11 +46,11 @@
 
 #include "gromacs/nbnxm/nbnxm.h"
 
-#if GMX_GPU == GMX_GPU_CUDA
+#if GMX_GPU_CUDA
 #    include "cuda/nbnxm_cuda_types.h"
 #endif
 
-#if GMX_GPU == GMX_GPU_OPENCL
+#if GMX_GPU_OPENCL
 #    include "opencl/nbnxm_ocl_types.h"
 #endif
 
@@ -64,7 +64,7 @@ namespace Nbnxm
  * local part of the force array also depends on the non-local kernel.
  * The skip of the local kernel is taken care of separately.
  */
-static inline bool canSkipNonbondedWork(const gmx_nbnxn_gpu_t& nb, InteractionLocality iloc)
+static inline bool canSkipNonbondedWork(const NbnxmGpu& nb, InteractionLocality iloc)
 {
     assert(nb.plist[iloc]);
     return (iloc == InteractionLocality::NonLocal && nb.plist[iloc]->nsci == 0);

@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -103,7 +103,7 @@ public:
         std::int64_t   int64Value_         = c_int64Value;
         double         doubleValue_        = c_intAndFloat64.doubleValue_;
         int            intValue_           = integerSizeDependentTestingValue();
-        real           realValue_          = std::is_same<real, double>::value
+        real           realValue_          = std::is_same_v<real, double>
                                   ? static_cast<real>(c_intAndFloat64.doubleValue_)
                                   : static_cast<real>(c_intAndFloat32.floatValue_);
     } defaultValues_;

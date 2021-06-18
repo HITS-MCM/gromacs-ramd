@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -43,13 +44,13 @@
 #include <vector>
 
 #include "gromacs/gpu_utils/hostallocator.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/utility/unique_cptr.h"
 
 struct gmx_mtop_t;
 struct t_inputrec;
+struct t_mdatoms;
 
 namespace gmx
 {
@@ -68,6 +69,8 @@ class MDAtoms
     unique_cptr<t_mdatoms> mdatoms_;
     //! Memory for chargeA that can be set up for efficient GPU transfer.
     gmx::PaddedHostVector<real> chargeA_;
+    //! Memory for chargeB that can be set up for efficient GPU transfer.
+    gmx::PaddedHostVector<real> chargeB_;
 
 public:
     // TODO make this private
@@ -77,16 +80,26 @@ public:
     t_mdatoms* mdatoms() { return mdatoms_.get(); }
     //! Const getter.
     const t_mdatoms* mdatoms() const { return mdatoms_.get(); }
-    /*! \brief Resizes memory.
+    /*! \brief Resizes memory for charges of FEP state A.
      *
      * \throws std::bad_alloc  If out of memory.
      */
-    void resize(int newSize);
-    /*! \brief Reserves memory.
+    void resizeChargeA(int newSize);
+    /*! \brief Resizes memory for charges of FEP state B.
      *
      * \throws std::bad_alloc  If out of memory.
      */
-    void reserve(int newCapacity);
+    void resizeChargeB(int newSize);
+    /*! \brief Reserves memory for charges of FEP state A.
+     *
+     * \throws std::bad_alloc  If out of memory.
+     */
+    void reserveChargeA(int newCapacity);
+    /*! \brief Reserves memory for charges of FEP state B.
+     *
+     * \throws std::bad_alloc  If out of memory.
+     */
+    void reserveChargeB(int newCapacity);
     //! Builder function.
     friend std::unique_ptr<MDAtoms>
     makeMDAtoms(FILE* fp, const gmx_mtop_t& mtop, const t_inputrec& ir, bool rankHasPmeGpuTask);
@@ -97,12 +110,12 @@ std::unique_ptr<MDAtoms> makeMDAtoms(FILE* fp, const gmx_mtop_t& mtop, const t_i
 
 } // namespace gmx
 
-void atoms2md(const gmx_mtop_t* mtop,
-              const t_inputrec* ir,
-              int               nindex,
-              const int*        index,
-              int               homenr,
-              gmx::MDAtoms*     mdAtoms);
+void atoms2md(const gmx_mtop_t*  mtop,
+              const t_inputrec*  ir,
+              int                nindex,
+              gmx::ArrayRef<int> index,
+              int                homenr,
+              gmx::MDAtoms*      mdAtoms);
 /* This routine copies the atoms->atom struct into md.
  * If index!=NULL only the indexed atoms are copied.
  * For the masses the A-state (lambda=0) mass is used.

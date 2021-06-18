@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011-2019, by the GROMACS development team, led by
+ * Copyright (c) 2011-2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -59,6 +59,7 @@
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/domdec/options.h"
 #include "gromacs/fileio/gmxfio.h"
+#include "gromacs/hardware/detecthardware.h"
 #include "gromacs/mdrun/legacymdrunoptions.h"
 #include "gromacs/mdrun/runner.h"
 #include "gromacs/mdrun/simulationcontext.h"
@@ -66,15 +67,25 @@
 #include "gromacs/mdrunutility/logging.h"
 #include "gromacs/mdrunutility/multisim.h"
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/smalloc.h"
+#include "gromacs/utility/basenetwork.h"
+#include "gromacs/utility/physicalnodecommunicator.h"
 
 #include "mdrun_main.h"
 
 namespace gmx
 {
 
-//! Implements C-style main function for mdrun
 int gmx_mdrun(int argc, char* argv[])
+{
+    // Set up the communicator, where possible (see docs for
+    // SimulationContext).
+    MPI_Comm                 communicator = GMX_LIB_MPI ? MPI_COMM_WORLD : MPI_COMM_NULL;
+    PhysicalNodeCommunicator physicalNodeCommunicator(communicator, gmx_physicalnode_id_hash());
+    std::unique_ptr<gmx_hw_info_t> hwinfo = gmx_detect_hardware(physicalNodeCommunicator);
+    return gmx_mdrun(communicator, *hwinfo, argc, argv);
+}
+
+int gmx_mdrun(MPI_Comm communicator, const gmx_hw_info_t& hwinfo, int argc, char* argv[])
 {
     auto mdModules = std::make_unique<MDModules>();
 
@@ -215,9 +226,6 @@ int gmx_mdrun(int argc, char* argv[])
     ArrayRef<const std::string> multiSimDirectoryNames =
             opt2fnsIfOptionSet("-multidir", ssize(options.filenames), options.filenames.data());
 
-    // Set up the communicator, where possible (see docs for
-    // SimulationContext).
-    MPI_Comm communicator = GMX_LIB_MPI ? MPI_COMM_WORLD : MPI_COMM_NULL;
     // The SimulationContext is necessary with gmxapi so that
     // resources owned by the client code can have suitable
     // lifetime. The gmx wrapper binary uses the same infrastructure,
@@ -245,6 +253,7 @@ int gmx_mdrun(int argc, char* argv[])
      */
     auto builder = MdrunnerBuilder(std::move(mdModules),
                                    compat::not_null<SimulationContext*>(&simulationContext));
+    builder.addHardwareDetectionResult(&hwinfo);
     builder.addSimulationMethod(options.mdrunOptions, options.pforce, startingBehavior);
     builder.addDomainDecomposition(options.domdecOptions);
     // \todo pass by value
@@ -259,6 +268,7 @@ int gmx_mdrun(int argc, char* argv[])
     builder.addHardwareOptions(options.hw_opt);
     // \todo File names are parameters that should be managed modularly through further factoring.
     builder.addFilenames(options.filenames);
+    builder.addInput(makeSimulationInput(options));
     // Note: The gmx_output_env_t life time is not managed after the call to parse_common_args.
     // \todo Implement lifetime management for gmx_output_env_t.
     // \todo Output environment should be configured outside of Mdrunner and provided as a resource.

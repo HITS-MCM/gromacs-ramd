@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,6 +50,7 @@
 #include "gromacs/utility/stringutil.h"
 
 #include "testutils/refdata.h"
+#include "testutils/test_hardware_environment.h"
 #include "testutils/testasserts.h"
 
 #include "pmetestcommon.h"
@@ -73,6 +74,9 @@ class PmeSolveTest : public ::testing::TestWithParam<SolveInputParameters>
 {
 public:
     PmeSolveTest() = default;
+
+    //! Sets the programs once
+    static void SetUpTestCase() { s_pmeTestHardwareContexts = createPmeTestHardwareContextList(); }
 
     //! The test
     void runTest()
@@ -106,17 +110,18 @@ public:
         }
 
         TestReferenceData refData;
-        for (const auto& context : getPmeTestEnv()->getHardwareContexts())
+        for (const auto& pmeTestHardwareContext : s_pmeTestHardwareContexts)
         {
-            CodePath   codePath = context->getCodePath();
-            const bool supportedInput =
-                    pmeSupportsInputForMode(*getPmeTestEnv()->hwinfo(), &inputRec, codePath);
+            pmeTestHardwareContext->activate();
+            CodePath   codePath       = pmeTestHardwareContext->codePath();
+            const bool supportedInput = pmeSupportsInputForMode(
+                    *getTestHardwareEnvironment()->hwinfo(), &inputRec, codePath);
             if (!supportedInput)
             {
                 /* Testing the failure for the unsupported input */
-                EXPECT_THROW(pmeInitEmpty(&inputRec, codePath, nullptr, nullptr, box, ewaldCoeff_q,
-                                          ewaldCoeff_lj),
-                             NotImplementedError);
+                EXPECT_THROW_GMX(pmeInitWrapper(&inputRec, codePath, nullptr, nullptr, nullptr, box,
+                                                ewaldCoeff_q, ewaldCoeff_lj),
+                                 NotImplementedError);
                 continue;
             }
 
@@ -132,17 +137,18 @@ public:
                 {
                     /* Describing the test*/
                     SCOPED_TRACE(formatString(
-                            "Testing solving (%s, %s, %s energy/virial) with %s %sfor PME grid "
+                            "Testing solving (%s, %s, %s energy/virial) on %s for PME grid "
                             "size %d %d %d, Ewald coefficients %g %g",
                             (method == PmeSolveAlgorithm::LennardJones) ? "Lennard-Jones" : "Coulomb",
                             gridOrdering.second.c_str(), computeEnergyAndVirial ? "with" : "without",
-                            codePathToString(codePath), context->getDescription().c_str(),
-                            gridSize[XX], gridSize[YY], gridSize[ZZ], ewaldCoeff_q, ewaldCoeff_lj));
+                            pmeTestHardwareContext->description().c_str(), gridSize[XX],
+                            gridSize[YY], gridSize[ZZ], ewaldCoeff_q, ewaldCoeff_lj));
 
                     /* Running the test */
-                    PmeSafePointer pmeSafe =
-                            pmeInitEmpty(&inputRec, codePath, context->getDeviceInfo(),
-                                         context->getPmeGpuProgram(), box, ewaldCoeff_q, ewaldCoeff_lj);
+                    PmeSafePointer pmeSafe = pmeInitWrapper(
+                            &inputRec, codePath, pmeTestHardwareContext->deviceContext(),
+                            pmeTestHardwareContext->deviceStream(),
+                            pmeTestHardwareContext->pmeGpuProgram(), box, ewaldCoeff_q, ewaldCoeff_lj);
                     pmeSetComplexGrid(pmeSafe.get(), codePath, gridOrdering.first, nonZeroGridValues);
                     const real cellVolume = box[0] * box[4] * box[8];
                     // FIXME - this is box[XX][XX] * box[YY][YY] * box[ZZ][ZZ], should be stored in the PME structure
@@ -243,12 +249,16 @@ public:
             }
         }
     }
+
+    static std::vector<std::unique_ptr<PmeTestHardwareContext>> s_pmeTestHardwareContexts;
 };
+
+std::vector<std::unique_ptr<PmeTestHardwareContext>> PmeSolveTest::s_pmeTestHardwareContexts;
 
 /*! \brief Test for PME solving */
 TEST_P(PmeSolveTest, ReproducesOutputs)
 {
-    EXPECT_NO_THROW(runTest());
+    EXPECT_NO_THROW_GMX(runTest());
 }
 
 /* Valid input instances */

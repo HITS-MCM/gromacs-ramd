@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -74,63 +74,47 @@
 #    define OPENCL_FUNC_TERM REAL_FUNC_TERM
 #    define OPENCL_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
 
-#elif GMX_GPU != GMX_GPU_NONE
+#else // Not DOXYGEN
 
-/* GPU support is enabled, so these functions will have real code
- * defined somewhere */
-#    define GPU_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
-#    define GPU_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
-#    define GPU_FUNC_TERM REAL_FUNC_TERM
-#    define GPU_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
+/* GPU support is enabled, so these functions will have real code defined somewhere */
+#    if GMX_GPU && !GMX_GPU_SYCL
+#        define GPU_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
+#        define GPU_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
+#        define GPU_FUNC_TERM REAL_FUNC_TERM
+#        define GPU_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
+#    else
+#        define GPU_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
+#        define GPU_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
+#        define GPU_FUNC_TERM NULL_FUNC_TERM
+#        define GPU_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
+#
+#    endif
 
-#    if GMX_GPU == GMX_GPU_OPENCL
-
-/* OpenCL support is enabled, so CUDA-specific functions need empty
- * implementations, while OpenCL-specific functions will have real
- * code defined somewhere. */
-#        define CUDA_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
-#        define CUDA_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
-#        define CUDA_FUNC_TERM NULL_FUNC_TERM
-#        define CUDA_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
+/* Enable and disable platform-specific function implementations */
+#    if GMX_GPU_OPENCL
 #        define OPENCL_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
 #        define OPENCL_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
 #        define OPENCL_FUNC_TERM REAL_FUNC_TERM
 #        define OPENCL_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
-
-#    endif
-#    if GMX_GPU == GMX_GPU_CUDA
-
-/* CUDA support is enabled, so OpenCL-specific functions need empty
- * implementations, while CUDA-specific functions will have real
- * code defined somewhere. */
-#        define CUDA_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
-#        define CUDA_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
-#        define CUDA_FUNC_TERM REAL_FUNC_TERM
-#        define CUDA_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
+#    else
 #        define OPENCL_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
 #        define OPENCL_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
 #        define OPENCL_FUNC_TERM NULL_FUNC_TERM
 #        define OPENCL_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
-
 #    endif
 
-#elif GMX_GPU == GMX_GPU_NONE
+#    if GMX_GPU_CUDA
+#        define CUDA_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
+#        define CUDA_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
+#        define CUDA_FUNC_TERM REAL_FUNC_TERM
+#        define CUDA_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
+#    else
+#        define CUDA_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
+#        define CUDA_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
+#        define CUDA_FUNC_TERM NULL_FUNC_TERM
+#        define CUDA_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
+#    endif
 
-/* No GPU support is configured, so none of these functions will have
- * real definitions. */
-#    define GPU_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
-#    define GPU_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
-#    define GPU_FUNC_TERM NULL_FUNC_TERM
-#    define GPU_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
-#    define CUDA_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
-#    define CUDA_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
-#    define CUDA_FUNC_TERM NULL_FUNC_TERM
-#    define CUDA_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
-#    define OPENCL_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
-#    define OPENCL_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
-#    define OPENCL_FUNC_TERM NULL_FUNC_TERM
-#    define OPENCL_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
+#endif // ifdef DOXYGEN
 
-#endif
-
-#endif
+#endif // GMX_GPU_UTILS_MACROS_H

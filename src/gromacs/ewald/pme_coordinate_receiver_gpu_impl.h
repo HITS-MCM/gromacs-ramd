@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -43,12 +43,15 @@
 #ifndef GMX_PMECOORDINATERECEIVERGPU_IMPL_H
 #define GMX_PMECOORDINATERECEIVERGPU_IMPL_H
 
+#include <vector>
+
 #include "gromacs/ewald/pme_coordinate_receiver_gpu.h"
-#include "gromacs/gpu_utils/gpueventsynchronizer.cuh"
+#include "gromacs/utility/arrayref.h"
+
+class GpuEventSynchronizer;
 
 namespace gmx
 {
-
 /*! \internal \brief Class with interfaces and data for CUDA version of PME coordinate receiving functionality */
 
 class PmeCoordinateReceiverGpu::Impl
@@ -60,14 +63,14 @@ public:
      * \param[in] comm            Communicator used for simulation
      * \param[in] ppRanks         List of PP ranks
      */
-    Impl(void* pmeStream, MPI_Comm comm, gmx::ArrayRef<PpRanks> ppRanks);
+    Impl(const DeviceStream& pmeStream, MPI_Comm comm, gmx::ArrayRef<PpRanks> ppRanks);
     ~Impl();
 
     /*! \brief
      * send coordinates buffer address to PP rank
      * \param[in] d_x   coordinates buffer in GPU memory
      */
-    void sendCoordinateBufferAddressToPpRanks(rvec* d_x);
+    void sendCoordinateBufferAddressToPpRanks(DeviceBuffer<RVec> d_x);
 
     /*! \brief
      * launch receive of coordinate data from PP rank
@@ -82,7 +85,7 @@ public:
 
 private:
     //! CUDA stream for PME operations
-    cudaStream_t pmeStream_ = nullptr;
+    const DeviceStream& pmeStream_;
     //! communicator for simulation
     MPI_Comm comm_;
     //! list of PP ranks

@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -124,11 +125,13 @@ static void comp_tpx(const char* fn1, const char* fn2, gmx_bool bRMSD, real ftol
         {
             if (ir[0]->bPull)
             {
-                comp_pull_AB(stdout, ir[0]->pull, ftol, abstol);
+                comp_pull_AB(stdout, *ir[0]->pull, ftol, abstol);
             }
             compareMtopAB(stdout, mtop[0], ftol, abstol);
         }
     }
+    delete ir[0];
+    delete ir[1];
 }
 
 static void comp_trx(const gmx_output_env_t* oenv, const char* fn1, const char* fn2, gmx_bool bRMSD, real ftol, real abstol)
@@ -232,19 +235,21 @@ static void chk_forces(int frame, int natoms, rvec* f)
     }
 }
 
-static void chk_bonds(t_idef* idef, int ePBC, rvec* x, matrix box, real tol)
+static void chk_bonds(const InteractionDefinitions* idef, PbcType pbcType, rvec* x, matrix box, real tol)
 {
     int   ftype, k, ai, aj, type;
     real  b0, blen, deviation;
     t_pbc pbc;
     rvec  dx;
 
-    set_pbc(&pbc, ePBC, box);
+    gmx::ArrayRef<const t_iparams> iparams = idef->iparams;
+
+    set_pbc(&pbc, pbcType, box);
     for (ftype = 0; (ftype < F_NRE); ftype++)
     {
         if ((interaction_function[ftype].flags & IF_CHEMBOND) == IF_CHEMBOND)
         {
-            for (k = 0; (k < idef->il[ftype].nr);)
+            for (k = 0; (k < idef->il[ftype].size());)
             {
                 type = idef->il[ftype].iatoms[k++];
                 ai   = idef->il[ftype].iatoms[k++];
@@ -252,11 +257,11 @@ static void chk_bonds(t_idef* idef, int ePBC, rvec* x, matrix box, real tol)
                 b0   = 0;
                 switch (ftype)
                 {
-                    case F_BONDS: b0 = idef->iparams[type].harmonic.rA; break;
-                    case F_G96BONDS: b0 = std::sqrt(idef->iparams[type].harmonic.rA); break;
-                    case F_MORSE: b0 = idef->iparams[type].morse.b0A; break;
-                    case F_CUBICBONDS: b0 = idef->iparams[type].cubic.b0; break;
-                    case F_CONSTR: b0 = idef->iparams[type].constr.dA; break;
+                    case F_BONDS: b0 = iparams[type].harmonic.rA; break;
+                    case F_G96BONDS: b0 = std::sqrt(iparams[type].harmonic.rA); break;
+                    case F_MORSE: b0 = iparams[type].morse.b0A; break;
+                    case F_CUBICBONDS: b0 = iparams[type].cubic.b0; break;
+                    case F_CONSTR: b0 = iparams[type].constr.dA; break;
                     default: break;
                 }
                 if (b0 != 0)
@@ -277,22 +282,23 @@ static void chk_bonds(t_idef* idef, int ePBC, rvec* x, matrix box, real tol)
 
 static void chk_trj(const gmx_output_env_t* oenv, const char* fn, const char* tpr, real tol)
 {
-    t_trxframe     fr;
-    t_count        count;
-    t_fr_time      first, last;
-    int            j = -1, new_natoms, natoms;
-    real           old_t1, old_t2;
-    gmx_bool       bShowTimestep = TRUE, newline = FALSE;
-    t_trxstatus*   status;
-    gmx_mtop_t     mtop;
-    gmx_localtop_t top;
-    t_state        state;
-    t_inputrec     ir;
+    t_trxframe   fr;
+    t_count      count;
+    t_fr_time    first, last;
+    int          j = -1, new_natoms, natoms;
+    real         old_t1, old_t2;
+    gmx_bool     bShowTimestep = TRUE, newline = FALSE;
+    t_trxstatus* status;
+    gmx_mtop_t   mtop;
+    t_state      state;
+    t_inputrec   ir;
 
+    std::unique_ptr<gmx_localtop_t> top;
     if (tpr)
     {
         read_tpx_state(tpr, &ir, &state, &mtop);
-        gmx_mtop_generate_local_top(mtop, &top, ir.efep != efepNO);
+        top = std::make_unique<gmx_localtop_t>(mtop.ffparams);
+        gmx_mtop_generate_local_top(mtop, top.get(), ir.efep != efepNO);
     }
     new_natoms = -1;
     natoms     = -1;
@@ -358,7 +364,7 @@ static void chk_trj(const gmx_output_env_t* oenv, const char* fn, const char* tp
         natoms = new_natoms;
         if (tpr)
         {
-            chk_bonds(&top.idef, ir.ePBC, fr.x, fr.box, tol);
+            chk_bonds(&top->idef, ir.pbcType, fr.x, fr.box, tol);
         }
         if (fr.bX)
         {
@@ -428,7 +434,7 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
 {
     int        natom, i, j, k;
     t_topology top;
-    int        ePBC;
+    PbcType    pbcType;
     t_atoms*   atoms;
     rvec *     x, *v;
     rvec       dx;
@@ -439,7 +445,7 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
     real*      atom_vdw;
 
     fprintf(stderr, "Checking coordinate file %s\n", fn);
-    read_tps_conf(fn, &top, &ePBC, &x, &v, box, TRUE);
+    read_tps_conf(fn, &top, &pbcType, &x, &v, box, TRUE);
     atoms = &top.atoms;
     natom = atoms->nr;
     fprintf(stderr, "%d atoms in file\n", atoms->nr);
@@ -516,7 +522,7 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
         }
         if (bB)
         {
-            set_pbc(&pbc, ePBC, box);
+            set_pbc(&pbc, pbcType, box);
         }
 
         bFirst = TRUE;
@@ -811,6 +817,7 @@ int gmx_check(int argc, char* argv[])
     {
         fprintf(stderr, "Please give me TWO trajectory (.xtc/.trr/.tng) files!\n");
     }
+    output_env_done(oenv);
 
     fn1 = opt2fn_null("-s1", NFILE, fnm);
     fn2 = opt2fn_null("-s2", NFILE, fnm);

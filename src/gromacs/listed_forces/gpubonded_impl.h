@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,7 +48,7 @@
 #ifndef GMX_LISTED_FORCES_GPUBONDED_IMPL_H
 #define GMX_LISTED_FORCES_GPUBONDED_IMPL_H
 
-#include "gromacs/gpu_utils/gpu_vec.cuh"
+#include "gromacs/gpu_utils/device_context.h"
 #include "gromacs/gpu_utils/gputraits.cuh"
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/listed_forces/gpubonded.h"
@@ -81,7 +81,7 @@ struct BondedCudaKernelParameters
     //! Periodic boundary data
     PbcAiuc pbcAiuc;
     //! Scale factor
-    float scaleFactor;
+    float electrostaticsScaleFactor;
     //! The bonded types on GPU
     int fTypesOnGpu[numFTypesOnGpu];
     //! The number of interaction atom (iatom) elements for every function type
@@ -98,9 +98,9 @@ struct BondedCudaKernelParameters
     //! Coordinates before the timestep (on GPU)
     const float4* d_xq;
     //! Forces on atoms (on GPU)
-    fvec* d_f;
+    float3* d_f;
     //! Force shifts on atoms (on GPU)
-    fvec* d_fShift;
+    float3* d_fShift;
     //! Total Energy (on GPU)
     float* d_vTot;
     //! Interaction list atoms (on GPU)
@@ -112,12 +112,12 @@ struct BondedCudaKernelParameters
 
         setPbcAiuc(0, boxDummy, &pbcAiuc);
 
-        scaleFactor   = 1.0;
-        d_forceParams = nullptr;
-        d_xq          = nullptr;
-        d_f           = nullptr;
-        d_fShift      = nullptr;
-        d_vTot        = nullptr;
+        electrostaticsScaleFactor = 1.0;
+        d_forceParams             = nullptr;
+        d_xq                      = nullptr;
+        d_f                       = nullptr;
+        d_fShift                  = nullptr;
+        d_vTot                    = nullptr;
     }
 };
 
@@ -126,7 +126,11 @@ class GpuBonded::Impl
 {
 public:
     //! Constructor
-    Impl(const gmx_ffparams_t& ffparams, void* streamPtr, gmx_wallcycle* wcycle);
+    Impl(const gmx_ffparams_t& ffparams,
+         const float           electrostaticsScaleFactor,
+         const DeviceContext&  deviceContext,
+         const DeviceStream&   deviceStream,
+         gmx_wallcycle*        wcycle);
     /*! \brief Destructor, non-default needed for freeing
      * device-side buffers */
     ~Impl();
@@ -137,15 +141,25 @@ public:
      * stage. Copies the bonded interactions assigned to the GPU
      * to device data structures, and updates device buffers that
      * may have been updated after search. */
-    void updateInteractionListsAndDeviceBuffers(ArrayRef<const int> nbnxnAtomOrder,
-                                                const t_idef&       idef,
-                                                void*               xqDevice,
-                                                void*               forceDevice,
-                                                void*               fshiftDevice);
+    void updateInteractionListsAndDeviceBuffers(ArrayRef<const int>           nbnxnAtomOrder,
+                                                const InteractionDefinitions& idef,
+                                                void*                         xqDevice,
+                                                DeviceBuffer<RVec>            forceDevice,
+                                                DeviceBuffer<RVec>            fshiftDevice);
+    /*! \brief
+     * Update PBC data.
+     *
+     * Converts PBC data from t_pbc into the PbcAiuc format and stores the latter.
+     *
+     * \param[in] pbcType The type of the periodic boundary.
+     * \param[in] box     The periodic boundary box matrix.
+     * \param[in] canMoleculeSpanPbc  Whether one molecule can have atoms in different PBC cells.
+     */
+    void setPbc(PbcType pbcType, const matrix box, bool canMoleculeSpanPbc);
 
     /*! \brief Launches bonded kernel on a GPU */
     template<bool calcVir, bool calcEner>
-    void launchKernel(const t_forcerec* fr, const matrix box);
+    void launchKernel();
     /*! \brief Returns whether there are bonded interactions
      * assigned to the GPU */
     bool haveInteractions() const;
@@ -166,25 +180,30 @@ private:
     //! Tells whether there are any interaction in iLists.
     bool haveInteractions_;
     //! Interaction lists on the device.
-    t_ilist d_iLists_[F_NRE];
+    t_ilist d_iLists_[F_NRE] = {};
     //! Bonded parameters for device-side use.
     t_iparams* d_forceParams_ = nullptr;
     //! Position-charge vector on the device.
     const float4* d_xq_ = nullptr;
     //! Force vector on the device.
-    fvec* d_f_ = nullptr;
+    float3* d_f_ = nullptr;
     //! Shift force vector on the device.
-    fvec* d_fShift_ = nullptr;
+    float3* d_fShift_ = nullptr;
     //! \brief Host-side virial buffer
     HostVector<float> vTot_ = { {}, gmx::HostAllocationPolicy(gmx::PinningPolicy::PinnedIfSupported) };
     //! \brief Device-side total virial
     float* d_vTot_ = nullptr;
 
+    //! GPU context object
+    const DeviceContext& deviceContext_;
     //! \brief Bonded GPU stream, not owned by this module
-    CommandStream stream_;
+    const DeviceStream& deviceStream_;
 
     //! Parameters and pointers, passed to the CUDA kernel
     BondedCudaKernelParameters kernelParams_;
+
+    //! GPU kernel launch configuration
+    KernelLaunchConfig kernelLaunchConfig_;
 
     //! \brief Pointer to wallcycle structure.
     gmx_wallcycle* wcycle_;

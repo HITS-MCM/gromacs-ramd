@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,10 +47,7 @@
 
 #include "config.h"
 
-#include <assert.h>
-#include <stdio.h>
-
-#include "gromacs/ewald/pme.h"
+#include "gromacs/ewald/pme_force_sender_gpu.h"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/gpueventsynchronizer.cuh"
 #include "gromacs/utility/gmxmpi.h"
@@ -58,8 +55,10 @@
 namespace gmx
 {
 
-PmeCoordinateReceiverGpu::Impl::Impl(void* pmeStream, MPI_Comm comm, gmx::ArrayRef<PpRanks> ppRanks) :
-    pmeStream_(*static_cast<cudaStream_t*>(pmeStream)),
+PmeCoordinateReceiverGpu::Impl::Impl(const DeviceStream&    pmeStream,
+                                     MPI_Comm               comm,
+                                     gmx::ArrayRef<PpRanks> ppRanks) :
+    pmeStream_(pmeStream),
     comm_(comm),
     ppRanks_(ppRanks)
 {
@@ -72,7 +71,7 @@ PmeCoordinateReceiverGpu::Impl::Impl(void* pmeStream, MPI_Comm comm, gmx::ArrayR
 
 PmeCoordinateReceiverGpu::Impl::~Impl() = default;
 
-void PmeCoordinateReceiverGpu::Impl::sendCoordinateBufferAddressToPpRanks(rvec* d_x)
+void PmeCoordinateReceiverGpu::Impl::sendCoordinateBufferAddressToPpRanks(DeviceBuffer<RVec> d_x)
 {
 
     int ind_start = 0;
@@ -125,7 +124,7 @@ void PmeCoordinateReceiverGpu::Impl::enqueueWaitReceiveCoordinatesFromPpCudaDire
     }
 }
 
-PmeCoordinateReceiverGpu::PmeCoordinateReceiverGpu(void*                  pmeStream,
+PmeCoordinateReceiverGpu::PmeCoordinateReceiverGpu(const DeviceStream&    pmeStream,
                                                    MPI_Comm               comm,
                                                    gmx::ArrayRef<PpRanks> ppRanks) :
     impl_(new Impl(pmeStream, comm, ppRanks))
@@ -134,7 +133,7 @@ PmeCoordinateReceiverGpu::PmeCoordinateReceiverGpu(void*                  pmeStr
 
 PmeCoordinateReceiverGpu::~PmeCoordinateReceiverGpu() = default;
 
-void PmeCoordinateReceiverGpu::sendCoordinateBufferAddressToPpRanks(rvec* d_x)
+void PmeCoordinateReceiverGpu::sendCoordinateBufferAddressToPpRanks(DeviceBuffer<RVec> d_x)
 {
     impl_->sendCoordinateBufferAddressToPpRanks(d_x);
 }

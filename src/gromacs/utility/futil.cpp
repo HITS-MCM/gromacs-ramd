@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017, The GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -165,14 +166,14 @@ static void push_ps(FILE* fp)
 #    endif
 #endif
 #if (!HAVE_PIPES && !defined(__native_client__))
-static FILE* popen(const char* nm, const char* mode)
+static FILE* popen(const char* /* nm */, const char* /* mode */)
 {
     gmx_impl("Sorry no pipes...");
 
     return NULL;
 }
 
-static int pclose(FILE* fp)
+static int pclose(FILE* /* fp */)
 {
     gmx_impl("Sorry no pipes...");
 
@@ -683,6 +684,7 @@ int gmx_fsync(FILE* fp)
 #elif HAVE__FILENO
         fn = _fileno(fp);
 #else
+        GMX_UNUSED_VALUE(fp);
         fn = -1;
 #endif
 
@@ -727,7 +729,9 @@ void gmx_chdir(const char* directory)
 #endif
     if (rc != 0)
     {
-        gmx_fatal(FARGS, "Cannot change directory to '%s'. Reason: %s", directory, strerror(errno));
+        auto message = gmx::formatString("Cannot change directory to '%s'. Reason: %s", directory,
+                                         strerror(errno));
+        GMX_THROW(gmx::FileIOError(message));
     }
 }
 

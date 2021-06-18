@@ -1,7 +1,7 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2011,2012,2013,2014,2015, The GROMACS development team.
+# Copyright (c) 2011,2012,2013,2014,2015 by the GROMACS development team.
 # Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
@@ -54,6 +54,8 @@ set(TESTUTILS_SOURCES
     testasserts.cpp
     testfilemanager.cpp
     testfileredirector.cpp
+    test_device.cpp
+    test_hardware_environment.cpp
     testinit.cpp
     testmatchers.cpp
     testoptions.cpp
@@ -66,7 +68,28 @@ if(NOT HAVE_TINYXML2)
     list(APPEND TESTUTILS_SOURCES ../external/tinyxml2/tinyxml2.cpp)
 endif()
 
-add_library(testutils STATIC ${UNITTEST_TARGET_OPTIONS} ${TESTUTILS_SOURCES})
+if (GMX_GPU_CUDA)
+    # Work around FindCUDA that prevents using target_link_libraries()
+    # with keywords otherwise...
+    set(CUDA_LIBRARIES PRIVATE ${CUDA_LIBRARIES})
+    if (NOT GMX_CLANG_CUDA)
+        gmx_cuda_add_library(testutils ${TESTUTILS_SOURCES})
+    else()
+        set_source_files_properties(test_device.cpp PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
+        gmx_compile_cuda_file_with_clang(test_device.cpp)
+        add_library(testutils STATIC ${TESTUTILS_SOURCES})
+        target_link_libraries(testutils PRIVATE ${GMX_CUDA_CLANG_LINK_LIBS})
+    endif()
+    target_link_libraries(testutils PRIVATE ${CUDA_CUFFT_LIBRARIES})
+else()
+    add_library(testutils STATIC ${UNITTEST_TARGET_OPTIONS} ${TESTUTILS_SOURCES})
+endif()
+
+if (GMX_GPU_SYCL)
+    set_source_files_properties(test_device.cpp
+      PROPERTIES COMPILE_FLAGS "${SYCL_CXX_FLAGS}")
+endif()
+
 gmx_target_compile_options(testutils)
 target_compile_definitions(testutils PRIVATE HAVE_CONFIG_H)
 target_include_directories(testutils SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)

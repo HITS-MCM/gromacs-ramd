@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,6 +45,7 @@
 #include <algorithm>
 
 #include "gromacs/fileio/warninp.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/binaryinformation.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/exceptions.h"
@@ -450,7 +452,6 @@ double get_ereal(std::vector<t_inpfile>* inp, const std::string& name, double de
 const char* get_estr(std::vector<t_inpfile>* inp, const char* name, const char* def)
 {
     std::vector<t_inpfile>& inpRef = *inp;
-    char                    buf[32];
 
     int ii = get_einp(inp, name);
 
@@ -458,8 +459,7 @@ const char* get_estr(std::vector<t_inpfile>* inp, const char* name, const char* 
     {
         if (def)
         {
-            sprintf(buf, "%s", def);
-            inpRef.back().value_.assign(buf);
+            inpRef.back().value_.assign(def);
         }
         else
         {
@@ -554,12 +554,22 @@ void printStringNoNewline(std::vector<t_inpfile>* inp, const char* line)
     tmp.append(line);
     get_estr(inp, tmp.c_str(), nullptr);
 }
+
 void setStringEntry(std::vector<t_inpfile>* inp, const char* name, char* newName, const char* def)
 {
+    GMX_RELEASE_ASSERT(newName != nullptr, "Need a valid char buffer");
+
     const char* found = nullptr;
     found             = get_estr(inp, name, def);
     if (found != nullptr)
     {
         std::strcpy(newName, found);
     }
+}
+
+std::string setStringEntry(std::vector<t_inpfile>* inp, const std::string& name, const std::string& def)
+{
+    GMX_RELEASE_ASSERT(!name.empty(), "Need a valid string");
+
+    return get_estr(inp, name.c_str(), def.c_str());
 }

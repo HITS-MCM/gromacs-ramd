@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2006,2007,2008,2009,2010,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2006,2007,2008,2009,2010 by the GROMACS development team.
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -64,32 +66,30 @@
 
 #include "domdec_specatomcomm.h"
 
-void dd_move_f_vsites(gmx_domdec_t* dd, rvec* f, rvec* fshift)
+void dd_move_f_vsites(const gmx_domdec_t& dd, gmx::ArrayRef<gmx::RVec> f, gmx::ArrayRef<gmx::RVec> fshift)
 {
-    if (dd->vsite_comm)
+    if (dd.vsite_comm)
     {
-        dd_move_f_specat(dd, dd->vsite_comm, f, fshift);
+        dd_move_f_specat(&dd, dd.vsite_comm, as_rvec_array(f.data()), as_rvec_array(fshift.data()));
     }
 }
 
-void dd_clear_f_vsites(gmx_domdec_t* dd, rvec* f)
+void dd_clear_f_vsites(const gmx_domdec_t& dd, gmx::ArrayRef<gmx::RVec> f)
 {
-    int i;
-
-    if (dd->vsite_comm)
+    if (dd.vsite_comm)
     {
-        for (i = dd->vsite_comm->at_start; i < dd->vsite_comm->at_end; i++)
+        for (int i = dd.vsite_comm->at_start; i < dd.vsite_comm->at_end; i++)
         {
             clear_rvec(f[i]);
         }
     }
 }
 
-void dd_move_x_vsites(gmx_domdec_t* dd, const matrix box, rvec* x)
+void dd_move_x_vsites(const gmx_domdec_t& dd, const matrix box, rvec* x)
 {
-    if (dd->vsite_comm)
+    if (dd.vsite_comm)
     {
-        dd_move_x_specat(dd, dd->vsite_comm, box, x, nullptr, FALSE);
+        dd_move_x_specat(&dd, dd.vsite_comm, box, x, nullptr, FALSE);
     }
 }
 
@@ -101,7 +101,7 @@ void dd_clear_local_vsite_indices(gmx_domdec_t* dd)
     }
 }
 
-int dd_make_local_vsites(gmx_domdec_t* dd, int at_start, t_ilist* lil)
+int dd_make_local_vsites(gmx_domdec_t* dd, int at_start, gmx::ArrayRef<InteractionList> lil)
 {
     std::vector<int>&    ireq         = dd->vsite_requestedGlobalAtomIndices;
     gmx::HashedMap<int>* ga2la_specat = dd->ga2la_vsite;
@@ -112,11 +112,11 @@ int dd_make_local_vsites(gmx_domdec_t* dd, int at_start, t_ilist* lil)
     {
         if (interaction_function[ftype].flags & IF_VSITE)
         {
-            const int      nral = NRAL(ftype);
-            const t_ilist& lilf = lil[ftype];
-            for (int i = 0; i < lilf.nr; i += 1 + nral)
+            const int              nral = NRAL(ftype);
+            const InteractionList& lilf = lil[ftype];
+            for (int i = 0; i < lilf.size(); i += 1 + nral)
             {
-                const t_iatom* iatoms = lilf.iatoms + i;
+                const int* iatoms = lilf.iatoms.data() + i;
                 /* Check if we have the other atoms */
                 for (int j = 1; j < 1 + nral; j++)
                 {
@@ -150,11 +150,11 @@ int dd_make_local_vsites(gmx_domdec_t* dd, int at_start, t_ilist* lil)
     {
         if (interaction_function[ftype].flags & IF_VSITE)
         {
-            const int nral = NRAL(ftype);
-            t_ilist&  lilf = lil[ftype];
-            for (int i = 0; i < lilf.nr; i += 1 + nral)
+            const int        nral = NRAL(ftype);
+            InteractionList& lilf = lil[ftype];
+            for (int i = 0; i < lilf.size(); i += 1 + nral)
             {
-                t_iatom* iatoms = lilf.iatoms + i;
+                t_iatom* iatoms = lilf.iatoms.data() + i;
                 for (int j = 1; j < 1 + nral; j++)
                 {
                     if (iatoms[j] < 0)

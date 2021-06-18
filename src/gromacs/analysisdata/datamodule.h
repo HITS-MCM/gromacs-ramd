@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010,2011,2012,2013,2014,2015,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2011,2012,2013,2014 by the GROMACS development team.
+ * Copyright (c) 2015,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -212,7 +213,7 @@ public:
      * This method is called after frameFinished(), but with an additional
      * constraint that it is always called in serial and with an increasing
      * \p frameIndex.  Parallel data modules need this to serialize their
-     * data for downsteam serial modules; AnalysisDataModuleSerial provides
+     * data for downstream serial modules; AnalysisDataModuleSerial provides
      * an empty implementation, as there frameFinished() can be used for
      * the same purpose.
      */

@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -35,9 +35,10 @@
 
 /*! \libinternal \file
  * \brief
- * Declares PmeGpuProgram, which wrap arounds PmeGpuProgramImpl
- * to store permanent PME GPU context-derived data,
- * such as (compiled) kernel handles.
+ * Declares PmeGpuProgram
+ * to store data derived from the GPU context or devices for
+ * PME, such as (compiled) kernel handles and the warp sizes
+ * they work with.
  *
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
  * \ingroup module_ewald
@@ -49,16 +50,33 @@
 
 #include <memory>
 
-struct PmeGpuProgramImpl;
-struct gmx_device_info_t;
+class DeviceContext;
 
+struct PmeGpuProgramImpl;
+struct DeviceInformation;
+
+/*! \libinternal
+ * \brief Stores PME data derived from the GPU context or devices.
+ *
+ * This includes compiled kernel handles and the warp sizes they
+ * work with.
+ */
 class PmeGpuProgram
 {
 public:
-    explicit PmeGpuProgram(const gmx_device_info_t* deviceInfo);
+    /*! \brief Construct a PME GPU program.
+     *
+     * \param[in] deviceContext  GPU context.
+     */
+    explicit PmeGpuProgram(const DeviceContext& deviceContext);
+    //! Destructor
     ~PmeGpuProgram();
 
-    // TODO: design getters for information inside, if needed for PME, and make this private?
+    //! Return the warp size for which the kernels were compiled
+    int warpSize() const;
+
+    // TODO: design more getters for information inside, if needed for PME, and make this private?
+    //! Private impl class
     std::unique_ptr<PmeGpuProgramImpl> impl_;
 };
 
@@ -66,14 +84,9 @@ public:
  */
 using PmeGpuProgramStorage = std::unique_ptr<PmeGpuProgram>;
 
-/*! \brief This is a handle for passing references to PME GPU program data.
- * TODO: it should be a const reference, but for that the PmeGpu types need to be C++
- */
-using PmeGpuProgramHandle = const PmeGpuProgram*;
-
 /*! \brief
  * Factory function used to build persistent PME GPU program for the device at once.
  */
-PmeGpuProgramStorage buildPmeGpuProgram(const gmx_device_info_t* /*deviceInfo*/);
+PmeGpuProgramStorage buildPmeGpuProgram(const DeviceContext& /* deviceContext */);
 
 #endif

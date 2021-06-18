@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -118,15 +119,15 @@ void TopologyManager::requestForces()
 
 void TopologyManager::loadTopology(const char* filename)
 {
-    bool   fullTopology;
-    int    ePBC;
-    rvec*  xtop = nullptr;
-    matrix box;
+    bool    fullTopology;
+    PbcType pbcType;
+    rvec*   xtop = nullptr;
+    matrix  box;
 
     GMX_RELEASE_ASSERT(mtop_ == nullptr, "Topology initialized more than once");
     mtop_ = std::make_unique<gmx_mtop_t>();
     readConfAndTopology(gmx::test::TestFileManager::getInputFilePath(filename).c_str(), &fullTopology,
-                        mtop_.get(), &ePBC, frame_ != nullptr ? &xtop : nullptr, nullptr, box);
+                        mtop_.get(), &pbcType, frame_ != nullptr ? &xtop : nullptr, nullptr, box);
 
     if (frame_ != nullptr)
     {
@@ -152,9 +153,8 @@ void TopologyManager::initAtoms(int count)
     mtop_->molblock[0].type = 0;
     mtop_->molblock[0].nmol = 1;
     mtop_->natoms           = count;
-    mtop_->maxres_renum     = 0;
-    gmx_mtop_finalize(mtop_.get());
-    GMX_RELEASE_ASSERT(mtop_->maxres_renum == 0,
+    mtop_->finalize();
+    GMX_RELEASE_ASSERT(mtop_->maxResiduesPerMoleculeToTriggerRenumber() == 0,
                        "maxres_renum in mtop can be modified by an env.var., that is not supported "
                        "in this test");
     t_atoms& atoms = this->atoms();
@@ -253,9 +253,8 @@ void TopologyManager::finalizeTopology()
 {
     GMX_RELEASE_ASSERT(mtop_ != nullptr, "Topology not initialized");
 
-    mtop_->maxres_renum        = 0;
     mtop_->haveMoleculeIndices = true;
-    gmx_mtop_finalize(mtop_.get());
+    mtop_->finalize();
 }
 
 void TopologyManager::initUniformResidues(int residueSize)
@@ -290,7 +289,7 @@ void TopologyManager::initUniformMolecules(int moleculeSize)
                        "The residues should break at molecule boundaries");
     atoms.nres                 = nres;
     mtop_->haveMoleculeIndices = true;
-    gmx_mtop_finalize(mtop_.get());
+    mtop_->finalize();
 }
 
 void TopologyManager::initFrameIndices(const ArrayRef<const int>& index)

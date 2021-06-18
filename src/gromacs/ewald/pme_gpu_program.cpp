@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -49,21 +49,23 @@
 
 #include <memory>
 
+#include "gromacs/utility/gmxassert.h"
+
 #include "pme_gpu_program_impl.h"
 
-PmeGpuProgram::PmeGpuProgram(const gmx_device_info_t* deviceInfo) :
-    impl_(std::make_unique<PmeGpuProgramImpl>(deviceInfo))
+PmeGpuProgram::PmeGpuProgram(const DeviceContext& deviceContext) :
+    impl_(std::make_unique<PmeGpuProgramImpl>(deviceContext))
 {
 }
 
 PmeGpuProgram::~PmeGpuProgram() = default;
 
-PmeGpuProgramStorage buildPmeGpuProgram(const gmx_device_info_t* deviceInfo)
+int PmeGpuProgram::warpSize() const
 {
-    if (!deviceInfo)
-    {
-        // This workaround is only needed for CodePath::CPU dummy in testhardwarecontexts.cpp
-        return nullptr;
-    }
-    return std::make_unique<PmeGpuProgram>(deviceInfo);
+    return impl_->warpSize();
+}
+
+PmeGpuProgramStorage buildPmeGpuProgram(const DeviceContext& deviceContext)
+{
+    return std::make_unique<PmeGpuProgram>(deviceContext);
 }

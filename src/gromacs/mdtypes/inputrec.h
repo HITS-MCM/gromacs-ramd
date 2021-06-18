@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -40,6 +41,7 @@
 #include <cstdio>
 
 #include <memory>
+#include <vector>
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/md_enums.h"
@@ -59,7 +61,10 @@ class Awh;
 struct AwhParams;
 class KeyValueTreeObject;
 struct RAMDParams;
+struct MtsLevel;
 } // namespace gmx
+
+enum class PbcType;
 
 struct t_grpopts
 {
@@ -97,26 +102,6 @@ struct t_grpopts
     /* QMMM stuff */
     //! Number of QM groups
     int ngQM;
-    //! Level of theory in the QM calculation
-    int* QMmethod;
-    //! Basisset in the QM calculation
-    int* QMbasis;
-    //! Total charge in the QM region
-    int* QMcharge;
-    //! Spin multiplicicty in the QM region
-    int* QMmult;
-    //! Surface hopping (diabatic hop only)
-    gmx_bool* bSH;
-    //! Number of orbiatls in the active space
-    int* CASorbitals;
-    //! Number of electrons in the active space
-    int* CASelectrons;
-    //! At which gap (A.U.) the SA is switched on
-    real* SAon;
-    //! At which gap (A.U.) the SA is switched off
-    real* SAoff;
-    //! In how many steps SA goes from 1-1 to 0.5-0.5
-    int* SAsteps;
 };
 
 struct t_simtemp
@@ -366,6 +351,10 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     double init_t;
     //! Time step (ps)
     double delta_t;
+    //! Whether we use multiple time stepping
+    bool useMts;
+    //! The multiple time stepping levels
+    std::vector<gmx::MtsLevel> mtsLevels;
     //! Precision of x in compressed trajectory file
     real x_compression_precision;
     //! Requested fourier_spacing, when nk? not set
@@ -389,7 +378,7 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     //! Type of combination rule in LJ-PME
     int ljpme_combination_rule;
     //! Type of periodic boundary conditions
-    int ePBC;
+    PbcType pbcType;
     //! Periodic molecules
     bool bPeriodicMols;
     //! Continuation run: starting state is correct (ie. constrained)
@@ -527,7 +516,7 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     //! Do we do COM pulling?
     gmx_bool bPull;
     //! The data for center of mass pulling
-    pull_params_t* pull;
+    std::unique_ptr<pull_params_t> pull;
 
     /* RAMD */
     //! Do we do RAMD?
@@ -576,12 +565,6 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
     t_grpopts opts;
     //! QM/MM calculation
     gmx_bool bQMMM;
-    //! Constraints on QM bonds
-    int QMconstraints;
-    //! Scheme: ONIOM or normal
-    int QMMMscheme;
-    //! Factor for scaling the MM charges in QM calc.
-    real scalefactor;
 
     /* Fields for removed features go here (better caching) */
     //! Whether AdResS is enabled - always false if a valid .tpr was read
@@ -644,7 +627,7 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
 
 void cmp_inputrec(FILE* fp, const t_inputrec* ir1, const t_inputrec* ir2, real ftol, real abstol);
 
-void comp_pull_AB(FILE* fp, pull_params_t* pull, real ftol, real abstol);
+void comp_pull_AB(FILE* fp, const pull_params_t& pull, real ftol, real abstol);
 
 
 gmx_bool inputrecDeform(const t_inputrec* ir);
@@ -669,7 +652,11 @@ gmx_bool inputrecNphTrotter(const t_inputrec* ir);
 bool inputrecPbcXY2Walls(const t_inputrec* ir);
 
 /*! \brief Returns true for MD integator with T and/or P-coupling that supports
- * calculating the conserved energy quantity.
+ * calculating a conserved energy quantity.
+ *
+ * Note that dynamical integrators without T and P coupling (ie NVE)
+ * return false, i.e. the return value refers to whether there
+ * is a conserved quantity different than the total energy.
  */
 bool integratorHasConservedEnergyQuantity(const t_inputrec* ir);
 
@@ -703,5 +690,14 @@ real maxReferenceTemperature(const t_inputrec& ir);
 /*! \brief Returns whether there is an Ewald surface contribution
  */
 bool haveEwaldSurfaceContribution(const t_inputrec& ir);
+
+/*! \brief Check if calculation of the specific FEP type was requested.
+ *
+ * \param[in] ir       Input record.
+ * \param[in] fepType  Free-energy perturbation type to check for.
+ *
+ * \returns If the \p fepType is perturbed in this run.
+ */
+bool haveFreeEnergyType(const t_inputrec& ir, int fepType);
 
 #endif /* GMX_MDTYPES_INPUTREC_H */

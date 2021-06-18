@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,24 +48,26 @@
 #include "config.h"
 
 #include "gromacs/ewald/pme_coordinate_receiver_gpu.h"
+#include "gromacs/utility/arrayref.h"
+#include "gromacs/utility/gmxassert.h"
 
-#if GMX_GPU != GMX_GPU_CUDA
+#if !GMX_GPU_CUDA
 
 namespace gmx
 {
 
-/*!\brief Impl class stub. */
+/*!\brief \internal Impl class stub. */
 class PmeCoordinateReceiverGpu::Impl
 {
 };
 
 /*!\brief Constructor stub. */
-PmeCoordinateReceiverGpu::PmeCoordinateReceiverGpu(void gmx_unused* pmeStream,
-                                                   MPI_Comm gmx_unused    comm,
-                                                   gmx::ArrayRef<PpRanks> gmx_unused ppRanks) :
+PmeCoordinateReceiverGpu::PmeCoordinateReceiverGpu(const DeviceStream& /* pmeStream */,
+                                                   MPI_Comm /* comm */,
+                                                   gmx::ArrayRef<PpRanks> /* ppRanks */) :
     impl_(nullptr)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "
                "implementation.");
 }
@@ -73,27 +75,27 @@ PmeCoordinateReceiverGpu::PmeCoordinateReceiverGpu(void gmx_unused* pmeStream,
 PmeCoordinateReceiverGpu::~PmeCoordinateReceiverGpu() = default;
 
 /*!\brief init PME-PP GPU communication stub */
-void PmeCoordinateReceiverGpu::sendCoordinateBufferAddressToPpRanks(rvec gmx_unused* d_x)
+void PmeCoordinateReceiverGpu::sendCoordinateBufferAddressToPpRanks(DeviceBuffer<RVec> /* d_x */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication initialization was called instead of the "
                "correct implementation.");
 }
 
-void PmeCoordinateReceiverGpu::launchReceiveCoordinatesFromPpCudaDirect(int gmx_unused ppRank)
+void PmeCoordinateReceiverGpu::launchReceiveCoordinatesFromPpCudaDirect(int /* ppRank */)
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "
                "implementation.");
 }
 
 void PmeCoordinateReceiverGpu::enqueueWaitReceiveCoordinatesFromPpCudaDirect()
 {
-    GMX_ASSERT(false,
+    GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "
                "implementation.");
 }
 
 } // namespace gmx
 
-#endif /* GMX_GPU != GMX_GPU_CUDA */
+#endif // !GMX_GPU_CUDA

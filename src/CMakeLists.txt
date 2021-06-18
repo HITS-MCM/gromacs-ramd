@@ -1,7 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+# Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+# Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+# Copyright (c) 2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -38,7 +40,7 @@
 include(GetCompilerInfo.cmake)
 get_compiler_info(C BUILD_C_COMPILER)
 get_compiler_info(CXX BUILD_CXX_COMPILER)
-if(GMX_USE_CUDA)
+if(GMX_GPU_CUDA)
     if(NOT GMX_CLANG_CUDA)
         GMX_SET_CUDA_NVCC_FLAGS()
     endif()
@@ -57,26 +59,19 @@ file(GENERATE
     )
 
 ####
-set(IGNORED_CLANG_ALL_WARNINGS
-    "-Wno-c++98-compat -Wno-c++98-compat-pedantic" #No intention of C++98 compability
+list(APPEND IGNORED_CLANG_ALL_WARNINGS
+    "-Wno-c++98-compat" "-Wno-c++98-compat-pedantic" #No intention of C++98 compability
     "-Wno-source-uses-openmp" #Don't warn for no-omp build
     "-Wno-c++17-extensions"   #Allowed in attributes (compilers are required to ignore unknown attributes)
     "-Wno-documentation-unknown-command" #Custom commands are used
     "-Wno-covered-switch-default" #GCC gives maybe-uninitialized without default label and checks for illegal enum values.
     "-Wno-switch-enum" # default statement for enum is OK
 
-    # TODO uncomment the next few ignore lines when we upgrade to test with clang 8 in Jenkins
-
-    # The barriers we use for tMPI and Nbnxm are sufficient, but it's
-    # not known whether they're excessive. We assume they not
-    # excessive.
-    # "-Wno-atomic-implicit-seq-cst"
-
     # We need to use macros like
     # GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR. Those will look strange
     # if they don't have a semicolon after them, and might confuse
     # tools like IDEs also.
-    # "-Wno-extra-semi-stmt"
+    "-Wno-extra-semi-stmt"
 
     #Following ones are undecided/TODO
     "-Wno-disabled-macro-expansion"
@@ -97,17 +92,27 @@ set(IGNORED_CLANG_ALL_WARNINGS
     "-Wno-old-style-cast"
     "-Wno-conversion"
     "-Wno-double-promotion")
-string(REPLACE " " ";" IGNORED_CLANG_ALL_WARNINGS "${IGNORED_CLANG_ALL_WARNINGS}")
 
+option(GMX_CLANG_TIDY "Use clang-tidy" OFF)
 if (GMX_CLANG_TIDY)
+   if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+   elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithAssert")
+   elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
+   elseif("${CMAKE_BUILD_TYPE}" STREQUAL "ASAN")
+   else()
+       message(FATAL_ERROR "Can only use clang-tidy with build type containing asserts: Debug, RelWithAssert, RelWithDebInfo, ASAN.")
+   endif()
+   set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+   mark_as_advanced(CMAKE_EXPORT_COMPILE_COMMANDS)
    set(CLANG_TIDY "clang-tidy" CACHE STRING "Name of clang-tidy executable")
    find_program(CLANG_TIDY_EXE NAMES "${CLANG_TIDY}"
        DOC "Path to clang-tidy executable")
    if(NOT CLANG_TIDY_EXE)
        message(FATAL_ERROR "clang-tidy not found.")
    endif()
+   mark_as_advanced(CLANG_TIDY)
+   mark_as_advanced(CLANG_TIDY_EXE)
 endif()
-#####
 
 add_subdirectory(external)
 
@@ -121,30 +126,7 @@ endif()
 
 add_subdirectory(gromacs)
 add_subdirectory(programs)
-
-# Activate targets for new C++ API components and docs.
-if(GMX_NATIVE_WINDOWS OR GMX_BUILD_MDRUN_ONLY OR NOT BUILD_SHARED_LIBS)
-    # GMXAPI has not been tested in Microsoft environments.
-    # GMXAPI relies on libgromacs and is incompatible with an `mdrun`-only build.
-    # GMXAPI requires position-independent code
-    set(_GMXAPI_DEFAULT OFF)
-else()
-    set(_GMXAPI_DEFAULT ON)
-endif()
-option(GMXAPI "Experimental external interfaces" ${_GMXAPI_DEFAULT})
-if (GMXAPI)
-   if (GMX_BUILD_MDRUN_ONLY)
-       message(FATAL_ERROR "GMXAPI relies on libgromacs and is incompatible with GMX_BUILD_MDRUN_ONLY.")
-   endif()
-   if(NOT ${BUILD_SHARED_LIBS})
-       # Note: this conditional should check for the existence of a libgromacs target supporting PIC
-       # using the POSITION_INDEPENDENT_CODE property, but for now the only facility we have is the global
-       # variable, BUILD_SHARED_LIBS.
-       # TODO: gmxapi should gracefully build for dynamic linking or static linking for PIC or without.
-       message(FATAL_ERROR "GMXAPI requires position-independent code. Set -DGMXAPI=OFF or -DBUILD_SHARED_LIBS=ON.")
-   endif()
-   add_subdirectory(api)
-endif()
+add_subdirectory(api)
 
 # Configure header files with configuration-specific values. This step
 # should follow all introspection e.g. looking for headers and

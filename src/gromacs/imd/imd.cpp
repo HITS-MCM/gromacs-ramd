@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -70,6 +71,7 @@
 #include "gromacs/mdlib/stat.h"
 #include "gromacs/mdrunutility/handlerestart.h"
 #include "gromacs/mdrunutility/multisim.h"
+#include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/imdmodule.h"
 #include "gromacs/mdtypes/inputrec.h"
@@ -324,6 +326,8 @@ class InteractiveMolecularDynamics final : public IMDModule
     IMdpOptionProvider* mdpOptionProvider() override { return nullptr; }
     IMDOutputProvider*  outputProvider() override { return nullptr; }
     void                initForceProviders(ForceProviders* /* forceProviders */) override {}
+    void subscribeToSimulationSetupNotifications(MdModulesNotifier* /* notifier */) override {}
+    void subscribeToPreProcessingNotifications(MdModulesNotifier* /* notifier */) override {}
 };
 
 std::unique_ptr<IMDModule> createInteractiveMolecularDynamicsModule()
@@ -522,8 +526,9 @@ void write_IMDgroup_to_file(bool              bIMD,
     if (bIMD)
     {
         IMDatoms = gmx_mtop_global_atoms(sys);
-        write_sto_conf_indexed(opt2fn("-imd", nfile, fnm), "IMDgroup", &IMDatoms, state->x.rvec_array(),
-                               state->v.rvec_array(), ir->ePBC, state->box, ir->imd->nat, ir->imd->ind);
+        write_sto_conf_indexed(opt2fn("-imd", nfile, fnm), "IMDgroup", &IMDatoms,
+                               state->x.rvec_array(), state->v.rvec_array(), ir->pbcType,
+                               state->box, ir->imd->nat, ir->imd->ind);
     }
 }
 
@@ -829,7 +834,7 @@ void ImdSession::Impl::syncNodes(const t_commrec* cr, double t)
     /* Notify the other nodes whether we are still connected. */
     if (PAR(cr))
     {
-        block_bc(cr, bConnected);
+        block_bc(cr->mpi_comm_mygroup, bConnected);
     }
 
     /* ...if not connected, the job is done here. */
@@ -841,7 +846,7 @@ void ImdSession::Impl::syncNodes(const t_commrec* cr, double t)
     /* Let the other nodes know whether we got a new IMD synchronization frequency. */
     if (PAR(cr))
     {
-        block_bc(cr, nstimd_new);
+        block_bc(cr->mpi_comm_mygroup, nstimd_new);
     }
 
     /* Now we all set the (new) nstimd communication time step */
@@ -872,7 +877,7 @@ void ImdSession::Impl::syncNodes(const t_commrec* cr, double t)
     /* make new_forces known to the clients */
     if (PAR(cr))
     {
-        block_bc(cr, new_nforces);
+        block_bc(cr->mpi_comm_mygroup, new_nforces);
     }
 
     /* When new_natoms < 0 then we know that these are still the same forces
@@ -905,8 +910,8 @@ void ImdSession::Impl::syncNodes(const t_commrec* cr, double t)
     /* In parallel mode we communicate the to-be-applied forces to the other nodes */
     if (PAR(cr))
     {
-        nblock_bc(cr, nforces, f_ind);
-        nblock_bc(cr, nforces, f);
+        nblock_bc(cr->mpi_comm_mygroup, nforces, f_ind);
+        nblock_bc(cr->mpi_comm_mygroup, nforces, f);
     }
 
     /* done communicating the forces, reset bNewForces */
@@ -1264,7 +1269,7 @@ void ImdSession::Impl::prepareForPositionAssembly(const t_commrec* cr, const rve
     /* Communicate initial coordinates xa_old to all processes */
     if (PAR(cr))
     {
-        gmx_bcast(nat * sizeof(xa_old[0]), xa_old, cr);
+        gmx_bcast(nat * sizeof(xa_old[0]), xa_old, cr->mpi_comm_mygroup);
     }
 }
 
@@ -1369,7 +1374,7 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*           ir,
     /* Let the other nodes know whether we want IMD */
     if (PAR(cr))
     {
-        block_bc(cr, createSession);
+        block_bc(cr->mpi_comm_mygroup, createSession);
     }
 
     /*... if not we are done.*/
@@ -1468,7 +1473,7 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*           ir,
     /* do we allow interactive pulling? If so let the other nodes know. */
     if (PAR(cr))
     {
-        block_bc(cr, impl->bForceActivated);
+        block_bc(cr->mpi_comm_mygroup, impl->bForceActivated);
     }
 
     /* setup the listening socket on master process */

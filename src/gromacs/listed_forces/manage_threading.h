@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -34,11 +35,10 @@
  * To help us fund GROMACS development, we humbly ask that you cite
  * the research papers on the package. Check out http://www.gromacs.org.
  */
-/*! \libinternal \file
+/*! \internal \file
  * \brief Declares functions for managing threading of listed forces
  *
  * \author Mark Abraham <mark.j.abraham@gmail.com>
- * \inlibraryapi
  * \ingroup module_listed_forces
  */
 #ifndef GMX_LISTED_FORCES_MANAGE_THREADING_H
@@ -47,7 +47,7 @@
 #include <cstdio>
 
 struct bonded_threading_t;
-struct t_idef;
+class InteractionDefinitions;
 
 /*! \brief Divide the listed interactions over the threads and GPU
  *
@@ -56,18 +56,9 @@ struct t_idef;
  * This should be called each time the bonded setup changes;
  * i.e. at start-up without domain decomposition and at DD.
  */
-void setup_bonded_threading(bonded_threading_t* bt, int numAtoms, bool useGpuForBondes, const t_idef& idef);
-
-//! Destructor.
-void tear_down_bonded_threading(bonded_threading_t* bt);
-
-/*! \brief Initialize the bonded threading data structures
- *
- * Allocates and initializes a bonded threading data structure.
- * A pointer to this struct is returned as \p *bb_ptr.
- *
- * \todo Avoid explicit pointers by using Impl
- */
-bonded_threading_t* init_bonded_threading(FILE* fplog, int nenergrp);
+void setup_bonded_threading(bonded_threading_t*           bt,
+                            int                           numAtomsForce,
+                            bool                          useGpuForBondeds,
+                            const InteractionDefinitions& idef);
 
 #endif

@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -586,11 +588,11 @@ private:
     /*! \brief
      * Prints markup for starting a list of keywords.
      */
-    void writeKeywordListStart(const HelpWriterContext& context, const char* heading) const;
+    static void writeKeywordListStart(const HelpWriterContext& context, const char* heading);
     /*! \brief
      * Prints markup for ending a list of keywords.
      */
-    void writeKeywordListEnd(const HelpWriterContext& context, const char* extraInfo) const;
+    static void writeKeywordListEnd(const HelpWriterContext& context, const char* extraInfo);
 
     /*! \brief
      * Prints a brief list of keywords (selection methods) available.
@@ -665,7 +667,7 @@ void KeywordsHelpTopic::writeHelp(const HelpWriterContext& context) const
     writeKeywordSubTopics(context);
 }
 
-void KeywordsHelpTopic::writeKeywordListStart(const HelpWriterContext& context, const char* heading) const
+void KeywordsHelpTopic::writeKeywordListStart(const HelpWriterContext& context, const char* heading)
 {
     context.paragraphBreak();
     std::string fullHeading("* ");
@@ -679,7 +681,7 @@ void KeywordsHelpTopic::writeKeywordListStart(const HelpWriterContext& context, 
     }
 }
 
-void KeywordsHelpTopic::writeKeywordListEnd(const HelpWriterContext& context, const char* extraInfo) const
+void KeywordsHelpTopic::writeKeywordListEnd(const HelpWriterContext& context, const char* extraInfo)
 {
     if (context.outputFormat() == eHelpOutputFormat_Rst)
     {

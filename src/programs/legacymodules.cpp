@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -102,7 +103,7 @@ public:
     }
 
 private:
-    void printMessage() const
+    static void printMessage()
     {
         std::fprintf(stderr,
                      "This tool is no longer present in GROMACS. Please see\n"
@@ -175,7 +176,9 @@ void registerLegacyModules(gmx::CommandLineModuleManager* manager)
     gmx::ICommandLineOptionsModule::registerModuleFactory(
             manager, gmx::DumpInfo::name, gmx::DumpInfo::shortDescription, &gmx::DumpInfo::create);
     registerModule(manager, &gmx_grompp, "grompp", "Make a run input file");
-    registerModule(manager, &gmx_convert_tpr, "convert-tpr", "Make a modifed run-input file");
+    gmx::ICommandLineOptionsModule::registerModuleFactory(manager, gmx::ConvertTprInfo::name,
+                                                          gmx::ConvertTprInfo::shortDescription,
+                                                          &gmx::ConvertTprInfo::create);
     registerObsoleteTool(manager, "tpbconv");
     registerModule(manager, &gmx_x2top, "x2top", "Generate a primitive topology from coordinates");
 

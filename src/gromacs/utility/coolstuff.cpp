@@ -243,7 +243,6 @@ std::string getCoolQuote()
         { "You Own the Sun", "Throwing Muses" },
         { "I Need a Little Poison", "Throwing Muses" },
         { "Ease Myself Into the Body Bag", "P.J. Harvey" },
-        { "Motherhood Means Mental Freeze", "The Breeders" },
         { "Correctomundo", "Pulp Fiction" },
         { "I Don't Like Dirt", "The Breeders" },
         { "Bring Out the Gimp", "Pulp Fiction" },
@@ -449,15 +448,12 @@ std::string getCoolQuote()
         { "Shoot them in the back now", "The Ramones" },
         { "Read me your scripture and I will twist it", "Red Hot Chili Peppers" },
         { "Good Music Saves your Soul", "Lemmy" },
-        { "I believe in miracles cause I'm one", "The Ramones" },
-        { "Gabba Gabba Hey!", "The Ramones" },
-        { "Good Music Saves your Soul", "Lemmy" },
         { "Move about like a Scientist, lay down, get kissed", "Red Hot Chili Peppars" },
         { "California, R.I.P.", "Red Hot Chili Peppars" },
         { "Don't You Wish You Never Met Her, Dirty Blue Gene?", "Captain Beefheart" },
         { "Nobody Never Learnt No-Nothing from No History", "Gogol Bordello" },
         { "I'd be Safe and Warm if I was in L.A.", "The Mamas and the Papas" },
-        { "It's Unacceptable That Choclate Makes You Fat", "MI 3" },
+        { "It's Unacceptable That Chocolate Makes You Fat", "MI 3" },
         { "My Brothers are Protons (Protons!), My Sisters are Neurons (Neurons)",
           "Gogol Bordello" },
         { "Put Me Inside SSC, Let's Test Superstring Theory, Oh Yoi Yoi Accelerate the Protons",
@@ -778,7 +774,7 @@ std::string getCoolQuote()
           "it. Burn them, it's a great symbolic gesture.",
           "Linus Torvalds" },
         { "I invented the term 'Object-Oriented', and I can tell you I did not have C++ in mind.",
-          "Alay Kay, author of Smalltalk" },
+          "Alan Kay, author of Smalltalk" },
         { "FORTRAN, the infantile disorder, by now nearly 20 years old, is hopelessly inadequate "
           "for whatever computer application you have in mind today: it is now too clumsy, too "
           "risky, and too expensive to use.",
@@ -1512,6 +1508,83 @@ std::string getCoolQuote()
           "takes all the running YOU can do, to keep in the same place. If you want "
           "to get somewhere else, you must run at least twice as fast as that!\"",
           "Lewis Carroll" },
+        { "More than 10000000 total errors detected.  I'm not reporting any more. "
+          "Final error counts will be inaccurate.  Go fix your program!",
+          "Valgrind while memory debugging mdrun" },
+        { "If we are going to have SYCL, can we have a hammer as well?", "Joe Jordan" },
+        { "We can make it into a friend class. But I don't like having friends.", "Joe Jordan" },
+        { "A method is more important than a discovery, since the right method will lead to new "
+          "and even more important discoveries.",
+          "Lev Landau" },
+        { "Product of optimism and knowledge is a constant.", "Lev Landau" },
+        { "Why add prime numbers? Prime numbers are made to be multiplied.", "Lev Landau" },
+        { "How wonderful that we have met with a paradox. Now we have some hope of making "
+          "progress.",
+          "Niels Bohr" },
+        { "We must be clear that when it comes to atoms, language can be used only as in poetry. ",
+          "Niels Bohr" },
+        { "\"What are the biological implications of your research?\" - \"Well, I simulate "
+          "water.\" ",
+          "Petter Johansson" },
+        { "Everything what mathematicians were saying for the last 50 years is slowly catching up "
+          "with us.",
+          "David van der Spoel" },
+        { "I tend to consider myself as a scientist.",
+          "Emmanuelle Charpentier, when asked about the importance of two women sharing the Nobel "
+          "Prize for Chemistry" },
+        { "I identified myself very early on as a scientist rather than a student - as someone "
+          "creating knowledge rather than simply absorbing it.",
+          "Emmanuelle Charpentier" },
+        { "Look, I don't want to compete, so let's divide up physics between us. I'll take auroras "
+          "and you take the rest of the universe.",
+          "Joan Feynman to her brother Richard" },
+        { "There are three kinds of men. The one that learns by reading. The few who learn by "
+          "observation. The rest of them have to pee on the electric fence for themselves.",
+          "Will Rogers" },
+        { "I can't help but think the model is ungrateful for all that nice data I gave it. Jerk.",
+          "Kate Stafford" },
+        { "What do you call an acid with an attitude? A-mean-oh acid.", "Anonymous" },
+        { "Science grows like a weed every year.", "Kary Mullis" },
+        { "A good sign these days when you're listening to someone talk about this epidemic is the "
+          "number of times they say 'We don't know yet'. The more of those, the better.",
+          "Derek Lowe" },
+        { "Nullis in verba [Nobody's word is final].", "Motto of the Royal Society" },
+        { "Calling a system 'non-linear' is like calling all wild animals 'non-elephants'.",
+          "Stan Ulam" },
+        { "Given enough eyeballs, all bugs are shallow.",
+          "Linus Torvalds, on the power of open source" },
+        { "If every study was groundbreaking, we'd end up with a bunch of holes in the ground and "
+          "nothing built.",
+          "Anonymous" },
+        { "Expertise is not inherently good.", "Joe Jordan" },
+        { "I couldn't give a shit about ribosomes.",
+          "Björn Forsberg, presenting his thesis, including two papers on ribosomes" },
+        { "Here's something fun to do: Next time you approach a conversation say 'I want to talk "
+          "to someone technical... Oh! There's a woman!' and walk straight over to her.",
+          "Patty Lopez" },
+        { "After a few talks we usually sit down to do some work... or drinking.", "Mike Klein" },
+        { "The message here is that Thermodynamic Integration sucks.", "Berk Hess" },
+        { "Enthusiasm is the mother of effort, and without it nothing great was ever achieved.",
+          "Ralph Waldo Emerson" },
+        { "Our hands are tied by physics.", "Christian Blau" },
+        { "If all it takes to motivate you is a fancy picture and quote, you probably have a very "
+          "easy job. The type of job computers will soon be doing.",
+          "Anonymous" },
+        { "At school I had a teacher that didn't like me and I didn't like him. At the end of the "
+          "year he decided to fail me. The ironic thing is that the topic was chemistry. I have "
+          "the distinction of being the only Chemistry Laurate who failed the topic in high "
+          "school.",
+          "Thomas Lindahl" },
+        { "Chemistry: It tends to be a messy science.",
+          "Gunnar von Heijne, former chair of the Nobel Committee for chemistry" },
+        { "Computers are incredibly fast, accurate and stupid. Humans are incredibly slow, "
+          "inaccurate and... also stupid.",
+          "Anonymous" },
+        { "Schrödinger's backup: The condition of any backup is unknown until a restore is "
+          "attempted.",
+          "Anonymous" },
+        { "If my PhD doesn't allow me to be right on the internet, what is it even good for?",
+          "Martin Vögele" }
     };
 
     if (beCool())

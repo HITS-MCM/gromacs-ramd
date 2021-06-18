@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -59,6 +60,8 @@
 
 #include "gmxpre.h"
 
+#include "pme_only.h"
+
 #include "config.h"
 
 #include <cassert>
@@ -79,6 +82,7 @@
 #include "gromacs/fileio/pdbio.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
+#include "gromacs/gpu_utils/device_stream_manager.h"
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/math/units.h"
@@ -86,6 +90,7 @@
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/forceoutput.h"
 #include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/mdtypes/state_propagator_data_gpu.h"
 #include "gromacs/timing/cyclecounter.h"
 #include "gromacs/timing/wallcycle.h"
@@ -96,12 +101,12 @@
 #include "gromacs/utility/smalloc.h"
 
 #include "pme_gpu_internal.h"
-#include "pme_internal.h"
+#include "pme_output.h"
 #include "pme_pp_communication.h"
 
 /*! \brief environment variable to enable GPU P2P communication */
 static const bool c_enableGpuPmePpComms =
-        (getenv("GMX_GPU_PME_PP_COMMS") != nullptr) && GMX_THREAD_MPI && (GMX_GPU == GMX_GPU_CUDA);
+        GMX_GPU_CUDA && GMX_THREAD_MPI && (getenv("GMX_GPU_PME_PP_COMMS") != nullptr);
 
 /*! \brief Master PP-PME communication data structure */
 struct gmx_pme_pp
@@ -192,7 +197,7 @@ static gmx_pme_t* gmx_pmeonly_switch(std::vector<gmx_pme_t*>* pmedata,
     for (auto& pme : *pmedata)
     {
         GMX_ASSERT(pme, "Bad PME tuning list element pointer");
-        if (pme->nkx == grid_size[XX] && pme->nky == grid_size[YY] && pme->nkz == grid_size[ZZ])
+        if (gmx_pme_grid_matches(*pme, grid_size))
         {
             /* Here we have found an existing PME data structure that suits us.
              * However, in the GPU case, we have to reinitialize it - there's only one GPU structure.
@@ -215,25 +220,28 @@ static gmx_pme_t* gmx_pmeonly_switch(std::vector<gmx_pme_t*>* pmedata,
 
 /*! \brief Called by PME-only ranks to receive coefficients and coordinates
  *
- * \param[in] pme           PME data structure.
- * \param[in,out] pme_pp    PME-PP communication structure.
- * \param[out] natoms       Number of received atoms.
- * \param[out] box        System box, if received.
- * \param[out] maxshift_x        Maximum shift in X direction, if received.
- * \param[out] maxshift_y        Maximum shift in Y direction, if received.
- * \param[out] lambda_q         Free-energy lambda for electrostatics, if received.
- * \param[out] lambda_lj         Free-energy lambda for Lennard-Jones, if received.
- * \param[out] bEnerVir          Set to true if this is an energy/virial calculation step, otherwise
- * set to false. \param[out] step              MD integration step number. \param[out] grid_size PME
- * grid size, if received. \param[out] ewaldcoeff_q         Ewald cut-off parameter for
- * electrostatics, if received. \param[out] ewaldcoeff_lj         Ewald cut-off parameter for
- * Lennard-Jones, if received. \param[in] useGpuForPme      flag on whether PME is on GPU \param[in]
- * stateGpu          GPU state propagator object \param[in] runMode           PME run mode
+ * \param[in] pme                     PME data structure.
+ * \param[in,out] pme_pp              PME-PP communication structure.
+ * \param[out] natoms                 Number of received atoms.
+ * \param[out] box                    System box, if received.
+ * \param[out] maxshift_x             Maximum shift in X direction, if received.
+ * \param[out] maxshift_y             Maximum shift in Y direction, if received.
+ * \param[out] lambda_q               Free-energy lambda for electrostatics, if received.
+ * \param[out] lambda_lj              Free-energy lambda for Lennard-Jones, if received.
+ * \param[out] computeEnergyAndVirial Set to true if this is an energy/virial calculation
+ *                                    step, otherwise set to false.
+ * \param[out] step                   MD integration step number.
+ * \param[out] grid_size              PME grid size, if received.
+ * \param[out] ewaldcoeff_q           Ewald cut-off parameter for electrostatics, if received.
+ * \param[out] ewaldcoeff_lj          Ewald cut-off parameter for Lennard-Jones, if received.
+ * \param[in]  useGpuForPme           Flag on whether PME is on GPU.
+ * \param[in]  stateGpu               GPU state propagator object.
+ * \param[in]  runMode                PME run mode.
  *
- * \retval pmerecvqxX             All parameters were set, chargeA and chargeB can be NULL.
- * \retval pmerecvqxFINISH        No parameters were set.
- * \retval pmerecvqxSWITCHGRID    Only grid_size and *ewaldcoeff were set.
- * \retval pmerecvqxRESETCOUNTERS *step was set.
+ * \retval pmerecvqxX                 All parameters were set, chargeA and chargeB can be NULL.
+ * \retval pmerecvqxFINISH            No parameters were set.
+ * \retval pmerecvqxSWITCHGRID        Only grid_size and *ewaldcoeff were set.
+ * \retval pmerecvqxRESETCOUNTERS     *step was set.
  */
 static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
                                       gmx_pme_pp*                  pme_pp,
@@ -243,7 +251,7 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
                                       int*                         maxshift_y,
                                       real*                        lambda_q,
                                       real*                        lambda_lj,
-                                      gmx_bool*                    bEnerVir,
+                                      gmx_bool*                    computeEnergyAndVirial,
                                       int64_t*                     step,
                                       ivec*                        grid_size,
                                       real*                        ewaldcoeff_q,
@@ -410,7 +418,7 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
         {
             if (atomSetChanged)
             {
-                gmx_pme_reinit_atoms(pme, nat, pme_pp->chargeA.data());
+                gmx_pme_reinit_atoms(pme, nat, pme_pp->chargeA.data(), pme_pp->chargeB.data());
                 if (useGpuForPme)
                 {
                     stateGpu->reinit(nat, nat);
@@ -423,14 +431,10 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
                                "but PME run mode is not PmeRunMode::GPU\n");
 
                     // This rank will have its data accessed directly by PP rank, so needs to send the remote addresses.
-                    rvec* d_x = nullptr;
-                    rvec* d_f = nullptr;
-#    if (GMX_GPU == GMX_GPU_CUDA) // avoid invalid cast for OpenCL
-                    d_x = reinterpret_cast<rvec*>(pme_gpu_get_device_x(pme));
-                    d_f = reinterpret_cast<rvec*>(pme_gpu_get_device_f(pme));
-#    endif
-                    pme_pp->pmeCoordinateReceiverGpu->sendCoordinateBufferAddressToPpRanks(d_x);
-                    pme_pp->pmeForceSenderGpu->sendForceBufferAddressToPpRanks(d_f);
+                    pme_pp->pmeCoordinateReceiverGpu->sendCoordinateBufferAddressToPpRanks(
+                            stateGpu->getCoordinates());
+                    pme_pp->pmeForceSenderGpu->sendForceBufferAddressToPpRanks(
+                            reinterpret_cast<rvec*>(pme_gpu_get_device_f(pme)));
                 }
             }
 
@@ -438,10 +442,10 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
             /* The box, FE flag and lambda are sent along with the coordinates
              *  */
             copy_mat(cnb.box, box);
-            *lambda_q  = cnb.lambda_q;
-            *lambda_lj = cnb.lambda_lj;
-            *bEnerVir  = ((cnb.flags & PP_PME_ENER_VIR) != 0U);
-            *step      = cnb.step;
+            *lambda_q               = cnb.lambda_q;
+            *lambda_lj              = cnb.lambda_lj;
+            *computeEnergyAndVirial = ((cnb.flags & PP_PME_ENER_VIR) != 0U);
+            *step                   = cnb.step;
 
             /* Receive the coordinates in place */
             nat = 0;
@@ -490,7 +494,7 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
     GMX_UNUSED_VALUE(maxshift_y);
     GMX_UNUSED_VALUE(lambda_q);
     GMX_UNUSED_VALUE(lambda_lj);
-    GMX_UNUSED_VALUE(bEnerVir);
+    GMX_UNUSED_VALUE(computeEnergyAndVirial);
     GMX_UNUSED_VALUE(step);
     GMX_UNUSED_VALUE(grid_size);
     GMX_UNUSED_VALUE(ewaldcoeff_q);
@@ -594,58 +598,60 @@ static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme,
 #endif
 }
 
-int gmx_pmeonly(struct gmx_pme_t*         pme,
-                const t_commrec*          cr,
-                t_nrnb*                   mynrnb,
-                gmx_wallcycle*            wcycle,
-                gmx_walltime_accounting_t walltime_accounting,
-                t_inputrec*               ir,
-                PmeRunMode                runMode)
+int gmx_pmeonly(struct gmx_pme_t*               pme,
+                const t_commrec*                cr,
+                t_nrnb*                         mynrnb,
+                gmx_wallcycle*                  wcycle,
+                gmx_walltime_accounting_t       walltime_accounting,
+                t_inputrec*                     ir,
+                PmeRunMode                      runMode,
+                const gmx::DeviceStreamManager* deviceStreamManager)
 {
-    int      ret;
-    int      natoms = 0;
-    matrix   box;
-    real     lambda_q   = 0;
-    real     lambda_lj  = 0;
-    int      maxshift_x = 0, maxshift_y = 0;
-    real     dvdlambda_q, dvdlambda_lj;
-    float    cycles;
-    int      count;
-    gmx_bool bEnerVir = FALSE;
-    int64_t  step;
+    int     ret;
+    int     natoms = 0;
+    matrix  box;
+    real    lambda_q   = 0;
+    real    lambda_lj  = 0;
+    int     maxshift_x = 0, maxshift_y = 0;
+    real    dvdlambda_q, dvdlambda_lj;
+    float   cycles;
+    int     count;
+    bool    computeEnergyAndVirial = false;
+    int64_t step;
 
     /* This data will only use with PME tuning, i.e. switching PME grids */
     std::vector<gmx_pme_t*> pmedata;
     pmedata.push_back(pme);
 
     auto pme_pp = gmx_pme_pp_init(cr);
+
+    std::unique_ptr<gmx::StatePropagatorDataGpu> stateGpu;
     // TODO the variable below should be queried from the task assignment info
-    const bool  useGpuForPme  = (runMode == PmeRunMode::GPU) || (runMode == PmeRunMode::Mixed);
-    const void* commandStream = useGpuForPme ? pme_gpu_get_device_stream(pme) : nullptr;
-    const void* deviceContext = useGpuForPme ? pme_gpu_get_device_context(pme) : nullptr;
-    const int   paddingSize   = pme_gpu_get_padding_size(pme);
+    const bool useGpuForPme = (runMode == PmeRunMode::GPU) || (runMode == PmeRunMode::Mixed);
     if (useGpuForPme)
     {
+        GMX_RELEASE_ASSERT(
+                deviceStreamManager != nullptr,
+                "Device stream manager can not be nullptr when using GPU in PME-only rank.");
+        GMX_RELEASE_ASSERT(deviceStreamManager->streamIsValid(gmx::DeviceStreamType::Pme),
+                           "Device stream can not be nullptr when using GPU in PME-only rank");
         changePinningPolicy(&pme_pp->chargeA, pme_get_pinning_policy());
         changePinningPolicy(&pme_pp->x, pme_get_pinning_policy());
         if (c_enableGpuPmePpComms)
         {
             pme_pp->pmeCoordinateReceiverGpu = std::make_unique<gmx::PmeCoordinateReceiverGpu>(
-                    pme_gpu_get_device_stream(pme), pme_pp->mpi_comm_mysim, pme_pp->ppRanks);
+                    deviceStreamManager->stream(gmx::DeviceStreamType::Pme), pme_pp->mpi_comm_mysim,
+                    pme_pp->ppRanks);
             pme_pp->pmeForceSenderGpu = std::make_unique<gmx::PmeForceSenderGpu>(
-                    pme_gpu_get_device_stream(pme), pme_pp->mpi_comm_mysim, pme_pp->ppRanks);
+                    deviceStreamManager->stream(gmx::DeviceStreamType::Pme), pme_pp->mpi_comm_mysim,
+                    pme_pp->ppRanks);
         }
-    }
-
-    std::unique_ptr<gmx::StatePropagatorDataGpu> stateGpu;
-    if (useGpuForPme)
-    {
         // TODO: Special PME-only constructor is used here. There is no mechanism to prevent from using the other constructor here.
         //       This should be made safer.
         stateGpu = std::make_unique<gmx::StatePropagatorDataGpu>(
-                commandStream, deviceContext, GpuApiCallBehavior::Async, paddingSize, wcycle);
+                &deviceStreamManager->stream(gmx::DeviceStreamType::Pme), deviceStreamManager->context(),
+                GpuApiCallBehavior::Async, pme_gpu_get_block_size(pme), wcycle);
     }
-
 
     clear_nrnb(mynrnb);
 
@@ -658,8 +664,8 @@ int gmx_pmeonly(struct gmx_pme_t*         pme,
             /* Domain decomposition */
             ivec newGridSize;
             real ewaldcoeff_q = 0, ewaldcoeff_lj = 0;
-            ret = gmx_pme_recv_coeffs_coords(pme, pme_pp.get(), &natoms, box, &maxshift_x,
-                                             &maxshift_y, &lambda_q, &lambda_lj, &bEnerVir, &step,
+            ret = gmx_pme_recv_coeffs_coords(pme, pme_pp.get(), &natoms, box, &maxshift_x, &maxshift_y,
+                                             &lambda_q, &lambda_lj, &computeEnergyAndVirial, &step,
                                              &newGridSize, &ewaldcoeff_q, &ewaldcoeff_lj,
                                              useGpuForPme, stateGpu.get(), runMode);
 
@@ -697,15 +703,18 @@ int gmx_pmeonly(struct gmx_pme_t*         pme,
         // of pme_pp (maybe box, energy and virial, too; and likewise
         // from mdatoms for the other call to gmx_pme_do), so we have
         // fewer lines of code and less parameter passing.
-        const int pmeFlags = GMX_PME_DO_ALL_F | (bEnerVir ? GMX_PME_CALC_ENER_VIR : 0);
-        PmeOutput output;
+        gmx::StepWorkload stepWork;
+        stepWork.computeVirial = computeEnergyAndVirial;
+        stepWork.computeEnergy = computeEnergyAndVirial;
+        stepWork.computeForces = true;
+        PmeOutput output       = { {}, false, 0, { { 0 } }, 0, 0, { { 0 } }, 0 };
         if (useGpuForPme)
         {
-            const bool boxChanged              = false;
-            const bool useGpuPmeForceReduction = pme_pp->useGpuDirectComm;
+            stepWork.haveDynamicBox      = false;
+            stepWork.useGpuPmeFReduction = pme_pp->useGpuDirectComm;
             // TODO this should be set properly by gmx_pme_recv_coeffs_coords,
             // or maybe use inputrecDynamicBox(ir), at the very least - change this when this codepath is tested!
-            pme_gpu_prepare_computation(pme, boxChanged, box, wcycle, pmeFlags, useGpuPmeForceReduction);
+            pme_gpu_prepare_computation(pme, box, wcycle, stepWork);
             if (!pme_pp->useGpuDirectComm)
             {
                 stateGpu->copyCoordinatesToGpu(gmx::ArrayRef<gmx::RVec>(pme_pp->x), gmx::AtomLocality::All);
@@ -714,10 +723,10 @@ int gmx_pmeonly(struct gmx_pme_t*         pme,
             // TODO: with pme on GPU the receive should make a list of synchronizers and pass it here #3157
             auto xReadyOnDevice = nullptr;
 
-            pme_gpu_launch_spread(pme, xReadyOnDevice, wcycle);
-            pme_gpu_launch_complex_transforms(pme, wcycle);
-            pme_gpu_launch_gather(pme, wcycle, PmeForceOutputHandling::Set);
-            output = pme_gpu_wait_finish_task(pme, pmeFlags, wcycle);
+            pme_gpu_launch_spread(pme, xReadyOnDevice, wcycle, lambda_q);
+            pme_gpu_launch_complex_transforms(pme, wcycle, stepWork);
+            pme_gpu_launch_gather(pme, wcycle, lambda_q);
+            output = pme_gpu_wait_finish_task(pme, computeEnergyAndVirial, lambda_q, wcycle);
             pme_gpu_reinit_computation(pme, wcycle);
         }
         else
@@ -730,7 +739,7 @@ int gmx_pmeonly(struct gmx_pme_t*         pme,
                        pme_pp->sigmaB.data(), box, cr, maxshift_x, maxshift_y, mynrnb, wcycle,
                        output.coulombVirial_, output.lennardJonesVirial_, &output.coulombEnergy_,
                        &output.lennardJonesEnergy_, lambda_q, lambda_lj, &dvdlambda_q,
-                       &dvdlambda_lj, pmeFlags);
+                       &dvdlambda_lj, stepWork);
             output.forces_ = pme_pp->f;
         }
 

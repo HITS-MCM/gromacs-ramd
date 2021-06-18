@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -511,8 +513,11 @@ static void evaluate_same_str(const gmx::SelMethodEvalContext& /*context*/,
     while (j < g->isize)
     {
         /* Do a binary search of the strings. */
-        void* ptr;
-        ptr = bsearch(&d->val.s[j], d->as_s_sorted, d->nas, sizeof(d->as_s_sorted[0]), &cmp_str);
+        void* ptr = nullptr;
+        if (d->nas > 0)
+        {
+            ptr = bsearch(&d->val.s[j], d->as_s_sorted, d->nas, sizeof(d->as_s_sorted[0]), &cmp_str);
+        }
         /* Check whether the value was found in the as list. */
         if (ptr == nullptr)
         {

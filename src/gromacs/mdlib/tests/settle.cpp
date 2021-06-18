@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -80,7 +80,7 @@
 
 #include <gtest/gtest.h>
 
-#include "gromacs/gpu_utils/gpu_testutils.h"
+#include "gromacs/hardware/device_management.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/mdatom.h"
@@ -93,6 +93,7 @@
 
 #include "gromacs/mdlib/tests/watersystem.h"
 #include "testutils/refdata.h"
+#include "testutils/test_hardware_environment.h"
 #include "testutils/testasserts.h"
 
 #include "settletestdata.h"
@@ -144,10 +145,6 @@ class SettleTest : public ::testing::TestWithParam<SettleTestParameters>
 public:
     //! PBC setups
     std::unordered_map<std::string, t_pbc> pbcs_;
-    //! Runners (CPU and GPU versions of SETTLE)
-    std::unordered_map<std::string,
-                       void (*)(SettleTestData* testData, const t_pbc pbc, const bool updateVelocities, const bool calcVirial, const std::string& testDescription)>
-            runners_;
     //! Reference data
     TestReferenceData refData_;
     //! Checker for reference data
@@ -169,31 +166,13 @@ public:
 
         // Infinitely small box
         matrix boxNone = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
-        set_pbc(&pbc, epbcNONE, boxNone);
+        set_pbc(&pbc, PbcType::No, boxNone);
         pbcs_["PBCNone"] = pbc;
 
         // Rectangular box
         matrix boxXyz = { { real(1.86206), 0, 0 }, { 0, real(1.86206), 0 }, { 0, 0, real(1.86206) } };
-        set_pbc(&pbc, epbcXYZ, boxXyz);
+        set_pbc(&pbc, PbcType::Xyz, boxXyz);
         pbcs_["PBCXYZ"] = pbc;
-
-        //
-        // All SETTLE runners should be registered here under appropriate conditions
-        //
-        runners_["SETTLE"] = applySettle;
-
-        // CUDA version will be tested only if:
-        // 1. The code was compiled with CUDA
-        // 2. There is a CUDA-capable GPU in a system
-        // 3. This GPU is detectable
-        // 4. GPU detection was not disabled by GMX_DISABLE_GPU_DETECTION environment variable
-        if (s_hasCompatibleGpus)
-        {
-            if (GMX_GPU == GMX_GPU_CUDA && s_hasCompatibleGpus)
-            {
-                runners_["SETTLE_GPU"] = applySettleGpu;
-            }
-        }
     }
 
     /*! \brief Check if the final interatomic distances are equal to target set by constraints.
@@ -202,9 +181,9 @@ public:
      * \param[in]  tolerance         Tolerance to compare floating point numbers.
      * \param[in]  testData          An object, containing all the data structures needed by SETTLE.
      */
-    void checkConstrainsSatisfied(const int                    numSettles,
-                                  const FloatingPointTolerance tolerance,
-                                  const SettleTestData&        testData)
+    static void checkConstrainsSatisfied(const int                    numSettles,
+                                         const FloatingPointTolerance tolerance,
+                                         const SettleTestData&        testData)
     {
         for (int i = 0; i < numSettles; ++i)
         {
@@ -234,9 +213,9 @@ public:
      * \param[in]  tolerance         Tolerance to compare floating point numbers.
      * \param[in]  testData          An object, containing all the data structures needed by SETTLE.
      */
-    void checkVirialSymmetric(const bool                   calcVirial,
-                              const FloatingPointTolerance tolerance,
-                              const SettleTestData&        testData)
+    static void checkVirialSymmetric(const bool                   calcVirial,
+                                     const FloatingPointTolerance tolerance,
+                                     const SettleTestData&        testData)
     {
         for (int d = 0; d < DIM; ++d)
         {
@@ -325,22 +304,24 @@ public:
         virialRef.checkReal(virial[ZZ][YY], "ZY");
         virialRef.checkReal(virial[ZZ][ZZ], "ZZ");
     }
-
-    //! Store whether any compatible GPUs exist.
-    static bool s_hasCompatibleGpus;
-    //! Before any test is run, work out whether any compatible GPUs exist.
-    static void SetUpTestCase() { s_hasCompatibleGpus = canComputeOnGpu(); }
 };
-
-bool SettleTest::s_hasCompatibleGpus = false;
 
 TEST_P(SettleTest, SatisfiesConstraints)
 {
-    // Cycle through all available runners
-    for (const auto& runner : runners_)
+    // Construct the list of runners
+    std::vector<std::unique_ptr<ISettleTestRunner>> runners;
+    // Add runners for CPU version
+    runners.emplace_back(std::make_unique<SettleHostTestRunner>());
+    // If using CUDA, add runners for the GPU version for each available GPU
+    if (GMX_GPU_CUDA)
     {
-        std::string runnerName = runner.first;
-
+        for (const auto& testDevice : getTestHardwareEnvironment()->getTestDeviceList())
+        {
+            runners.emplace_back(std::make_unique<SettleDeviceTestRunner>(*testDevice));
+        }
+    }
+    for (const auto& runner : runners)
+    {
         // Make some symbolic names for the parameter combination.
         SettleTestParameters params = GetParam();
 
@@ -354,7 +335,7 @@ TEST_P(SettleTest, SatisfiesConstraints)
         // being tested, to help make failing tests comprehensible.
         std::string testDescription = formatString(
                 "Testing %s with %d SETTLEs, %s, %svelocities and %scalculating the virial.",
-                runnerName.c_str(), numSettles, pbcName.c_str(),
+                runner->hardwareDescription().c_str(), numSettles, pbcName.c_str(),
                 updateVelocities ? "with " : "without ", calcVirial ? "" : "not ");
 
         SCOPED_TRACE(testDescription);
@@ -367,7 +348,7 @@ TEST_P(SettleTest, SatisfiesConstraints)
         t_pbc pbc = pbcs_.at(pbcName);
 
         // Apply SETTLE
-        runner.second(testData.get(), pbc, updateVelocities, calcVirial, testDescription);
+        runner->applySettle(testData.get(), pbc, updateVelocities, calcVirial, testDescription);
 
         // The necessary tolerances for the test to pass were determined
         // empirically. This isn't nice, but the required behavior that

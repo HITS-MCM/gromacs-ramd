@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -63,12 +63,13 @@ static void handleClfftError(clfftStatus status, const char* msg)
     }
 }
 
-GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu)
+GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu, const int gridIndex)
 {
     // Extracting all the data from PME GPU
     std::array<size_t, DIM> realGridSize, realGridSizePadded, complexGridSizePadded;
 
-    GMX_RELEASE_ASSERT(!pme_gpu_uses_dd(pmeGpu), "FFT decomposition not implemented");
+    GMX_RELEASE_ASSERT(!pme_gpu_settings(pmeGpu).useDecomposition,
+                       "FFT decomposition not implemented");
     PmeGpuKernelParamsBase* kernelParamsPtr = pmeGpu->kernelParams.get();
     for (int i = 0; i < DIM; i++)
     {
@@ -79,10 +80,10 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu)
                            == kernelParamsPtr->grid.complexGridSize[i],
                    "Complex padding not implemented");
     }
-    cl_context context = pmeGpu->archSpecific->context;
-    commandStreams_.push_back(pmeGpu->archSpecific->pmeStream);
-    realGrid_                       = kernelParamsPtr->grid.d_realGrid;
-    complexGrid_                    = kernelParamsPtr->grid.d_fourierGrid;
+    cl_context context = pmeGpu->archSpecific->deviceContext_.context();
+    deviceStreams_.push_back(pmeGpu->archSpecific->pmeStream_.stream());
+    realGrid_                       = kernelParamsPtr->grid.d_realGrid[gridIndex];
+    complexGrid_                    = kernelParamsPtr->grid.d_fourierGrid[gridIndex];
     const bool performOutOfPlaceFFT = pmeGpu->archSpecific->performOutOfPlaceFFT;
 
 
@@ -123,9 +124,9 @@ GpuParallel3dFft::GpuParallel3dFft(const PmeGpu* pmeGpu)
     handleClfftError(clfftSetPlanOutStride(planC2R_, dims, realGridStrides.data()),
                      "clFFT stride setting failure");
 
-    handleClfftError(clfftBakePlan(planR2C_, commandStreams_.size(), commandStreams_.data(), nullptr, nullptr),
+    handleClfftError(clfftBakePlan(planR2C_, deviceStreams_.size(), deviceStreams_.data(), nullptr, nullptr),
                      "clFFT precompiling failure");
-    handleClfftError(clfftBakePlan(planC2R_, commandStreams_.size(), commandStreams_.data(), nullptr, nullptr),
+    handleClfftError(clfftBakePlan(planC2R_, deviceStreams_.size(), deviceStreams_.data(), nullptr, nullptr),
                      "clFFT precompiling failure");
 
     // TODO: implement solve kernel as R2C FFT callback
@@ -165,8 +166,8 @@ void GpuParallel3dFft::perform3dFft(gmx_fft_direction dir, CommandEvent* timingE
             GMX_THROW(
                     gmx::NotImplementedError("The chosen 3D-FFT case is not implemented on GPUs"));
     }
-    handleClfftError(clfftEnqueueTransform(plan, direction, commandStreams_.size(),
-                                           commandStreams_.data(), waitEvents.size(), waitEvents.data(),
+    handleClfftError(clfftEnqueueTransform(plan, direction, deviceStreams_.size(),
+                                           deviceStreams_.data(), waitEvents.size(), waitEvents.data(),
                                            timingEvent, inputGrids, outputGrids, tempBuffer),
                      "clFFT execution failure");
 }

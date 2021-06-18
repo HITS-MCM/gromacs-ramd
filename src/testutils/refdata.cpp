@@ -2,7 +2,7 @@
  * This file is part of the GROMACS molecular simulation package.
  *
  * Copyright (c) 2011-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -53,6 +53,7 @@
 
 #include <gtest/gtest.h>
 
+#include "gromacs/math/vectypes.h"
 #include "gromacs/options/basicoptions.h"
 #include "gromacs/options/ioptionscontainer.h"
 #include "gromacs/utility/any.h"
@@ -154,7 +155,7 @@ typedef std::shared_ptr<internal::TestReferenceDataImpl> TestReferenceDataImplPo
  */
 TestReferenceDataImplPointer g_referenceData;
 //! Global reference data mode set with setReferenceDataMode().
-ReferenceDataMode g_referenceDataMode = erefdataCompare;
+ReferenceDataMode g_referenceDataMode = ReferenceDataMode::Compare;
 
 //! Returns the global reference data mode.
 ReferenceDataMode getReferenceDataMode()
@@ -268,10 +269,11 @@ void checkUnusedEntries(const ReferenceDataEntry& root, const std::string& rootP
 
 void initReferenceData(IOptionsContainer* options)
 {
-    // Needs to correspond to the enum order in refdata.h.
-    const char* const refDataEnum[] = { "check", "create", "update-changed", "update-all" };
+    static const gmx::EnumerationArray<ReferenceDataMode, const char*> s_refDataNames = {
+        { "check", "create", "update-changed", "update-all" }
+    };
     options->addOption(EnumOption<ReferenceDataMode>("ref-data")
-                               .enumValue(refDataEnum)
+                               .enumValue(s_refDataNames)
                                .store(&g_referenceDataMode)
                                .description("Operation mode for tests that use reference data"));
     ::testing::UnitTest::GetInstance()->listeners().Append(new ReferenceDataTestEventListener);
@@ -296,13 +298,13 @@ TestReferenceDataImpl::TestReferenceDataImpl(ReferenceDataMode mode, bool bSelfT
 
     switch (mode)
     {
-        case erefdataCompare:
+        case ReferenceDataMode::Compare:
             if (File::exists(fullFilename_, File::throwOnError))
             {
                 compareRootEntry_ = readReferenceDataFile(fullFilename_);
             }
             break;
-        case erefdataCreateMissing:
+        case ReferenceDataMode::CreateMissing:
             if (File::exists(fullFilename_, File::throwOnError))
             {
                 compareRootEntry_ = readReferenceDataFile(fullFilename_);
@@ -313,7 +315,7 @@ TestReferenceDataImpl::TestReferenceDataImpl(ReferenceDataMode mode, bool bSelfT
                 outputRootEntry_  = ReferenceDataEntry::createRoot();
             }
             break;
-        case erefdataUpdateChanged:
+        case ReferenceDataMode::UpdateChanged:
             if (File::exists(fullFilename_, File::throwOnError))
             {
                 compareRootEntry_ = readReferenceDataFile(fullFilename_);
@@ -325,10 +327,11 @@ TestReferenceDataImpl::TestReferenceDataImpl(ReferenceDataMode mode, bool bSelfT
             outputRootEntry_          = ReferenceDataEntry::createRoot();
             updateMismatchingEntries_ = true;
             break;
-        case erefdataUpdateAll:
+        case ReferenceDataMode::UpdateAll:
             compareRootEntry_ = ReferenceDataEntry::createRoot();
             outputRootEntry_  = ReferenceDataEntry::createRoot();
             break;
+        case ReferenceDataMode::Count: GMX_THROW(InternalError("Invalid reference data mode"));
     }
 }
 
@@ -418,19 +421,19 @@ public:
     std::string appendPath(const char* id) const;
 
     //! Creates an entry with given parameters and fills it with \p checker.
-    ReferenceDataEntry::EntryPointer createEntry(const char*                       type,
-                                                 const char*                       id,
-                                                 const IReferenceDataEntryChecker& checker) const
+    static ReferenceDataEntry::EntryPointer createEntry(const char*                       type,
+                                                        const char*                       id,
+                                                        const IReferenceDataEntryChecker& checker)
     {
         ReferenceDataEntry::EntryPointer entry(new ReferenceDataEntry(type, id));
         checker.fillEntry(entry.get());
         return entry;
     }
     //! Checks an entry for correct type and using \p checker.
-    ::testing::AssertionResult checkEntry(const ReferenceDataEntry&         entry,
-                                          const std::string&                fullId,
-                                          const char*                       type,
-                                          const IReferenceDataEntryChecker& checker) const
+    static ::testing::AssertionResult checkEntry(const ReferenceDataEntry&         entry,
+                                                 const std::string&                fullId,
+                                                 const char*                       type,
+                                                 const IReferenceDataEntryChecker& checker)
     {
         if (entry.type() != type)
         {
@@ -754,6 +757,14 @@ void TestReferenceChecker::checkUnusedEntries()
     }
 }
 
+void TestReferenceChecker::disableUnusedEntriesCheck()
+{
+    if (impl_->compareRootEntry_)
+    {
+        impl_->compareRootEntry_->setCheckedIncludingChildren();
+    }
+}
+
 
 bool TestReferenceChecker::checkPresent(bool bPresent, const char* id)
 {
@@ -943,7 +954,7 @@ void TestReferenceChecker::checkRealFromString(const std::string& value, const c
 }
 
 
-void TestReferenceChecker::checkVector(const int value[3], const char* id)
+void TestReferenceChecker::checkVector(const BasicVector<int>& value, const char* id)
 {
     TestReferenceChecker compound(checkCompound(Impl::cVectorType, id));
     compound.checkInteger(value[0], "X");
@@ -952,7 +963,7 @@ void TestReferenceChecker::checkVector(const int value[3], const char* id)
 }
 
 
-void TestReferenceChecker::checkVector(const float value[3], const char* id)
+void TestReferenceChecker::checkVector(const BasicVector<float>& value, const char* id)
 {
     TestReferenceChecker compound(checkCompound(Impl::cVectorType, id));
     compound.checkReal(value[0], "X");
@@ -961,12 +972,30 @@ void TestReferenceChecker::checkVector(const float value[3], const char* id)
 }
 
 
-void TestReferenceChecker::checkVector(const double value[3], const char* id)
+void TestReferenceChecker::checkVector(const BasicVector<double>& value, const char* id)
 {
     TestReferenceChecker compound(checkCompound(Impl::cVectorType, id));
     compound.checkReal(value[0], "X");
     compound.checkReal(value[1], "Y");
     compound.checkReal(value[2], "Z");
+}
+
+
+void TestReferenceChecker::checkVector(const int value[3], const char* id)
+{
+    checkVector(BasicVector<int>(value), id);
+}
+
+
+void TestReferenceChecker::checkVector(const float value[3], const char* id)
+{
+    checkVector(BasicVector<float>(value), id);
+}
+
+
+void TestReferenceChecker::checkVector(const double value[3], const char* id)
+{
+    checkVector(BasicVector<double>(value), id);
 }
 
 

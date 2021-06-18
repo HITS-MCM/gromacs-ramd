@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -49,13 +50,13 @@
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
-#include "gromacs/mdlib/dispersioncorrection.h"
+#include "gromacs/mdlib/coupling.h"
+#include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/simulationsignal.h"
 #include "gromacs/mdlib/stat.h"
 #include "gromacs/mdlib/tgroup.h"
 #include "gromacs/mdlib/update.h"
 #include "gromacs/mdlib/vcm.h"
-#include "gromacs/mdrunutility/multisim.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/df_history.h"
 #include "gromacs/mdtypes/enerdata.h"
@@ -64,6 +65,7 @@
 #include "gromacs/mdtypes/group.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
@@ -78,106 +80,243 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
 
-// TODO move this to multi-sim module
-bool multisim_int_all_are_equal(const gmx_multisim_t* ms, int64_t value)
+static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
+                                const t_grpopts*               opts,
+                                const t_mdatoms*               md,
+                                gmx_ekindata_t*                ekind,
+                                t_nrnb*                        nrnb,
+                                gmx_bool                       bEkinAveVel)
 {
-    bool     allValuesAreEqual = true;
-    int64_t* buf;
+    int                         g;
+    gmx::ArrayRef<t_grp_tcstat> tcstat  = ekind->tcstat;
+    gmx::ArrayRef<t_grp_acc>    grpstat = ekind->grpstat;
 
-    GMX_RELEASE_ASSERT(ms, "Invalid use of multi-simulation pointer");
+    /* three main: VV with AveVel, vv with AveEkin, leap with AveEkin.  Leap with AveVel is also
+       an option, but not supported now.
+       bEkinAveVel: If TRUE, we sum into ekin, if FALSE, into ekinh.
+     */
 
-    snew(buf, ms->nsim);
-    /* send our value to all other master ranks, receive all of theirs */
-    buf[ms->sim] = value;
-    gmx_sumli_sim(ms->nsim, buf, ms);
-
-    for (int s = 0; s < ms->nsim; s++)
+    /* group velocities are calculated in update_ekindata and
+     * accumulated in acumulate_groups.
+     * Now the partial global and groups ekin.
+     */
+    for (g = 0; (g < opts->ngtc); g++)
     {
-        if (buf[s] != value)
+        copy_mat(tcstat[g].ekinh, tcstat[g].ekinh_old);
+        if (bEkinAveVel)
         {
-            allValuesAreEqual = false;
-            break;
-        }
-    }
-
-    sfree(buf);
-
-    return allValuesAreEqual;
-}
-
-int multisim_min(const gmx_multisim_t* ms, int nmin, int n)
-{
-    int*     buf;
-    gmx_bool bPos, bEqual;
-    int      s, d;
-
-    snew(buf, ms->nsim);
-    buf[ms->sim] = n;
-    gmx_sumi_sim(ms->nsim, buf, ms);
-    bPos   = TRUE;
-    bEqual = TRUE;
-    for (s = 0; s < ms->nsim; s++)
-    {
-        bPos   = bPos && (buf[s] > 0);
-        bEqual = bEqual && (buf[s] == buf[0]);
-    }
-    if (bPos)
-    {
-        if (bEqual)
-        {
-            nmin = std::min(nmin, buf[0]);
+            clear_mat(tcstat[g].ekinf);
+            tcstat[g].ekinscalef_nhc = 1.0; /* need to clear this -- logic is complicated! */
         }
         else
         {
-            /* Find the least common multiple */
-            for (d = 2; d < nmin; d++)
+            clear_mat(tcstat[g].ekinh);
+        }
+    }
+    ekind->dekindl_old = ekind->dekindl;
+    int nthread        = gmx_omp_nthreads_get(emntUpdate);
+
+#pragma omp parallel for num_threads(nthread) schedule(static)
+    for (int thread = 0; thread < nthread; thread++)
+    {
+        // This OpenMP only loops over arrays and does not call any functions
+        // or memory allocation. It should not be able to throw, so for now
+        // we do not need a try/catch wrapper.
+        int     start_t, end_t, n;
+        int     ga, gt;
+        rvec    v_corrt;
+        real    hm;
+        int     d, m;
+        matrix* ekin_sum;
+        real*   dekindl_sum;
+
+        start_t = ((thread + 0) * md->homenr) / nthread;
+        end_t   = ((thread + 1) * md->homenr) / nthread;
+
+        ekin_sum    = ekind->ekin_work[thread];
+        dekindl_sum = ekind->dekindl_work[thread];
+
+        for (gt = 0; gt < opts->ngtc; gt++)
+        {
+            clear_mat(ekin_sum[gt]);
+        }
+        *dekindl_sum = 0.0;
+
+        ga = 0;
+        gt = 0;
+        for (n = start_t; n < end_t; n++)
+        {
+            if (md->cACC)
             {
-                s = 0;
-                while (s < ms->nsim && d % buf[s] == 0)
+                ga = md->cACC[n];
+            }
+            if (md->cTC)
+            {
+                gt = md->cTC[n];
+            }
+            hm = 0.5 * md->massT[n];
+
+            for (d = 0; (d < DIM); d++)
+            {
+                v_corrt[d] = v[n][d] - grpstat[ga].u[d];
+            }
+            for (d = 0; (d < DIM); d++)
+            {
+                for (m = 0; (m < DIM); m++)
                 {
-                    s++;
+                    /* if we're computing a full step velocity, v_corrt[d] has v(t).  Otherwise, v(t+dt/2) */
+                    ekin_sum[gt][m][d] += hm * v_corrt[m] * v_corrt[d];
                 }
-                if (s == ms->nsim)
-                {
-                    /* We found the LCM and it is less than nmin */
-                    nmin = d;
-                    break;
-                }
+            }
+            if (md->nMassPerturbed && md->bPerturbed[n])
+            {
+                *dekindl_sum += 0.5 * (md->massB[n] - md->massA[n]) * iprod(v_corrt, v_corrt);
             }
         }
     }
-    sfree(buf);
 
-    return nmin;
+    ekind->dekindl = 0;
+    for (int thread = 0; thread < nthread; thread++)
+    {
+        for (g = 0; g < opts->ngtc; g++)
+        {
+            if (bEkinAveVel)
+            {
+                m_add(tcstat[g].ekinf, ekind->ekin_work[thread][g], tcstat[g].ekinf);
+            }
+            else
+            {
+                m_add(tcstat[g].ekinh, ekind->ekin_work[thread][g], tcstat[g].ekinh);
+            }
+        }
+
+        ekind->dekindl += *ekind->dekindl_work[thread];
+    }
+
+    inc_nrnb(nrnb, eNR_EKIN, md->homenr);
+}
+
+static void calc_ke_part_visc(const matrix                   box,
+                              gmx::ArrayRef<const gmx::RVec> x,
+                              gmx::ArrayRef<const gmx::RVec> v,
+                              const t_grpopts*               opts,
+                              const t_mdatoms*               md,
+                              gmx_ekindata_t*                ekind,
+                              t_nrnb*                        nrnb,
+                              gmx_bool                       bEkinAveVel)
+{
+    int                         start = 0, homenr = md->homenr;
+    int                         g, d, n, m, gt = 0;
+    rvec                        v_corrt;
+    real                        hm;
+    gmx::ArrayRef<t_grp_tcstat> tcstat = ekind->tcstat;
+    t_cos_acc*                  cosacc = &(ekind->cosacc);
+    real                        dekindl;
+    real                        fac, cosz;
+    double                      mvcos;
+
+    for (g = 0; g < opts->ngtc; g++)
+    {
+        copy_mat(ekind->tcstat[g].ekinh, ekind->tcstat[g].ekinh_old);
+        clear_mat(ekind->tcstat[g].ekinh);
+    }
+    ekind->dekindl_old = ekind->dekindl;
+
+    fac     = 2 * M_PI / box[ZZ][ZZ];
+    mvcos   = 0;
+    dekindl = 0;
+    for (n = start; n < start + homenr; n++)
+    {
+        if (md->cTC)
+        {
+            gt = md->cTC[n];
+        }
+        hm = 0.5 * md->massT[n];
+
+        /* Note that the times of x and v differ by half a step */
+        /* MRS -- would have to be changed for VV */
+        cosz = std::cos(fac * x[n][ZZ]);
+        /* Calculate the amplitude of the new velocity profile */
+        mvcos += 2 * cosz * md->massT[n] * v[n][XX];
+
+        copy_rvec(v[n], v_corrt);
+        /* Subtract the profile for the kinetic energy */
+        v_corrt[XX] -= cosz * cosacc->vcos;
+        for (d = 0; (d < DIM); d++)
+        {
+            for (m = 0; (m < DIM); m++)
+            {
+                /* if we're computing a full step velocity, v_corrt[d] has v(t).  Otherwise, v(t+dt/2) */
+                if (bEkinAveVel)
+                {
+                    tcstat[gt].ekinf[m][d] += hm * v_corrt[m] * v_corrt[d];
+                }
+                else
+                {
+                    tcstat[gt].ekinh[m][d] += hm * v_corrt[m] * v_corrt[d];
+                }
+            }
+        }
+        if (md->nPerturbed && md->bPerturbed[n])
+        {
+            /* The minus sign here might be confusing.
+             * The kinetic contribution from dH/dl doesn't come from
+             * d m(l)/2 v^2 / dl, but rather from d p^2/2m(l) / dl,
+             * where p are the momenta. The difference is only a minus sign.
+             */
+            dekindl -= 0.5 * (md->massB[n] - md->massA[n]) * iprod(v_corrt, v_corrt);
+        }
+    }
+    ekind->dekindl = dekindl;
+    cosacc->mvcos  = mvcos;
+
+    inc_nrnb(nrnb, eNR_EKIN, homenr);
+}
+
+static void calc_ke_part(gmx::ArrayRef<const gmx::RVec> x,
+                         gmx::ArrayRef<const gmx::RVec> v,
+                         const matrix                   box,
+                         const t_grpopts*               opts,
+                         const t_mdatoms*               md,
+                         gmx_ekindata_t*                ekind,
+                         t_nrnb*                        nrnb,
+                         gmx_bool                       bEkinAveVel)
+{
+    if (ekind->cosacc.cos_accel == 0)
+    {
+        calc_ke_part_normal(v, opts, md, ekind, nrnb, bEkinAveVel);
+    }
+    else
+    {
+        calc_ke_part_visc(box, x, v, opts, md, ekind, nrnb, bEkinAveVel);
+    }
 }
 
 /* TODO Specialize this routine into init-time and loop-time versions?
    e.g. bReadEkin is only true when restoring from checkpoint */
-void compute_globals(gmx_global_stat*          gstat,
-                     t_commrec*                cr,
-                     const t_inputrec*         ir,
-                     t_forcerec*               fr,
-                     gmx_ekindata_t*           ekind,
-                     const rvec*               x,
-                     const rvec*               v,
-                     const matrix              box,
-                     real                      vdwLambda,
-                     const t_mdatoms*          mdatoms,
-                     t_nrnb*                   nrnb,
-                     t_vcm*                    vcm,
-                     gmx_wallcycle_t           wcycle,
-                     gmx_enerdata_t*           enerd,
-                     tensor                    force_vir,
-                     tensor                    shake_vir,
-                     tensor                    total_vir,
-                     tensor                    pres,
-                     rvec                      mu_tot,
-                     gmx::Constraints*         constr,
-                     gmx::SimulationSignaller* signalCoordinator,
-                     const matrix              lastbox,
-                     int*                      totalNumberOfBondedInteractions,
-                     gmx_bool*                 bSumEkinhOld,
-                     const int                 flags)
+void compute_globals(gmx_global_stat*               gstat,
+                     t_commrec*                     cr,
+                     const t_inputrec*              ir,
+                     t_forcerec*                    fr,
+                     gmx_ekindata_t*                ekind,
+                     gmx::ArrayRef<const gmx::RVec> x,
+                     gmx::ArrayRef<const gmx::RVec> v,
+                     const matrix                   box,
+                     const t_mdatoms*               mdatoms,
+                     t_nrnb*                        nrnb,
+                     t_vcm*                         vcm,
+                     gmx_wallcycle_t                wcycle,
+                     gmx_enerdata_t*                enerd,
+                     tensor                         force_vir,
+                     tensor                         shake_vir,
+                     tensor                         total_vir,
+                     tensor                         pres,
+                     gmx::Constraints*              constr,
+                     gmx::SimulationSignaller*      signalCoordinator,
+                     const matrix                   lastbox,
+                     int*                           totalNumberOfBondedInteractions,
+                     gmx_bool*                      bSumEkinhOld,
+                     const int                      flags)
 {
     gmx_bool bEner, bPres, bTemp;
     gmx_bool bStopCM, bGStat, bReadEkin, bEkinAveVel, bScaleEkin, bConstrain;
@@ -242,7 +381,7 @@ void compute_globals(gmx_global_stat*          gstat,
             if (PAR(cr))
             {
                 wallcycle_start(wcycle, ewcMoveE);
-                global_stat(gstat, cr, enerd, force_vir, shake_vir, mu_tot, ir, ekind, constr,
+                global_stat(gstat, cr, enerd, force_vir, shake_vir, ir, ekind, constr,
                             bStopCM ? vcm : nullptr, signalBuffer.size(), signalBuffer.data(),
                             totalNumberOfBondedInteractions, *bSumEkinhOld, flags);
                 wallcycle_stop(wcycle, ewcMoveE);
@@ -283,210 +422,7 @@ void compute_globals(gmx_global_stat*          gstat,
          * Use the box from last timestep since we already called update().
          */
 
-        enerd->term[F_PRES] = calc_pres(fr->ePBC, ir->nwall, lastbox, ekind->ekin, total_vir, pres);
-    }
-
-    /* ##########  Long range energy information ###### */
-    if ((bEner || bPres) && fr->dispersionCorrection)
-    {
-        /* Calculate long range corrections to pressure and energy */
-        /* this adds to enerd->term[F_PRES] and enerd->term[F_ETOT],
-           and computes enerd->term[F_DISPCORR].  Also modifies the
-           total_vir and pres tensors */
-
-        const DispersionCorrection::Correction correction =
-                fr->dispersionCorrection->calculate(lastbox, vdwLambda);
-
-        if (bEner)
-        {
-            enerd->term[F_DISPCORR] = correction.energy;
-            enerd->term[F_EPOT] += correction.energy;
-            enerd->term[F_DVDL_VDW] += correction.dvdl;
-        }
-        if (bPres)
-        {
-            correction.correctVirial(total_vir);
-            correction.correctPressure(pres);
-            enerd->term[F_PDISPCORR] = correction.pressure;
-            enerd->term[F_PRES] += correction.pressure;
-        }
-    }
-}
-
-void setCurrentLambdasRerun(int64_t           step,
-                            const t_lambda*   fepvals,
-                            const t_trxframe* rerun_fr,
-                            const double* /*lam0*/,
-                            t_state* globalState)
-{
-    GMX_RELEASE_ASSERT(globalState != nullptr,
-                       "setCurrentLambdasGlobalRerun should be called with a valid state object");
-
-    if (rerun_fr->bLambda)
-    {
-        if (fepvals->delta_lambda == 0)
-        {
-            globalState->lambda[efptFEP] = rerun_fr->lambda;
-        }
-        else
-        {
-            /* find out between which two value of lambda we should be */
-            const real fracSimulationLambda = step * fepvals->delta_lambda;
-
-            // Set initial lambda value for the simulation either from initialFEPStateIndex or,
-            // if not set, from the initial lambda.
-            double initialGlobalLambda = 0;
-            if (fepvals->init_fep_state > -1)
-            {
-                if (fepvals->n_lambda > 1)
-                {
-                    initialGlobalLambda =
-                            static_cast<double>(fepvals->init_fep_state) / (fepvals->n_lambda - 1);
-                }
-            }
-            else
-            {
-                if (fepvals->init_lambda > -1)
-                {
-                    initialGlobalLambda = fepvals->init_lambda;
-                }
-            }
-
-            const double globalLambda = initialGlobalLambda + fracSimulationLambda;
-
-            // when there is no lambda value array, set all lambdas to steps * deltaLambdaPerStep
-            if (fepvals->n_lambda <= 0)
-            {
-                std::fill(std::begin(globalState->lambda), std::end(globalState->lambda), globalLambda);
-                return;
-            }
-
-            GMX_ASSERT(
-                    globalLambda <= 1 || gmx_within_tol(globalLambda, 1, 1e-5),
-                    "Lambda may not be larger than one when interpolating an array of multi-lambda "
-                    "values.");
-            GMX_ASSERT(globalLambda >= 0 || gmx_within_tol(globalLambda, 0, 1e-5),
-                       "Lambda may not be negative when interpolating an array of multi-lambda "
-                       "values.");
-
-            // find out between which two value lambda array elements to interpolate
-            // at the boundary of the lambda array, return the boundary array values
-            const int fepStateLeft =
-                    std::max(0, static_cast<int>(std::floor(globalLambda * (fepvals->n_lambda - 1))));
-
-            const int fepStateRight = std::min(fepvals->n_lambda - 1, fepStateLeft + 1);
-
-            // interpolate between this state and the next
-            const double fracBetween = globalLambda * (fepvals->n_lambda - 1) - fepStateLeft;
-            for (int i = 0; i < efptNR; i++)
-            {
-                globalState->lambda[i] = fepvals->all_lambda[i][fepStateLeft]
-                                         + fracBetween
-                                                   * (fepvals->all_lambda[i][fepStateRight]
-                                                      - fepvals->all_lambda[i][fepStateLeft]);
-            }
-        }
-    }
-    else if (rerun_fr->bFepState)
-    {
-        globalState->fep_state = rerun_fr->fep_state;
-        for (int i = 0; i < efptNR; i++)
-        {
-            globalState->lambda[i] = fepvals->all_lambda[i][globalState->fep_state];
-        }
-    }
-}
-
-void setCurrentLambdasLocal(const int64_t   step,
-                            const t_lambda* fepvals,
-                            const double* /*lam0*/,
-                            gmx::ArrayRef<real> lambda,
-                            const int           currentFEPState)
-/* find the current lambdas.  If rerunning, we either read in a state, or a lambda value,
-   requiring different logic. */
-{
-    if (fepvals->delta_lambda != 0)
-    {
-        /* find out between which two value of lambda we should be */
-        const real fracSimulationLambda = step * fepvals->delta_lambda;
-
-        // Set initial lambda value for the simulation either from initialFEPStateIndex or,
-        // if not set, from the initial lambda.
-        double initialGlobalLambda = 0;
-        if (fepvals->init_fep_state > -1)
-        {
-            if (fepvals->n_lambda > 1)
-            {
-                initialGlobalLambda =
-                        static_cast<double>(fepvals->init_fep_state) / (fepvals->n_lambda - 1);
-            }
-        }
-        else
-        {
-            if (fepvals->init_lambda > -1)
-            {
-                initialGlobalLambda = fepvals->init_lambda;
-            }
-        }
-
-        const double globalLambda = initialGlobalLambda + fracSimulationLambda;
-
-        // when there is no lambda value array, set all lambdas to steps * deltaLambdaPerStep
-        if (fepvals->n_lambda <= 0)
-        {
-            std::fill(std::begin(lambda), std::end(lambda), globalLambda);
-            return;
-        }
-
-        GMX_ASSERT(globalLambda <= 1 || gmx_within_tol(globalLambda, 1, 1e-5),
-                   "Lambda may not be larger than one when interpolating an array of multi-lambda "
-                   "values.");
-        GMX_ASSERT(
-                globalLambda >= 0 || gmx_within_tol(globalLambda, 0, 1e-5),
-                "Lambda may not be negative when interpolating an array of multi-lambda values.");
-
-        // find out between which two value lambda array elements to interpolate
-        // at the boundary of the lambda array, return the boundary array values
-        const int fepStateLeft =
-                std::max(0, static_cast<int>(std::floor(globalLambda * (fepvals->n_lambda - 1))));
-
-        const int fepStateRight = std::min(fepvals->n_lambda - 1, fepStateLeft + 1);
-
-        // interpolate between this state and the next
-        const double fracBetween = globalLambda * (fepvals->n_lambda - 1) - fepStateLeft;
-        for (int i = 0; i < efptNR; i++)
-        {
-            lambda[i] = fepvals->all_lambda[i][fepStateLeft]
-                        + fracBetween
-                                  * (fepvals->all_lambda[i][fepStateRight]
-                                     - fepvals->all_lambda[i][fepStateLeft]);
-        }
-    }
-    else
-    {
-        /* if < 0, fep_state was never defined, and we should not set lambda from the state */
-        if (currentFEPState > -1)
-        {
-            GMX_ASSERT(currentFEPState < fepvals->n_lambda,
-                       "Current FEP state may not be larger than number of given states.");
-            for (int i = 0; i < efptNR; i++)
-            {
-                lambda[i] = fepvals->all_lambda[i][currentFEPState];
-            }
-            return;
-        }
-
-        if (fepvals->init_fep_state > -1)
-        {
-            GMX_ASSERT(fepvals->init_fep_state < fepvals->n_lambda,
-                       "Initial FEP state may not be larger than number of given states.");
-            for (int i = 0; i < efptNR; i++)
-            {
-                lambda[i] = fepvals->all_lambda[i][fepvals->init_fep_state];
-            }
-            return;
-        }
-        std::fill(std::begin(lambda), std::end(lambda), fepvals->init_lambda);
+        enerd->term[F_PRES] = calc_pres(fr->pbcType, ir->nwall, lastbox, ekind->ekin, total_vir, pres);
     }
 }
 
@@ -583,7 +519,7 @@ void rerun_parallel_comm(t_commrec* cr, t_trxframe* fr, gmx_bool* bLastStep)
     }
     xp = fr->x;
     vp = fr->v;
-    gmx_bcast(sizeof(*fr), fr, cr);
+    gmx_bcast(sizeof(*fr), fr, cr->mpi_comm_mygroup);
     fr->x = xp;
     fr->v = vp;
 
@@ -611,7 +547,7 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
     }
 
     state->nnhpres = 0;
-    if (ir->ePBC != epbcNONE)
+    if (ir->pbcType != PbcType::No)
     {
         state->flags |= (1 << estBOX);
         if (inputrecPreserveShape(ir))
@@ -636,7 +572,7 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
             state->flags |= (1 << estVETA);
             state->flags |= (1 << estVOL0);
         }
-        if (ir->epc == epcBERENDSEN)
+        if (ir->epc == epcBERENDSEN || ir->epc == epcCRESCALE)
         {
             state->flags |= (1 << estBAROS_INT);
         }

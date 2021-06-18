@@ -34,6 +34,12 @@ src/gromacs/nbnxm/pairlist_simd_4xm.h: warning: should include "simd.h"
 src/gromacs/nbnxm/kernels_simd_2xmm/kernel_common.h: warning: should include "nbnxm_simd.h"
 src/gromacs/nbnxm/kernels_simd_4xm/kernel_common.h: warning: should include "nbnxm_simd.h"
 
+# This seems to be a false positive
+src/gromacs/nbnxm/cuda/nbnxm_cuda_types.h: error: NbnxmGpu: is in internal file(s), but appears in public documentation
+
+# False positive caused by forward-declaration of BasicVector in src/testutils/refdata.h
+src/gromacs/math/vectypes.h: error: gmx::BasicVector: is in library file(s), but appears in public documentation
+
 # Temporary while we change the SIMD implementation
 src/gromacs/simd/impl_sparc64_hpc_ace/impl_sparc64_hpc_ace_common.h: warning: should include "simd.h"
 
@@ -46,7 +52,7 @@ src/gromacs/tables/quadraticsplinetable.h: warning: includes "simd.h" unnecessar
 # These are specific to Folding@Home, and easiest to suppress here
 src/gmxpre.h: warning: includes non-local file as "swindirect.h"
 
-# New external API (see https://redmine.gromacs.org/issues/2586) has some unresolved
+# New external API (see https://gitlab.com/gromacs/gromacs/-/issues/2586) has some unresolved
 # conflicts with previous definitions of public API, installed API, and other things
 # described or implemented in check-source.py, gmxtree.py, gmxtree.rst, and others
 # TODO: resolve definitions, update testing heuristics, and activate policy checks

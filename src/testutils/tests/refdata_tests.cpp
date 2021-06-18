@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2011,2012,2013,2014,2015,2016,2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2011,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2016,2017,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -56,16 +57,18 @@
 #include "testutils/testasserts.h"
 #include "testutils/testexceptions.h"
 
+
+namespace gmx
+{
+namespace test
+{
 namespace
 {
-
-using gmx::test::TestReferenceChecker;
-using gmx::test::TestReferenceData;
 
 TEST(ReferenceDataTest, HandlesSimpleData)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkBoolean(true, "bool");
         checker.checkInteger(1, "int");
@@ -77,7 +80,7 @@ TEST(ReferenceDataTest, HandlesSimpleData)
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkBoolean(true, "bool");
         checker.checkInteger(1, "int");
@@ -96,14 +99,14 @@ TEST(ReferenceDataTest, HandlesFloatingPointData)
     const double doubleValue = 4.0 / 3.0;
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkDouble(doubleValue, "double");
         checker.checkReal(doubleValue, "real");
         checker.checkFloat(floatValue, "float");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkDouble(doubleValue, "double");
         checker.checkReal(floatValue, "real");
@@ -115,14 +118,14 @@ TEST(ReferenceDataTest, HandlesFloatingPointData)
 TEST(ReferenceDataTest, HandlesPresenceChecks)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_TRUE(checker.checkPresent(true, "present"));
         checker.checkInteger(1, "present");
         EXPECT_FALSE(checker.checkPresent(false, "absent"));
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         // Assigned to avoid warnings about potentially uninitialized value.
         bool bRet = true;
@@ -140,13 +143,13 @@ TEST(ReferenceDataTest, HandlesPresenceChecks)
 TEST(ReferenceDataTest, HandlesStringBlockData)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkTextBlock("Line1\nLine2\n", "block");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkTextBlock("Line1\nLine2\n", "block");
         checker.checkString("Line1\nLine2\n", "block");
@@ -162,14 +165,14 @@ TEST(ReferenceDataTest, HandlesVectorData)
     double vecd[3] = { -2.3, 1.43, 2.5 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkVector(veci, "ivec");
         checker.checkVector(vecf, "fvec");
         checker.checkVector(vecd, "dvec");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkVector(veci, "ivec");
         checker.checkVector(vecf, "fvec");
@@ -183,12 +186,12 @@ TEST(ReferenceDataTest, HandlesSequenceData)
     const int seq[5] = { -1, 3, 5, 2, 4 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkSequenceArray(5, seq, "seq");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkSequenceArray(5, seq, "seq");
     }
@@ -207,12 +210,12 @@ TEST(ReferenceDataTest, HandlesSequenceOfCustomData)
     const dvec seq[] = { { -3, 4, 5 }, { -2.3, 5, 0 } };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkSequence(std::begin(seq), std::end(seq), "seq", checkCustomVector);
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkSequence(std::begin(seq), std::end(seq), "seq", checkCustomVector);
     }
@@ -224,7 +227,7 @@ TEST(ReferenceDataTest, HandlesIncorrectData)
     int seq[5] = { -1, 3, 5, 2, 4 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkDouble(0.5, "real");
@@ -232,7 +235,7 @@ TEST(ReferenceDataTest, HandlesIncorrectData)
         checker.checkSequenceArray(5, seq, "seq");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkInteger(2, "int"), "");
         EXPECT_NONFATAL_FAILURE(checker.checkDouble(0.3, "real"), "");
@@ -246,13 +249,13 @@ TEST(ReferenceDataTest, HandlesIncorrectData)
 TEST(ReferenceDataTest, HandlesIncorrectDataType)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkCompound("Compound", "compound");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkString("1", "int"), "");
         EXPECT_NONFATAL_FAILURE(checker.checkCompound("OtherCompound", "compound"), "");
@@ -265,13 +268,13 @@ TEST(ReferenceDataTest, HandlesMissingData)
     const int seq[5] = { -1, 3, 5, 2, 4 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkSequenceArray(5, seq, "seq");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkInteger(1, "missing"), "");
         EXPECT_NONFATAL_FAILURE(checker.checkSequenceArray(5, seq, "missing"), "");
@@ -286,14 +289,14 @@ TEST(ReferenceDataTest, HandlesUncheckedData)
     const int seq[5] = { -1, 3, 5, 2, 4 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkSequenceArray(5, seq, "seq");
         checker.checkUnusedEntries();
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         EXPECT_NONFATAL_FAILURE(checker.checkUnusedEntries(), "");
@@ -306,14 +309,14 @@ TEST(ReferenceDataTest, HandlesUncheckedDataInSequence)
     const int seq[5] = { -1, 3, 5, 2, 4 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkSequenceArray(5, seq, "seq");
         checker.checkUnusedEntries();
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         EXPECT_NONFATAL_FAILURE(checker.checkSequenceArray(3, seq, "seq"), "");
@@ -327,7 +330,7 @@ TEST(ReferenceDataTest, HandlesUncheckedDataInSequence)
 TEST(ReferenceDataTest, HandlesUncheckedDataInCompound)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         TestReferenceChecker compound(checker.checkCompound("Compound", "Compound"));
         compound.checkInteger(1, "int1");
@@ -337,7 +340,7 @@ TEST(ReferenceDataTest, HandlesUncheckedDataInCompound)
         checker.checkUnusedEntries();
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         TestReferenceChecker compound(checker.checkCompound("Compound", "Compound"));
         compound.checkInteger(1, "int1");
@@ -352,7 +355,7 @@ TEST(ReferenceDataTest, HandlesAnys)
 {
     using gmx::Any;
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkAny(Any::create<bool>(true), "bool");
         checker.checkAny(Any::create<int>(1), "int");
@@ -360,7 +363,7 @@ TEST(ReferenceDataTest, HandlesAnys)
         checker.checkAny(Any::create<std::string>("foo"), "str");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkAny(Any::create<bool>(true), "bool");
         checker.checkAny(Any::create<int>(1), "int");
@@ -392,12 +395,12 @@ TEST(ReferenceDataTest, HandlesKeyValueTree)
 {
     gmx::KeyValueTreeObject tree = buildKeyValueTree(true);
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkKeyValueTreeObject(tree, "tree");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkKeyValueTreeObject(tree, "tree");
     }
@@ -407,12 +410,12 @@ TEST(ReferenceDataTest, HandlesKeyValueTree)
 TEST(ReferenceDataTest, HandlesKeyValueTreeExtraKey)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkKeyValueTreeObject(buildKeyValueTree(false), "tree");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkKeyValueTreeObject(buildKeyValueTree(true), "tree"),
                                 "");
@@ -423,12 +426,12 @@ TEST(ReferenceDataTest, HandlesKeyValueTreeExtraKey)
 TEST(ReferenceDataTest, HandlesKeyValueTreeMissingKey)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkKeyValueTreeObject(buildKeyValueTree(true), "tree");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkKeyValueTreeObject(buildKeyValueTree(false), "tree"),
                                 "");
@@ -440,7 +443,7 @@ TEST(ReferenceDataTest, HandlesAnysWithIncorrectValue)
 {
     using gmx::Any;
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkAny(Any::create<bool>(true), "bool");
         checker.checkAny(Any::create<int>(1), "int");
@@ -448,7 +451,7 @@ TEST(ReferenceDataTest, HandlesAnysWithIncorrectValue)
         checker.checkAny(Any::create<std::string>("foo"), "str");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkAny(Any::create<bool>(false), "bool"), "");
         EXPECT_NONFATAL_FAILURE(checker.checkAny(Any::create<int>(2), "int"), "");
@@ -462,14 +465,14 @@ TEST(ReferenceDataTest, HandlesAnysWithIncorrectType)
 {
     using gmx::Any;
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkAny(Any::create<bool>(true), "bool");
         checker.checkAny(Any::create<int>(1), "int");
         checker.checkAny(Any::create<double>(3.5), "real");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_NONFATAL_FAILURE(checker.checkAny(Any::create<int>(1), "bool"), "");
         EXPECT_NONFATAL_FAILURE(checker.checkAny(Any::create<bool>(true), "int"), "");
@@ -484,7 +487,7 @@ TEST(ReferenceDataTest, HandlesMissingReferenceDataFile)
 
     EXPECT_NONFATAL_FAILURE(
             {
-                TestReferenceData    data(gmx::test::erefdataCompare);
+                TestReferenceData    data(ReferenceDataMode::Compare);
                 TestReferenceChecker checker(data.rootChecker());
                 checker.checkInteger(1, "int");
                 checker.checkDouble(0.5, "real");
@@ -498,7 +501,7 @@ TEST(ReferenceDataTest, HandlesMissingReferenceDataFile)
 TEST(ReferenceDataTest, HandlesSpecialCharactersInStrings)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         // Note that '\r' is not handled correctly in string or
         // stringblock (see the TODO in createElementContents), so
@@ -507,7 +510,7 @@ TEST(ReferenceDataTest, HandlesSpecialCharactersInStrings)
         checker.checkTextBlock("\"<'>\n&\\/;", "stringblock");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("\"<'>\n&\\/;", "string");
         checker.checkTextBlock("\"<'>\n&\\/;", "stringblock");
@@ -519,7 +522,7 @@ TEST(ReferenceDataTest, HandlesStringsWithTextAndWhitespace)
     const char* strings[] = { "  test", "test  ",   "  test  ", "the test",
                               "\ntest", "\n\ntest", "test\n",   "test\n\n" };
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         for (const auto& s : strings)
         {
@@ -528,7 +531,7 @@ TEST(ReferenceDataTest, HandlesStringsWithTextAndWhitespace)
         }
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         for (const auto& s : strings)
         {
@@ -541,21 +544,21 @@ TEST(ReferenceDataTest, HandlesStringsWithTextAndWhitespace)
 TEST(ReferenceDataTest, HandlesEmptyStrings)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("", "Empty");
         // GROMACS cannot use an empty line in a reference data String
         // until https://github.com/leethomason/tinyxml2/issues/432 is
         // resolved.
-        EXPECT_THROW_GMX(checker.checkString("\n", "EmptyLine"), gmx::test::TestException);
+        EXPECT_THROW_GMX(checker.checkString("\n", "EmptyLine"), TestException);
         checker.checkTextBlock("", "EmptyBlock");
         checker.checkTextBlock("\n", "EmptyLineBlock");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("", "Empty");
-        EXPECT_THROW_GMX(checker.checkString("\n", "EmptyLine"), gmx::test::TestException);
+        EXPECT_THROW_GMX(checker.checkString("\n", "EmptyLine"), TestException);
         checker.checkTextBlock("", "EmptyBlock");
         checker.checkTextBlock("\n", "EmptyLineBlock");
     }
@@ -573,12 +576,12 @@ TEST(ReferenceDataTest, HandlesEmbeddedCdataEndTagInTextBlock)
        don't actually depend on this behaviour, but it might be nice
        to have / know about.) */
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkTextBlock(" ]]> ", "stringblock");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkTextBlock(" ]]> ", "stringblock");
     }
@@ -590,13 +593,13 @@ TEST(ReferenceDataTest, HandlesSequenceItemIndices)
     int seq[5] = { -1, 3, 5, 2, 4 };
 
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkSequenceArray(5, seq, "seq");
         checker.checkSequenceArray(5, seq, "seq2");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         seq[0] = 2;
         EXPECT_NONFATAL_FAILURE(checker.checkSequenceArray(5, seq, "seq"), "seq/[0]");
@@ -611,7 +614,7 @@ TEST(ReferenceDataTest, HandlesSequenceItemIndices)
 TEST(ReferenceDataTest, HandlesMultipleChecksAgainstSameData)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("Test", "string");
         EXPECT_NONFATAL_FAILURE(checker.checkString("Test2", "string"), "");
@@ -619,7 +622,7 @@ TEST(ReferenceDataTest, HandlesMultipleChecksAgainstSameData)
         EXPECT_NONFATAL_FAILURE(checker.checkTextBlock("TestString2", "stringblock"), "");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("Test", "string");
         EXPECT_NONFATAL_FAILURE(checker.checkString("Test2", "string"), "");
@@ -632,13 +635,13 @@ TEST(ReferenceDataTest, HandlesMultipleChecksAgainstSameData)
 TEST(ReferenceDataTest, HandlesMultipleNullIds)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("Test", nullptr);
         checker.checkString("Test2", nullptr);
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("Test", nullptr);
         checker.checkString("Test2", nullptr);
@@ -650,7 +653,7 @@ TEST(ReferenceDataTest, HandlesMultipleNullIds)
 TEST(ReferenceDataTest, HandlesMultipleComparisonsAgainstNullIds)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int1");
         checker.checkString("Test", nullptr);
@@ -660,7 +663,7 @@ TEST(ReferenceDataTest, HandlesMultipleComparisonsAgainstNullIds)
         checker.checkString("Test2", nullptr);
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int1");
         checker.checkString("Test", nullptr);
@@ -680,14 +683,14 @@ TEST(ReferenceDataTest, HandlesMultipleComparisonsAgainstNullIds)
 TEST(ReferenceDataTest, HandlesReadingValues)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkUChar('A', "char");
         checker.checkInteger(1, "int");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         EXPECT_EQ('A', checker.readUChar("char"));
         EXPECT_EQ(1, checker.readInteger("int"));
@@ -699,7 +702,7 @@ TEST(ReferenceDataTest, HandlesReadingValues)
 TEST(ReferenceDataTest, HandlesUpdateChangedWithoutChanges)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkString("Test", "string");
@@ -707,7 +710,7 @@ TEST(ReferenceDataTest, HandlesUpdateChangedWithoutChanges)
         compound.checkInteger(2, "int");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateChanged);
+        TestReferenceData    data(ReferenceDataMode::UpdateChanged);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkString("Test", "string");
@@ -715,7 +718,7 @@ TEST(ReferenceDataTest, HandlesUpdateChangedWithoutChanges)
         compound.checkInteger(2, "int");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkString("Test", "string");
@@ -727,19 +730,19 @@ TEST(ReferenceDataTest, HandlesUpdateChangedWithoutChanges)
 TEST(ReferenceDataTest, HandlesUpdateChangedWithValueChanges)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateChanged);
+        TestReferenceData    data(ReferenceDataMode::UpdateChanged);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(2, "int");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(2, "int");
         checker.checkString("Test", "string");
@@ -749,19 +752,19 @@ TEST(ReferenceDataTest, HandlesUpdateChangedWithValueChanges)
 TEST(ReferenceDataTest, HandlesUpdateChangedWithTypeChanges)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "foo");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateChanged);
+        TestReferenceData    data(ReferenceDataMode::UpdateChanged);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("foo", "foo");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkString("foo", "foo");
         checker.checkString("Test", "string");
@@ -771,21 +774,21 @@ TEST(ReferenceDataTest, HandlesUpdateChangedWithTypeChanges)
 TEST(ReferenceDataTest, HandlesUpdateChangedWithCompoundChanges)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "1");
         TestReferenceChecker compound(checker.checkCompound("Compound", "2"));
         compound.checkInteger(2, "int");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateChanged);
+        TestReferenceData    data(ReferenceDataMode::UpdateChanged);
         TestReferenceChecker checker(data.rootChecker());
         TestReferenceChecker compound(checker.checkCompound("Compound", "1"));
         compound.checkInteger(2, "int");
         checker.checkString("Test", "2");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         TestReferenceChecker compound(checker.checkCompound("Compound", "1"));
         compound.checkInteger(2, "int");
@@ -796,21 +799,23 @@ TEST(ReferenceDataTest, HandlesUpdateChangedWithCompoundChanges)
 TEST(ReferenceDataTest, HandlesUpdateChangedWithRemovedEntries)
 {
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateAll);
+        TestReferenceData    data(ReferenceDataMode::UpdateAll);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(1, "int");
         checker.checkString("Test", "string");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataUpdateChanged);
+        TestReferenceData    data(ReferenceDataMode::UpdateChanged);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(2, "int");
     }
     {
-        TestReferenceData    data(gmx::test::erefdataCompare);
+        TestReferenceData    data(ReferenceDataMode::Compare);
         TestReferenceChecker checker(data.rootChecker());
         checker.checkInteger(2, "int");
     }
 }
 
 } // namespace
+} // namespace test
+} // namespace gmx

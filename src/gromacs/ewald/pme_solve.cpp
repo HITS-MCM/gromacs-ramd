@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -52,6 +53,7 @@
 #include "gromacs/utility/smalloc.h"
 
 #include "pme_internal.h"
+#include "pme_output.h"
 
 #if GMX_SIMD_HAVE_REAL
 /* Turn on arbitrary width SIMD intrinsics for PME solve */
@@ -327,7 +329,7 @@ using PME_T = SimdReal;
 using PME_T = real;
 #endif
 
-int solve_pme_yzx(const gmx_pme_t* pme, t_complex* grid, real vol, gmx_bool bEnerVir, int nthread, int thread)
+int solve_pme_yzx(const gmx_pme_t* pme, t_complex* grid, real vol, bool computeEnergyAndVirial, int nthread, int thread)
 {
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
@@ -431,7 +433,7 @@ int solve_pme_yzx(const gmx_pme_t* pme, t_complex* grid, real vol, gmx_bool bEne
         }
         kxend = local_offset[XX] + local_ndata[XX];
 
-        if (bEnerVir)
+        if (computeEnergyAndVirial)
         {
             /* More expensive inner loop, especially because of the storage
              * of the mh elements in array's.
@@ -561,7 +563,7 @@ int solve_pme_yzx(const gmx_pme_t* pme, t_complex* grid, real vol, gmx_bool bEne
         }
     }
 
-    if (bEnerVir)
+    if (computeEnergyAndVirial)
     {
         /* Update virial with local values.
          * The virial is symmetric by definition.
@@ -584,7 +586,13 @@ int solve_pme_yzx(const gmx_pme_t* pme, t_complex* grid, real vol, gmx_bool bEne
     return local_ndata[YY] * local_ndata[XX];
 }
 
-int solve_pme_lj_yzx(const gmx_pme_t* pme, t_complex** grid, gmx_bool bLB, real vol, gmx_bool bEnerVir, int nthread, int thread)
+int solve_pme_lj_yzx(const gmx_pme_t* pme,
+                     t_complex**      grid,
+                     gmx_bool         bLB,
+                     real             vol,
+                     bool             computeEnergyAndVirial,
+                     int              nthread,
+                     int              thread)
 {
     /* do recip sum over local cells in grid */
     /* y major, z middle, x minor or continuous */
@@ -667,7 +675,7 @@ int solve_pme_lj_yzx(const gmx_pme_t* pme, t_complex** grid, gmx_bool bLB, real 
 
         kxstart = local_offset[XX];
         kxend   = local_offset[XX] + local_ndata[XX];
-        if (bEnerVir)
+        if (computeEnergyAndVirial)
         {
             /* More expensive inner loop, especially because of the
              * storage of the mh elements in array's.  Because x is the
@@ -890,7 +898,7 @@ int solve_pme_lj_yzx(const gmx_pme_t* pme, t_complex** grid, gmx_bool bLB, real 
             }
         }
     }
-    if (bEnerVir)
+    if (computeEnergyAndVirial)
     {
         work->vir_lj[XX][XX] = 0.25 * virxx;
         work->vir_lj[YY][YY] = 0.25 * viryy;

@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -55,95 +55,128 @@ constexpr int c_pmeOrder = 4;
 constexpr bool c_wrapX = true;
 constexpr bool c_wrapY = true;
 
+constexpr int c_stateA = 0;
+constexpr int c_stateB = 1;
+
 //! PME CUDA kernels forward declarations. Kernels are documented in their respective files.
-template<const int order, const bool computeSplines, const bool spreadCharges, const bool wrapX, const bool wrapY, const bool writeGlobal, const bool orderThreads>
+template<int order, bool computeSplines, bool spreadCharges, bool wrapX, bool wrapY, int mode, bool writeGlobal, ThreadsPerAtom threadsPerAtom>
 void pme_spline_and_spread_kernel(const PmeGpuCudaKernelParams kernelParams);
 
 // Add extern declarations to inform that there will be a definition
 // provided in another translation unit.
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, true, true>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, true, false>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, true, true>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, true, false>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, true, true>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, true, false>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, false, true>(
-        const PmeGpuCudaKernelParams);
-extern template void pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, false, false>(
-        const PmeGpuCudaKernelParams);
+// clang-format off
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::Order>(const PmeGpuCudaKernelParams);
+extern template void
+pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
 
-template<GridOrdering gridOrdering, bool computeEnergyAndVirial>
+template<GridOrdering gridOrdering, bool computeEnergyAndVirial, const int gridIndex> /* It is significantly slower to pass gridIndex as a kernel parameter */
 void pme_solve_kernel(const PmeGpuCudaKernelParams kernelParams);
 
 // Add extern declarations to inform that there will be a definition
 // provided in another translation unit.
-extern template void pme_solve_kernel<GridOrdering::XYZ, false>(const PmeGpuCudaKernelParams);
-extern template void pme_solve_kernel<GridOrdering::XYZ, true>(const PmeGpuCudaKernelParams);
-extern template void pme_solve_kernel<GridOrdering::YZX, false>(const PmeGpuCudaKernelParams);
-extern template void pme_solve_kernel<GridOrdering::YZX, true>(const PmeGpuCudaKernelParams);
+// clang-format off
+extern template void pme_solve_kernel<GridOrdering::XYZ, false, c_stateA>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::XYZ, true, c_stateA>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::YZX, false, c_stateA>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::YZX, true, c_stateA>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::XYZ, false, c_stateB>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::XYZ, true, c_stateB>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::YZX, false, c_stateB>(const PmeGpuCudaKernelParams);
+extern template void pme_solve_kernel<GridOrdering::YZX, true, c_stateB>(const PmeGpuCudaKernelParams);
+// clang-format on
 
-template<const int order, const bool overwriteForces, const bool wrapX, const bool wrapY, const bool readGlobal, const bool orderThreads>
+template<int order, bool wrapX, bool wrapY, int nGrids, bool readGlobal, ThreadsPerAtom threadsPerAtom>
 void pme_gather_kernel(const PmeGpuCudaKernelParams kernelParams);
 
 // Add extern declarations to inform that there will be a definition
 // provided in another translation unit.
-extern template void pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, true, true>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, false, true>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, true, true>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, false, true>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, true, false>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, false, false>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, true, false>(const PmeGpuCudaKernelParams);
-extern template void pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, false, false>(const PmeGpuCudaKernelParams);
+// clang-format off
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>        (const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::Order>       (const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared> (const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::OrderSquared>(const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>          (const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::Order>         (const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>   (const PmeGpuCudaKernelParams);
+extern template void pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::OrderSquared>  (const PmeGpuCudaKernelParams);
+// clang-format on
 
-PmeGpuProgramImpl::PmeGpuProgramImpl(const gmx_device_info_t*)
+PmeGpuProgramImpl::PmeGpuProgramImpl(const DeviceContext& deviceContext) :
+    deviceContext_(deviceContext)
 {
     // kernel parameters
-    warpSize              = warp_size;
+    warpSize_             = warp_size;
     spreadWorkGroupSize   = c_spreadMaxThreadsPerBlock;
     solveMaxWorkGroupSize = c_solveMaxThreadsPerBlock;
     gatherWorkGroupSize   = c_gatherMaxThreadsPerBlock;
 
-    /*!
-     * Not all combinations of the splineAndSpread, spline and Spread kernels are required
+    /* Not all combinations of the splineAndSpread, spline and Spread kernels are required
      * If only the spline (without the spread) then it does not make sense not to write the data to global memory
      * Similarly the spread kernel (without the spline) implies that we should read the spline data from global memory
      */
-    splineAndSpreadKernel =
-            pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, false, false>;
-    splineAndSpreadKernelThPerAtom4 =
-            pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, false, true>;
-    splineAndSpreadKernelWriteSplines =
-            pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, true, false>;
-    splineAndSpreadKernelWriteSplinesThPerAtom4 =
-            pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, true, true>;
-    splineKernel = pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, true, false>;
-    splineKernelThPerAtom4 =
-            pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, true, true>;
-    spreadKernel = pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, true, false>;
-    spreadKernelThPerAtom4 =
-            pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, true, true>;
-    gatherKernel            = pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, false, false>;
-    gatherKernelThPerAtom4  = pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, false, true>;
-    gatherKernelReadSplines = pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, true, false>;
-    gatherKernelReadSplinesThPerAtom4 = pme_gather_kernel<c_pmeOrder, true, c_wrapX, c_wrapY, true, true>;
-    gatherReduceWithInputKernel = pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, false, false>;
-    gatherReduceWithInputKernelThPerAtom4 =
-            pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, false, true>;
-    gatherReduceWithInputKernelReadSplines =
-            pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, true, false>;
-    gatherReduceWithInputKernelReadSplinesThPerAtom4 =
-            pme_gather_kernel<c_pmeOrder, false, c_wrapX, c_wrapY, true, true>;
-    solveXYZKernel       = pme_solve_kernel<GridOrdering::XYZ, false>;
-    solveXYZEnergyKernel = pme_solve_kernel<GridOrdering::XYZ, true>;
-    solveYZXKernel       = pme_solve_kernel<GridOrdering::YZX, false>;
-    solveYZXEnergyKernel = pme_solve_kernel<GridOrdering::YZX, true>;
+    // clang-format off
+    splineAndSpreadKernelSingle                       = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::OrderSquared>;
+    splineAndSpreadKernelThPerAtom4Single             = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::Order>;
+    splineAndSpreadKernelWriteSplinesSingle           = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>;
+    splineAndSpreadKernelWriteSplinesThPerAtom4Single = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>;
+    splineKernelSingle                                = pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>;
+    splineKernelThPerAtom4Single                      = pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>;
+    spreadKernelSingle                                = pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>;
+    spreadKernelThPerAtom4Single                      = pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>;
+    splineAndSpreadKernelDual                         = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::OrderSquared>;
+    splineAndSpreadKernelThPerAtom4Dual               = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::Order>;
+    splineAndSpreadKernelWriteSplinesDual             = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>;
+    splineAndSpreadKernelWriteSplinesThPerAtom4Dual   = pme_spline_and_spread_kernel<c_pmeOrder, true, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>;
+    splineKernelDual                                  = pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>;
+    splineKernelThPerAtom4Dual                        = pme_spline_and_spread_kernel<c_pmeOrder, true, false, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>;
+    spreadKernelDual                                  = pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>;
+    spreadKernelThPerAtom4Dual                        = pme_spline_and_spread_kernel<c_pmeOrder, false, true, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>;
+    gatherKernelSingle                                = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::OrderSquared>;
+    gatherKernelThPerAtom4Single                      = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, false, ThreadsPerAtom::Order>;
+    gatherKernelReadSplinesSingle                     = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::OrderSquared>;
+    gatherKernelReadSplinesThPerAtom4Single           = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 1, true, ThreadsPerAtom::Order>;
+    gatherKernelDual                                  = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::OrderSquared>;
+    gatherKernelThPerAtom4Dual                        = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, false, ThreadsPerAtom::Order>;
+    gatherKernelReadSplinesDual                       = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::OrderSquared>;
+    gatherKernelReadSplinesThPerAtom4Dual             = pme_gather_kernel<c_pmeOrder, c_wrapX, c_wrapY, 2, true, ThreadsPerAtom::Order>;
+    solveXYZKernelA                                   = pme_solve_kernel<GridOrdering::XYZ, false, c_stateA>;
+    solveXYZEnergyKernelA                             = pme_solve_kernel<GridOrdering::XYZ, true, c_stateA>;
+    solveYZXKernelA                                   = pme_solve_kernel<GridOrdering::YZX, false, c_stateA>;
+    solveYZXEnergyKernelA                             = pme_solve_kernel<GridOrdering::YZX, true, c_stateA>;
+    solveXYZKernelB                                   = pme_solve_kernel<GridOrdering::XYZ, false, c_stateB>;
+    solveXYZEnergyKernelB                             = pme_solve_kernel<GridOrdering::XYZ, true, c_stateB>;
+    solveYZXKernelB                                   = pme_solve_kernel<GridOrdering::YZX, false, c_stateB>;
+    solveYZXEnergyKernelB                             = pme_solve_kernel<GridOrdering::YZX, true, c_stateB>;
+    // clang-format on
 }
 
 PmeGpuProgramImpl::~PmeGpuProgramImpl() {}

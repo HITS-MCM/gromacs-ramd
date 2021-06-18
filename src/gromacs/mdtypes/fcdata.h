@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -36,6 +37,8 @@
  */
 #ifndef GMX_MDTYPES_FCDATA_H
 #define GMX_MDTYPES_FCDATA_H
+
+#include <vector>
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/topology/idef.h"
@@ -111,12 +114,13 @@ typedef struct t_oriresdata
     double** v;
 } t_oriresdata;
 
-typedef struct bondedtable_t
+/* Cubic spline table for tabulated bonded interactions */
+struct bondedtable_t
 {
-    int   n;     /* n+1 is the number of points */
-    real  scale; /* distance between two points */
-    real* data;  /* the actual table data, per point there are 4 numbers */
-} bondedtable_t;
+    int               n;     /* n+1 is the number of points */
+    real              scale; /* distance between two points */
+    std::vector<real> data;  /* the actual table data, per point there are 4 numbers */
+};
 
 /*
  * Data struct used in the force calculation routines
@@ -125,14 +129,15 @@ typedef struct bondedtable_t
  * (for instance for time averaging in distance retraints)
  * or for storing output, since force routines only return the potential.
  */
-typedef struct t_fcdata
+struct t_fcdata
 {
-    bondedtable_t* bondtab;
-    bondedtable_t* angletab;
-    bondedtable_t* dihtab;
+    std::vector<bondedtable_t> bondtab;
+    std::vector<bondedtable_t> angletab;
+    std::vector<bondedtable_t> dihtab;
 
-    t_disresdata disres;
-    t_oriresdata orires;
-} t_fcdata;
+    // TODO: Convert to C++ and unique_ptr (currently this data is not freed)
+    t_disresdata* disres = nullptr;
+    t_oriresdata* orires = nullptr;
+};
 
 #endif

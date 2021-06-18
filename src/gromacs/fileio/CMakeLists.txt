@@ -34,8 +34,6 @@
 
 file(GLOB FILEIO_SOURCES *.cpp)
 
-target_sources(libgromacs PRIVATE ${FILEIO_SOURCES})
-
 if(GMX_USE_PLUGINS)
     add_library(vmddlopen OBJECT ${CMAKE_SOURCE_DIR}/src/external/vmd_molfile/vmddlopen.cpp)
     gmx_target_compile_options(vmddlopen)
@@ -44,7 +42,12 @@ if(GMX_USE_PLUGINS)
     endif()
     list(APPEND libgromacs_object_library_dependencies vmddlopen)
     set(libgromacs_object_library_dependencies ${libgromacs_object_library_dependencies} PARENT_SCOPE)
+else()
+    # Remove vmdio.cpp from sources since we do not have plugin support
+    list(FILTER FILEIO_SOURCES EXCLUDE REGEX ".*vmdio.cpp$")
 endif()
+
+target_sources(libgromacs PRIVATE ${FILEIO_SOURCES})
 
 if(GMX_INSTALL_LEGACY_API)
   install(FILES

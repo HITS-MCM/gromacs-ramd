@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -55,13 +55,12 @@
 #include <gtest/gtest-spi.h>
 
 #include "gromacs/ewald/pme.h"
-#include "gromacs/gpu_utils/gpu_testutils.h"
 #include "gromacs/hardware/detecthardware.h"
-#include "gromacs/hardware/gpu_hw_info.h"
+#include "gromacs/hardware/device_management.h"
+#include "gromacs/hardware/hw_info.h"
 #include "gromacs/trajectory/energyframe.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/gmxmpi.h"
-#include "gromacs/utility/loggerbuilder.h"
 #include "gromacs/utility/physicalnodecommunicator.h"
 #include "gromacs/utility/stringutil.h"
 
@@ -84,22 +83,11 @@ namespace
 class PmeTest : public MdrunTestFixture
 {
 public:
-    //! Before any test is run, work out whether any compatible GPUs exist.
-    static void SetUpTestCase();
-    //! Store whether any compatible GPUs exist.
-    static bool s_hasCompatibleGpus;
     //! Convenience typedef
     using RunModesList = std::map<std::string, std::vector<const char*>>;
     //! Runs the test with the given inputs
     void runTest(const RunModesList& runModes);
 };
-
-bool PmeTest::s_hasCompatibleGpus = false;
-
-void PmeTest::SetUpTestCase()
-{
-    s_hasCompatibleGpus = canComputeOnGpu();
-}
 
 void PmeTest::runTest(const RunModesList& runModes)
 {
@@ -121,13 +109,14 @@ void PmeTest::runTest(const RunModesList& runModes)
         EXPECT_NONFATAL_FAILURE(rootChecker.checkUnusedEntries(), ""); // skip checks on other ranks
     }
 
-    auto hardwareInfo_ = gmx_detect_hardware(
-            MDLogger{}, PhysicalNodeCommunicator(MPI_COMM_WORLD, gmx_physicalnode_id_hash()));
+    auto hardwareInfo_ =
+            gmx_detect_hardware(PhysicalNodeCommunicator(MPI_COMM_WORLD, gmx_physicalnode_id_hash()));
 
     for (const auto& mode : runModes)
     {
+        SCOPED_TRACE("mdrun " + joinStrings(mode.second, " "));
         auto modeTargetsGpus = (mode.first.find("Gpu") != std::string::npos);
-        if (modeTargetsGpus && !s_hasCompatibleGpus)
+        if (modeTargetsGpus && getCompatibleDevices(hardwareInfo_->deviceInfoList).empty())
         {
             // This run mode will cause a fatal error from mdrun when
             // it can't find GPUs, which is not something we're trying

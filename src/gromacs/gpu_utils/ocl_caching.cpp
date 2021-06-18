@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -138,8 +139,8 @@ cl_program makeProgramFromCache(const std::string& filename, cl_context context,
                                                    nullptr, &cl_error);
     if (cl_error != CL_SUCCESS)
     {
-        GMX_THROW(InternalError("Could not create OpenCL program, error was "
-                                + ocl_get_error_string(cl_error)));
+        GMX_THROW(InternalError("Could not create OpenCL program from the cache file " + filename
+                                + ", error was " + ocl_get_error_string(cl_error)));
     }
 
     return program;

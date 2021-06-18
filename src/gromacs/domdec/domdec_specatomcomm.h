@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2005,2006,2007,2008,2009,2010,2012,2013,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2005,2006,2007,2008,2009 by the GROMACS development team.
+ * Copyright (c) 2010,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -84,7 +86,7 @@ struct gmx_domdec_specat_comm_t
 };
 
 /*! \brief Communicates the force for special atoms, the shift forces are reduced with \p fshift != NULL */
-void dd_move_f_specat(gmx_domdec_t* dd, gmx_domdec_specat_comm_t* spac, rvec* f, rvec* fshift);
+void dd_move_f_specat(const gmx_domdec_t* dd, gmx_domdec_specat_comm_t* spac, rvec* f, rvec* fshift);
 
 /*! \brief Communicates the coordinates for special atoms
  *
@@ -95,7 +97,7 @@ void dd_move_f_specat(gmx_domdec_t* dd, gmx_domdec_specat_comm_t* spac, rvec* f,
  * \param[in,out] x1         Vector to communicate, when != NULL
  * \param[in]     bX1IsCoord Tells is \p x1 is a coordinate vector (needs pbc)
  */
-void dd_move_x_specat(gmx_domdec_t*             dd,
+void dd_move_x_specat(const gmx_domdec_t*       dd,
                       gmx_domdec_specat_comm_t* spac,
                       const matrix              box,
                       rvec*                     x0,

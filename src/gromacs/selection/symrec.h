@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -46,6 +47,8 @@
 
 #include <iterator>
 #include <string>
+
+#include <boost/stl_interfaces/iterator_interface.hpp>
 
 #include "gromacs/utility/classhelpers.h"
 
@@ -125,9 +128,9 @@ private:
 
 /*! \internal
  * \brief
- * Input iterator for iterating symbols of a given type.
+ * Forward iterator for iterating symbols of a given type.
  *
- * Behaves as standard C++ input iterator.  To get an iterator, call
+ * Behaves as standard C++ forward iterator.  To get an iterator, call
  * SelectionParserSymbolTable::beginIterator().  Each time the iterator is
  * incremented, it moves to the next symbol of the type given when the iterator
  * was created.  When there are no more symbols, the iterator will equal
@@ -141,20 +144,13 @@ private:
  *
  * \ingroup module_selection
  */
-class SelectionParserSymbolIterator
+class SelectionParserSymbolIterator :
+    public boost::stl_interfaces::iterator_interface<SelectionParserSymbolIterator, std::forward_iterator_tag, const SelectionParserSymbol>
 {
-public:
-    /*! \name Iterator type traits
-     * Satisfies the requirements for STL input iterator.
-     * \{
-     */
-    using iterator_category = std::input_iterator_tag;
-    using value_type        = const SelectionParserSymbol;
-    using difference_type   = std::ptrdiff_t;
-    using pointer           = const SelectionParserSymbol*;
-    using reference         = const SelectionParserSymbol&;
-    //! \}
+    using Base =
+            boost::stl_interfaces::iterator_interface<SelectionParserSymbolIterator, std::forward_iterator_tag, const SelectionParserSymbol>;
 
+public:
     //! Creates an independent copy of an iterator.
     SelectionParserSymbolIterator(const SelectionParserSymbolIterator& other);
     ~SelectionParserSymbolIterator();
@@ -164,21 +160,11 @@ public:
 
     //! Equality comparison for iterators.
     bool operator==(const SelectionParserSymbolIterator& other) const;
-    //! Inequality comparison for iterators.
-    bool operator!=(const SelectionParserSymbolIterator& other) const { return !operator==(other); }
     //! Dereferences the iterator.
     reference operator*() const;
-    //! Dereferences the iterator.
-    pointer operator->() const { return &operator*(); }
     //! Moves the iterator to the next symbol.
     SelectionParserSymbolIterator& operator++();
-    //! Moves the iterator to the next symbol.
-    SelectionParserSymbolIterator operator++(int)
-    {
-        SelectionParserSymbolIterator tmp(*this);
-                                      operator++();
-        return tmp;
-    }
+    using Base::                   operator++;
 
 private:
     class Impl;

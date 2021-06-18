@@ -111,10 +111,14 @@ This section provides a (currently incomplete) list of cache variables that
 developers or advanced users can set to affect what CMake generates and/or what
 will get built.
 
-.. TODO: Figure out where to document basic variables intended for user
+.. todo::
+
+   Figure out where to document basic variables intended for user
    consumption, and how does it relate to documentation here.
 
-.. TODO: Document the remaining variables below, and identify any variables
+.. todo::
+
+   Document the remaining variables below, and identify any variables
    missing from the list.
 
 Compiler flags
@@ -170,7 +174,7 @@ Variables affecting compilation/linking
    Defaults to ``OFF``, and there should not be any need to change this in a
    manual build.
 
-   .. TODO: This could likely be replaced by a (yet another) build type.
+   .. todo:: This could likely be replaced by a (yet another) build type.
 
 .. cmake:: GMX_BUILD_MDRUN_ONLY
 
@@ -348,13 +352,13 @@ Variables affecting the ``all`` target
 
 .. cmake:: GMX_CLANG_TIDY
 
-  `clang-tidy <http://releases.llvm.org/8.0.0/tools/clang/tools/extra/docs/clang-tidy/index.html>`_
+  `clang-tidy <http://releases.llvm.org/9.0.0/tools/clang/tools/extra/docs/clang-tidy/index.html>`_
   is used for static code analysis and (some) automated fixing of issues detected. clang-tidy is easy to install. It is contained in
-  the llvm binary `package <http://releases.llvm.org/download.html#8.0.0>`_. Only
-  version 8.0.* with libstdc++<7 or libc++ is supported. Others might miss tests or give false positives.
-  It is run automatically on Jenkins for each commit. Many checks have fixes which can automatically be
+  the llvm binary `package <http://releases.llvm.org/download.html#9.0.0>`_. Only
+  version 9.0.* with libstdc++<7 or libc++ is supported. Others might miss tests or give false positives.
+  It is run automatically in gitlab CI for each commit. Many checks have fixes which can automatically be
   applied. To run it, the build has to be configured with
-  ``cmake -DGMX_CLANG_TIDY=ON -DGMX_OPENMP=no -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=on``.
+  ``cmake -DGMX_CLANG_TIDY=ON -DCMAKE_BUILD_TYPE=Debug``.
   Any ``CMAKE_BUILD_TYPE`` which enables asserts (e.g. ASAN) works. Such a configured build will
   run both the compiler as well as clang-tidy when building. The name of the clang-tidy executable is set with
   ``-DCLANG_TIDY=...``, and the full path to it can be set with ``-DCLANG_TIDY_EXE=...``.
@@ -388,7 +392,7 @@ Variables affecting special targets
    If ``OFF`` (the default), all detection is skipped and the manual cannot be
    built.
 
-   .. TODO: Consider if this is really necessary, or if we could just use
+   .. todo:: Consider if this is really necessary, or if we could just use
       GMX_DEVELOPER_BUILD.
 
 .. cmake:: GMX_BUILD_TARBALL
@@ -442,7 +446,9 @@ Variables affecting special targets
 External libraries
 ------------------
 
-.. TODO: List external libraries used (either from src/external/, or from the
+.. todo::
+
+   List external libraries used (either from src/external/, or from the
    system), whether they are required or optional, what functionality they
    provide for Gromacs, and how to control their use.
 

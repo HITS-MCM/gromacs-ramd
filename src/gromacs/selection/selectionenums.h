@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010,2012,2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2016,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -65,7 +66,7 @@ namespace gmx
  * These flags are not part of the public interface, even though they are in an
  * installed header.  They are needed in the implementation of SelectionOption.
  */
-enum SelectionFlag
+enum SelectionFlag : uint64_t
 {
     efSelection_OnlyStatic = 1 << 0,
     efSelection_OnlyAtoms  = 1 << 1,

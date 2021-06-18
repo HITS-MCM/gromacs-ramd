@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -49,8 +49,7 @@
 #include "devicetransfers.h"
 
 #include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/hardware/gpu_hw_info.h"
+#include "gromacs/hardware/device_information.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
@@ -58,57 +57,33 @@
 
 namespace gmx
 {
-namespace
-{
 
-/*! \brief Help give useful diagnostics about error \c status while doing \c message.
- *
- * \throws InternalError  If status indicates failure, supplying
- *                        descriptive text from \c message. */
-static void throwUponFailure(cudaError_t status, const char* message)
-{
-    if (status != cudaSuccess)
-    {
-        GMX_THROW(InternalError(formatString("Failure while %s", message)));
-        ;
-    }
-}
-
-} // namespace
-
-void doDeviceTransfers(const gmx_gpu_info_t& gpuInfo, ArrayRef<const char> input, ArrayRef<char> output)
+void doDeviceTransfers(const DeviceInformation& deviceInfo, ArrayRef<const char> input, ArrayRef<char> output)
 {
     GMX_RELEASE_ASSERT(input.size() == output.size(), "Input and output must have matching size");
-    const auto compatibleGpus = getCompatibleGpus(gpuInfo);
-    if (compatibleGpus.empty())
-    {
-        std::copy(input.begin(), input.end(), output.begin());
-        return;
-    }
     cudaError_t status;
 
-    const auto* device = getDeviceInfo(gpuInfo, compatibleGpus[0]);
-    int         oldDeviceId;
+    int oldDeviceId;
 
     status = cudaGetDevice(&oldDeviceId);
-    throwUponFailure(status, "getting old device id");
-    status = cudaSetDevice(device->id);
-    throwUponFailure(status, "setting device id to the first compatible GPU");
+    checkDeviceError(status, "Error while getting old device id.");
+    status = cudaSetDevice(deviceInfo.id);
+    checkDeviceError(status, "Error while setting device id to the first compatible GPU.");
 
     void* devicePointer;
     status = cudaMalloc(&devicePointer, input.size());
-    throwUponFailure(status, "creating buffer");
+    checkDeviceError(status, "Error while creating buffer.");
 
     status = cudaMemcpy(devicePointer, input.data(), input.size(), cudaMemcpyHostToDevice);
-    throwUponFailure(status, "transferring host to device");
+    checkDeviceError(status, "Error while transferring host to device.");
     status = cudaMemcpy(output.data(), devicePointer, output.size(), cudaMemcpyDeviceToHost);
-    throwUponFailure(status, "transferring device to host");
+    checkDeviceError(status, "Error while transferring device to host.");
 
     status = cudaFree(devicePointer);
-    throwUponFailure(status, "releasing buffer");
+    checkDeviceError(status, "Error while releasing buffer.");
 
     status = cudaSetDevice(oldDeviceId);
-    throwUponFailure(status, "setting old device id");
+    checkDeviceError(status, "Error while setting old device id.");
 }
 
 } // namespace gmx

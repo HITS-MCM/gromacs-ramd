@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013-2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017, The GROMACS development team.
+ * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,9 +45,10 @@
 #include <cstdlib>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 
-#include "gromacs/awh/read_params.h"
+#include "gromacs/applied_forces/awh/read_params.h"
 #include "gromacs/fileio/readinp.h"
 #include "gromacs/fileio/warninp.h"
 #include "gromacs/gmxlib/network.h"
@@ -58,6 +60,7 @@
 #include "gromacs/mdrun/mdmodules.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/multipletimestepping.h"
 #include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/options/options.h"
@@ -98,40 +101,37 @@
  * message.
  */
 
-typedef struct t_inputrec_strings
+struct gmx_inputrec_strings
 {
     char tcgrps[STRLEN], tau_t[STRLEN], ref_t[STRLEN], acc[STRLEN], accgrps[STRLEN], freeze[STRLEN],
             frdim[STRLEN], energy[STRLEN], user1[STRLEN], user2[STRLEN], vcm[STRLEN],
             x_compressed_groups[STRLEN], couple_moltype[STRLEN], orirefitgrp[STRLEN],
             egptable[STRLEN], egpexcl[STRLEN], wall_atomtype[STRLEN], wall_density[STRLEN],
             deform[STRLEN], QMMM[STRLEN], imd_grp[STRLEN];
-    char   fep_lambda[efptNR][STRLEN];
-    char   lambda_weights[STRLEN];
-    char** pull_grp;
-    char** rot_grp;
-    char   anneal[STRLEN], anneal_npoints[STRLEN], anneal_time[STRLEN], anneal_temp[STRLEN];
-    char   QMmethod[STRLEN], QMbasis[STRLEN], QMcharge[STRLEN], QMmult[STRLEN], bSH[STRLEN],
-            CASorbitals[STRLEN], CASelectrons[STRLEN], SAon[STRLEN], SAoff[STRLEN], SAsteps[STRLEN];
+    char                     fep_lambda[efptNR][STRLEN];
+    char                     lambda_weights[STRLEN];
+    std::vector<std::string> pullGroupNames;
+    std::vector<std::string> rotateGroupNames;
+    char anneal[STRLEN], anneal_npoints[STRLEN], anneal_time[STRLEN], anneal_temp[STRLEN];
+};
 
-} gmx_inputrec_strings;
-
-static gmx_inputrec_strings* is = nullptr;
+static gmx_inputrec_strings* inputrecStrings = nullptr;
 
 void init_inputrec_strings()
 {
-    if (is)
+    if (inputrecStrings)
     {
         gmx_incons(
                 "Attempted to call init_inputrec_strings before calling done_inputrec_strings. "
                 "Only one inputrec (i.e. .mdp file) can be parsed at a time.");
     }
-    snew(is, 1);
+    inputrecStrings = new gmx_inputrec_strings();
 }
 
 void done_inputrec_strings()
 {
-    sfree(is);
-    is = nullptr;
+    delete inputrecStrings;
+    inputrecStrings = nullptr;
 }
 
 
@@ -231,6 +231,105 @@ static void process_interaction_modifier(int* eintmod)
     if (*eintmod == eintmodPOTSHIFT_VERLET_UNSUPPORTED)
     {
         *eintmod = eintmodPOTSHIFT;
+    }
+}
+
+static void checkMtsRequirement(const t_inputrec& ir, const char* param, const int nstValue, warninp_t wi)
+{
+    GMX_RELEASE_ASSERT(ir.mtsLevels.size() >= 2, "Need at least two levels for MTS");
+    const int mtsFactor = ir.mtsLevels.back().stepFactor;
+    if (nstValue % mtsFactor != 0)
+    {
+        auto message = gmx::formatString(
+                "With MTS, %s = %d should be a multiple of mts-factor = %d", param, nstValue, mtsFactor);
+        warning_error(wi, message.c_str());
+    }
+}
+
+static void setupMtsLevels(gmx::ArrayRef<gmx::MtsLevel> mtsLevels,
+                           const t_inputrec&            ir,
+                           const t_gromppopts&          opts,
+                           warninp_t                    wi)
+{
+    /* MD-VV has no MTS support yet.
+     * SD1 needs different scaling coefficients for the different MTS forces
+     * and the different forces are currently not available in ForceBuffers.
+     */
+    if (ir.eI != eiMD)
+    {
+        auto message = gmx::formatString(
+                "Multiple time stepping is only supported with integrator %s", ei_names[eiMD]);
+        warning_error(wi, message.c_str());
+    }
+    if (opts.numMtsLevels != 2)
+    {
+        warning_error(wi, "Only mts-levels = 2 is supported");
+    }
+    else
+    {
+        const std::vector<std::string> inputForceGroups = gmx::splitString(opts.mtsLevel2Forces);
+        auto&                          forceGroups      = mtsLevels[1].forceGroups;
+        for (const auto& inputForceGroup : inputForceGroups)
+        {
+            bool found     = false;
+            int  nameIndex = 0;
+            for (const auto& forceGroupName : gmx::mtsForceGroupNames)
+            {
+                if (gmx::equalCaseInsensitive(inputForceGroup, forceGroupName))
+                {
+                    forceGroups.set(nameIndex);
+                    found = true;
+                }
+                nameIndex++;
+            }
+            if (!found)
+            {
+                auto message =
+                        gmx::formatString("Unknown MTS force group '%s'", inputForceGroup.c_str());
+                warning_error(wi, message.c_str());
+            }
+        }
+
+        if (mtsLevels[1].stepFactor <= 1)
+        {
+            gmx_fatal(FARGS, "mts-factor should be larger than 1");
+        }
+
+        // Make the level 0 use the complement of the force groups of group 1
+        mtsLevels[0].forceGroups = ~mtsLevels[1].forceGroups;
+        mtsLevels[0].stepFactor  = 1;
+
+        if ((EEL_FULL(ir.coulombtype) || EVDW_PME(ir.vdwtype))
+            && !mtsLevels[1].forceGroups[static_cast<int>(gmx::MtsForceGroups::LongrangeNonbonded)])
+        {
+            warning_error(wi,
+                          "With long-range electrostatics and/or LJ treatment, the long-range part "
+                          "has to be part of the mts-level2-forces");
+        }
+
+        if (ir.nstcalcenergy > 0)
+        {
+            checkMtsRequirement(ir, "nstcalcenergy", ir.nstcalcenergy, wi);
+        }
+        checkMtsRequirement(ir, "nstenergy", ir.nstenergy, wi);
+        checkMtsRequirement(ir, "nstlog", ir.nstlog, wi);
+        if (ir.efep != efepNO)
+        {
+            checkMtsRequirement(ir, "nstdhdl", ir.fepvals->nstdhdl, wi);
+        }
+
+        if (ir.bPull)
+        {
+            const int pullMtsLevel = gmx::forceGroupMtsLevel(ir.mtsLevels, gmx::MtsForceGroups::Pull);
+            if (ir.pull->nstxout % ir.mtsLevels[pullMtsLevel].stepFactor != 0)
+            {
+                warning_error(wi, "pull-nstxout should be a multiple of mts-factor");
+            }
+            if (ir.pull->nstfout % ir.mtsLevels[pullMtsLevel].stepFactor != 0)
+            {
+                warning_error(wi, "pull-nstfout should be a multiple of mts-factor");
+            }
+        }
     }
 }
 
@@ -539,6 +638,12 @@ void check_ir(const char*                   mdparin,
             {
                 ir->nstpcouple = ir_optimal_nstpcouple(ir);
             }
+            if (ir->useMts && ir->nstpcouple % ir->mtsLevels.back().stepFactor != 0)
+            {
+                warning_error(wi,
+                              "With multiple time stepping, nstpcouple should be a mutiple of "
+                              "mts-factor");
+            }
         }
 
         if (ir->nstcalcenergy > 0)
@@ -563,7 +668,7 @@ void check_ir(const char*                   mdparin,
         // Inquire all MdModules, if their parameters match with the energy
         // calculation frequency
         gmx::EnergyCalculationFrequencyErrors energyCalculationFrequencyErrors(ir->nstcalcenergy);
-        mdModulesNotifier.notifier_.notify(&energyCalculationFrequencyErrors);
+        mdModulesNotifier.preProcessingNotifications_.notify(&energyCalculationFrequencyErrors);
 
         // Emit all errors from the energy calculation frequency checks
         for (const std::string& energyFrequencyErrorMessage :
@@ -591,8 +696,8 @@ void check_ir(const char*                   mdparin,
     /* TPI STUFF */
     if (EI_TPI(ir->eI))
     {
-        sprintf(err_buf, "TPI only works with pbc = %s", epbc_names[epbcXYZ]);
-        CHECK(ir->ePBC != epbcXYZ);
+        sprintf(err_buf, "TPI only works with pbc = %s", c_pbcTypeNames[PbcType::Xyz].c_str());
+        CHECK(ir->pbcType != PbcType::Xyz);
         sprintf(err_buf, "with TPI nstlist should be larger than zero");
         CHECK(ir->nstlist <= 0);
         sprintf(err_buf, "TPI does not work with full electrostatics other than PME");
@@ -669,9 +774,11 @@ void check_ir(const char*                   mdparin,
         sprintf(err_buf, "The soft-core power is %d and can only be 1 or 2", fep->sc_power);
         CHECK(fep->sc_alpha != 0 && fep->sc_power != 1 && fep->sc_power != 2);
 
-        sprintf(err_buf, "The soft-core sc-r-power is %d and can only be 6 or 48",
+        sprintf(err_buf,
+                "The soft-core sc-r-power is %d and can only be 6. (sc-r-power 48 is no longer "
+                "supported.)",
                 static_cast<int>(fep->sc_r_power));
-        CHECK(fep->sc_alpha != 0 && fep->sc_r_power != 6.0 && fep->sc_r_power != 48.0);
+        CHECK(fep->sc_alpha != 0 && fep->sc_r_power != 6.0);
 
         sprintf(err_buf,
                 "Can't use positive delta-lambda (%g) if initial state/lambda does not start at "
@@ -912,13 +1019,13 @@ void check_ir(const char*                   mdparin,
     }
 
     /* PBC/WALLS */
-    sprintf(err_buf, "walls only work with pbc=%s", epbc_names[epbcXY]);
-    CHECK(ir->nwall && ir->ePBC != epbcXY);
+    sprintf(err_buf, "walls only work with pbc=%s", c_pbcTypeNames[PbcType::XY].c_str());
+    CHECK(ir->nwall && ir->pbcType != PbcType::XY);
 
     /* VACUUM STUFF */
-    if (ir->ePBC != epbcXYZ && ir->nwall != 2)
+    if (ir->pbcType != PbcType::Xyz && ir->nwall != 2)
     {
-        if (ir->ePBC == epbcNONE)
+        if (ir->pbcType == PbcType::No)
         {
             if (ir->epc != epcNO)
             {
@@ -928,13 +1035,15 @@ void check_ir(const char*                   mdparin,
         }
         else
         {
-            sprintf(err_buf, "Can not have pressure coupling with pbc=%s", epbc_names[ir->ePBC]);
+            sprintf(err_buf, "Can not have pressure coupling with pbc=%s",
+                    c_pbcTypeNames[ir->pbcType].c_str());
             CHECK(ir->epc != epcNO);
         }
-        sprintf(err_buf, "Can not have Ewald with pbc=%s", epbc_names[ir->ePBC]);
+        sprintf(err_buf, "Can not have Ewald with pbc=%s", c_pbcTypeNames[ir->pbcType].c_str());
         CHECK(EEL_FULL(ir->coulombtype));
 
-        sprintf(err_buf, "Can not have dispersion correction with pbc=%s", epbc_names[ir->ePBC]);
+        sprintf(err_buf, "Can not have dispersion correction with pbc=%s",
+                c_pbcTypeNames[ir->pbcType].c_str());
         CHECK(ir->eDispCorr != edispcNO);
     }
 
@@ -945,9 +1054,9 @@ void check_ir(const char*                   mdparin,
                 "with coulombtype = %s or coulombtype = %s\n"
                 "without periodic boundary conditions (pbc = %s) and\n"
                 "rcoulomb and rvdw set to zero",
-                eel_names[eelCUT], eel_names[eelUSER], epbc_names[epbcNONE]);
+                eel_names[eelCUT], eel_names[eelUSER], c_pbcTypeNames[PbcType::No].c_str());
         CHECK(((ir->coulombtype != eelCUT) && (ir->coulombtype != eelUSER))
-              || (ir->ePBC != epbcNONE) || (ir->rcoulomb != 0.0) || (ir->rvdw != 0.0));
+              || (ir->pbcType != PbcType::No) || (ir->rcoulomb != 0.0) || (ir->rvdw != 0.0));
 
         if (ir->nstlist > 0)
         {
@@ -993,7 +1102,7 @@ void check_ir(const char*                   mdparin,
                     "Can not remove the rotation around the center of mass with periodic "
                     "molecules");
             CHECK(ir->bPeriodicMols);
-            if (ir->ePBC != epbcNONE)
+            if (ir->pbcType != PbcType::No)
             {
                 warning(wi,
                         "Removing the rotation around the center of mass in a periodic system, "
@@ -1003,7 +1112,7 @@ void check_ir(const char*                   mdparin,
         }
     }
 
-    if (EI_STATE_VELOCITY(ir->eI) && !EI_SD(ir->eI) && ir->ePBC == epbcNONE && ir->comm_mode != ecmANGULAR)
+    if (EI_STATE_VELOCITY(ir->eI) && !EI_SD(ir->eI) && ir->pbcType == PbcType::No && ir->comm_mode != ecmANGULAR)
     {
         sprintf(warn_buf,
                 "Tumbling and flying ice-cubes: We are not removing rotation around center of mass "
@@ -1310,18 +1419,18 @@ void check_ir(const char*                   mdparin,
     {
         if (ir->ewald_geometry == eewg3D)
         {
-            sprintf(warn_buf, "With pbc=%s you should use ewald-geometry=%s", epbc_names[ir->ePBC],
-                    eewg_names[eewg3DC]);
+            sprintf(warn_buf, "With pbc=%s you should use ewald-geometry=%s",
+                    c_pbcTypeNames[ir->pbcType].c_str(), eewg_names[eewg3DC]);
             warning(wi, warn_buf);
         }
         /* This check avoids extra pbc coding for exclusion corrections */
         sprintf(err_buf, "wall-ewald-zfac should be >= 2");
         CHECK(ir->wall_ewald_zfac < 2);
     }
-    if ((ir->ewald_geometry == eewg3DC) && (ir->ePBC != epbcXY) && EEL_FULL(ir->coulombtype))
+    if ((ir->ewald_geometry == eewg3DC) && (ir->pbcType != PbcType::XY) && EEL_FULL(ir->coulombtype))
     {
         sprintf(warn_buf, "With %s and ewald_geometry = %s you should use pbc = %s",
-                eel_names[ir->coulombtype], eewg_names[eewg3DC], epbc_names[epbcXY]);
+                eel_names[ir->coulombtype], eewg_names[eewg3DC], c_pbcTypeNames[PbcType::XY].c_str());
         warning(wi, warn_buf);
     }
     if ((ir->epsilon_surface != 0) && EEL_FULL(ir->coulombtype))
@@ -1391,13 +1500,7 @@ void check_ir(const char*                   mdparin,
 
     if (ir->bQMMM)
     {
-        warning_error(wi, "QMMM is currently not supported");
-        if (!EI_DYNAMICS(ir->eI))
-        {
-            char buf[STRLEN];
-            sprintf(buf, "QMMM is only supported with dynamics, not with integrator %s", ei_names[ir->eI]);
-            warning_error(wi, buf);
-        }
+        warning_error(wi, "The QMMM integration you are trying to use is no longer supported");
     }
 
     if (ir->bAdress)
@@ -1566,17 +1669,6 @@ static void do_fep_params(t_inputrec* ir, char fep_lambda[][STRLEN], char weight
     }
 
 
-    /* make it easier if sc_r_power = 48 by increasing it to the 4th power, to be in the right scale. */
-    if (fep->sc_r_power == 48)
-    {
-        if (fep->sc_alpha > 0.1)
-        {
-            gmx_fatal(FARGS,
-                      "sc_alpha (%f) for sc_r_power = 48 should usually be between 0.001 and 0.004",
-                      fep->sc_alpha);
-        }
-    }
-
     /* now read in the weights */
     parse_n_real(weights, &nweights, &(expand->init_lambda_weights), wi);
     if (nweights == 0)
@@ -1601,19 +1693,6 @@ static void do_simtemp_params(t_inputrec* ir)
 
     snew(ir->simtempvals->temperatures, ir->fepvals->n_lambda);
     GetSimTemps(ir->fepvals->n_lambda, ir->simtempvals, ir->fepvals->all_lambda[efptTEMPERATURE]);
-}
-
-static void convertYesNos(warninp_t /*wi*/,
-                          gmx::ArrayRef<const std::string> inputs,
-                          const char* /*name*/,
-                          gmx_bool* outputs)
-{
-    int i = 0;
-    for (const auto& input : inputs)
-    {
-        outputs[i] = gmx::equalCaseInsensitive(input, "Y", 1);
-        ++i;
-    }
 }
 
 template<typename T>
@@ -1703,6 +1782,7 @@ static void do_wall_params(t_inputrec* ir, char* wall_atomtype, char* wall_densi
             gmx_fatal(FARGS, "Expected %d elements for wall_atomtype, found %zu", ir->nwall,
                       wallAtomTypes.size());
         }
+        GMX_RELEASE_ASSERT(ir->nwall < 3, "Invalid number of walls");
         for (int i = 0; i < ir->nwall; i++)
         {
             opts->wall_atomtype[i] = gmx_strdup(wallAtomTypes[i].c_str());
@@ -1910,12 +1990,29 @@ void get_ir(const char*     mdparin,
     printStringNoNewline(
             &inp, "Part index is updated automatically on checkpointing (keeps files separate)");
     ir->simulation_part = get_eint(&inp, "simulation-part", 1, wi);
+    printStringNoNewline(&inp, "Multiple time-stepping");
+    ir->useMts = (get_eeenum(&inp, "mts", yesno_names, wi) != 0);
+    if (ir->useMts)
+    {
+        opts->numMtsLevels = get_eint(&inp, "mts-levels", 2, wi);
+        ir->mtsLevels.resize(2);
+        gmx::MtsLevel& mtsLevel = ir->mtsLevels[1];
+        opts->mtsLevel2Forces   = setStringEntry(&inp, "mts-level2-forces", "longrange-nonbonded");
+        mtsLevel.stepFactor     = get_eint(&inp, "mts-level2-factor", 2, wi);
+
+        // We clear after reading without dynamics to not force the user to remove MTS mdp options
+        if (!EI_DYNAMICS(ir->eI))
+        {
+            ir->useMts = false;
+            ir->mtsLevels.clear();
+        }
+    }
     printStringNoNewline(&inp, "mode for center of mass motion removal");
     ir->comm_mode = get_eeenum(&inp, "comm-mode", ecm_names, wi);
     printStringNoNewline(&inp, "number of steps for center of mass motion removal");
     ir->nstcomm = get_eint(&inp, "nstcomm", 100, wi);
     printStringNoNewline(&inp, "group(s) for center of mass motion removal");
-    setStringEntry(&inp, "comm-grps", is->vcm, nullptr);
+    setStringEntry(&inp, "comm-grps", inputrecStrings->vcm, nullptr);
 
     printStringNewline(&inp, "LANGEVIN DYNAMICS OPTIONS");
     printStringNoNewline(&inp, "Friction coefficient (amu/ps) and random seed");
@@ -1954,9 +2051,9 @@ void get_ir(const char*     mdparin,
     printStringNoNewline(&inp, "This selects the subset of atoms for the compressed");
     printStringNoNewline(&inp, "trajectory file. You can select multiple groups. By");
     printStringNoNewline(&inp, "default, all atoms will be written.");
-    setStringEntry(&inp, "compressed-x-grps", is->x_compressed_groups, nullptr);
+    setStringEntry(&inp, "compressed-x-grps", inputrecStrings->x_compressed_groups, nullptr);
     printStringNoNewline(&inp, "Selection of energy groups");
-    setStringEntry(&inp, "energygrps", is->energy, nullptr);
+    setStringEntry(&inp, "energygrps", inputrecStrings->energy, nullptr);
 
     /* Neighbor searching */
     printStringNewline(&inp, "NEIGHBORSEARCHING PARAMETERS");
@@ -1965,7 +2062,13 @@ void get_ir(const char*     mdparin,
     printStringNoNewline(&inp, "nblist update frequency");
     ir->nstlist = get_eint(&inp, "nstlist", 10, wi);
     printStringNoNewline(&inp, "Periodic boundary conditions: xyz, no, xy");
-    ir->ePBC          = get_eeenum(&inp, "pbc", epbc_names, wi);
+    // TODO This conversion should be removed when proper std:string handling will be added to get_eeenum(...), etc.
+    std::vector<const char*> pbcTypesNamesChar;
+    for (const auto& pbcTypeName : c_pbcTypeNames)
+    {
+        pbcTypesNamesChar.push_back(pbcTypeName.c_str());
+    }
+    ir->pbcType       = static_cast<PbcType>(get_eeenum(&inp, "pbc", pbcTypesNamesChar.data(), wi));
     ir->bPeriodicMols = get_eeenum(&inp, "periodic-molecules", yesno_names, wi) != 0;
     printStringNoNewline(&inp,
                          "Allowed energy error due to the Verlet buffer in kJ/mol/ps per atom,");
@@ -1998,7 +2101,7 @@ void get_ir(const char*     mdparin,
     printStringNoNewline(&inp, "Extension of the potential lookup tables beyond the cut-off");
     ir->tabext = get_ereal(&inp, "table-extension", 1.0, wi);
     printStringNoNewline(&inp, "Separate tables between energy group pairs");
-    setStringEntry(&inp, "energygrp-table", is->egptable, nullptr);
+    setStringEntry(&inp, "energygrp-table", inputrecStrings->egptable, nullptr);
     printStringNoNewline(&inp, "Spacing for the PME/PPPM FFT grid");
     ir->fourier_spacing = get_ereal(&inp, "fourierspacing", 0.12, wi);
     printStringNoNewline(&inp, "FFT grid size, when a value is 0 fourierspacing will be used");
@@ -2026,10 +2129,10 @@ void get_ir(const char*     mdparin,
     ir->opts.nhchainlength = get_eint(&inp, "nh-chain-length", 10, wi);
     ir->bPrintNHChains = (get_eeenum(&inp, "print-nose-hoover-chain-variables", yesno_names, wi) != 0);
     printStringNoNewline(&inp, "Groups to couple separately");
-    setStringEntry(&inp, "tc-grps", is->tcgrps, nullptr);
+    setStringEntry(&inp, "tc-grps", inputrecStrings->tcgrps, nullptr);
     printStringNoNewline(&inp, "Time constant (ps) and reference temperature (K)");
-    setStringEntry(&inp, "tau-t", is->tau_t, nullptr);
-    setStringEntry(&inp, "ref-t", is->ref_t, nullptr);
+    setStringEntry(&inp, "tau-t", inputrecStrings->tau_t, nullptr);
+    setStringEntry(&inp, "ref-t", inputrecStrings->ref_t, nullptr);
     printStringNoNewline(&inp, "pressure coupling");
     ir->epc        = get_eeenum(&inp, "pcoupl", epcoupl_names, wi);
     ir->epct       = get_eeenum(&inp, "pcoupltype", epcoupltype_names, wi);
@@ -2044,40 +2147,20 @@ void get_ir(const char*     mdparin,
     /* QMMM */
     printStringNewline(&inp, "OPTIONS FOR QMMM calculations");
     ir->bQMMM = (get_eeenum(&inp, "QMMM", yesno_names, wi) != 0);
-    printStringNoNewline(&inp, "Groups treated Quantum Mechanically");
-    setStringEntry(&inp, "QMMM-grps", is->QMMM, nullptr);
-    printStringNoNewline(&inp, "QM method");
-    setStringEntry(&inp, "QMmethod", is->QMmethod, nullptr);
-    printStringNoNewline(&inp, "QMMM scheme");
-    ir->QMMMscheme = get_eeenum(&inp, "QMMMscheme", eQMMMscheme_names, wi);
-    printStringNoNewline(&inp, "QM basisset");
-    setStringEntry(&inp, "QMbasis", is->QMbasis, nullptr);
-    printStringNoNewline(&inp, "QM charge");
-    setStringEntry(&inp, "QMcharge", is->QMcharge, nullptr);
-    printStringNoNewline(&inp, "QM multiplicity");
-    setStringEntry(&inp, "QMmult", is->QMmult, nullptr);
-    printStringNoNewline(&inp, "Surface Hopping");
-    setStringEntry(&inp, "SH", is->bSH, nullptr);
-    printStringNoNewline(&inp, "CAS space options");
-    setStringEntry(&inp, "CASorbitals", is->CASorbitals, nullptr);
-    setStringEntry(&inp, "CASelectrons", is->CASelectrons, nullptr);
-    setStringEntry(&inp, "SAon", is->SAon, nullptr);
-    setStringEntry(&inp, "SAoff", is->SAoff, nullptr);
-    setStringEntry(&inp, "SAsteps", is->SAsteps, nullptr);
-    printStringNoNewline(&inp, "Scale factor for MM charges");
-    ir->scalefactor = get_ereal(&inp, "MMChargeScaleFactor", 1.0, wi);
+    printStringNoNewline(&inp, "Groups treated with MiMiC");
+    setStringEntry(&inp, "QMMM-grps", inputrecStrings->QMMM, nullptr);
 
     /* Simulated annealing */
     printStringNewline(&inp, "SIMULATED ANNEALING");
     printStringNoNewline(&inp, "Type of annealing for each temperature group (no/single/periodic)");
-    setStringEntry(&inp, "annealing", is->anneal, nullptr);
+    setStringEntry(&inp, "annealing", inputrecStrings->anneal, nullptr);
     printStringNoNewline(&inp,
                          "Number of time points to use for specifying annealing in each group");
-    setStringEntry(&inp, "annealing-npoints", is->anneal_npoints, nullptr);
+    setStringEntry(&inp, "annealing-npoints", inputrecStrings->anneal_npoints, nullptr);
     printStringNoNewline(&inp, "List of times at the annealing points for each group");
-    setStringEntry(&inp, "annealing-time", is->anneal_time, nullptr);
+    setStringEntry(&inp, "annealing-time", inputrecStrings->anneal_time, nullptr);
     printStringNoNewline(&inp, "Temp. at each annealing point, for each group.");
-    setStringEntry(&inp, "annealing-temp", is->anneal_temp, nullptr);
+    setStringEntry(&inp, "annealing-temp", inputrecStrings->anneal_temp, nullptr);
 
     /* Startup run */
     printStringNewline(&inp, "GENERATE VELOCITIES FOR STARTUP RUN");
@@ -2113,7 +2196,7 @@ void get_ir(const char*     mdparin,
     printStringNewline(&inp, "ENERGY GROUP EXCLUSIONS");
     printStringNoNewline(
             &inp, "Pairs of energy groups for which all non-bonded interactions are excluded");
-    setStringEntry(&inp, "energygrp-excl", is->egpexcl, nullptr);
+    setStringEntry(&inp, "energygrp-excl", inputrecStrings->egpexcl, nullptr);
 
     /* Walls */
     printStringNewline(&inp, "WALLS");
@@ -2122,8 +2205,8 @@ void get_ir(const char*     mdparin,
     ir->nwall         = get_eint(&inp, "nwall", 0, wi);
     ir->wall_type     = get_eeenum(&inp, "wall-type", ewt_names, wi);
     ir->wall_r_linpot = get_ereal(&inp, "wall-r-linpot", -1, wi);
-    setStringEntry(&inp, "wall-atomtype", is->wall_atomtype, nullptr);
-    setStringEntry(&inp, "wall-density", is->wall_density, nullptr);
+    setStringEntry(&inp, "wall-atomtype", inputrecStrings->wall_atomtype, nullptr);
+    setStringEntry(&inp, "wall-density", inputrecStrings->wall_density, nullptr);
     ir->wall_ewald_zfac = get_ereal(&inp, "wall-ewald-zfac", 3, wi);
 
     /* RAMD */
@@ -2140,24 +2223,31 @@ void get_ir(const char*     mdparin,
     ir->bPull = (get_eeenum(&inp, "pull", yesno_names, wi) != 0);
     if (ir->bPull || ir->bRAMD)
     {
-        snew(ir->pull, 1);
-        is->pull_grp = read_pullparams(&inp, ir->pull, wi);
+        ir->pull                        = std::make_unique<pull_params_t>();
+        inputrecStrings->pullGroupNames = read_pullparams(&inp, ir->pull.get(), wi);
+
+        if (ir->useMts)
+        {
+            for (int c = 0; c < ir->pull->ncoord; c++)
+            {
+                if (ir->pull->coord[c].eType == epullCONSTRAINT)
+                {
+                    warning_error(wi,
+                                  "Constraint COM pulling is not supported in combination with "
+                                  "multiple time stepping");
+                    break;
+                }
+            }
+        }
     }
 
     /* AWH biasing
-       NOTE: needs COM pulling input */
+       NOTE: needs COM pulling or free energy input */
     printStringNewline(&inp, "AWH biasing");
     ir->bDoAwh = (get_eeenum(&inp, "awh", yesno_names, wi) != 0);
     if (ir->bDoAwh)
     {
-        if (ir->bPull)
-        {
-            ir->awhParams = gmx::readAndCheckAwhParams(&inp, ir, wi);
-        }
-        else
-        {
-            gmx_fatal(FARGS, "AWH biasing is only compatible with COM pulling turned on");
-        }
+        ir->awhParams = gmx::readAwhParams(&inp, wi);
     }
 
     /* Enforced rotation */
@@ -2167,14 +2257,14 @@ void get_ir(const char*     mdparin,
     if (ir->bRot)
     {
         snew(ir->rot, 1);
-        is->rot_grp = read_rotparams(&inp, ir->rot, wi);
+        inputrecStrings->rotateGroupNames = read_rotparams(&inp, ir->rot, wi);
     }
 
     /* Interactive MD */
     ir->bIMD = FALSE;
     printStringNewline(&inp, "Group to display and/or manipulate in interactive MD session");
-    setStringEntry(&inp, "IMD-group", is->imd_grp, nullptr);
-    if (is->imd_grp[0] != '\0')
+    setStringEntry(&inp, "IMD-group", inputrecStrings->imd_grp, nullptr);
+    if (inputrecStrings->imd_grp[0] != '\0')
     {
         snew(ir->imd, 1);
         ir->bIMD = TRUE;
@@ -2198,14 +2288,14 @@ void get_ir(const char*     mdparin,
     printStringNoNewline(&inp, "Orientation restraints force constant and tau for time averaging");
     ir->orires_fc  = get_ereal(&inp, "orire-fc", 0.0, wi);
     ir->orires_tau = get_ereal(&inp, "orire-tau", 0.0, wi);
-    setStringEntry(&inp, "orire-fitgrp", is->orirefitgrp, nullptr);
+    setStringEntry(&inp, "orire-fitgrp", inputrecStrings->orirefitgrp, nullptr);
     printStringNoNewline(&inp, "Output frequency for trace(SD) and S to energy file");
     ir->nstorireout = get_eint(&inp, "nstorireout", 100, wi);
 
     /* free energy variables */
     printStringNewline(&inp, "Free energy variables");
     ir->efep = get_eeenum(&inp, "free-energy", efep_names, wi);
-    setStringEntry(&inp, "couple-moltype", is->couple_moltype, nullptr);
+    setStringEntry(&inp, "couple-moltype", inputrecStrings->couple_moltype, nullptr);
     opts->couple_lam0  = get_eeenum(&inp, "couple-lambda0", couple_lam, wi);
     opts->couple_lam1  = get_eeenum(&inp, "couple-lambda1", couple_lam, wi);
     opts->bCoupleIntra = (get_eeenum(&inp, "couple-intramol", yesno_names, wi) != 0);
@@ -2216,15 +2306,15 @@ void get_ir(const char*     mdparin,
     fep->init_fep_state = get_eint(&inp, "init-lambda-state", -1, wi);
     fep->delta_lambda   = get_ereal(&inp, "delta-lambda", 0.0, wi);
     fep->nstdhdl        = get_eint(&inp, "nstdhdl", 50, wi);
-    setStringEntry(&inp, "fep-lambdas", is->fep_lambda[efptFEP], nullptr);
-    setStringEntry(&inp, "mass-lambdas", is->fep_lambda[efptMASS], nullptr);
-    setStringEntry(&inp, "coul-lambdas", is->fep_lambda[efptCOUL], nullptr);
-    setStringEntry(&inp, "vdw-lambdas", is->fep_lambda[efptVDW], nullptr);
-    setStringEntry(&inp, "bonded-lambdas", is->fep_lambda[efptBONDED], nullptr);
-    setStringEntry(&inp, "restraint-lambdas", is->fep_lambda[efptRESTRAINT], nullptr);
-    setStringEntry(&inp, "temperature-lambdas", is->fep_lambda[efptTEMPERATURE], nullptr);
+    setStringEntry(&inp, "fep-lambdas", inputrecStrings->fep_lambda[efptFEP], nullptr);
+    setStringEntry(&inp, "mass-lambdas", inputrecStrings->fep_lambda[efptMASS], nullptr);
+    setStringEntry(&inp, "coul-lambdas", inputrecStrings->fep_lambda[efptCOUL], nullptr);
+    setStringEntry(&inp, "vdw-lambdas", inputrecStrings->fep_lambda[efptVDW], nullptr);
+    setStringEntry(&inp, "bonded-lambdas", inputrecStrings->fep_lambda[efptBONDED], nullptr);
+    setStringEntry(&inp, "restraint-lambdas", inputrecStrings->fep_lambda[efptRESTRAINT], nullptr);
+    setStringEntry(&inp, "temperature-lambdas", inputrecStrings->fep_lambda[efptTEMPERATURE], nullptr);
     fep->lambda_neighbors = get_eint(&inp, "calc-lambda-neighbors", 1, wi);
-    setStringEntry(&inp, "init-lambda-weights", is->lambda_weights, nullptr);
+    setStringEntry(&inp, "init-lambda-weights", inputrecStrings->lambda_weights, nullptr);
     fep->edHdLPrintEnergy   = get_eeenum(&inp, "dhdl-print-energy", edHdLPrintEnergy_names, wi);
     fep->sc_alpha           = get_ereal(&inp, "sc-alpha", 0.0, wi);
     fep->sc_power           = get_eint(&inp, "sc-power", 1, wi);
@@ -2240,12 +2330,12 @@ void get_ir(const char*     mdparin,
 
     /* Non-equilibrium MD stuff */
     printStringNewline(&inp, "Non-equilibrium MD stuff");
-    setStringEntry(&inp, "acc-grps", is->accgrps, nullptr);
-    setStringEntry(&inp, "accelerate", is->acc, nullptr);
-    setStringEntry(&inp, "freezegrps", is->freeze, nullptr);
-    setStringEntry(&inp, "freezedim", is->frdim, nullptr);
+    setStringEntry(&inp, "acc-grps", inputrecStrings->accgrps, nullptr);
+    setStringEntry(&inp, "accelerate", inputrecStrings->acc, nullptr);
+    setStringEntry(&inp, "freezegrps", inputrecStrings->freeze, nullptr);
+    setStringEntry(&inp, "freezedim", inputrecStrings->frdim, nullptr);
     ir->cos_accel = get_ereal(&inp, "cos-acceleration", 0, wi);
-    setStringEntry(&inp, "deform", is->deform, nullptr);
+    setStringEntry(&inp, "deform", inputrecStrings->deform, nullptr);
 
     /* simulated tempering variables */
     printStringNewline(&inp, "simulated tempering variables");
@@ -2386,8 +2476,8 @@ void get_ir(const char*     mdparin,
 
     /* User defined thingies */
     printStringNewline(&inp, "User defined thingies");
-    setStringEntry(&inp, "user1-grps", is->user1, nullptr);
-    setStringEntry(&inp, "user2-grps", is->user2, nullptr);
+    setStringEntry(&inp, "user1-grps", inputrecStrings->user1, nullptr);
+    setStringEntry(&inp, "user2-grps", inputrecStrings->user2, nullptr);
     ir->userint1  = get_eint(&inp, "userint1", 0, wi);
     ir->userint2  = get_eint(&inp, "userint2", 0, wi);
     ir->userint3  = get_eint(&inp, "userint3", 0, wi);
@@ -2496,11 +2586,11 @@ void get_ir(const char*     mdparin,
     }
 
     opts->couple_moltype = nullptr;
-    if (strlen(is->couple_moltype) > 0)
+    if (strlen(inputrecStrings->couple_moltype) > 0)
     {
         if (ir->efep != efepNO)
         {
-            opts->couple_moltype = gmx_strdup(is->couple_moltype);
+            opts->couple_moltype = gmx_strdup(inputrecStrings->couple_moltype);
             if (opts->couple_lam0 == opts->couple_lam1)
             {
                 warning(wi, "The lambda=0 and lambda=1 states for coupling are identical");
@@ -2523,7 +2613,7 @@ void get_ir(const char*     mdparin,
     /* FREE ENERGY AND EXPANDED ENSEMBLE OPTIONS */
     if (ir->efep != efepNO)
     {
-        if (fep->delta_lambda > 0)
+        if (fep->delta_lambda != 0)
         {
             ir->efep = efepSLOWGROWTH;
         }
@@ -2556,7 +2646,7 @@ void get_ir(const char*     mdparin,
         {
             ir->bExpanded = TRUE;
         }
-        do_fep_params(ir, is->fep_lambda, is->lambda_weights, wi);
+        do_fep_params(ir, inputrecStrings->fep_lambda, inputrecStrings->lambda_weights, wi);
         if (ir->bSimTemp) /* done after fep params */
         {
             do_simtemp_params(ir);
@@ -2587,11 +2677,11 @@ void get_ir(const char*     mdparin,
 
     /* WALL PARAMETERS */
 
-    do_wall_params(ir, is->wall_atomtype, is->wall_density, opts, wi);
+    do_wall_params(ir, inputrecStrings->wall_atomtype, inputrecStrings->wall_density, opts, wi);
 
     /* ORIENTATION RESTRAINT PARAMETERS */
 
-    if (opts->bOrire && gmx::splitString(is->orirefitgrp).size() != 1)
+    if (opts->bOrire && gmx::splitString(inputrecStrings->orirefitgrp).size() != 1)
     {
         warning_error(wi, "ERROR: Need one orientation restraint fit group\n");
     }
@@ -2605,15 +2695,17 @@ void get_ir(const char*     mdparin,
     }
 
     double gmx_unused canary;
-    int ndeform = sscanf(is->deform, "%lf %lf %lf %lf %lf %lf %lf", &(dumdub[0][0]), &(dumdub[0][1]),
-                         &(dumdub[0][2]), &(dumdub[0][3]), &(dumdub[0][4]), &(dumdub[0][5]), &canary);
+    int ndeform = sscanf(inputrecStrings->deform, "%lf %lf %lf %lf %lf %lf %lf", &(dumdub[0][0]),
+                         &(dumdub[0][1]), &(dumdub[0][2]), &(dumdub[0][3]), &(dumdub[0][4]),
+                         &(dumdub[0][5]), &canary);
 
-    if (strlen(is->deform) > 0 && ndeform != 6)
+    if (strlen(inputrecStrings->deform) > 0 && ndeform != 6)
     {
-        warning_error(
-                wi, gmx::formatString(
-                            "Cannot parse exactly 6 box deformation velocities from string '%s'", is->deform)
-                            .c_str());
+        warning_error(wi,
+                      gmx::formatString(
+                              "Cannot parse exactly 6 box deformation velocities from string '%s'",
+                              inputrecStrings->deform)
+                              .c_str());
     }
     for (i = 0; i < 3; i++)
     {
@@ -2673,25 +2765,20 @@ void get_ir(const char*     mdparin,
         }
     }
 
+    /* Set up MTS levels, this needs to happen before checking AWH parameters */
+    if (ir->useMts)
+    {
+        setupMtsLevels(ir->mtsLevels, *ir, *opts, wi);
+    }
+
+    if (ir->bDoAwh)
+    {
+        gmx::checkAwhParams(ir->awhParams, ir, wi);
+    }
+
     sfree(dumstr[0]);
     sfree(dumstr[1]);
 }
-
-static int search_QMstring(const char* s, int ng, const char* gn[])
-{
-    /* same as normal search_string, but this one searches QM strings */
-    int i;
-
-    for (i = 0; (i < ng); i++)
-    {
-        if (gmx_strcasecmp(s, gn[i]) == 0)
-        {
-            return i;
-        }
-    }
-
-    gmx_fatal(FARGS, "this QM method or basisset (%s) is not implemented\n!", s);
-} /* search_QMstring */
 
 /* We would like gn to be const as well, but C doesn't allow this */
 /* TODO this is utility functionality (search for the index of a
@@ -3008,7 +3095,7 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, char** gnames)
          * belong to different TC or VCM groups it is anyhow difficult
          * to determine the optimal nrdf assignment.
          */
-        pull = ir->pull;
+        pull = ir->pull.get();
 
         for (int i = 0; i < pull->ncoord; i++)
         {
@@ -3025,7 +3112,7 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, char** gnames)
 
                 pgrp = &pull->group[pull->coord[i].group[j]];
 
-                if (pgrp->nat > 0)
+                if (!pgrp->ind.empty())
                 {
                     /* Subtract 1/2 dof from each group */
                     int ai = pgrp->ind[0];
@@ -3390,9 +3477,9 @@ void do_index(const char*                   mdparin,
 
     set_warning_line(wi, mdparin, -1);
 
-    auto temperatureCouplingTauValues       = gmx::splitString(is->tau_t);
-    auto temperatureCouplingReferenceValues = gmx::splitString(is->ref_t);
-    auto temperatureCouplingGroupNames      = gmx::splitString(is->tcgrps);
+    auto temperatureCouplingTauValues       = gmx::splitString(inputrecStrings->tau_t);
+    auto temperatureCouplingReferenceValues = gmx::splitString(inputrecStrings->ref_t);
+    auto temperatureCouplingGroupNames      = gmx::splitString(inputrecStrings->tcgrps);
     if (temperatureCouplingTauValues.size() != temperatureCouplingGroupNames.size()
         || temperatureCouplingReferenceValues.size() != temperatureCouplingGroupNames.size())
     {
@@ -3529,7 +3616,7 @@ void do_index(const char*                   mdparin,
     }
 
     /* Simulated annealing for each group. There are nr groups */
-    auto simulatedAnnealingGroupNames = gmx::splitString(is->anneal);
+    auto simulatedAnnealingGroupNames = gmx::splitString(inputrecStrings->anneal);
     if (simulatedAnnealingGroupNames.size() == 1
         && gmx::equalCaseInsensitive(simulatedAnnealingGroupNames[0], "N", 1))
     {
@@ -3576,7 +3663,7 @@ void do_index(const char*                   mdparin,
             if (bAnneal)
             {
                 /* Read the other fields too */
-                auto simulatedAnnealingPoints = gmx::splitString(is->anneal_npoints);
+                auto simulatedAnnealingPoints = gmx::splitString(inputrecStrings->anneal_npoints);
                 if (simulatedAnnealingPoints.size() != simulatedAnnealingGroupNames.size())
                 {
                     gmx_fatal(FARGS, "Found %zu annealing-npoints values for %zu groups\n",
@@ -3597,14 +3684,14 @@ void do_index(const char*                   mdparin,
                     numSimulatedAnnealingFields += ir->opts.anneal_npoints[i];
                 }
 
-                auto simulatedAnnealingTimes = gmx::splitString(is->anneal_time);
+                auto simulatedAnnealingTimes = gmx::splitString(inputrecStrings->anneal_time);
 
                 if (simulatedAnnealingTimes.size() != numSimulatedAnnealingFields)
                 {
                     gmx_fatal(FARGS, "Found %zu annealing-time values, wanted %zu\n",
                               simulatedAnnealingTimes.size(), numSimulatedAnnealingFields);
                 }
-                auto simulatedAnnealingTemperatures = gmx::splitString(is->anneal_temp);
+                auto simulatedAnnealingTemperatures = gmx::splitString(inputrecStrings->anneal_temp);
                 if (simulatedAnnealingTemperatures.size() != numSimulatedAnnealingFields)
                 {
                     gmx_fatal(FARGS, "Found %zu annealing-temp values, wanted %zu\n",
@@ -3694,19 +3781,20 @@ void do_index(const char*                   mdparin,
     {
         for (int i = 1; i < ir->pull->ngroup; i++)
         {
-            const int gid = search_string(is->pull_grp[i], defaultIndexGroups->nr, gnames);
+            const int gid = search_string(inputrecStrings->pullGroupNames[i].c_str(),
+                                          defaultIndexGroups->nr, gnames);
             GMX_ASSERT(defaultIndexGroups, "Must have initialized default index groups");
             atomGroupRangeValidation(natoms, gid, *defaultIndexGroups);
         }
 
-        make_pull_groups(ir->pull, is->pull_grp, defaultIndexGroups, gnames);
+        process_pull_groups(ir->pull->group, inputrecStrings->pullGroupNames, defaultIndexGroups, gnames);
 
-        make_pull_coords(ir->pull);
+        checkPullCoords(ir->pull->group, ir->pull->coord);
     }
 
     if (ir->bRot)
     {
-        make_rotation_groups(ir->rot, is->rot_grp, defaultIndexGroups, gnames);
+        make_rotation_groups(ir->rot, inputrecStrings->rotateGroupNames, defaultIndexGroups, gnames);
     }
 
     if (ir->eSwapCoords != eswapNO)
@@ -3717,15 +3805,15 @@ void do_index(const char*                   mdparin,
     /* Make indices for IMD session */
     if (ir->bIMD)
     {
-        make_IMD_group(ir->imd, is->imd_grp, defaultIndexGroups, gnames);
+        make_IMD_group(ir->imd, inputrecStrings->imd_grp, defaultIndexGroups, gnames);
     }
 
     gmx::IndexGroupsAndNames defaultIndexGroupsAndNames(
             *defaultIndexGroups, gmx::arrayRefFromArray(gnames, defaultIndexGroups->nr));
-    notifier.notifier_.notify(defaultIndexGroupsAndNames);
+    notifier.preProcessingNotifications_.notify(defaultIndexGroupsAndNames);
 
-    auto accelerations          = gmx::splitString(is->acc);
-    auto accelerationGroupNames = gmx::splitString(is->accgrps);
+    auto accelerations          = gmx::splitString(inputrecStrings->acc);
+    auto accelerationGroupNames = gmx::splitString(inputrecStrings->accgrps);
     if (accelerationGroupNames.size() * DIM != accelerations.size())
     {
         gmx_fatal(FARGS, "Invalid Acceleration input: %zu groups and %zu acc. values",
@@ -3739,8 +3827,8 @@ void do_index(const char*                   mdparin,
 
     convertRvecs(wi, accelerations, "anneal-time", ir->opts.acc);
 
-    auto freezeDims       = gmx::splitString(is->frdim);
-    auto freezeGroupNames = gmx::splitString(is->freeze);
+    auto freezeDims       = gmx::splitString(inputrecStrings->frdim);
+    auto freezeGroupNames = gmx::splitString(inputrecStrings->freeze);
     if (freezeDims.size() != DIM * freezeGroupNames.size())
     {
         gmx_fatal(FARGS, "Invalid Freezing input: %zu groups and %zu freeze values",
@@ -3777,12 +3865,12 @@ void do_index(const char*                   mdparin,
         }
     }
 
-    auto energyGroupNames = gmx::splitString(is->energy);
+    auto energyGroupNames = gmx::splitString(inputrecStrings->energy);
     do_numbering(natoms, groups, energyGroupNames, defaultIndexGroups, gnames,
                  SimulationAtomGroupType::EnergyOutput, restnm, egrptpALL_GENREST, bVerbose, wi);
     add_wall_energrps(groups, ir->nwall, symtab);
     ir->opts.ngener    = groups->groups[SimulationAtomGroupType::EnergyOutput].size();
-    auto vcmGroupNames = gmx::splitString(is->vcm);
+    auto vcmGroupNames = gmx::splitString(inputrecStrings->vcm);
     do_numbering(natoms, groups, vcmGroupNames, defaultIndexGroups, gnames,
                  SimulationAtomGroupType::MassCenterVelocityRemoval, restnm,
                  vcmGroupNames.empty() ? egrptpALL_GENREST : egrptpPART, bVerbose, wi);
@@ -3795,90 +3883,32 @@ void do_index(const char*                   mdparin,
     /* Now we have filled the freeze struct, so we can calculate NRDF */
     calc_nrdf(mtop, ir, gnames);
 
-    auto user1GroupNames = gmx::splitString(is->user1);
+    auto user1GroupNames = gmx::splitString(inputrecStrings->user1);
     do_numbering(natoms, groups, user1GroupNames, defaultIndexGroups, gnames,
                  SimulationAtomGroupType::User1, restnm, egrptpALL_GENREST, bVerbose, wi);
-    auto user2GroupNames = gmx::splitString(is->user2);
+    auto user2GroupNames = gmx::splitString(inputrecStrings->user2);
     do_numbering(natoms, groups, user2GroupNames, defaultIndexGroups, gnames,
                  SimulationAtomGroupType::User2, restnm, egrptpALL_GENREST, bVerbose, wi);
-    auto compressedXGroupNames = gmx::splitString(is->x_compressed_groups);
+    auto compressedXGroupNames = gmx::splitString(inputrecStrings->x_compressed_groups);
     do_numbering(natoms, groups, compressedXGroupNames, defaultIndexGroups, gnames,
                  SimulationAtomGroupType::CompressedPositionOutput, restnm, egrptpONE, bVerbose, wi);
-    auto orirefFitGroupNames = gmx::splitString(is->orirefitgrp);
+    auto orirefFitGroupNames = gmx::splitString(inputrecStrings->orirefitgrp);
     do_numbering(natoms, groups, orirefFitGroupNames, defaultIndexGroups, gnames,
                  SimulationAtomGroupType::OrientationRestraintsFit, restnm, egrptpALL_GENREST,
                  bVerbose, wi);
 
-    /* QMMM input processing */
-    auto qmGroupNames = gmx::splitString(is->QMMM);
-    auto qmMethods    = gmx::splitString(is->QMmethod);
-    auto qmBasisSets  = gmx::splitString(is->QMbasis);
-    if (ir->eI != eiMimic)
+    /* MiMiC QMMM input processing */
+    auto qmGroupNames = gmx::splitString(inputrecStrings->QMMM);
+    if (qmGroupNames.size() > 1)
     {
-        if (qmMethods.size() != qmGroupNames.size() || qmBasisSets.size() != qmGroupNames.size())
-        {
-            gmx_fatal(FARGS,
-                      "Invalid QMMM input: %zu groups %zu basissets"
-                      " and %zu methods\n",
-                      qmGroupNames.size(), qmBasisSets.size(), qmMethods.size());
-        }
-        /* group rest, if any, is always MM! */
-        do_numbering(natoms, groups, qmGroupNames, defaultIndexGroups, gnames,
-                     SimulationAtomGroupType::QuantumMechanics, restnm, egrptpALL_GENREST, bVerbose, wi);
-        nr            = qmGroupNames.size(); /*atoms->grps[egcQMMM].nr;*/
-        ir->opts.ngQM = qmGroupNames.size();
-        snew(ir->opts.QMmethod, nr);
-        snew(ir->opts.QMbasis, nr);
-        for (i = 0; i < nr; i++)
-        {
-            /* input consists of strings: RHF CASSCF PM3 .. These need to be
-             * converted to the corresponding enum in names.c
-             */
-            ir->opts.QMmethod[i] = search_QMstring(qmMethods[i].c_str(), eQMmethodNR, eQMmethod_names);
-            ir->opts.QMbasis[i] = search_QMstring(qmBasisSets[i].c_str(), eQMbasisNR, eQMbasis_names);
-        }
-        auto qmMultiplicities = gmx::splitString(is->QMmult);
-        auto qmCharges        = gmx::splitString(is->QMcharge);
-        auto qmbSH            = gmx::splitString(is->bSH);
-        snew(ir->opts.QMmult, nr);
-        snew(ir->opts.QMcharge, nr);
-        snew(ir->opts.bSH, nr);
-        convertInts(wi, qmMultiplicities, "QMmult", ir->opts.QMmult);
-        convertInts(wi, qmCharges, "QMcharge", ir->opts.QMcharge);
-        convertYesNos(wi, qmbSH, "bSH", ir->opts.bSH);
-
-        auto CASelectrons = gmx::splitString(is->CASelectrons);
-        auto CASorbitals  = gmx::splitString(is->CASorbitals);
-        snew(ir->opts.CASelectrons, nr);
-        snew(ir->opts.CASorbitals, nr);
-        convertInts(wi, CASelectrons, "CASelectrons", ir->opts.CASelectrons);
-        convertInts(wi, CASorbitals, "CASOrbitals", ir->opts.CASorbitals);
-
-        auto SAon    = gmx::splitString(is->SAon);
-        auto SAoff   = gmx::splitString(is->SAoff);
-        auto SAsteps = gmx::splitString(is->SAsteps);
-        snew(ir->opts.SAon, nr);
-        snew(ir->opts.SAoff, nr);
-        snew(ir->opts.SAsteps, nr);
-        convertInts(wi, SAon, "SAon", ir->opts.SAon);
-        convertInts(wi, SAoff, "SAoff", ir->opts.SAoff);
-        convertInts(wi, SAsteps, "SAsteps", ir->opts.SAsteps);
+        gmx_fatal(FARGS, "Currently, having more than one QM group in MiMiC is not supported");
     }
-    else
-    {
-        /* MiMiC */
-        if (qmGroupNames.size() > 1)
-        {
-            gmx_fatal(FARGS, "Currently, having more than one QM group in MiMiC is not supported");
-        }
-        /* group rest, if any, is always MM! */
-        do_numbering(natoms, groups, qmGroupNames, defaultIndexGroups, gnames,
-                     SimulationAtomGroupType::QuantumMechanics, restnm, egrptpALL_GENREST, bVerbose, wi);
+    /* group rest, if any, is always MM! */
+    do_numbering(natoms, groups, qmGroupNames, defaultIndexGroups, gnames,
+                 SimulationAtomGroupType::QuantumMechanics, restnm, egrptpALL_GENREST, bVerbose, wi);
+    ir->opts.ngQM = qmGroupNames.size();
 
-        ir->opts.ngQM = qmGroupNames.size();
-    }
-
-    /* end of QMMM input */
+    /* end of MiMiC QMMM input */
 
     if (bVerbose)
     {
@@ -3896,7 +3926,7 @@ void do_index(const char*                   mdparin,
     nr = groups->groups[SimulationAtomGroupType::EnergyOutput].size();
     snew(ir->opts.egp_flags, nr * nr);
 
-    bExcl = do_egp_flag(ir, groups, "energygrp-excl", is->egpexcl, EGP_EXCL);
+    bExcl = do_egp_flag(ir, groups, "energygrp-excl", inputrecStrings->egpexcl, EGP_EXCL);
     if (bExcl && ir->cutoff_scheme == ecutsVERLET)
     {
         warning_error(wi, "Energy group exclusions are currently not supported");
@@ -3906,7 +3936,7 @@ void do_index(const char*                   mdparin,
         warning(wi, "Can not exclude the lattice Coulomb energy between energy groups");
     }
 
-    bTable = do_egp_flag(ir, groups, "energygrp-table", is->egptable, EGP_TABLE);
+    bTable = do_egp_flag(ir, groups, "energygrp-table", inputrecStrings->egptable, EGP_TABLE);
     if (bTable && !(ir->vdwtype == evdwUSER) && !(ir->coulombtype == eelUSER)
         && !(ir->coulombtype == eelPMEUSER) && !(ir->coulombtype == eelPMEUSERSWITCH))
     {
@@ -4181,6 +4211,9 @@ static void check_combination_rules(const t_inputrec* ir, const gmx_mtop_t* mtop
 
 void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_t wi)
 {
+    // Not meeting MTS requirements should have resulted in a fatal error, so we can assert here
+    gmx::assertMtsRequirements(*ir);
+
     char                      err_buf[STRLEN];
     int                       i, m, c, nmol;
     bool                      bCharge, bAcc;
@@ -4482,7 +4515,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
     char        warn_buf[STRLEN];
     const char* ptr;
 
-    ptr = check_box(ir->ePBC, box);
+    ptr = check_box(ir->pbcType, box);
     if (ptr)
     {
         warning_error(wi, ptr);
@@ -4532,7 +4565,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
         ir->LincsWarnAngle = 90.0;
     }
 
-    if (ir->ePBC != epbcNONE)
+    if (ir->pbcType != PbcType::No)
     {
         if (ir->nstlist == 0)
         {
@@ -4540,7 +4573,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
                     "With nstlist=0 atoms are only put into the box at step 0, therefore drifting "
                     "atoms might cause the simulation to crash.");
         }
-        if (gmx::square(ir->rlist) >= max_cutoff2(ir->ePBC, box))
+        if (gmx::square(ir->rlist) >= max_cutoff2(ir->pbcType, box))
         {
             sprintf(warn_buf,
                     "ERROR: The cut-off length is longer than half the shortest box vector or "

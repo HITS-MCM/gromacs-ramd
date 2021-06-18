@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -51,25 +51,20 @@
 
 #include "gmxpre.h"
 
-#include "config.h"
-
-#include <assert.h>
-
 #include <cmath>
 
-#include <algorithm>
-#include <unordered_map>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include "gromacs/gpu_utils/gpu_testutils.h"
+#include "gromacs/hardware/device_management.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/utility/stringutil.h"
 
 #include "testutils/refdata.h"
+#include "testutils/test_hardware_environment.h"
 #include "testutils/testasserts.h"
 
 #include "leapfrogtestdata.h"
@@ -137,8 +132,6 @@ const LeapFrogTestParameters parametersSets[] = {
 class LeapFrogTest : public ::testing::TestWithParam<LeapFrogTestParameters>
 {
 public:
-    //! Availiable runners (CPU and GPU versions of the Leap-Frog)
-    static std::unordered_map<std::string, void (*)(LeapFrogTestData* testData, const int numSteps)> s_runners_;
     //! Reference data
     TestReferenceData refData_;
     //! Checker for reference data
@@ -146,28 +139,15 @@ public:
 
     LeapFrogTest() : checker_(refData_.rootChecker()) {}
 
-    //! Setup the runners one for all parameters sets
-    static void SetUpTestCase()
-    {
-        //
-        // All runners should be registered here under appropriate conditions
-        //
-        s_runners_["LeapFrogSimple"] = integrateLeapFrogSimple;
-        if (GMX_GPU == GMX_GPU_CUDA && canComputeOnGpu())
-        {
-            s_runners_["LeapFrogGpu"] = integrateLeapFrogGpu;
-        }
-    }
-
     /*! \brief Test the numerical integrator against analytical solution for simple constant force case.
      *
      * \param[in]  tolerance  Tolerance
      * \param[in]  testData   Test data object
      * \param[in]  totalTime  Total numerical integration time
      */
-    void testAgainstAnalyticalSolution(FloatingPointTolerance  tolerance,
-                                       const LeapFrogTestData& testData,
-                                       const real              totalTime)
+    static void testAgainstAnalyticalSolution(FloatingPointTolerance  tolerance,
+                                              const LeapFrogTestData& testData,
+                                              const real              totalTime)
     {
         for (int i = 0; i < testData.numAtoms_; i++)
         {
@@ -223,21 +203,32 @@ public:
     }
 };
 
-std::unordered_map<std::string, void (*)(LeapFrogTestData* testData, const int numSteps)> LeapFrogTest::s_runners_;
-
 TEST_P(LeapFrogTest, SimpleIntegration)
 {
-    // Cycle through all available runners
-    for (const auto& runner : s_runners_)
+    // Construct the list of runners
+    std::vector<std::unique_ptr<ILeapFrogTestRunner>> runners;
+    // Add runners for CPU version
+    runners.emplace_back(std::make_unique<LeapFrogHostTestRunner>());
+    // If using CUDA, add runners for the GPU version for each available GPU
+    const bool addGpuRunners = HAVE_GPU_LEAPFROG;
+    if (addGpuRunners)
     {
-        std::string runnerName = runner.first;
+        for (const auto& testDevice : getTestHardwareEnvironment()->getTestDeviceList())
+        {
+            runners.emplace_back(std::make_unique<LeapFrogDeviceTestRunner>(*testDevice));
+        }
+    }
 
+    for (const auto& runner : runners)
+    {
         LeapFrogTestParameters parameters = GetParam();
 
         std::string testDescription = formatString(
-                "Testing %s with %d atoms for %d timesteps with %d temperature coupling groups and "
-                "%s pressure coupling (dt = %f, v0=(%f, %f, %f), f0=(%f, %f, %f), nstpcouple = %d)",
-                runnerName.c_str(), parameters.numAtoms, parameters.numSteps,
+                "Testing on %s with %d atoms for %d timesteps with %d temperature coupling "
+                "groups and "
+                "%s pressure coupling (dt = %f, v0=(%f, %f, %f), f0=(%f, %f, %f), nstpcouple = "
+                "%d)",
+                runner->hardwareDescription().c_str(), parameters.numAtoms, parameters.numSteps,
                 parameters.numTCoupleGroups, parameters.nstpcouple == 0 ? "without" : "with",
                 parameters.timestep, parameters.v[XX], parameters.v[YY], parameters.v[ZZ],
                 parameters.f[XX], parameters.f[YY], parameters.f[ZZ], parameters.nstpcouple);
@@ -247,7 +238,7 @@ TEST_P(LeapFrogTest, SimpleIntegration)
                 parameters.numAtoms, parameters.timestep, parameters.v, parameters.f,
                 parameters.numTCoupleGroups, parameters.nstpcouple);
 
-        runner.second(testData.get(), parameters.numSteps);
+        runner->integrate(testData.get(), parameters.numSteps);
 
         real totalTime = parameters.numSteps * parameters.timestep;
         // TODO For the case of constant force, the numerical scheme is exact and

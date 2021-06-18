@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,7 +49,6 @@
 #include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/unique_cptr.h"
 
-struct gmx_multisim_t;
 struct t_commrec;
 struct t_filenm;
 
@@ -59,7 +59,7 @@ void done_commrec(t_commrec* cr);
 using CommrecHandle = gmx::unique_cptr<t_commrec, done_commrec>;
 
 //! Allocate, initialize and return the commrec.
-CommrecHandle init_commrec(MPI_Comm communicator, const gmx_multisim_t* ms);
+CommrecHandle init_commrec(MPI_Comm communicator);
 
 struct t_commrec* reinitialize_commrec_for_this_thread(const t_commrec* cro);
 
@@ -75,14 +75,11 @@ void gmx_fill_commrec_from_mpi(t_commrec* cr);
 void gmx_setup_nodecomm(FILE* fplog, struct t_commrec* cr);
 /* Sets up fast global communication for clusters with multi-core nodes */
 
-void gmx_barrier(const struct t_commrec* cr);
-/* Wait till all processes in cr->mpi_comm_mygroup have reached the barrier */
+//! Wait until all processes in communicator have reached the barrier
+void gmx_barrier(MPI_Comm communicator);
 
-void gmx_bcast(int nbytes, void* b, const struct t_commrec* cr);
-/* Broadcast nbytes bytes from the master to cr->mpi_comm_mygroup */
-
-void gmx_bcast_sim(int nbytes, void* b, const struct t_commrec* cr);
-/* Broadcast nbytes bytes from the sim master to cr->mpi_comm_mysim */
+//! Broadcast nbytes bytes from the master to communicator
+void gmx_bcast(int nbytes, void* b, MPI_Comm communicator);
 
 void gmx_sumi(int nr, int r[], const struct t_commrec* cr);
 /* Calculate the global sum of an array of ints */

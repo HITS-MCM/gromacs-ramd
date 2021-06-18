@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -66,7 +67,6 @@ struct pull_t;
 struct t_commrec;
 struct t_filenm;
 struct t_inputrec;
-struct t_mdatoms;
 struct t_pbc;
 class t_state;
 
@@ -152,13 +152,13 @@ void register_external_pull_potential(struct pull_t* pull, int coord_index, cons
  * \param[in,out] pull             The pull struct.
  * \param[in]     coord_index      The pull coordinate index to set the force for.
  * \param[in]     coord_force      The scalar force for the pull coordinate.
- * \param[in]     mdatoms          Atom properties, only masses are used.
+ * \param[in]     masses           Atoms masses.
  * \param[in,out] forceWithVirial  Force and virial buffers.
  */
 void apply_external_pull_coord_force(struct pull_t*        pull,
                                      int                   coord_index,
                                      double                coord_force,
-                                     const t_mdatoms*      mdatoms,
+                                     const real*           masses,
                                      gmx::ForceWithVirial* forceWithVirial);
 
 
@@ -172,7 +172,7 @@ void clear_pull_forces(struct pull_t* pull);
 /*! \brief Determine the COM pull forces and add them to f, return the potential
  *
  * \param[in,out] pull   The pull struct.
- * \param[in]     md     All atoms.
+ * \param[in]     masses Atoms masses.
  * \param[in]     pbc    Information struct about periodicity.
  * \param[in]     cr     Struct for communication info.
  * \param[in]     t      Time.
@@ -184,7 +184,7 @@ void clear_pull_forces(struct pull_t* pull);
  * \returns The pull potential energy.
  */
 real pull_potential(struct pull_t*        pull,
-                    const t_mdatoms*      md,
+                    const real*           masses,
                     struct t_pbc*         pbc,
                     const t_commrec*      cr,
                     double                t,
@@ -198,7 +198,7 @@ real pull_potential(struct pull_t*        pull,
  * and also constrain v when v != NULL.
  *
  * \param[in,out] pull   The pull data.
- * \param[in]     md     All atoms.
+ * \param[in]     masses Atoms masses.
  * \param[in]     pbc    Information struct about periodicity.
  * \param[in]     cr     Struct for communication info.
  * \param[in]     dt     The time step length.
@@ -209,7 +209,7 @@ real pull_potential(struct pull_t*        pull,
  * \param[in,out] vir    The virial, which, if != NULL, gets a pull correction.
  */
 void pull_constraint(struct pull_t*   pull,
-                     const t_mdatoms* md,
+                     const real*      masses,
                      struct t_pbc*    pbc,
                      const t_commrec* cr,
                      double           dt,
@@ -259,7 +259,7 @@ void finish_pull(struct pull_t* pull);
  *
  * \param[in] cr       Struct for communication info.
  * \param[in] pull     The pull data structure.
- * \param[in] md       All atoms.
+ * \param[in] masses   Atoms masses.
  * \param[in] pbc      Information struct about periodicity.
  * \param[in] t        Time, only used for cylinder ref.
  * \param[in] x        The local positions.
@@ -268,7 +268,7 @@ void finish_pull(struct pull_t* pull);
  */
 void pull_calc_coms(const t_commrec* cr,
                     pull_t*          pull,
-                    const t_mdatoms* md,
+                    const real*      masses,
                     t_pbc*           pbc,
                     double           t,
                     const rvec       x[],
@@ -329,20 +329,20 @@ bool pullCheckPbcWithinGroup(const pull_t&                  pull,
  *
  * \param[in] pull     The pull data structure.
  */
-gmx_bool pull_have_potential(const struct pull_t* pull);
+bool pull_have_potential(const pull_t& pull);
 
 
 /*! \brief Returns if we have pull coordinates with constraint pulling.
  *
  * \param[in] pull     The pull data structure.
  */
-gmx_bool pull_have_constraint(const struct pull_t* pull);
+bool pull_have_constraint(const pull_t& pull);
 
 /*! \brief Returns if inputrec has pull coordinates with constraint pulling.
  *
  * \param[in] pullParameters  Pulling input parameters from input record.
  */
-bool pull_have_constraint(const pull_params_t* pullParameters);
+bool pull_have_constraint(const pull_params_t& pullParameters);
 
 /*! \brief Returns the maxing distance for pulling
  *
@@ -370,7 +370,7 @@ void updatePrevStepPullCom(struct pull_t* pull, t_state* state);
  *
  * \param[in] ir                     The input options/settings of the simulation.
  * \param[in] pull_work              The COM pull force calculation data structure
- * \param[in] md                     All atoms.
+ * \param[in] masses                 Atoms masses.
  * \param[in] state                  The local (to this rank) state.
  * \param[in] state_global           The global state.
  * \param[in] cr                     Struct for communication info.
@@ -378,7 +378,7 @@ void updatePrevStepPullCom(struct pull_t* pull, t_state* state);
  */
 void preparePrevStepPullCom(const t_inputrec* ir,
                             pull_t*           pull_work,
-                            const t_mdatoms*  md,
+                            const real*       masses,
                             t_state*          state,
                             const t_state*    state_global,
                             const t_commrec*  cr,
@@ -388,10 +388,10 @@ void preparePrevStepPullCom(const t_inputrec* ir,
  *
  * \param[in] cr       Struct for communication info.
  * \param[in] pull     The pull data structure.
- * \param[in] md       All atoms.
+ * \param[in] masses   Atoms masses.
  * \param[in] pbc      Information struct about periodicity.
  * \param[in] x        The local positions.
  */
-void initPullComFromPrevStep(const t_commrec* cr, pull_t* pull, const t_mdatoms* md, t_pbc* pbc, const rvec x[]);
+void initPullComFromPrevStep(const t_commrec* cr, pull_t* pull, const real* masses, t_pbc* pbc, const rvec x[]);
 
 #endif

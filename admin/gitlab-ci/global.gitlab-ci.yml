@@ -15,7 +15,7 @@
     KUBERNETES_MEMORY_LIMIT: 8Gi
     KUBERNETES_EXTENDED_RESOURCE_NAME: ""
     KUBERNETES_EXTENDED_RESOURCE_LIMIT: 0
-    CACHE_FALLBACK_KEY: "$CI_JOB_NAME-$CI_JOB_STAGE-release-2020"
+    CACHE_FALLBACK_KEY: "$CI_JOB_NAME-$CI_JOB_STAGE-release-2021"
     BUILD_DIR: build
     INSTALL_DIR: install
     CMAKE_GMXAPI_OPTIONS: ""
@@ -41,7 +41,7 @@
 .use-cuda:
   variables:
     CMAKE_PRECISION_OPTIONS: "-DGMX_DOUBLE=OFF"
-    CMAKE_GPU_OPTIONS: -DGMX_GPU=ON -DGMX_USE_CUDA=ON
+    CMAKE_GPU_OPTIONS: -DGMX_GPU=CUDA
 
 .use-mpi:
   variables:
@@ -50,7 +50,12 @@
 .use-opencl:
   variables:
     CMAKE_PRECISION_OPTIONS: "-DGMX_DOUBLE=OFF"
-    CMAKE_GPU_OPTIONS: -DGMX_GPU=ON -DGMX_USE_OPENCL=ON
+    CMAKE_GPU_OPTIONS: -DGMX_GPU=OpenCL
+
+.use-sycl:
+  variables:
+    CMAKE_PRECISION_OPTIONS: "-DGMX_DOUBLE=OFF"
+    CMAKE_GPU_OPTIONS: -DGMX_GPU=SYCL
 
 # Base definition for using gcc.
 .use-gcc:base:
@@ -71,3 +76,33 @@
     - export CCACHE_DIR=${PWD}/ccache
     - export ASAN_SYMBOLIZER_PATH=/usr/local/bin/llvm-symbolizer
 
+# Base definition for using oneAPI.
+.use-oneapi:base:
+  variables:
+    # Use the HPC variants of icc and icpc so that OpenMP is active
+    CMAKE_COMPILER_SCRIPT: -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx -DCMAKE_INCLUDE_PATH=/opt/intel/oneapi/compiler/latest/linux/include/sycl -DCMAKE_PREFIX_PATH=/opt/intel/oneapi/compiler/latest/linux
+    CMAKE_EXTRA_OPTIONS: -DGMX_FFT_LIBRARY=mkl
+  before_script:
+    # Necessary to override gitlab default 'set -e' which breaks Intel's
+    # setvar.sh script
+    - set +e
+    - source /opt/intel/oneapi/setvars.sh
+    - set -e
+    - mkdir -p ccache
+    - export CCACHE_BASEDIR=${PWD}
+    - export CCACHE_DIR=${PWD}/ccache
+
+# Base definition for using the classic Intel compiler
+.use-icc-oneapi:base:
+  variables:
+    CMAKE_COMPILER_SCRIPT: -DCMAKE_C_COMPILER=icc -DCMAKE_CXX_COMPILER=icpc #-DCMAKE_PREFIX_PATH=/opt/intel/oneapi/compiler/latest/linux
+    CMAKE_EXTRA_OPTIONS: -DGMX_FFT_LIBRARY=mkl
+  before_script:
+    # Necessary to override gitlab default 'set -e' which breaks Intel's
+    # setvar.sh script
+    - set +e
+    - source /opt/intel/oneapi/setvars.sh
+    - set -e
+    - mkdir -p ccache
+#    - export CCACHE_BASEDIR=${PWD}
+#    - export CCACHE_DIR=${PWD}/ccache

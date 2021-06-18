@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -34,12 +35,14 @@
 
 if (GMX_BUILD_UNITTESTS)
     gmx_add_unit_test(CompatibilityHelpersTests compat-test
-                     optional.cpp
-                     pointers.cpp
-                     string_view.cpp
-                     )
-    check_cxx_compiler_flag("-Wno-unused-member-function" HAS_NO_UNUSED_MEMBER_FUNCTION)
-    if (HAS_NO_UNUSED_MEMBER_FUNCTION)
-        set_source_files_properties(optional.cpp PROPERTIES COMPILE_FLAGS -Wno-unused-member-function)
-    endif()
+        CPP_SOURCE_FILES
+            mp11.cpp
+            pointers.cpp
+            )
+    # Maintainer note: The files here may be borrowed from other projects, and
+    # can require additional handling for compiler flags, warning suppression,
+    # etcetera. Rather than documenting best practices and tips here, we refer
+    # the reader to the `git` repository history for examples of how integration
+    # caveats have been handled in the past (for borrowed code that has since
+    # been removed when it became unnecessary).
 endif()

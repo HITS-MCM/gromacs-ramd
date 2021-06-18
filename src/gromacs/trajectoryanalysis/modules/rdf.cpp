@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -91,23 +92,27 @@ namespace
  */
 
 //! Normalization for the computed distribution.
-enum Normalization
+enum class Normalization : int
 {
-    Normalization_Rdf,
-    Normalization_NumberDensity,
-    Normalization_None
+    Rdf,
+    NumberDensity,
+    None,
+    Count
 };
 //! String values corresponding to Normalization.
-const char* const c_NormalizationEnum[] = { "rdf", "number_density", "none" };
+const EnumerationArray<Normalization, const char*> c_normalizationNames = {
+    { "rdf", "number_density", "none" }
+};
 //! Whether to compute RDF wrt. surface of the reference group.
-enum SurfaceType
+enum class SurfaceType : int
 {
-    SurfaceType_None,
-    SurfaceType_Molecule,
-    SurfaceType_Residue
+    None,
+    Molecule,
+    Residue,
+    Count
 };
 //! String values corresponding to SurfaceType.
-const char* const c_SurfaceEnum[] = { "no", "mol", "res" };
+const EnumerationArray<SurfaceType, const char*> c_surfaceTypeNames = { { "no", "mol", "res" } };
 
 /*! \brief
  * Implements `gmx rdf` trajectory analysis module.
@@ -201,14 +206,14 @@ private:
 };
 
 Rdf::Rdf() :
-    surface_(SurfaceType_None),
+    surface_(SurfaceType::None),
     pairCounts_(new AnalysisDataSimpleHistogramModule()),
     normAve_(new AnalysisDataAverageModule()),
     localTop_(nullptr),
     binwidth_(0.002),
     cutoff_(0.0),
     rmax_(0.0),
-    normalization_(Normalization_Rdf),
+    normalization_(Normalization::Rdf),
     bNormalizationSet_(false),
     bXY_(false),
     bExclusions_(false),
@@ -296,7 +301,7 @@ void Rdf::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* se
 
     options->addOption(DoubleOption("bin").store(&binwidth_).description("Bin width (nm)"));
     options->addOption(EnumOption<Normalization>("norm")
-                               .enumValue(c_NormalizationEnum)
+                               .enumValue(c_normalizationNames)
                                .store(&normalization_)
                                .storeIsSet(&bNormalizationSet_)
                                .description("Normalization"));
@@ -310,7 +315,7 @@ void Rdf::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* se
             DoubleOption("rmax").store(&rmax_).description("Largest distance (nm) to calculate"));
 
     options->addOption(EnumOption<SurfaceType>("surf")
-                               .enumValue(c_SurfaceEnum)
+                               .enumValue(c_surfaceTypeNames)
                                .store(&surface_)
                                .description("RDF with respect to the surface of the reference"));
 
@@ -322,15 +327,15 @@ void Rdf::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* se
 
 void Rdf::optionsFinished(TrajectoryAnalysisSettings* settings)
 {
-    if (surface_ != SurfaceType_None)
+    if (surface_ != SurfaceType::None)
     {
         settings->setFlag(TrajectoryAnalysisSettings::efRequireTop);
 
-        if (bNormalizationSet_ && normalization_ != Normalization_None)
+        if (bNormalizationSet_ && normalization_ != Normalization::None)
         {
             GMX_THROW(InconsistentInputError("-surf cannot be combined with -norm"));
         }
-        normalization_ = Normalization_None;
+        normalization_ = Normalization::None;
         if (bExclusions_)
         {
             GMX_THROW(InconsistentInputError("-surf cannot be combined with -excl"));
@@ -358,14 +363,14 @@ void Rdf::initAnalysis(const TrajectoryAnalysisSettings& settings, const Topolog
 
     normFactors_.setColumnCount(0, sel_.size() + 1);
 
-    const bool bSurface = (surface_ != SurfaceType_None);
+    const bool bSurface = (surface_ != SurfaceType::None);
     if (bSurface)
     {
         if (!refSel_.hasOnlyAtoms())
         {
             GMX_THROW(InconsistentInputError("-surf only works with -ref that consists of atoms"));
         }
-        const e_index_t type = (surface_ == SurfaceType_Molecule ? INDEX_MOL : INDEX_RES);
+        const e_index_t type = (surface_ == SurfaceType::Molecule ? INDEX_MOL : INDEX_RES);
         surfaceGroupCount_   = refSel_.initOriginalIdsToGroup(top.mtop(), type);
     }
 
@@ -386,7 +391,7 @@ void Rdf::initAnalysis(const TrajectoryAnalysisSettings& settings, const Topolog
             }
         }
         localTop_ = top.expandedTopology();
-        if (localTop_->excls.nr == 0)
+        if (localTop_->excls.empty())
         {
             GMX_THROW(InconsistentInputError(
                     "-excl is set, but the file provided to -s does not define exclusions"));
@@ -408,7 +413,7 @@ void Rdf::initAfterFirstFrame(const TrajectoryAnalysisSettings& settings, const 
             {
                 box[ZZ][ZZ] = 2 * std::max(box[XX][XX], box[YY][YY]);
             }
-            rmax_ = std::sqrt(0.99 * 0.99 * max_cutoff2(bXY_ ? epbcXY : epbcXYZ, box));
+            rmax_ = std::sqrt(0.99 * 0.99 * max_cutoff2(bXY_ ? PbcType::XY : PbcType::Xyz, box));
         }
         else
         {
@@ -473,8 +478,8 @@ void Rdf::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAna
 {
     AnalysisDataHandle   dh        = pdata->dataHandle(pairDist_);
     AnalysisDataHandle   nh        = pdata->dataHandle(normFactors_);
-    const Selection&     refSel    = pdata->parallelSelection(refSel_);
-    const SelectionList& sel       = pdata->parallelSelections(sel_);
+    const Selection&     refSel    = TrajectoryAnalysisModuleData::parallelSelection(refSel_);
+    const SelectionList& sel       = TrajectoryAnalysisModuleData::parallelSelections(sel_);
     RdfModuleData&       frameData = *static_cast<RdfModuleData*>(pdata);
     const bool           bSurface  = !frameData.surfaceDist2_.empty();
 
@@ -599,7 +604,7 @@ void Rdf::finishAnalysis(int /*nframes*/)
     // through the dataset registration mechanism.
     AverageHistogramPointer finalRdf = pairCounts_->averager().resampleDoubleBinWidth(true);
 
-    if (normalization_ != Normalization_None)
+    if (normalization_ != Normalization::None)
     {
         // Normalize by the volume of the bins (volume of sphere segments or
         // length of circle segments).
@@ -625,7 +630,7 @@ void Rdf::finishAnalysis(int /*nframes*/)
         }
         finalRdf->scaleAllByVector(invBinVolume.data());
 
-        if (normalization_ == Normalization_Rdf)
+        if (normalization_ == Normalization::Rdf)
         {
             // Normalize by particle density.
             for (size_t g = 0; g < sel_.size(); ++g)

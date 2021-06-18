@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -46,20 +46,18 @@
 #ifndef GMX_MDLIB_TESTS_CONSTRTESTDATA_H
 #define GMX_MDLIB_TESTS_CONSTRTESTDATA_H
 
+#include <memory>
 #include <vector>
 
 #include "gromacs/gmxlib/nrnb.h"
-#include "gromacs/gpu_utils/gpu_testutils.h"
+#include "gromacs/hardware/device_management.h"
 #include "gromacs/math/paddedvector.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/lincs.h"
 #include "gromacs/mdlib/shake.h"
-#include "gromacs/mdrunutility/multisim.h"
-#include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/inputrec.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/ifunc.h"
@@ -89,16 +87,10 @@ public:
     std::vector<real> masses_;
     //! Inverse masses
     std::vector<real> invmass_;
-    //! Communication record
-    t_commrec cr_;
     //! Input record (info that usually in .mdp file)
     t_inputrec ir_;
     //! Local topology
-    t_idef idef_;
-    //! MD atoms
-    t_mdatoms md_;
-    //! Multisim data
-    gmx_multisim_t ms_;
+    std::unique_ptr<InteractionDefinitions> idef_;
     //! Computational time array (normally used to benchmark performance)
     t_nrnb nrnb_;
 
@@ -114,6 +106,10 @@ public:
     tensor virialScaledRef_;
     //! If the free energy is computed
     bool compute_dHdLambda_;
+    //! If there are atoms with perturbed mass
+    bool hasMassPerturbed_ = false;
+    //! Lambda value
+    real lambda_ = 0.0;
     //! For free energy computation
     real dHdLambda_;
     //! For free energy computation (reference value)
@@ -206,11 +202,6 @@ public:
      *
      */
     void reset();
-
-    /*! \brief
-     * Cleaning up the memory.
-     */
-    ~ConstraintsTestData();
 };
 
 } // namespace test

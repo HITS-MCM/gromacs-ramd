@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,7 +45,8 @@
 
 #include "bench_setup.h"
 
-#include "gromacs/compat/optional.h"
+#include <optional>
+
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/mdlib/dispersioncorrection.h"
 #include "gromacs/mdlib/force_flags.h"
@@ -80,7 +81,7 @@ namespace Nbnxm
  *
  * Returns an error string when the kernel is not available.
  */
-static gmx::compat::optional<std::string> checkKernelSetup(const KernelBenchOptions& options)
+static std::optional<std::string> checkKernelSetup(const KernelBenchOptions& options)
 {
     GMX_RELEASE_ASSERT(options.nbnxmSimd < BenchMarkKernels::Count
                                && options.nbnxmSimd != BenchMarkKernels::SimdAuto,
@@ -97,6 +98,11 @@ static gmx::compat::optional<std::string> checkKernelSetup(const KernelBenchOpti
     )
     {
         return "the requested SIMD kernel was not set up at configuration time";
+    }
+
+    if (options.reportTime && (0 > gmx_cycles_calibrate(1.0)))
+    {
+        return "the -time option is not supported on this system";
     }
 
     return {};
@@ -159,7 +165,7 @@ static interaction_const_t setupInteractionConst(const KernelBenchOptions& optio
         GMX_RELEASE_ASSERT(options.ewaldcoeff_q > 0, "Ewald coefficient should be > 0");
         ic.ewaldcoeff_q       = options.ewaldcoeff_q;
         ic.coulombEwaldTables = std::make_unique<EwaldCorrectionTables>();
-        init_interaction_const_tables(nullptr, &ic);
+        init_interaction_const_tables(nullptr, &ic, 0, 0);
     }
 
     return ic;
@@ -184,13 +190,14 @@ static std::unique_ptr<nonbonded_verlet_t> setupNbnxmForBenchInstance(const Kern
 
     PairlistParams pairlistParams(kernelSetup.kernelType, false, options.pairlistCutoff, false);
 
-    GridSet gridSet(epbcXYZ, false, nullptr, nullptr, pairlistParams.pairlistType, false,
+    GridSet gridSet(PbcType::Xyz, false, nullptr, nullptr, pairlistParams.pairlistType, false,
                     numThreads, pinPolicy);
 
     auto pairlistSets = std::make_unique<PairlistSets>(pairlistParams, false, 0);
 
-    auto pairSearch = std::make_unique<PairSearch>(
-            epbcXYZ, false, nullptr, nullptr, pairlistParams.pairlistType, false, numThreads, pinPolicy);
+    auto pairSearch =
+            std::make_unique<PairSearch>(PbcType::Xyz, false, nullptr, nullptr,
+                                         pairlistParams.pairlistType, false, numThreads, pinPolicy);
 
     auto atomData = std::make_unique<nbnxn_atomdata_t>(pinPolicy);
 
@@ -199,7 +206,7 @@ static std::unique_ptr<nonbonded_verlet_t> setupNbnxmForBenchInstance(const Kern
                                                     std::move(atomData), kernelSetup, nullptr, nullptr);
 
     nbnxn_atomdata_init(gmx::MDLogger(), nbv->nbat.get(), kernelSetup.kernelType, combinationRule,
-                        system.numAtomTypes, system.nonbondedParameters.data(), 1, numThreads);
+                        system.numAtomTypes, system.nonbondedParameters, 1, numThreads);
 
     t_nrnb nrnb;
 
@@ -223,13 +230,9 @@ static std::unique_ptr<nonbonded_verlet_t> setupNbnxmForBenchInstance(const Kern
                       { 0, int(system.coordinates.size()) }, atomDensity, atomInfo,
                       system.coordinates, 0, nullptr);
 
-    nbv->constructPairlist(gmx::InteractionLocality::Local, &system.excls, 0, &nrnb);
+    nbv->constructPairlist(gmx::InteractionLocality::Local, system.excls, 0, &nrnb);
 
-    t_mdatoms mdatoms;
-    // We only use (read) the atom type and charge from mdatoms
-    mdatoms.typeA   = const_cast<int*>(system.atomTypes.data());
-    mdatoms.chargeA = const_cast<real*>(system.charges.data());
-    nbv->setAtomProperties(mdatoms, atomInfo);
+    nbv->setAtomProperties(system.atomTypes, system.charges, atomInfo);
 
     return nbv;
 }
@@ -306,6 +309,28 @@ static void setupAndRunInstance(const gmx::BenchmarkSystem& system,
                 options.coulombType == BenchMarkCoulomb::Pme ? "Ewald" : "RF",
                 options.useHalfLJOptimization ? "half" : "all",
                 combruleNames[options.ljCombinationRule].c_str(), kernelNames[options.nbnxmSimd].c_str());
+        if (!options.outputFile.empty())
+        {
+            fprintf(system.csv,
+                    "\"%d\",\"%zu\",\"%g\",\"%d\",\"%d\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%"
+                    "s\",",
+#if GMX_SIMD
+                    (options.nbnxmSimd != BenchMarkKernels::SimdNo) ? GMX_SIMD_REAL_WIDTH : 0,
+#else
+                    0,
+#endif
+                    system.coordinates.size(), options.pairlistCutoff, options.numThreads,
+                    options.numIterations, options.computeVirialAndEnergy ? "yes" : "no",
+                    (options.coulombType != BenchMarkCoulomb::ReactionField)
+                            ? ((options.nbnxmSimd == BenchMarkKernels::SimdNo || options.useTabulatedEwaldCorr)
+                                       ? "table"
+                                       : "analytical")
+                            : "",
+                    options.coulombType == BenchMarkCoulomb::Pme ? "Ewald" : "RF",
+                    options.useHalfLJOptimization ? "half" : "all",
+                    combruleNames[options.ljCombinationRule].c_str(),
+                    kernelNames[options.nbnxmSimd].c_str());
+        }
     }
 
     // Run pre-iteration to avoid cache misses
@@ -328,18 +353,50 @@ static void setupAndRunInstance(const gmx::BenchmarkSystem& system,
     cycles = gmx_cycles_read() - cycles;
     if (!doWarmup)
     {
-        const double dCycles = static_cast<double>(cycles);
-        if (options.cyclesPerPair)
+        if (options.reportTime)
         {
-            fprintf(stdout, "%10.3f %10.4f %8.4f %8.4f\n", cycles * 1e-6,
-                    dCycles / options.numIterations * 1e-6, dCycles / (options.numIterations * numPairs),
-                    dCycles / (options.numIterations * numUsefulPairs));
+            const double uSec = static_cast<double>(cycles) * gmx_cycles_calibrate(1.0) * 1.e6;
+            if (options.cyclesPerPair)
+            {
+                fprintf(stdout, "%13.2f %13.3f %10.3f %10.3f\n", uSec, uSec / options.numIterations,
+                        uSec / (options.numIterations * numPairs),
+                        uSec / (options.numIterations * numUsefulPairs));
+                if (!options.outputFile.empty())
+                {
+                    fprintf(system.csv, "\"%.3f\",\"%.4f\",\"%.4f\",\"%.4f\"\n", uSec,
+                            uSec / options.numIterations, uSec / (options.numIterations * numPairs),
+                            uSec / (options.numIterations * numUsefulPairs));
+                }
+            }
+            else
+            {
+                fprintf(stdout, "%13.2f %13.3f %10.3f %10.3f\n", uSec, uSec / options.numIterations,
+                        options.numIterations * numPairs / uSec,
+                        options.numIterations * numUsefulPairs / uSec);
+                if (!options.outputFile.empty())
+                {
+                    fprintf(system.csv, "\"%.3f\",\"%.4f\",\"%.4f\",\"%.4f\"\n", uSec,
+                            uSec / options.numIterations, options.numIterations * numPairs / uSec,
+                            options.numIterations * numUsefulPairs / uSec);
+                }
+            }
         }
         else
         {
-            fprintf(stdout, "%10.3f %10.4f %8.4f %8.4f\n", dCycles * 1e-6,
-                    dCycles / options.numIterations * 1e-6, options.numIterations * numPairs / dCycles,
-                    options.numIterations * numUsefulPairs / dCycles);
+            const double dCycles = static_cast<double>(cycles);
+            if (options.cyclesPerPair)
+            {
+                fprintf(stdout, "%10.3f %10.4f %8.4f %8.4f\n", cycles * 1e-6,
+                        dCycles / options.numIterations * 1e-6,
+                        dCycles / (options.numIterations * numPairs),
+                        dCycles / (options.numIterations * numUsefulPairs));
+            }
+            else
+            {
+                fprintf(stdout, "%10.3f %10.4f %8.4f %8.4f\n", dCycles * 1e-6,
+                        dCycles / options.numIterations * 1e-6, options.numIterations * numPairs / dCycles,
+                        options.numIterations * numUsefulPairs / dCycles);
+            }
         }
     }
 }
@@ -350,7 +407,7 @@ void bench(const int sizeFactor, const KernelBenchOptions& options)
     gmx_omp_nthreads_set(emntPairsearch, options.numThreads);
     gmx_omp_nthreads_set(emntNonbonded, options.numThreads);
 
-    const gmx::BenchmarkSystem system(sizeFactor);
+    const gmx::BenchmarkSystem system(sizeFactor, options.outputFile);
 
     real minBoxSize = norm(system.box[XX]);
     for (int dim = YY; dim < DIM; dim++)
@@ -377,10 +434,6 @@ void bench(const int sizeFactor, const KernelBenchOptions& options)
                 gmx::EnumerationWrapper<BenchMarkCombRule> combRuleIter;
                 for (auto combRule : combRuleIter)
                 {
-                    if (combRule == BenchMarkCombRule::RuleNone)
-                    {
-                        continue;
-                    }
                     opt.ljCombinationRule = combRule;
 
                     expandSimdOptionAndPushBack(opt, &optionsList);
@@ -419,13 +472,45 @@ void bench(const int sizeFactor, const KernelBenchOptions& options)
         setupAndRunInstance(system, optionsList[0], true);
     }
 
-    fprintf(stdout, "Coulomb LJ   comb. SIMD    Mcycles  Mcycles/it.   %s\n",
-            options.cyclesPerPair ? "cycles/pair" : "pairs/cycle");
-    fprintf(stdout, "                                                total    useful\n");
+    if (options.reportTime)
+    {
+        fprintf(stdout, "Coulomb LJ   comb. SIMD       usec         usec/it.        %s\n",
+                options.cyclesPerPair ? "usec/pair" : "pairs/usec");
+        if (!options.outputFile.empty())
+        {
+            fprintf(system.csv,
+                    "\"width\",\"atoms\",\"cut-off radius\",\"threads\",\"iter\",\"compute "
+                    "energy\",\"Ewald excl. "
+                    "corr.\",\"Coulomb\",\"LJ\",\"comb\",\"SIMD\",\"usec\",\"usec/it\",\"total "
+                    "pairs/usec\",\"useful pairs/usec\"\n");
+        }
+        fprintf(stdout,
+                "                                                        total      useful\n");
+    }
+    else
+    {
+        fprintf(stdout, "Coulomb LJ   comb. SIMD    Mcycles  Mcycles/it.   %s\n",
+                options.cyclesPerPair ? "cycles/pair" : "pairs/cycle");
+        if (!options.outputFile.empty())
+        {
+            fprintf(system.csv,
+                    "\"width\",\"atoms\",\"cut-off radius\",\"threads\",\"iter\",\"compute "
+                    "energy\",\"Ewald excl. "
+                    "corr.\",\"Coulomb\",\"LJ\",\"comb\",\"SIMD\",\"Mcycles\",\"Mcycles/"
+                    "it\",\"total "
+                    "total cycles/pair\",\"total cycles per useful pair\"\n");
+        }
+        fprintf(stdout, "                                                total    useful\n");
+    }
 
     for (const auto& optionsInstance : optionsList)
     {
         setupAndRunInstance(system, optionsInstance, false);
+    }
+
+    if (!options.outputFile.empty())
+    {
+        fclose(system.csv);
     }
 }
 

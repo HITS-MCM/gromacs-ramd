@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,54 +39,67 @@
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/ewald/pme.h"
-#include "gromacs/listed_forces/manage_threading.h"
+#include "gromacs/listed_forces/listed_forces.h"
 #include "gromacs/mdlib/constr.h"
 #include "gromacs/mdlib/mdatoms.h"
 #include "gromacs/mdlib/vsite.h"
 #include "gromacs/mdtypes/commrec.h"
+#include "gromacs/mdtypes/forcebuffers.h"
 #include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
-#include "gromacs/pbcutil/mshift.h"
+#include "gromacs/mdtypes/interaction_const.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
+namespace gmx
+{
+
 /* TODO: Add a routine that collects the initial setup of the algorithms.
  *
  * The final solution should be an MD algorithm base class with methods
  * for initialization and atom-data setup.
  */
-void mdAlgorithmsSetupAtomData(const t_commrec*  cr,
-                               const t_inputrec* ir,
-                               const gmx_mtop_t& top_global,
-                               gmx_localtop_t*   top,
-                               t_forcerec*       fr,
-                               t_graph**         graph,
-                               gmx::MDAtoms*     mdAtoms,
-                               gmx::Constraints* constr,
-                               gmx_vsite_t*      vsite,
-                               gmx_shellfc_t*    shellfc)
+void mdAlgorithmsSetupAtomData(const t_commrec*     cr,
+                               const t_inputrec*    ir,
+                               const gmx_mtop_t&    top_global,
+                               gmx_localtop_t*      top,
+                               t_forcerec*          fr,
+                               ForceBuffers*        force,
+                               MDAtoms*             mdAtoms,
+                               Constraints*         constr,
+                               VirtualSitesHandler* vsite,
+                               gmx_shellfc_t*       shellfc)
 {
     bool usingDomDec = DOMAINDECOMP(cr);
 
-    int  numAtomIndex, numHomeAtoms;
-    int* atomIndex;
+    int numAtomIndex;
+    int numHomeAtoms;
+    int numTotalAtoms;
 
     if (usingDomDec)
     {
-        numAtomIndex = dd_natoms_mdatoms(cr->dd);
-        atomIndex    = cr->dd->globalAtomIndices.data();
-        numHomeAtoms = dd_numHomeAtoms(*cr->dd);
+        numAtomIndex  = dd_natoms_mdatoms(cr->dd);
+        numHomeAtoms  = dd_numHomeAtoms(*cr->dd);
+        numTotalAtoms = dd_natoms_mdatoms(cr->dd);
     }
     else
     {
-        numAtomIndex = -1;
-        atomIndex    = nullptr;
-        numHomeAtoms = top_global.natoms;
+        numAtomIndex  = -1;
+        numHomeAtoms  = top_global.natoms;
+        numTotalAtoms = top_global.natoms;
     }
-    atoms2md(&top_global, ir, numAtomIndex, atomIndex, numHomeAtoms, mdAtoms);
+
+    if (force != nullptr)
+    {
+        force->resize(numTotalAtoms);
+    }
+
+    atoms2md(&top_global, ir, numAtomIndex,
+             usingDomDec ? cr->dd->globalAtomIndices : std::vector<int>(), numHomeAtoms, mdAtoms);
 
     auto mdatoms = mdAtoms->mdatoms();
     if (usingDomDec)
@@ -100,28 +113,7 @@ void mdAlgorithmsSetupAtomData(const t_commrec*  cr,
 
     if (vsite)
     {
-        if (usingDomDec)
-        {
-            /* The vsites were already assigned by the domdec topology code.
-             * We only need to do the thread division here.
-             */
-            split_vsites_over_threads(top->idef.il, top->idef.iparams, mdatoms, vsite);
-        }
-        else
-        {
-            set_vsite_top(vsite, top, mdatoms);
-        }
-    }
-
-    if (!usingDomDec && ir->ePBC != epbcNONE && !fr->bMolPBC)
-    {
-        GMX_ASSERT(graph != nullptr, "We use a graph with PBC (no periodic mols) and without DD");
-
-        *graph = mk_graph(nullptr, &(top->idef), 0, top_global.natoms, FALSE, FALSE);
-    }
-    else if (graph != nullptr)
-    {
-        *graph = nullptr;
+        vsite->setVirtualSites(top->idef.il, *mdatoms);
     }
 
     /* Note that with DD only flexible constraints, not shells, are supported
@@ -135,7 +127,10 @@ void mdAlgorithmsSetupAtomData(const t_commrec*  cr,
         make_local_shells(cr, mdatoms, shellfc);
     }
 
-    setup_bonded_threading(fr->bondedThreading, fr->natoms_force, fr->gpuBonded != nullptr, top->idef);
+    for (auto& listedForces : fr->listedForces)
+    {
+        listedForces.setup(top->idef, fr->natoms_force, fr->gpuBonded != nullptr);
+    }
 
     if (EEL_PME(fr->ic->eeltype) && (cr->duty & DUTY_PME))
     {
@@ -143,11 +138,14 @@ void mdAlgorithmsSetupAtomData(const t_commrec*  cr,
          * For PME-only ranks, gmx_pmeonly() has its own call to gmx_pme_reinit_atoms().
          */
         const int numPmeAtoms = numHomeAtoms - fr->n_tpi;
-        gmx_pme_reinit_atoms(fr->pmedata, numPmeAtoms, mdatoms->chargeA);
+        gmx_pme_reinit_atoms(fr->pmedata, numPmeAtoms, mdatoms->chargeA, mdatoms->chargeB);
     }
 
     if (constr)
     {
-        constr->setConstraints(*top, *mdatoms);
+        constr->setConstraints(top, mdatoms->nr, mdatoms->homenr, mdatoms->massT, mdatoms->invmass,
+                               mdatoms->nMassPerturbed != 0, mdatoms->lambda, mdatoms->cFREEZE);
     }
 }
+
+} // namespace gmx

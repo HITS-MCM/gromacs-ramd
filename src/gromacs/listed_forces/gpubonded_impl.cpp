@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -120,11 +120,11 @@ bool buildSupportsGpuBondeds(std::string* error)
     {
         errorReasons.emplace_back("not supported with double precision");
     }
-    if (GMX_GPU == GMX_GPU_OPENCL)
+    if (GMX_GPU_OPENCL)
     {
         errorReasons.emplace_back("not supported with OpenCL build of GROMACS");
     }
-    else if (GMX_GPU == GMX_GPU_NONE)
+    else if (!GMX_GPU)
     {
         errorReasons.emplace_back("not supported with CPU-only build of GROMACS");
     }
@@ -149,6 +149,10 @@ bool inputSupportsGpuBondeds(const t_inputrec& ir, const gmx_mtop_t& mtop, std::
     {
         errorReasons.emplace_back("MiMiC");
     }
+    if (ir.useMts)
+    {
+        errorReasons.emplace_back("Cannot run with multiple time stepping");
+    }
     if (ir.opts.ngener > 1)
     {
         errorReasons.emplace_back("Cannot run with multiple energy groups");
@@ -156,13 +160,17 @@ bool inputSupportsGpuBondeds(const t_inputrec& ir, const gmx_mtop_t& mtop, std::
     return addMessageIfNotSupported(errorReasons, error);
 }
 
-#if GMX_GPU != GMX_GPU_CUDA
+#if !GMX_GPU_CUDA
 
 class GpuBonded::Impl
 {
 };
 
-GpuBonded::GpuBonded(const gmx_ffparams_t& /* ffparams */, void* /*streamPtr */, gmx_wallcycle* /* wcycle */) :
+GpuBonded::GpuBonded(const gmx_ffparams_t& /* ffparams */,
+                     const float /* electrostaticsScaleFactor */,
+                     const DeviceContext& /* deviceContext */,
+                     const DeviceStream& /* deviceStream */,
+                     gmx_wallcycle* /* wcycle */) :
     impl_(nullptr)
 {
 }
@@ -170,21 +178,28 @@ GpuBonded::GpuBonded(const gmx_ffparams_t& /* ffparams */, void* /*streamPtr */,
 GpuBonded::~GpuBonded() = default;
 
 void GpuBonded::updateInteractionListsAndDeviceBuffers(ArrayRef<const int> /* nbnxnAtomOrder */,
-                                                       const t_idef& /* idef */,
+                                                       const InteractionDefinitions& /* idef */,
                                                        void* /* xqDevice */,
-                                                       void* /* forceDevice */,
-                                                       void* /* fshiftDevice */)
+                                                       DeviceBuffer<RVec> /* forceDevice */,
+                                                       DeviceBuffer<RVec> /* fshiftDevice */)
+{
+}
+
+void GpuBonded::setPbc(PbcType /* pbcType */, const matrix /* box */, bool /* canMoleculeSpanPbc */)
 {
 }
 
 bool GpuBonded::haveInteractions() const
 {
-    return false;
+    return !impl_;
 }
 
-void GpuBonded::launchKernel(const t_forcerec* /* fr */,
-                             const gmx::StepWorkload& /* stepWork */,
-                             const matrix /* box */)
+void GpuBonded::launchKernel(const gmx::StepWorkload& /* stepWork */) {}
+
+void GpuBonded::setPbcAndlaunchKernel(PbcType /* pbcType */,
+                                      const matrix /* box */,
+                                      bool /* canMoleculeSpanPbc */,
+                                      const gmx::StepWorkload& /* stepWork */)
 {
 }
 
@@ -194,6 +209,6 @@ void GpuBonded::waitAccumulateEnergyTerms(gmx_enerdata_t* /* enerd */) {}
 
 void GpuBonded::clearEnergies() {}
 
-#endif /* GMX_GPU != GMX_GPU_CUDA */
+#endif // !GMX_GPU_CUDA
 
 } // namespace gmx

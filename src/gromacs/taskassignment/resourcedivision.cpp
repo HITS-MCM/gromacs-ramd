@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2015,2016,2017,2018,2019 by the GROMACS development team.
+ * Copyright (c) 2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,6 +51,7 @@
 #include <cstring>
 
 #include <algorithm>
+#include <array>
 
 #include "gromacs/ewald/pme.h"
 #include "gromacs/hardware/cpuinfo.h"
@@ -338,15 +340,15 @@ private:
  * Thus all options should be internally consistent and consistent
  * with the hardware, except that ntmpi could be larger than #GPU.
  */
-int get_nthreads_mpi(const gmx_hw_info_t*    hwinfo,
-                     gmx_hw_opt_t*           hw_opt,
-                     const std::vector<int>& gpuIdsToUse,
-                     bool                    nonbondedOnGpu,
-                     bool                    pmeOnGpu,
-                     const t_inputrec*       inputrec,
-                     const gmx_mtop_t*       mtop,
-                     const gmx::MDLogger&    mdlog,
-                     bool                    doMembed)
+int get_nthreads_mpi(const gmx_hw_info_t* hwinfo,
+                     gmx_hw_opt_t*        hw_opt,
+                     const int            numDevicesToUse,
+                     bool                 nonbondedOnGpu,
+                     bool                 pmeOnGpu,
+                     const t_inputrec*    inputrec,
+                     const gmx_mtop_t*    mtop,
+                     const gmx::MDLogger& mdlog,
+                     bool                 doMembed)
 {
     int nthreads_hw, nthreads_tot_max, nrank, ngpu;
     int min_atoms_per_mpi_rank;
@@ -359,7 +361,7 @@ int get_nthreads_mpi(const gmx_hw_info_t*    hwinfo,
         GMX_RELEASE_ASSERT((EEL_PME(inputrec->coulombtype) || EVDW_PME(inputrec->vdwtype))
                                    && pme_gpu_supports_build(nullptr)
                                    && pme_gpu_supports_hardware(*hwinfo, nullptr)
-                                   && pme_gpu_supports_input(*inputrec, *mtop, nullptr),
+                                   && pme_gpu_supports_input(*inputrec, nullptr),
                            "PME can't be on GPUs unless we are using PME");
 
         // PME on GPUs supports a single PME rank with PP running on the same or few other ranks.
@@ -431,7 +433,7 @@ int get_nthreads_mpi(const gmx_hw_info_t*    hwinfo,
 
     /* nonbondedOnGpu might be false e.g. because this simulation
      * is a rerun with energy groups. */
-    ngpu = (nonbondedOnGpu ? gmx::ssize(gpuIdsToUse) : 0);
+    ngpu = (nonbondedOnGpu ? numDevicesToUse : 0);
 
     nrank = get_tmpi_omp_thread_division(hwinfo, *hw_opt, nthreads_tot_max, ngpu);
 
@@ -507,6 +509,23 @@ int get_nthreads_mpi(const gmx_hw_info_t*    hwinfo,
             }
         }
 
+        if (ngpu > 0 && (nrank_new % ngpu) != 0)
+        {
+            /* If we use GPUs, the number of ranks must be divisible by the number of GPUs,
+             * unless the GPUs are very different (and if they are, user should manually
+             * select the parallelization scheme).
+             * Rounding down the number of ranks, or setting it to ngpu, whichever is smaller.
+             * */
+            if (nrank_new > ngpu)
+            {
+                nrank_new = (nrank_new / ngpu) * ngpu;
+            }
+            else
+            {
+                nrank_new = ngpu;
+            }
+        }
+
         nrank = nrank_new;
 
         /* We reduced the number of tMPI ranks, which means we might violate
@@ -550,7 +569,7 @@ void check_resource_division_efficiency(const gmx_hw_info_t* hwinfo,
 #if GMX_OPENMP && GMX_MPI
     GMX_UNUSED_VALUE(hwinfo);
 
-    int         nth_omp_min, nth_omp_max;
+    int         nth_omp_max;
     char        buf[1000];
     const char* mpi_option = GMX_THREAD_MPI ? " (option -ntmpi)" : "";
 
@@ -565,25 +584,22 @@ void check_resource_division_efficiency(const gmx_hw_info_t* hwinfo,
     GMX_RELEASE_ASSERT(gmx_omp_nthreads_get(emntDefault) >= 1,
                        "Must have at least one OpenMP thread");
 
-    nth_omp_min = gmx_omp_nthreads_get(emntDefault);
     nth_omp_max = gmx_omp_nthreads_get(emntDefault);
 
     bool anyRankIsUsingGpus = willUsePhysicalGpu;
     /* Thread-MPI seems to have a bug with reduce on 1 node, so use a cond. */
     if (cr->nnodes > 1)
     {
-        int count[3], count_max[3];
+        std::array<int, 2> count, count_max;
 
-        count[0] = -nth_omp_min;
-        count[1] = nth_omp_max;
-        count[2] = int(willUsePhysicalGpu);
+        count[0] = nth_omp_max;
+        count[1] = int(willUsePhysicalGpu);
 
-        MPI_Allreduce(count, count_max, 3, MPI_INT, MPI_MAX, cr->mpi_comm_mysim);
+        MPI_Allreduce(count.data(), count_max.data(), count.size(), MPI_INT, MPI_MAX, cr->mpi_comm_mysim);
 
         /* In case of an inhomogeneous run setup we use the maximum counts */
-        nth_omp_min        = -count_max[0];
-        nth_omp_max        = count_max[1];
-        anyRankIsUsingGpus = count_max[2] > 0;
+        nth_omp_max        = count_max[0];
+        anyRankIsUsingGpus = count_max[1] > 0;
     }
 
     int nthreads_omp_mpi_ok_min;
@@ -911,7 +927,7 @@ void checkAndUpdateRequestedNumOpenmpThreads(gmx_hw_opt_t*         hw_opt,
          * all detected ncore_tot physical cores. We are currently not
          * checking for that here.
          */
-        int numRanksTot     = cr->nnodes * (isMultiSim(ms) ? ms->nsim : 1);
+        int numRanksTot     = cr->nnodes * (isMultiSim(ms) ? ms->numSimulations_ : 1);
         int numAtomsPerRank = mtop.natoms / cr->nnodes;
         int numCoresPerRank = hwinfo.ncore_tot / numRanksTot;
         if (numAtomsPerRank < c_numAtomsPerCoreSquaredSmtThreshold * gmx::square(numCoresPerRank))

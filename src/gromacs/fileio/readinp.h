@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -43,7 +44,6 @@
 #include <utility>
 #include <vector>
 
-#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 
 struct warninp;
@@ -51,6 +51,8 @@ typedef warninp* warninp_t;
 
 namespace gmx
 {
+template<typename>
+class ArrayRef;
 class KeyValueTreeObject;
 class TextInputStream;
 class TextOutputStream;
@@ -164,5 +166,14 @@ void printStringNewline(std::vector<t_inpfile>* inp, const char* line);
 void printStringNoNewline(std::vector<t_inpfile>* inp, const char* line);
 //! Replace for macro STYPE, checks for existing string entry and if possible replaces it
 void setStringEntry(std::vector<t_inpfile>* inp, const char* name, char* newName, const char* def);
+
+/*! \brief
+ * Returns a string value and sets the value in \p inp
+ *
+ * The value is either from \p inp when \p name is found or \p def otherwise.
+ *
+ * \note this is a wrapper function for g_estr()
+ */
+std::string setStringEntry(std::vector<t_inpfile>* inp, const std::string& name, const std::string& def);
 
 #endif

@@ -50,37 +50,37 @@
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/pbc.h"
 
-#include "freeenergyperturbationelement.h"
+#include "freeenergyperturbationdata.h"
 #include "statepropagatordata.h"
 #include "topologyholder.h"
 
 namespace gmx
 {
-DomDecHelper::DomDecHelper(bool                               isVerbose,
-                           int                                verbosePrintInterval,
-                           StatePropagatorData*               statePropagatorData,
-                           FreeEnergyPerturbationElement*     freeEnergyPerturbationElement,
-                           TopologyHolder*                    topologyHolder,
-                           CheckBondedInteractionsCallbackPtr checkBondedInteractionsCallback,
-                           int                                nstglobalcomm,
-                           FILE*                              fplog,
-                           t_commrec*                         cr,
-                           const MDLogger&                    mdlog,
-                           Constraints*                       constr,
-                           t_inputrec*                        inputrec,
-                           MDAtoms*                           mdAtoms,
-                           t_nrnb*                            nrnb,
-                           gmx_wallcycle*                     wcycle,
-                           t_forcerec*                        fr,
-                           gmx_vsite_t*                       vsite,
-                           ImdSession*                        imdSession,
-                           pull_t*                            pull_work) :
+DomDecHelper::DomDecHelper(bool                            isVerbose,
+                           int                             verbosePrintInterval,
+                           StatePropagatorData*            statePropagatorData,
+                           FreeEnergyPerturbationData*     freeEnergyPerturbationData,
+                           TopologyHolder*                 topologyHolder,
+                           CheckBondedInteractionsCallback checkBondedInteractionsCallback,
+                           int                             nstglobalcomm,
+                           FILE*                           fplog,
+                           t_commrec*                      cr,
+                           const MDLogger&                 mdlog,
+                           Constraints*                    constr,
+                           t_inputrec*                     inputrec,
+                           MDAtoms*                        mdAtoms,
+                           t_nrnb*                         nrnb,
+                           gmx_wallcycle*                  wcycle,
+                           t_forcerec*                     fr,
+                           VirtualSitesHandler*            vsite,
+                           ImdSession*                     imdSession,
+                           pull_t*                         pull_work) :
     nextNSStep_(-1),
     isVerbose_(isVerbose),
     verbosePrintInterval_(verbosePrintInterval),
     nstglobalcomm_(nstglobalcomm),
     statePropagatorData_(statePropagatorData),
-    freeEnergyPerturbationElement_(freeEnergyPerturbationElement),
+    freeEnergyPerturbationData_(freeEnergyPerturbationData),
     topologyHolder_(topologyHolder),
     checkBondedInteractionsCallback_(std::move(checkBondedInteractionsCallback)),
     fplog_(fplog),
@@ -130,8 +130,7 @@ void DomDecHelper::run(Step step, Time gmx_unused time)
     {
         // TODO: Correcting the box is done here (if using DD) or in ForceElement (non-DD simulations).
         //       Think about unifying this responsibility, could this be done in one place?
-        t_graph* graph = nullptr;
-        if (correct_box(fplog_, step, localState->box, graph))
+        if (correct_box(fplog_, step, localState->box))
         {
             isMasterState = true;
         }
@@ -152,7 +151,7 @@ void DomDecHelper::partitionSystem(bool                     verbose,
                                    std::unique_ptr<t_state> localState,
                                    t_state*                 globalState)
 {
-    PaddedHostVector<RVec>* forcePointer = statePropagatorData_->forcePointer();
+    ForceBuffers* forcePointer = statePropagatorData_->forcePointer();
 
     // Distribute the charge groups over the nodes from the master node
     dd_partition_system(fplog_, mdlog_, inputrec_->init_step, cr_, isMasterState, nstglobalcomm,
@@ -161,18 +160,17 @@ void DomDecHelper::partitionSystem(bool                     verbose,
                         topologyHolder_->localTopology_.get(), fr_, vsite_, constr_, nrnb_, wcycle,
                         verbose);
     topologyHolder_->updateLocalTopology();
-    (*checkBondedInteractionsCallback_)();
+    checkBondedInteractionsCallback_();
     statePropagatorData_->setLocalState(std::move(localState));
-    if (freeEnergyPerturbationElement_)
+    if (freeEnergyPerturbationData_)
     {
-        freeEnergyPerturbationElement_->updateMDAtoms();
+        freeEnergyPerturbationData_->updateMDAtoms();
     }
 }
 
-SignallerCallbackPtr DomDecHelper::registerNSCallback()
+std::optional<SignallerCallback> DomDecHelper::registerNSCallback()
 {
-    return std::make_unique<SignallerCallback>(
-            [this](Step step, Time gmx_unused time) { this->nextNSStep_ = step; });
+    return [this](Step step, Time gmx_unused time) { this->nextNSStep_ = step; };
 }
 
 } // namespace gmx

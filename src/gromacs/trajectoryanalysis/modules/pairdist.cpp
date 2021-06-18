@@ -78,25 +78,28 @@ namespace
 //! \{
 
 //! Enum value to store the selected value for `-type`.
-enum DistanceType
+enum class DistanceType : int
 {
-    eDistanceType_Min,
-    eDistanceType_Max
+    Min,
+    Max,
+    Count
 };
 
 //! Enum value to store the selected value for `-refgrouping`/`-selgrouping`.
-enum GroupType
+enum class GroupType : int
 {
-    eGroupType_All,
-    eGroupType_Residue,
-    eGroupType_Molecule,
-    eGroupType_None
+    All,
+    Residue,
+    Molecule,
+    None,
+    Count
 };
 
 //! Strings corresponding to DistanceType.
-const char* const c_distanceTypes[] = { "min", "max" };
+const EnumerationArray<DistanceType, const char*> c_distanceTypeNames = { { "min", "max" } };
 //! Strings corresponding to GroupType.
-const char* const c_groupTypes[] = { "all", "res", "mol", "none" };
+const EnumerationArray<GroupType, const char*> c_groupTypeNames = { { "all", "res", "mol",
+                                                                      "none" } };
 
 /*! \brief
  * Implements `gmx pairdist` trajectory analysis module.
@@ -165,9 +168,9 @@ private:
 
 PairDistance::PairDistance() :
     cutoff_(0.0),
-    distanceType_(eDistanceType_Min),
-    refGroupType_(eGroupType_All),
-    selGroupType_(eGroupType_All),
+    distanceType_(DistanceType::Min),
+    refGroupType_(GroupType::All),
+    selGroupType_(GroupType::All),
     refGroupCount_(0),
     maxGroupCount_(0),
     initialDist2_(0.0),
@@ -228,17 +231,17 @@ void PairDistance::initOptions(IOptionsContainer* options, TrajectoryAnalysisSet
             DoubleOption("cutoff").store(&cutoff_).description("Maximum distance to consider"));
     options->addOption(EnumOption<DistanceType>("type")
                                .store(&distanceType_)
-                               .enumValue(c_distanceTypes)
+                               .enumValue(c_distanceTypeNames)
                                .description("Type of distances to calculate"));
     options->addOption(
             EnumOption<GroupType>("refgrouping")
                     .store(&refGroupType_)
-                    .enumValue(c_groupTypes)
+                    .enumValue(c_groupTypeNames)
                     .description("Grouping of -ref positions to compute the min/max over"));
     options->addOption(
             EnumOption<GroupType>("selgrouping")
                     .store(&selGroupType_)
-                    .enumValue(c_groupTypes)
+                    .enumValue(c_groupTypeNames)
                     .description("Grouping of -sel positions to compute the min/max over"));
 
     options->addOption(SelectionOption("ref").store(&refSel_).required().description(
@@ -248,7 +251,7 @@ void PairDistance::initOptions(IOptionsContainer* options, TrajectoryAnalysisSet
 }
 
 //! Helper function to initialize the grouping for a selection.
-int initSelectionGroups(Selection* sel, const gmx_mtop_t* top, int type)
+int initSelectionGroups(Selection* sel, const gmx_mtop_t* top, GroupType type)
 {
     e_index_t indexType = INDEX_UNKNOWN;
     // If the selection type is INDEX_UNKNOWN (e.g. a position not associated
@@ -257,10 +260,11 @@ int initSelectionGroups(Selection* sel, const gmx_mtop_t* top, int type)
     {
         switch (type)
         {
-            case eGroupType_All: indexType = INDEX_ALL; break;
-            case eGroupType_Residue: indexType = INDEX_RES; break;
-            case eGroupType_Molecule: indexType = INDEX_MOL; break;
-            case eGroupType_None: indexType = INDEX_ATOM; break;
+            case GroupType::All: indexType = INDEX_ALL; break;
+            case GroupType::Residue: indexType = INDEX_RES; break;
+            case GroupType::Molecule: indexType = INDEX_MOL; break;
+            case GroupType::None: indexType = INDEX_ATOM; break;
+            case GroupType::Count: GMX_THROW(InternalError("Invalid GroupType"));
         }
     }
     return sel->initOriginalIdsToGroup(top, indexType);
@@ -285,7 +289,7 @@ void PairDistance::initAnalysis(const TrajectoryAnalysisSettings& settings, cons
     {
         AnalysisDataPlotModulePointer plotm(new AnalysisDataPlotModule(settings.plotSettings()));
         plotm->setFileName(fnDist_);
-        if (distanceType_ == eDistanceType_Max)
+        if (distanceType_ == DistanceType::Max)
         {
             plotm->setTitle("Maximum distance");
         }
@@ -315,7 +319,7 @@ void PairDistance::initAnalysis(const TrajectoryAnalysisSettings& settings, cons
     {
         initialDist2_ = cutoff_ * cutoff_;
     }
-    if (distanceType_ == eDistanceType_Max)
+    if (distanceType_ == DistanceType::Max)
     {
         initialDist2_ = 0.0;
     }
@@ -411,8 +415,8 @@ TrajectoryAnalysisModuleDataPointer PairDistance::startFrames(const AnalysisData
 void PairDistance::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAnalysisModuleData* pdata)
 {
     AnalysisDataHandle      dh         = pdata->dataHandle(distances_);
-    const Selection&        refSel     = pdata->parallelSelection(refSel_);
-    const SelectionList&    sel        = pdata->parallelSelections(sel_);
+    const Selection&        refSel     = TrajectoryAnalysisModuleData::parallelSelection(refSel_);
+    const SelectionList&    sel        = TrajectoryAnalysisModuleData::parallelSelections(sel_);
     PairDistanceModuleData& frameData  = *static_cast<PairDistanceModuleData*>(pdata);
     std::vector<real>&      distArray  = frameData.distArray_;
     std::vector<int>&       countArray = frameData.countArray_;
@@ -449,7 +453,7 @@ void PairDistance::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, Traj
             const int                selIndex = selPos.mappedId();
             const int                index    = selIndex * refGroupCount_ + refIndex;
             const real               r2       = pair.distance2();
-            if (distanceType_ == eDistanceType_Min)
+            if (distanceType_ == DistanceType::Min)
             {
                 if (distArray[index] > r2)
                 {
@@ -501,7 +505,7 @@ void PairDistance::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, Traj
                     // update the distance if necessary and the count.
                     if (countArray[index] < totalCount)
                     {
-                        if (distanceType_ == eDistanceType_Max)
+                        if (distanceType_ == DistanceType::Max)
                         {
                             distArray[index] = cutoff2_;
                         }

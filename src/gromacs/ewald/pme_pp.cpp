@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -46,6 +47,8 @@
 
 #include "gmxpre.h"
 
+#include "pme_pp.h"
+
 #include "config.h"
 
 #include <cstdio>
@@ -70,7 +73,6 @@
 #include "gromacs/utility/gmxmpi.h"
 #include "gromacs/utility/smalloc.h"
 
-#include "pme_internal.h"
 #include "pme_pp_communication.h"
 
 /*! \brief Block to wait for communication to PME ranks to complete
@@ -287,7 +289,7 @@ void gmx_pme_send_coordinates(t_forcerec*           fr,
                               const rvec*           x,
                               real                  lambda_q,
                               real                  lambda_lj,
-                              gmx_bool              bEnerVir,
+                              bool                  computeEnergyAndVirial,
                               int64_t               step,
                               bool                  useGpuPmePpComms,
                               bool                  receiveCoordinateAddressFromPme,
@@ -298,7 +300,7 @@ void gmx_pme_send_coordinates(t_forcerec*           fr,
     wallcycle_start(wcycle, ewcPP_PMESENDX);
 
     unsigned int flags = PP_PME_COORD;
-    if (bEnerVir)
+    if (computeEnergyAndVirial)
     {
         flags |= PP_PME_ENER_VIR;
     }

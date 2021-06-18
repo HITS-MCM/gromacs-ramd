@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -3493,7 +3494,7 @@ static void init_rot_group(FILE*            fplog,
 #if GMX_MPI
         if (PAR(cr))
         {
-            gmx_bcast(sizeof(erg->xc_center), erg->xc_center, cr);
+            gmx_bcast(sizeof(erg->xc_center), erg->xc_center, cr->mpi_comm_mygroup);
         }
 #endif
     }
@@ -3528,7 +3529,7 @@ static void init_rot_group(FILE*            fplog,
 #if GMX_MPI
         if (PAR(cr))
         {
-            gmx_bcast(erg->rotg->nat * sizeof(erg->xc_old[0]), erg->xc_old, cr);
+            gmx_bcast(erg->rotg->nat * sizeof(erg->xc_old[0]), erg->xc_old, cr->mpi_comm_mygroup);
         }
 #endif
     }
@@ -3635,14 +3636,7 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
     er->restartWithAppending = (startingBehavior == gmx::StartingBehavior::RestartWithAppending);
 
     /* When appending, skip first output to avoid duplicate entries in the data files */
-    if (er->restartWithAppending)
-    {
-        er->bOut = FALSE;
-    }
-    else
-    {
-        er->bOut = TRUE;
-    }
+    er->bOut = er->restartWithAppending;
 
     if (MASTER(cr) && er->bOut)
     {
@@ -3677,7 +3671,7 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
          * When ir->bContinuation=TRUE this has already been done, but ok. */
         snew(x_pbc, mtop->natoms);
         copy_rvecn(globalState->x.rvec_array(), x_pbc, 0, mtop->natoms);
-        do_pbc_first_mtop(nullptr, ir->ePBC, globalState->box, mtop, x_pbc);
+        do_pbc_first_mtop(nullptr, ir->pbcType, globalState->box, mtop, x_pbc);
         /* All molecules will be whole now, but not necessarily in the home box.
          * Additionally, if a rotation group consists of more than one molecule
          * (e.g. two strands of DNA), each one of them can end up in a different

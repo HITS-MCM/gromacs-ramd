@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -68,12 +69,14 @@ static const unsigned int c_fullWarpMask = 0xffffffff;
  *
  *  Only texture objects supported.
  *  Disable texture support missing in clang (all versions up to <=5.0-dev as of writing).
+ *  Disable texture support on CC 7.0 and 8.0 for performance reasons (Issue #3845).
  *
  *  This option will not influence functionality. All features using textures ought
  *  to have fallback for texture-less reads (direct/LDG loads), all new code needs
  *  to provide fallback code.
  */
-#if defined(GMX_DISABLE_CUDA_TEXTURES) || (defined(__clang__) && defined(__CUDA__))
+#if defined(GMX_DISABLE_CUDA_TEXTURES) || (defined(__clang__) && defined(__CUDA__)) \
+        || (GMX_PTX_ARCH == 700) || (GMX_PTX_ARCH == 800)
 #    define DISABLE_CUDA_TEXTURES 1
 #else
 #    define DISABLE_CUDA_TEXTURES 0
@@ -92,9 +95,15 @@ static const bool c_disableCudaTextures = DISABLE_CUDA_TEXTURES;
 #    if GMX_PTX_ARCH <= 370 // CC 3.x
 #        define GMX_CUDA_MAX_BLOCKS_PER_MP 16
 #        define GMX_CUDA_MAX_THREADS_PER_MP 2048
-#    else // CC 5.x, 6.x
+#    elif GMX_PTX_ARCH == 750 // CC 7.5, lower limits compared to 7.0
+#        define GMX_CUDA_MAX_BLOCKS_PER_MP 16
+#        define GMX_CUDA_MAX_THREADS_PER_MP 1024
+#    elif GMX_PTX_ARCH == 860 // CC 8.6, lower limits compared to 8.0
+#        define GMX_CUDA_MAX_BLOCKS_PER_MP 16
+#        define GMX_CUDA_MAX_THREADS_PER_MP 1536
+#    else // CC 5.x, 6.x, 7.0, 8.0
 /* Note that this final branch covers all future architectures (current gen
- * is 6.x as of writing), hence assuming that these *currently defined* upper
+ * is 8.x as of writing), hence assuming that these *currently defined* upper
  * limits will not be lowered.
  */
 #        define GMX_CUDA_MAX_BLOCKS_PER_MP 32

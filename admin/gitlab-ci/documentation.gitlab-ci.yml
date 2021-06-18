@@ -6,7 +6,7 @@
     - .gromacs:base:configure
     - .before_script:default
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: gromacs/ci-docs-llvm:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs
   stage: configure-build
   cache: {}
   variables:
@@ -72,7 +72,7 @@
     - .before_script:default
     - .rules:nightly-only-for-release
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: gromacs/ci-docs-llvm:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs
   stage: release-configure
   cache: {}
   variables:
@@ -178,11 +178,11 @@ docs:configure:
     - .rules:basic-push
   variables:
     BUILD_DIR: build-docs
-    CMAKE_EXTRA_OPTIONS: -DGMX_BUILD_HELP=on -DGMX_BUILD_MANUAL=on
+    CMAKE_EXTRA_OPTIONS: -DGMX_BUILD_HELP=on -DGMX_BUILD_MANUAL=on -DGMX_USE_SIMD_KERNELS=off
 
 .docs:build:
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: gromacs/ci-docs-llvm:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs
   script:
     - cd $BUILD_DIR
     - cmake --build . --target gmx -- -j8
@@ -222,7 +222,7 @@ docs:build:
     - .gromacs:base:build
     - .before_script:default
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: gromacs/ci-docs-llvm:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs
   cache: {}
   variables:
     KUBERNETES_CPU_LIMIT: 4
@@ -278,7 +278,7 @@ webpage:configure:
     - regressiontests:package
     - prepare-release-version
   variables:
-    CMAKE_EXTRA_OPTIONS: -DGMX_BUILD_HELP=on -DGMX_BUILD_MANUAL=on
+    CMAKE_EXTRA_OPTIONS: -DGMX_BUILD_HELP=on -DGMX_BUILD_MANUAL=on -DGMX_USE_SIMD_KERNELS=off
 
 
 webpage:dependencies:

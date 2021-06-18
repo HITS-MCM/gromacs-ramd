@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -44,7 +45,6 @@
 
 #if HAVE_SCHED_AFFINITY
 #    include <sched.h>
-#    include <sys/syscall.h>
 #endif
 
 #include "thread_mpi/threads.h"
@@ -541,10 +541,8 @@ static bool detectDefaultAffinityMask(const int nthreads_hw_avail)
     MPI_Initialized(&mpiIsInitialized);
     if (mpiIsInitialized)
     {
-        bool detectedDefaultAffinityMaskOnAllRanks;
-        MPI_Allreduce(&detectedDefaultAffinityMask, &detectedDefaultAffinityMaskOnAllRanks, 1,
-                      MPI_C_BOOL, MPI_LAND, MPI_COMM_WORLD);
-        detectedDefaultAffinityMask = detectedDefaultAffinityMaskOnAllRanks;
+        bool maskToReduce = detectedDefaultAffinityMask;
+        MPI_Allreduce(&maskToReduce, &detectedDefaultAffinityMask, 1, MPI_C_BOOL, MPI_LAND, MPI_COMM_WORLD);
     }
 #endif
 

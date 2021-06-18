@@ -7,19 +7,19 @@ reason for deviating from them.
 Portability considerations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Most |Gromacs| files compile as C++14, but some files remain that compile as C99.
+Most |Gromacs| files compile as C++17, but some files remain that compile as C99.
 C++ has a lot of features, but to keep the source code maintainable and easy to read, 
 we will avoid using some of them in |Gromacs| code. The basic principle is to keep things 
 as simple as possible.
 
 * MSVC supports only a subset of C99 and work-arounds are required in those cases.
-* We should be able to use virtually all C++14 features outside of OpenCL kernels
+* We should be able to use virtually all C++17 features outside of OpenCL kernels
   (which compile as C), and for consistency also in CUDA kernels.
 
 C++ Standard Library
 --------------------
 
-|Gromacs| code must support the lowest common denominator of C++14 standard library
+|Gromacs| code must support the lowest common denominator of C++17 standard library
 features available on supported platforms.
 Some modern features are useful enough to warrant back-porting.
 Consistent and forward-compatible headers are provided in ``src/gromacs/compat/``
@@ -34,7 +34,7 @@ C++ compilers, and because we want to increase readability. However, |Gromacs| i
 advanced projects in constant development, and as our needs evolve we will both
 relax and tighten many of these points. Some of these changes happen naturally as
 part of agreements in code review, while major parts where we don't agree should be
-pushed to a redmine thread. Large changes should be suggested early in the development
+pushed to a `issue tracker`_ thread. Large changes should be suggested early in the development
 cycle for each release so we avoid being hit by last-minute compiler bugs just before
 a release.
 
@@ -64,12 +64,19 @@ a release.
 * Use ``optional<T>`` types in situations where there is exactly one,
   reason (that is clear to all parties) for having no value of type T,
   and where the lack of value is as natural as having any regular
-  value of T. Good examples include the return type of a function that
-  parses an integer value from a string, searching for a matching
+  value of T, see |linkoptionalboost|. Good examples include the return type of a
+  function that parses an integer value from a string, searching for a matching
   element in a range, or providing an optional name for a residue
-  type. Prefer some other construct when the logic requires an
-  explanation of the reason why no regular value for T exists, ie.  do
-  not use ``optional<T>`` for error handling.
+  type. Do use optional for lazy loading of resources, e.g., objects that have
+  no default constructor and are hard to construct.
+  Prefer other constructs when the logic requires an explanation of the
+  reason why no regular value for T exists, e.g.,  do not use ``optional<T>``
+  for error handling. 
+  ``optional<T>`` "models an object, not a pointer, even though operator*() and
+  operator->() are defined" (|linkoptionalcppref|). No dynamic memory allocation
+  ever takes place and forward declaration of objects stored in ``optional<T>``
+  does not work. Thus refrain from optional when passing handles; in contrast to
+  unique_ptr, optional has value semantics, not reference semantics.
 * Don't use C-style casts; use ``const_cast``, ``static_cast`` or
   ``reinterpret_cast as appropriate``. See the point on RTTI for
   ``dynamic_cast``. For emphasizing type (e.g. intentional integer division)
@@ -165,8 +172,9 @@ a release.
 .. |linkrefnotnull1| replace:: `here <http://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Ri-nullptr>`__
 .. |linkrefnotnull2| replace:: `here <http://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-nullptr>`__
 .. |linkrefstringview| replace:: `here <https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines.html#Rstr-view>`__
-
-
+.. |linkoptionalboost| replace:: `here <https://www.boost.org/doc/libs/release/libs/optional>`__
+.. |linkoptionalbartek| replace:: `here <https://www.bfilipek.com/2018/05/using-optional.html>`__
+.. |linkoptionalcppref| replace:: `cppreference <https://en.cppreference.com/w/cpp/utility/optional>`__
 
 .. _implementing exceptions:
 

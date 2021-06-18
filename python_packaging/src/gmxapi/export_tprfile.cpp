@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -84,7 +84,7 @@ void detail::export_tprfile(pybind11::module& module)
                              // Less trivial types (strings, maps, arrays) warrant additional
                              // design discussion before being exposed through an interface
                              // like this one.
-                             // Also reference https://redmine.gromacs.org/issues/2993
+                             // Also reference https://gitlab.com/gromacs/gromacs/-/issues/2993
 
                              // We can use templates and/or tag dispatch in a more complete
                              // future implementation.

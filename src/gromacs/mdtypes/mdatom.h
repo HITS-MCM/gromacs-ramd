@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -127,8 +128,6 @@ typedef struct t_mdatoms
     unsigned short* cU2;
     //! Group index for orientation restraints
     unsigned short* cORF;
-    //! QMMM atoms
-    gmx_bool* bQM;
     //! Number of atoms on this processor. TODO is this still used?
     int homenr;
     //! The lambda value used to create the contents of the struct

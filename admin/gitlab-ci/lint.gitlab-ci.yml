@@ -5,9 +5,10 @@ clang-tidy:configure-push:
     - .gromacs:base:configure
     - .use-clang:base
     - .rules:basic-push
-  image: gromacs/cmake-3.11.4-llvm-8-openmpi:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-9
   variables:
-    COMPILER_MAJOR_VERSION: 8
+    CMAKE: /usr/local/cmake-3.15.7/bin/cmake
+    COMPILER_MAJOR_VERSION: 9
     BUILD_DIR: build-clang-tidy
     CMAKE_EXTRA_OPTIONS: -DCLANG_TIDY=clang-tidy-$COMPILER_MAJOR_VERSION -DGMX_CLANG_TIDY=ON -DGMX_COMPILER_WARNINGS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
@@ -16,9 +17,10 @@ clang-tidy:configure-schedule:
     - .gromacs:base:configure
     - .use-clang:base
     - .rules:nightly-not-for-release
-  image: gromacs/cmake-3.11.4-llvm-8-openmpi:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-9
   variables:
-    COMPILER_MAJOR_VERSION: 8
+    CMAKE: /usr/local/cmake-3.15.7/bin/cmake
+    COMPILER_MAJOR_VERSION: 9
     BUILD_DIR: build-clang-tidy
     CMAKE_EXTRA_OPTIONS: -DCLANG_TIDY=clang-tidy-$COMPILER_MAJOR_VERSION -DGMX_CLANG_TIDY=ON -DGMX_COMPILER_WARNINGS=ON
 
@@ -29,10 +31,11 @@ clang-tidy:build:
     - .variables:default
     - .rules:nightly-not-for-release
   stage: source-check
-  image: gromacs/cmake-3.11.4-llvm-8-openmpi:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-9
   needs:
     - job: clang-tidy:configure-schedule
   variables:
+    CMAKE: /usr/local/cmake-3.15.7/bin/cmake
     BUILD_DIR: build-clang-tidy
 
 clang-tidy:test:
@@ -41,11 +44,12 @@ clang-tidy:test:
     - .variables:default
     - .rules:basic-push
   stage: source-check
-  image: gromacs/cmake-3.11.4-llvm-8-openmpi:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-9
   needs:
     - job: clang-tidy:configure-push
   variables:
-    COMPILER_MAJOR_VERSION: 8
+    CMAKE: /usr/local/cmake-3.15.7/bin/cmake
+    COMPILER_MAJOR_VERSION: 9
     BUILD_DIR: build-clang-tidy
     EXTRA_INSTALLS: clang-tidy-$COMPILER_MAJOR_VERSION
     KUBERNETES_CPU_LIMIT: 4
@@ -54,7 +58,8 @@ clang-tidy:test:
   script:
     # Make sure that a Python interpreter can be found for `/bin/env python`
     - test -x /usr/bin/python || update-alternatives --install /usr/bin/python python /usr/bin/python3 1
-    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2020 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
+    # TODO (issue #3272) `master` is not appropriate for use on release-xxxx branches, how should we handle that?
+    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2021 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
     - HEAD_REV=$(git show -s --pretty=format:"%h" HEAD)
     - if [[ "$REV" == "$HEAD_REV" ]] ; then
         REV="HEAD~1" ;
@@ -76,7 +81,7 @@ clang-format:
     - .rules:basic-push
   cache: {}
   stage: pre-build
-  image: gromacs/ci-docs-llvm:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs
   variables:
     COMPILER_MAJOR_VERSION: 7
     KUBERNETES_CPU_LIMIT: 1
@@ -84,7 +89,7 @@ clang-format:
     KUBERNETES_MEMORY_REQUEST: 2Gi
     EXTRA_INSTALLS: clang-format-$COMPILER_MAJOR_VERSION
   script:
-    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2020 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
+    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2021 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
     - HEAD_REV=$(git show -s --pretty=format:"%h" HEAD)
     - if [[ "$REV" == "$HEAD_REV" ]] ; then
         REV="HEAD~1" ;
@@ -106,13 +111,14 @@ copyright-check:
     - .rules:basic-push
   cache: {}
   stage: pre-build
-  image: gromacs/ci-docs-llvm:2020
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs
   variables:
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
     KUBERNETES_MEMORY_REQUEST: 2Gi
   script:
-    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2020 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
+    # TODO (issue #3272) `master` is not appropriate for use on release-xxxx branches, how should we handle that?
+    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git master && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
     - HEAD_REV=$(git show -s --pretty=format:"%h" HEAD)
     - if [[ "$REV" == "$HEAD_REV" ]] ; then
         REV="HEAD~1" ;
@@ -150,8 +156,9 @@ check-source:
     KUBERNETES_MEMORY_REQUEST: 2Gi
     BUILD_DIR: build-docs
   script:
+    - CMAKE=${CMAKE:-$(which cmake)}
     - cd $BUILD_DIR
-    - cmake --build . --target check-source
+    - $CMAKE --build . --target check-source
     - awk '/warning.*include style.*order/,/You can use.*rst|^$/' docs/doxygen/check-source.log | tee doxygenError.txt || true
     - awk '/warning:.*includes/,/unnecessarily|^$/' docs/doxygen/check-source.log | tee -a doxygenError.txt || true
     - awk '/Traceback/,/.*rror|^$/' docs/doxygen/doxygen*log docs/doxygen/check-source.log | tee -a doxygenError.txt || true

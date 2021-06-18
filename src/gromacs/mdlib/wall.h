@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -41,15 +41,16 @@
 
 struct SimulationGroups;
 struct t_forcerec;
-struct t_idef;
 struct t_inputrec;
 struct t_mdatoms;
 struct t_nrnb;
 
 namespace gmx
 {
+template<typename>
+class ArrayRef;
 class ForceWithVirial;
-}
+} // namespace gmx
 
 void make_wall_tables(FILE*                   fplog,
                       const t_inputrec*       ir,
@@ -57,14 +58,14 @@ void make_wall_tables(FILE*                   fplog,
                       const SimulationGroups* groups,
                       t_forcerec*             fr);
 
-real do_walls(const t_inputrec&     ir,
-              const t_forcerec&     fr,
-              const matrix          box,
-              const t_mdatoms&      md,
-              const rvec            x[],
-              gmx::ForceWithVirial* forceWithVirial,
-              real                  lambda,
-              real                  Vlj[],
-              t_nrnb*               nrnb);
+real do_walls(const t_inputrec&              ir,
+              const t_forcerec&              fr,
+              const matrix                   box,
+              const t_mdatoms&               md,
+              gmx::ArrayRef<const gmx::RVec> x,
+              gmx::ForceWithVirial*          forceWithVirial,
+              real                           lambda,
+              real                           Vlj[],
+              t_nrnb*                        nrnb);
 
 #endif

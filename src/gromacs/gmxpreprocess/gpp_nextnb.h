@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2014,2015,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -38,10 +38,15 @@
 #ifndef GMX_GMXPREPROCESS_GPP_NEXTNB_H
 #define GMX_GMXPREPROCESS_GPP_NEXTNB_H
 
-#include "gromacs/utility/arrayref.h"
-
-struct t_blocka;
 struct InteractionsOfType;
+
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+template<typename>
+class ListOfLists;
+} // namespace gmx
 
 struct t_nextnb
 {
@@ -75,7 +80,7 @@ void gen_nnb(t_nextnb* nnb, gmx::ArrayRef<InteractionsOfType> plist);
  * initiated using init_nnb.
  */
 
-void generate_excl(int nrexcl, int nratoms, gmx::ArrayRef<InteractionsOfType> plist, t_blocka* excl);
+void generate_excl(int nrexcl, int nratoms, gmx::ArrayRef<InteractionsOfType> plist, gmx::ListOfLists<int>* excls);
 /* Generate an exclusion block from bonds and constraints in
  * plist.
  */

@@ -101,20 +101,24 @@ class MDAtoms;
  * user. So we need to consider this before any automated choice of
  * the number of thread-MPI ranks.
  *
- * \param[in]  nonbondedTarget             The user's choice for mdrun -nb for where to assign short-ranged nonbonded interaction tasks.
- * \param[in]  gpuIdsToUse                 The compatible GPUs that the user permitted us to use.
- * \param[in]  userGpuTaskAssignment       The user-specified assignment of GPU tasks to device IDs.
- * \param[in]  emulateGpuNonbonded         Whether we will emulate GPU calculation of nonbonded interactions.
- * \param[in]  buildSupportsNonbondedOnGpu Whether GROMACS was built with GPU support.
- * \param[in]  nonbondedOnGpuIsUseful      Whether computing nonbonded interactions on a GPU is useful for this calculation.
- * \param[in]  numRanksPerSimulation       The number of ranks in each simulation.
+ * \param[in] nonbondedTarget              The user's choice for mdrun -nb for where to assign
+ *                                         short-ranged nonbonded interaction tasks.
+ * \param[in] numDevicesToUse              Number of compatible GPUs that the user permitted
+ *                                         us to use.
+ * \param[in] userGpuTaskAssignment        The user-specified assignment of GPU tasks to device IDs.
+ * \param[in] emulateGpuNonbonded          Whether we will emulate GPU calculation of nonbonded
+ *                                         interactions.
+ * \param[in] buildSupportsNonbondedOnGpu  Whether GROMACS was built with GPU support.
+ * \param[in] nonbondedOnGpuIsUseful       Whether computing nonbonded interactions on a GPU is
+ *                                         useful for this calculation.
+ * \param[in] numRanksPerSimulation        The number of ranks in each simulation.
  *
  * \returns    Whether the simulation will run nonbonded tasks on GPUs.
  *
  * \throws     std::bad_alloc          If out of memory
  *             InconsistentInputError  If the user requirements are inconsistent. */
 bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              nonbondedTarget,
-                                                     const std::vector<int>& gpuIdsToUse,
+                                                     int                     numDevicesToUse,
                                                      const std::vector<int>& userGpuTaskAssignment,
                                                      EmulateGpuNonbonded     emulateGpuNonbonded,
                                                      bool buildSupportsNonbondedOnGpu,
@@ -132,11 +136,10 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              non
  * \param[in]  useGpuForNonbonded        Whether GPUs will be used for nonbonded interactions.
  * \param[in]  pmeTarget                 The user's choice for mdrun -pme for where to assign
  *                                       long-ranged PME nonbonded interaction tasks.
- * \param[in]  gpuIdsToUse               The compatible GPUs that the user permitted us to use.
+ * \param[in]  numDevicesToUse           The number of compatible GPUs that the user permitted us to use.
  * \param[in]  userGpuTaskAssignment     The user-specified assignment of GPU tasks to device IDs.
  * \param[in]  hardwareInfo              Hardware information
  * \param[in]  inputrec                  The user input
- * \param[in]  mtop                      Global system topology
  * \param[in]  numRanksPerSimulation     The number of ranks in each simulation.
  * \param[in]  numPmeRanksPerSimulation  The number of PME ranks in each simulation.
  *
@@ -146,11 +149,10 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              non
  *             InconsistentInputError  If the user requirements are inconsistent. */
 bool decideWhetherToUseGpusForPmeWithThreadMpi(bool                    useGpuForNonbonded,
                                                TaskTarget              pmeTarget,
-                                               const std::vector<int>& gpuIdsToUse,
+                                               int                     numDevicesToUse,
                                                const std::vector<int>& userGpuTaskAssignment,
                                                const gmx_hw_info_t&    hardwareInfo,
                                                const t_inputrec&       inputrec,
-                                               const gmx_mtop_t&       mtop,
                                                int                     numRanksPerSimulation,
                                                int                     numPmeRanksPerSimulation);
 
@@ -209,7 +211,6 @@ bool decideWhetherToUseGpusForNonbonded(TaskTarget              nonbondedTarget,
  * \param[in]  userGpuTaskAssignment     The user-specified assignment of GPU tasks to device IDs.
  * \param[in]  hardwareInfo              Hardware information
  * \param[in]  inputrec                  The user input
- * \param[in]  mtop                      Global system topology
  * \param[in]  numRanksPerSimulation     The number of ranks in each simulation.
  * \param[in]  numPmeRanksPerSimulation  The number of PME ranks in each simulation.
  * \param[in]  gpusWereDetected          Whether compatible GPUs were detected on any node.
@@ -223,7 +224,6 @@ bool decideWhetherToUseGpusForPme(bool                    useGpuForNonbonded,
                                   const std::vector<int>& userGpuTaskAssignment,
                                   const gmx_hw_info_t&    hardwareInfo,
                                   const t_inputrec&       inputrec,
-                                  const gmx_mtop_t&       mtop,
                                   int                     numRanksPerSimulation,
                                   int                     numPmeRanksPerSimulation,
                                   bool                    gpusWereDetected);
@@ -247,9 +247,8 @@ PmeRunMode determinePmeRunMode(bool useGpuForPme, const TaskTarget& pmeFftTarget
  * \param[in]  useGpuForNonbonded        Whether GPUs will be used for nonbonded interactions.
  * \param[in]  useGpuForPme              Whether GPUs will be used for PME interactions.
  * \param[in]  bondedTarget              The user's choice for mdrun -bonded for where to assign tasks.
- * \param[in]  canUseGpuForBonded        Whether the bonded interactions can run on a GPU
- * \param[in]  usingLJPme                Whether Vdw interactions use LJ-PME.
- * \param[in]  usingElecPmeOrEwald       Whether a PME or Ewald type method is used for electrostatics.
+ * \param[in]  inputrec                  The user input.
+ * \param[in]  mtop                      The global topology.
  * \param[in]  numPmeRanksPerSimulation  The number of PME ranks in each simulation, can be -1 for auto.
  * \param[in]  gpusWereDetected          Whether compatible GPUs were detected on any node.
  *
@@ -257,14 +256,13 @@ PmeRunMode determinePmeRunMode(bool useGpuForPme, const TaskTarget& pmeFftTarget
  *
  * \throws     std::bad_alloc          If out of memory
  *             InconsistentInputError  If the user requirements are inconsistent. */
-bool decideWhetherToUseGpusForBonded(bool       useGpuForNonbonded,
-                                     bool       useGpuForPme,
-                                     TaskTarget bondedTarget,
-                                     bool       canUseGpuForBonded,
-                                     bool       usingLJPme,
-                                     bool       usingElecPmeOrEwald,
-                                     int        numPmeRanksPerSimulation,
-                                     bool       gpusWereDetected);
+bool decideWhetherToUseGpusForBonded(bool              useGpuForNonbonded,
+                                     bool              useGpuForPme,
+                                     TaskTarget        bondedTarget,
+                                     const t_inputrec& inputrec,
+                                     const gmx_mtop_t& mtop,
+                                     int               numPmeRanksPerSimulation,
+                                     bool              gpusWereDetected);
 
 /*! \brief Decide whether to use GPU for update.
  *
@@ -304,6 +302,24 @@ bool decideWhetherToUseGpuForUpdate(bool                           isDomainDecom
                                     const DevelopmentFeatureFlags& devFlags,
                                     const gmx::MDLogger&           mdlog);
 
+
+/*! \brief Decide whether to use GPU for halo exchange.
+ *
+ * \param[in]  devFlags                     GPU development / experimental feature flags.
+ * \param[in]  havePPDomainDecomposition    Whether PP domain decomposition is in use.
+ * \param[in]  useGpuForNonbonded           Whether GPUs will be used for nonbonded interactions.
+ * \param[in]  useModularSimulator          Whether modularsimulator is in use.
+ * \param[in]  doRerun                      Whether this is a rerun.
+ * \param[in]  haveEnergyMinimization       Whether energy minimization is in use.
+ *
+ * \returns    Whether halo exchange can be run on GPU.
+ */
+bool decideWhetherToUseGpuForHalo(const DevelopmentFeatureFlags& devFlags,
+                                  bool                           havePPDomainDecomposition,
+                                  bool                           useGpuForNonbonded,
+                                  bool                           useModularSimulator,
+                                  bool                           doRerun,
+                                  bool                           haveEnergyMinimization);
 
 } // namespace gmx
 

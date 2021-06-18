@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,6 +47,7 @@
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/mdrunoptions.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/nbnxm/nbnxm.h"
@@ -125,10 +126,9 @@ const pme_load_balancing_t* PmeLoadBalanceHelper::loadBalancingObject()
     return pme_loadbal_;
 }
 
-SignallerCallbackPtr PmeLoadBalanceHelper::registerNSCallback()
+std::optional<SignallerCallback> PmeLoadBalanceHelper::registerNSCallback()
 {
-    return std::make_unique<SignallerCallback>(
-            [this](Step step, Time gmx_unused time) { nextNSStep_ = step; });
+    return [this](Step step, Time gmx_unused time) { nextNSStep_ = step; };
 }
 
 } // namespace gmx

@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,15 +48,19 @@
 
 #include <cstdio>
 
+#include <utility>
+
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/gmxpreprocess/grompp.h"
 #include "gromacs/hardware/detecthardware.h"
+#include "gromacs/hardware/hw_info.h"
 #include "gromacs/options/basicoptions.h"
 #include "gromacs/options/ioptionscontainer.h"
 #include "gromacs/tools/convert_tpr.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/basenetwork.h"
 #include "gromacs/utility/gmxmpi.h"
+#include "gromacs/utility/physicalnodecommunicator.h"
 #include "gromacs/utility/textwriter.h"
 #include "programs/mdrun/mdrun_main.h"
 
@@ -102,10 +107,19 @@ SimulationRunner::SimulationRunner(TestFileManager* fileManager) :
     mtxFileName_(fileManager->getTemporaryFilePath(".mtx")),
 
     nsteps_(-2),
+    mdpSource_(SimulationRunnerMdpSource::Undefined),
     fileManager_(*fileManager)
 {
 #if GMX_LIB_MPI
     GMX_RELEASE_ASSERT(gmx_mpi_initialized(), "MPI system not initialized for mdrun tests");
+
+    // It would be better to also detect this in a thread-MPI build,
+    // but there is no way to do that currently, and it is also not a
+    // problem for such a build. Any code based on such an invalid
+    // test fixture will be found in CI testing, however.
+    GMX_RELEASE_ASSERT(MdrunTestFixtureBase::communicator_ != MPI_COMM_NULL,
+                       "SimulationRunner may only be used from a test fixture that inherits from "
+                       "MdrunTestFixtureBase");
 #endif
 }
 
@@ -114,7 +128,7 @@ SimulationRunner::SimulationRunner(TestFileManager* fileManager) :
 // things that way, this function should be renamed. For now,
 // we use the Verlet scheme and hard-code a tolerance.
 // TODO There is possible outstanding unexplained behaviour of mdp
-// input parsing e.g. Redmine 2074, so this particular set of mdp
+// input parsing e.g. Issue #2074, so this particular set of mdp
 // contents is also tested with GetIrTest in gmxpreprocess-test.
 void SimulationRunner::useEmptyMdpFile()
 {
@@ -128,6 +142,9 @@ void SimulationRunner::useStringAsMdpFile(const char* mdpString)
 
 void SimulationRunner::useStringAsMdpFile(const std::string& mdpString)
 {
+    GMX_RELEASE_ASSERT(mdpSource_ != SimulationRunnerMdpSource::File,
+                       "Cannot mix .mdp file from database with options set via string.");
+    mdpSource_        = SimulationRunnerMdpSource::String;
     mdpInputContents_ = mdpString;
 }
 
@@ -155,10 +172,29 @@ void SimulationRunner::useGroFromDatabase(const char* name)
     groFileName_ = gmx::test::TestFileManager::getInputFilePath((std::string(name) + ".gro").c_str());
 }
 
+void SimulationRunner::useTopGroAndMdpFromFepTestDatabase(const std::string& name)
+{
+    GMX_RELEASE_ASSERT(mdpSource_ != SimulationRunnerMdpSource::String,
+                       "Cannot mix .mdp file from database with options set via string.");
+    mdpSource_   = SimulationRunnerMdpSource::File;
+    topFileName_ = gmx::test::TestFileManager::getInputFilePath("freeenergy/" + name + "/topol.top");
+    groFileName_ = gmx::test::TestFileManager::getInputFilePath("freeenergy/" + name + "/conf.gro");
+    mdpFileName_ =
+            gmx::test::TestFileManager::getInputFilePath("freeenergy/" + name + "/grompp.mdp");
+}
+
 int SimulationRunner::callGromppOnThisRank(const CommandLine& callerRef)
 {
-    const std::string mdpInputFileName(fileManager_.getTemporaryFilePath("input.mdp"));
-    gmx::TextWriter::writeFileFromString(mdpInputFileName, mdpInputContents_);
+    std::string mdpInputFileName;
+    if (mdpSource_ == SimulationRunnerMdpSource::File)
+    {
+        mdpInputFileName = mdpFileName_;
+    }
+    else
+    {
+        mdpInputFileName = fileManager_.getTemporaryFilePath("input.mdp");
+        gmx::TextWriter::writeFileFromString(mdpInputFileName, mdpInputContents_);
+    }
 
     CommandLine caller;
     caller.append("grompp");
@@ -199,7 +235,7 @@ int SimulationRunner::callGrompp(const CommandLine& callerRef)
     // Make sure rank zero has written the .tpr file before other
     // ranks try to read it. Thread-MPI and serial do this just fine
     // on their own.
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MdrunTestFixtureBase::communicator_);
 #endif
     return returnValue;
 }
@@ -219,7 +255,7 @@ int SimulationRunner::changeTprNsteps(int nsteps)
     caller.addOption("-s", tprFileName_);
     caller.addOption("-o", tprFileName_);
 
-    return gmx_convert_tpr(caller.argc(), caller.argv());
+    return gmx::test::CommandLineTestHelper::runModuleFactory(&gmx::ConvertTprInfo::create, &caller);
 }
 
 int SimulationRunner::callNmeig()
@@ -260,6 +296,10 @@ int SimulationRunner::callMdrun(const CommandLine& callerRef)
     caller.addOption("-mtx", mtxFileName_);
     caller.addOption("-o", fullPrecisionTrajectoryFileName_);
     caller.addOption("-x", reducedPrecisionTrajectoryFileName_);
+    if (!dhdlFileName_.empty())
+    {
+        caller.addOption("-dhdl", dhdlFileName_);
+    }
 
     caller.addOption("-deffnm", fileManager_.getTemporaryFilePath("state"));
 
@@ -276,7 +316,8 @@ int SimulationRunner::callMdrun(const CommandLine& callerRef)
     caller.addOption("-ntomp", g_numOpenMPThreads);
 #endif
 
-    return gmx_mdrun(caller.argc(), caller.argv());
+    return gmx_mdrun(MdrunTestFixtureBase::communicator_, *MdrunTestFixtureBase::hwinfo_,
+                     caller.argc(), caller.argv());
 }
 
 int SimulationRunner::callMdrun()
@@ -285,6 +326,26 @@ int SimulationRunner::callMdrun()
 }
 
 // ====
+
+// static
+MPI_Comm MdrunTestFixtureBase::communicator_ = MPI_COMM_NULL;
+// static
+std::unique_ptr<gmx_hw_info_t> MdrunTestFixtureBase::hwinfo_;
+
+// static
+void MdrunTestFixtureBase::SetUpTestCase()
+{
+    communicator_ = MPI_COMM_WORLD;
+    auto newHwinfo =
+            gmx_detect_hardware(PhysicalNodeCommunicator{ communicator_, gmx_physicalnode_id_hash() });
+    std::swap(hwinfo_, newHwinfo);
+}
+
+// static
+void MdrunTestFixtureBase::TearDownTestCase()
+{
+    hwinfo_.reset(nullptr);
+}
 
 MdrunTestFixtureBase::MdrunTestFixtureBase()
 {
@@ -303,7 +364,7 @@ MdrunTestFixture::~MdrunTestFixture()
 {
 #if GMX_LIB_MPI
     // fileManager_ should only clean up after all the ranks are done.
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MdrunTestFixtureBase::communicator_);
 #endif
 }
 

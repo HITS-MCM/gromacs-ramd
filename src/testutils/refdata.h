@@ -2,7 +2,7 @@
  * This file is part of the GROMACS molecular simulation package.
  *
  * Copyright (c) 2011-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -61,6 +61,9 @@ class KeyValueTreeObject;
 class KeyValueTreeValue;
 class Any;
 
+template<typename ValueType>
+class BasicVector;
+
 namespace test
 {
 
@@ -73,7 +76,7 @@ class FloatingPointTolerance;
  *
  * \ingroup module_testutils
  */
-enum ReferenceDataMode
+enum class ReferenceDataMode : int
 {
     /*! \brief
      * Compare to existing reference data.
@@ -81,36 +84,38 @@ enum ReferenceDataMode
      * If reference data does not exist, or if the test results differ from
      * those in the reference data, the test fails.
      */
-    erefdataCompare,
+    Compare,
     /*! \brief
      * Create missing reference data.
      *
      * If reference data does not exist for a test, that test behaves as if
-     * ::erefdataUpdateAll had been specified.  Tests for which reference data
-     * exists, behave like with ::erefdataCompare.
+     * ReferenceDataMode::UpdateAll had been specified.  Tests for which reference data
+     * exists, behave like with ReferenceDataMode::Compare.
      */
-    erefdataCreateMissing,
+    CreateMissing,
     /*! \brief
      * Update reference data that does not pass comparison.
      *
      * Tests utilizing reference data should always pass in this mode unless
      * there is an I/O error.
      */
-    erefdataUpdateChanged,
+    UpdateChanged,
     /*! \brief
      * Update reference data, overwriting old data.
      *
      * Tests utilizing reference data should always pass in this mode unless
      * there is an I/O error.
      */
-    erefdataUpdateAll
+    UpdateAll,
+    //! Marks the end of the enum
+    Count
 };
 
 /*! \libinternal \brief
  * Initializes reference data handling.
  *
  * Adds command-line options to \p options to set the reference data mode.
- * By default, ::erefdataCompare is used, but ``--ref-data create`` or
+ * By default, ReferenceDataMode::Compare is used, but ``--ref-data create`` or
  * ``--ref-data update`` can be used to change it.
  *
  * This function is automatically called by initTestUtils().
@@ -150,19 +155,26 @@ class TestReferenceDataImpl;
  * \code
    int functionToTest(int param);
 
+   namespace gmx
+   {
+   namespace test
+   {
    TEST(MyTest, SimpleTest)
    {
-       gmx::test::TestReferenceData data;
+       TestReferenceData data;
 
-       gmx::test::TestReferenceChecker checker(data.rootChecker());
+       TestReferenceChecker checker(data.rootChecker());
        checker.checkInteger(functionToTest(3), "ValueWith3");
        checker.checkInteger(functionToTest(5), "ValueWith5");
-       gmx::test::TestReferenceChecker compound(
+       TestReferenceChecker compound(
                checker.checkCompound("CustomCompound", "Item"));
        compound.checkInteger(function2ToTest(3), "ValueWith3");
        compound.checkInteger(function2ToTest(5), "ValueWith5");
        checker.checkInteger(functionToTest(4), "ValueWith4");
+       checker.checkVector(functionProducingRVec(), "Describe The RVec");
    }
+   } // namespace test
+   } // namespace gmx
  * \endcode
  *
  * If rootChecker() is never called, no comparison is done (i.e., missing
@@ -218,7 +230,8 @@ private:
 /*! \libinternal \brief
  * Handles comparison to test reference data.
  *
- * Every check*() method takes an id string as the last parameter.  This id is
+ * Every check*() method takes an id string as th
+ * e last parameter.  This id is
  * used to uniquely identify the value in the reference data, and it makes the
  * output XML more human-friendly and more robust to errors.  The id can be
  * NULL; in this case, multiple elements with no id are created, and they will
@@ -293,6 +306,12 @@ public:
      * another assertion about the same values.
      */
     void checkUnusedEntries();
+
+    /*! \brief Disables checking for unused entries
+     *
+     * \see checkUnusedEntries()
+     */
+    void disableUnusedEntriesCheck();
 
     /*! \brief
      * Checks whether a data item is present.
@@ -377,6 +396,12 @@ public:
     void checkVector(const float value[3], const char* id);
     //! Check a vector of three double-precision floating point values.
     void checkVector(const double value[3], const char* id);
+    //! Check a BasicVector of ints, ie. IVec
+    void checkVector(const BasicVector<int>& value, const char* id);
+    //! Check a BasicVector of floats, ie. RVec
+    void checkVector(const BasicVector<float>& value, const char* id);
+    //! Check a BasicVector of doubles, ie. DVec
+    void checkVector(const BasicVector<double>& value, const char* id);
     //! Check a single floating-point value from a string.
     void checkRealFromString(const std::string& value, const char* id);
     //! Checks a any value that contains a supported simple type.
@@ -444,6 +469,12 @@ public:
     void checkValue(const float value[3], const char* id) { checkVector(value, id); }
     //! Check a vector of three double-precision floating point values.
     void checkValue(const double value[3], const char* id) { checkVector(value, id); }
+    //! Check a BasicVector of integer values, ie. IVec.
+    void checkValue(const BasicVector<int>& value, const char* id) { checkVector(value, id); }
+    //! Check a BasicVector of float values, ie. RVec.
+    void checkValue(const BasicVector<float>& value, const char* id) { checkVector(value, id); }
+    //! Check a BasicVector of double values, ie. DVec.
+    void checkValue(const BasicVector<double>& value, const char* id) { checkVector(value, id); }
     //! Check a generic key-value tree value.
     void checkValue(const KeyValueTreeValue& value, const char* id)
     {

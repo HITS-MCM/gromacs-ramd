@@ -32,28 +32,30 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out http://www.gromacs.org.
 
-gmx_add_unit_test(MdlibUnitTest mdlib-test
-                  calc_verletbuf.cpp
-                  constr.cpp
-                  constrtestdata.cpp
-                  constrtestrunners.cpp
-                  ebin.cpp
-                  energyoutput.cpp
-                  expanded.cpp
-                  leapfrog.cpp
-                  leapfrogtestdata.cpp
-                  leapfrogtestrunners.cpp
-                  settle.cpp
-                  settletestdata.cpp
-                  settletestrunners.cpp
-                  shake.cpp
-                  simulationsignal.cpp
-                  updategroups.cpp
-                  updategroupscog.cpp)
-
-# TODO: Make CUDA source to compile inside the testing framework
-if(GMX_USE_CUDA)
-    gmx_add_libgromacs_sources(constrtestrunners.cu
-                               leapfrogtestrunners.cu
-                               settletestrunners.cu)
-endif()
+gmx_add_unit_test(MdlibUnitTest mdlib-test HARDWARE_DETECTION
+    CPP_SOURCE_FILES
+        calc_verletbuf.cpp
+        constr.cpp
+        constrtestdata.cpp
+        constrtestrunners.cpp
+        ebin.cpp
+	energydrifttracker.cpp
+        energyoutput.cpp
+        expanded.cpp
+        freeenergyparameters.cpp
+        leapfrog.cpp
+        leapfrogtestdata.cpp
+        leapfrogtestrunners.cpp
+        settle.cpp
+        settletestdata.cpp
+        settletestrunners.cpp
+        shake.cpp
+        simulationsignal.cpp
+        updategroups.cpp
+        updategroupscog.cpp
+    GPU_CPP_SOURCE_FILES
+        leapfrogtestrunners_gpu.cpp
+    CUDA_CU_SOURCE_FILES
+        constrtestrunners.cu
+        settletestrunners.cu
+        )

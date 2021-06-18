@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -72,8 +73,8 @@ const char* eel_names[eelNR + 1] = { "Cut-off",
                                      "Shift",
                                      "User",
                                      "Generalized-Born (unused)",
-                                     "Reaction-Field-nec",
-                                     "Encad-shift",
+                                     "Reaction-Field-nec (unsupported)",
+                                     "Encad-shift (unused)",
                                      "PME-User",
                                      "PME-Switch",
                                      "PME-User-Switch",
@@ -84,8 +85,8 @@ const char* eewg_names[eewgNR + 1] = { "3d", "3dc", nullptr };
 
 const char* eljpme_names[eljpmeNR + 1] = { "Geometric", "Lorentz-Berthelot", nullptr };
 
-const char* evdw_names[evdwNR + 1] = { "Cut-off",     "Switch", "Shift", "User",
-                                       "Encad-shift", "PME",    nullptr };
+const char* evdw_names[evdwNR + 1] = { "Cut-off", "Switch", "Shift", "User", "Encad-shift (unused)",
+                                       "PME",     nullptr };
 
 const char* econstr_names[econtNR + 1] = { "Lincs", "Shake", nullptr };
 
@@ -98,9 +99,9 @@ const char* etcoupl_names[etcNR + 1] = {
     "No", "Berendsen", "Nose-Hoover", "yes", "Andersen", "Andersen-massive", "V-rescale", nullptr
 }; /* yes is alias for berendsen */
 
-const char* epcoupl_names[epcNR + 1] = {
-    "No", "Berendsen", "Parrinello-Rahman", "Isotropic", "MTTK", nullptr
-}; /* isotropic is alias for berendsen */
+const char* epcoupl_names[epcNR + 1] = { "No",        "Berendsen", "Parrinello-Rahman",
+                                         "Isotropic", "MTTK",      "C-rescale",
+                                         nullptr }; /* isotropic is alias for berendsen */
 
 const char* epcoupltype_names[epctNR + 1] = { "Isotropic", "Semiisotropic", "Anisotropic",
                                               "Surface-Tension", nullptr };
@@ -174,17 +175,6 @@ const char* erotg_fitnames[erotgFitNR + 1] = { "rmsd", "norm", "potential", null
 const char* eSwapTypes_names[eSwapTypesNR + 1] = { "no", "X", "Y", "Z", nullptr };
 
 const char* eSwapFixedGrp_names[eSwapFixedGrpNR + 1] = { "Split0", "Split1", "Solvent", nullptr };
-
-
-const char* eQMmethod_names[eQMmethodNR + 1] = { "AM1",      "PM3",    "RHF",  "UHF",
-                                                 "DFT",      "B3LYP",  "MP2",  "CASSCF",
-                                                 "B3LYPLAN", "DIRECT", nullptr };
-
-const char* eQMbasis_names[eQMbasisNR + 1] = { "STO3G",   "STO-3G", "3-21G", "3-21G*",
-                                               "3-21+G*", "6-21G",  "6-31G", "6-31G*",
-                                               "6-31+G*", "6-311G", nullptr };
-
-const char* eQMMMscheme_names[eQMMMschemeNR + 1] = { "normal", "ONIOM", nullptr };
 
 const char* gmx_nblist_geometry_names[GMX_NBLIST_GEOMETRY_NR + 1] = {
     "Particle-Particle", "Water3-Particle", "Water3-Water3", "Water4-Particle",

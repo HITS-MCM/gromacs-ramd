@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,10 +49,12 @@
 
 #include <memory>
 
-#include "gromacs/mdtypes/fcdata.h"
-#include "gromacs/mdtypes/forcerec.h"
-#include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/utility/real.h"
+
+struct EwaldCorrectionTables;
+struct bondedtable_t;
+struct interaction_const_t;
+struct t_forcetable;
 
 /*! \brief Flag to select user tables for make_tables */
 #define GMX_MAKETABLES_FORCEUSER (1 << 0)

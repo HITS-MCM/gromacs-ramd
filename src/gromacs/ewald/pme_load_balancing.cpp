@@ -1,8 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
- * Copyright (c) 2020, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -65,13 +65,16 @@
 #include "gromacs/mdlib/dispersioncorrection.h"
 #include "gromacs/mdlib/forcerec.h"
 #include "gromacs/mdtypes/commrec.h"
+#include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/nbnxm/gpu_data_mgmt.h"
 #include "gromacs/nbnxm/nbnxm.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/timing/wallcycle.h"
+#include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
@@ -80,6 +83,7 @@
 #include "gromacs/utility/strconvert.h"
 
 #include "pme_internal.h"
+#include "pme_pp.h"
 
 /*! \brief Parameters and settings for one PP-PME setup */
 struct pme_setup_t
@@ -680,9 +684,10 @@ static void pme_load_balance(pme_load_balancing_t*          pme_lb,
                 pme_lb->elimited = epmelblimMAXSCALING;
             }
 
-            if (OK && ir.ePBC != epbcNONE)
+            if (OK && ir.pbcType != PbcType::No)
             {
-                OK = (gmx::square(pme_lb->setup[pme_lb->cur + 1].rlistOuter) <= max_cutoff2(ir.ePBC, box));
+                OK = (gmx::square(pme_lb->setup[pme_lb->cur + 1].rlistOuter)
+                      <= max_cutoff2(ir.pbcType, box));
                 if (!OK)
                 {
                     pme_lb->elimited = epmelblimBOX;
@@ -828,7 +833,7 @@ static void pme_load_balance(pme_load_balancing_t*          pme_lb,
     }
 
     /* We always re-initialize the tables whether they are used or not */
-    init_interaction_const_tables(nullptr, ic);
+    init_interaction_const_tables(nullptr, ic, set->rlistOuter, ir.tabext);
 
     Nbnxm::gpu_pme_loadbal_update_param(nbv, ic);
 

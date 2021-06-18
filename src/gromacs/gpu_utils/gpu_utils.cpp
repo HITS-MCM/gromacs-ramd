@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,7 +45,6 @@
 
 #include <cassert>
 
-#include "gromacs/hardware/gpu_hw_info.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringutil.h"
@@ -54,54 +53,6 @@
 #    pragma warning(disable : 6237)
 #endif
 
-//! Constant used to help minimize preprocessed code
-static constexpr bool c_binarySupportsGpus = (GMX_GPU != GMX_GPU_NONE);
-
-bool canPerformGpuDetection()
-{
-    if (c_binarySupportsGpus && getenv("GMX_DISABLE_GPU_DETECTION") == nullptr)
-    {
-        return isGpuDetectionFunctional(nullptr);
-    }
-    else
-    {
-        return false;
-    }
-}
-
-#if GMX_GPU == GMX_GPU_NONE
-int gpu_info_get_stat(const gmx_gpu_info_t& /*unused*/, int /*unused*/)
-{
-    return egpuNonexistent;
-}
-#endif
-
-void free_gpu_info(const gmx_gpu_info_t* gpu_info)
-{
-    sfree(static_cast<void*>(gpu_info->gpu_dev)); // circumvent is_pod check in sfree
-}
-
-std::vector<int> getCompatibleGpus(const gmx_gpu_info_t& gpu_info)
-{
-    // Possible minor over-allocation here, but not important for anything
-    std::vector<int> compatibleGpus;
-    compatibleGpus.reserve(gpu_info.n_dev);
-    for (int i = 0; i < gpu_info.n_dev; i++)
-    {
-        assert(gpu_info.gpu_dev);
-        if (gpu_info_get_stat(gpu_info, i) == egpuCompatible)
-        {
-            compatibleGpus.push_back(i);
-        }
-    }
-    return compatibleGpus;
-}
-
-const char* getGpuCompatibilityDescription(const gmx_gpu_info_t& gpu_info, int index)
-{
-    return (index >= gpu_info.n_dev ? gpu_detect_res_str[egpuNonexistent]
-                                    : gpu_detect_res_str[gpu_info_get_stat(gpu_info, index)]);
-}
 /*! \brief Help build a descriptive message in \c error if there are
  * \c errorReasons why nonbondeds on a GPU are not supported.
  *
@@ -124,9 +75,13 @@ bool buildSupportsNonbondedOnGpu(std::string* error)
     {
         errorReasons.emplace_back("double precision");
     }
-    if (!c_binarySupportsGpus)
+    if (!GMX_GPU)
     {
         errorReasons.emplace_back("non-GPU build of GROMACS");
+    }
+    if (GMX_GPU_SYCL)
+    {
+        errorReasons.emplace_back("SYCL build of GROMACS");
     }
     return addMessageIfNotSupported(errorReasons, error);
 }

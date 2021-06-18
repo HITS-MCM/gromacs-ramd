@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,7 +40,6 @@
 
 #include "vcm.h"
 
-#include "gromacs/gmxlib/network.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/vec.h"
@@ -47,6 +47,7 @@
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/fatalerror.h"
@@ -63,7 +64,8 @@ t_vcm::t_vcm(const SimulationGroups& groups, const t_inputrec& ir) :
 
     if (mode == ecmANGULAR && ndim < 3)
     {
-        gmx_fatal(FARGS, "Can not have angular comm removal with pbc=%s", epbc_names[ir.ePBC]);
+        gmx_fatal(FARGS, "Can not have angular comm removal with pbc=%s",
+                  c_pbcTypeNames[ir.pbcType].c_str());
     }
 
     if (mode != ecmNO)
@@ -150,12 +152,19 @@ static void update_tensor(const rvec x, real m0, tensor I)
 }
 
 /* Center of mass code for groups */
-void calc_vcm_grp(const t_mdatoms& md, const rvec x[], const rvec v[], t_vcm* vcm)
+void calc_vcm_grp(const t_mdatoms&               md,
+                  gmx::ArrayRef<const gmx::RVec> x,
+                  gmx::ArrayRef<const gmx::RVec> v,
+                  t_vcm*                         vcm)
 {
-    int nthreads = gmx_omp_nthreads_get(emntDefault);
-    if (vcm->mode != ecmNO)
+    if (vcm->mode == ecmNO)
     {
-#pragma omp parallel num_threads(nthreads)
+        return;
+    }
+    int nthreads = gmx_omp_nthreads_get(emntDefault);
+
+    {
+#pragma omp parallel num_threads(nthreads) default(none) shared(x, v, vcm, md)
         {
             int t = gmx_omp_get_thread_num();
             for (int g = 0; g < vcm->size; g++)
@@ -247,7 +256,7 @@ void calc_vcm_grp(const t_mdatoms& md, const rvec x[], const rvec v[], t_vcm* vc
  * \param[in]     vcm       VCM data
  */
 template<int numDimensions>
-static void doStopComMotionLinear(const t_mdatoms& mdatoms, rvec* v, const t_vcm& vcm)
+static void doStopComMotionLinear(const t_mdatoms& mdatoms, gmx::ArrayRef<gmx::RVec> v, const t_vcm& vcm)
 {
     const int             homenr   = mdatoms.homenr;
     const unsigned short* group_id = mdatoms.cVCM;
@@ -271,7 +280,7 @@ static void doStopComMotionLinear(const t_mdatoms& mdatoms, rvec* v, const t_vcm
         }
     }
     else if (group_id == nullptr)
-    {
+    { // NOLINT bugprone-branch-clone This is actually a clang-tidy bug
 #pragma omp for schedule(static)
         for (int i = 0; i < homenr; i++)
         {
@@ -307,14 +316,15 @@ static void doStopComMotionLinear(const t_mdatoms& mdatoms, rvec* v, const t_vcm
  * \param[in]     vcm       VCM data
  */
 template<int numDimensions>
-static void doStopComMotionAccelerationCorrection(int                   homenr,
-                                                  const unsigned short* group_id,
-                                                  rvec* gmx_restrict x,
-                                                  rvec* gmx_restrict v,
-                                                  const t_vcm&       vcm)
+static void doStopComMotionAccelerationCorrection(int                      homenr,
+                                                  const unsigned short*    group_id,
+                                                  gmx::ArrayRef<gmx::RVec> x,
+                                                  gmx::ArrayRef<gmx::RVec> v,
+                                                  const t_vcm&             vcm)
 {
     const real xCorrectionFactor = 0.5 * vcm.timeStep;
 
+    // NOLINTNEXTLINE bugprone-branch-clone This is actually a clang-tidy bug
     if (group_id == nullptr)
     {
 #pragma omp for schedule(static)
@@ -342,18 +352,27 @@ static void doStopComMotionAccelerationCorrection(int                   homenr,
     }
 }
 
-static void do_stopcm_grp(const t_mdatoms& mdatoms, rvec x[], rvec v[], const t_vcm& vcm)
+static void do_stopcm_grp(const t_mdatoms&         mdatoms,
+                          gmx::ArrayRef<gmx::RVec> x,
+                          gmx::ArrayRef<gmx::RVec> v,
+                          const t_vcm&             vcm)
 {
-    if (vcm.mode != ecmNO)
+    if (vcm.mode == ecmNO)
+    {
+        return;
+    }
     {
         const int             homenr   = mdatoms.homenr;
         const unsigned short* group_id = mdatoms.cVCM;
 
         int gmx_unused nth = gmx_omp_nthreads_get(emntDefault);
-#pragma omp parallel num_threads(nth)
+        // homenr could be shared, but gcc-8 & gcc-9 don't agree how to write that...
+        // https://www.gnu.org/software/gcc/gcc-9/porting_to.html -> OpenMP data sharing
+#pragma omp parallel num_threads(nth) default(none) shared(x, v, vcm, group_id, mdatoms) \
+        firstprivate(homenr)
         {
             if (vcm.mode == ecmLINEAR || vcm.mode == ecmANGULAR
-                || (vcm.mode == ecmLINEAR_ACCELERATION_CORRECTION && x == nullptr))
+                || (vcm.mode == ecmLINEAR_ACCELERATION_CORRECTION && x.empty()))
             {
                 /* Subtract linear momentum for v */
                 switch (vcm.ndim)
@@ -385,7 +404,7 @@ static void do_stopcm_grp(const t_mdatoms& mdatoms, rvec x[], rvec v[], const t_
             if (vcm.mode == ecmANGULAR)
             {
                 /* Subtract angular momentum */
-                GMX_ASSERT(x, "Need x to compute angular momentum correction");
+                GMX_ASSERT(!x.empty(), "Need x to compute angular momentum correction");
 
                 int g = 0;
 #pragma omp for schedule(static)
@@ -557,7 +576,11 @@ static void process_and_check_cm_grp(FILE* fp, t_vcm* vcm, real Temp_Max)
     }
 }
 
-void process_and_stopcm_grp(FILE* fplog, t_vcm* vcm, const t_mdatoms& mdatoms, rvec x[], rvec v[])
+void process_and_stopcm_grp(FILE*                    fplog,
+                            t_vcm*                   vcm,
+                            const t_mdatoms&         mdatoms,
+                            gmx::ArrayRef<gmx::RVec> x,
+                            gmx::ArrayRef<gmx::RVec> v)
 {
     if (vcm->mode != ecmNO)
     {

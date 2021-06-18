@@ -60,7 +60,7 @@
 #include "gromacs/domdec/ga2la.h"
 #include "gromacs/domdec/localatomsetmanager.h"
 #include "gromacs/domdec/mdsetup.h"
-#include "gromacs/ewald/pme.h"
+#include "gromacs/ewald/pme_pp.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/imd/imd.h"
@@ -75,6 +75,7 @@
 #include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/nblist.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/nbnxm/nbnxm.h"
@@ -209,7 +210,7 @@ static void dd_move_cellx(gmx_domdec_t* dd, const gmx_ddbox_t* ddbox, rvec cell_
         if (applyPbc)
         {
             /* Take the minimum to avoid double communication */
-            numPulsesMin = std::min(numPulses, dd->nc[dim] - 1 - numPulses);
+            numPulsesMin = std::min(numPulses, dd->numCells[dim] - 1 - numPulses);
         }
         else
         {
@@ -243,7 +244,7 @@ static void dd_move_cellx(gmx_domdec_t* dd, const gmx_ddbox_t* ddbox, rvec cell_
         for (int pulse = 0; pulse < numPulses; pulse++)
         {
             /* Communicate all the zone information backward */
-            bool receiveValidData = (applyPbc || dd->ci[dim] < dd->nc[dim] - 1);
+            bool receiveValidData = (applyPbc || dd->ci[dim] < dd->numCells[dim] - 1);
 
             static_assert(
                     sizeof(gmx_ddzone_t) == c_ddzoneNumReals * sizeof(real),
@@ -325,8 +326,8 @@ static void dd_move_cellx(gmx_domdec_t* dd, const gmx_ddbox_t* ddbox, rvec cell_
                  */
                 buf_s[i] = buf_r[i];
             }
-            if (((applyPbc || dd->ci[dim] + numPulses < dd->nc[dim]) && pulse == numPulses - 1)
-                || (!applyPbc && dd->ci[dim] + 1 + pulse == dd->nc[dim] - 1))
+            if (((applyPbc || dd->ci[dim] + numPulses < dd->numCells[dim]) && pulse == numPulses - 1)
+                || (!applyPbc && dd->ci[dim] + 1 + pulse == dd->numCells[dim] - 1))
             {
                 /* Store the extremes */
                 int pos = 0;
@@ -462,8 +463,8 @@ static void dd_set_cginfo(gmx::ArrayRef<const int> index_gl, int cg0, int cg1, t
 {
     if (fr != nullptr)
     {
-        const cginfo_mb_t* cginfo_mb = fr->cginfo_mb;
-        gmx::ArrayRef<int> cginfo    = fr->cginfo;
+        gmx::ArrayRef<cginfo_mb_t> cginfo_mb = fr->cginfo_mb;
+        gmx::ArrayRef<int>         cginfo    = fr->cginfo;
 
         for (int cg = cg0; cg < cg1; cg++)
         {
@@ -732,7 +733,7 @@ static void comm_dd_ns_cell_sizes(gmx_domdec_t* dd, gmx_ddbox_t* ddbox, rvec cel
         dim = dd->dim[dim_ind];
 
         /* Without PBC we don't have restrictions on the outer cells */
-        if (!(dim >= ddbox->npbcdim && (dd->ci[dim] == 0 || dd->ci[dim] == dd->nc[dim] - 1))
+        if (!(dim >= ddbox->npbcdim && (dd->ci[dim] == 0 || dd->ci[dim] == dd->numCells[dim] - 1))
             && isDlbOn(comm)
             && (comm->cell_x1[dim] - comm->cell_x0[dim]) * ddbox->skew_fac[dim] < comm->cellsize_min[dim])
         {
@@ -863,7 +864,7 @@ static void get_load_distribution(gmx_domdec_t* dd, gmx_wallcycle_t wcycle)
                 load->mdf      = 0;
                 load->pme      = 0;
                 int pos        = 0;
-                for (int i = 0; i < dd->nc[dim]; i++)
+                for (int i = 0; i < dd->numCells[dim]; i++)
                 {
                     load->sum += load->load[pos++];
                     load->max = std::max(load->max, load->load[pos]);
@@ -904,7 +905,7 @@ static void get_load_distribution(gmx_domdec_t* dd, gmx_wallcycle_t wcycle)
                 }
                 if (isDlbOn(comm) && rowMaster->dlbIsLimited)
                 {
-                    load->sum_m *= dd->nc[dim];
+                    load->sum_m *= dd->numCells[dim];
                     load->flags |= (1 << d);
                 }
             }
@@ -1258,7 +1259,7 @@ static void turn_on_dlb(const gmx::MDLogger& mdlog, gmx_domdec_t* dd, int64_t st
         {
             comm->load[d].sum_m = comm->load[d].sum;
 
-            int nc = dd->nc[dd->dim[d]];
+            int nc = dd->numCells[dd->dim[d]];
             for (int i = 0; i < nc; i++)
             {
                 rowMaster->cellFrac[i] = i / static_cast<real>(nc);
@@ -1327,7 +1328,7 @@ static void merge_cg_buffers(int                            ncell,
                              const int*                     recv_i,
                              gmx::ArrayRef<gmx::RVec>       x,
                              gmx::ArrayRef<const gmx::RVec> recv_vr,
-                             cginfo_mb_t*                   cginfo_mb,
+                             gmx::ArrayRef<cginfo_mb_t>     cginfo_mb,
                              gmx::ArrayRef<int>             cginfo)
 {
     gmx_domdec_ind_t *ind, *ind_p;
@@ -1806,12 +1807,7 @@ static void clearCommSetupData(dd_comm_setup_work_t* work)
 }
 
 //! Prepare DD communication.
-static void setup_dd_communication(gmx_domdec_t*                dd,
-                                   matrix                       box,
-                                   gmx_ddbox_t*                 ddbox,
-                                   t_forcerec*                  fr,
-                                   t_state*                     state,
-                                   PaddedHostVector<gmx::RVec>* f)
+static void setup_dd_communication(gmx_domdec_t* dd, matrix box, gmx_ddbox_t* ddbox, t_forcerec* fr, t_state* state)
 {
     int                    dim_ind, dim, dim0, dim1, dim2, dimd, nat_tot;
     int                    nzone, nzone_send, zone, zonei, cg0, cg1;
@@ -1820,7 +1816,6 @@ static void setup_dd_communication(gmx_domdec_t*                dd,
     gmx_domdec_comm_t*     comm;
     gmx_domdec_zones_t*    zones;
     gmx_domdec_comm_dim_t* cd;
-    cginfo_mb_t*           cginfo_mb;
     gmx_bool               bBondComm, bDist2B, bDistMB, bDistBonded;
     dd_corners_t           corners;
     rvec *                 normal, *v_d, *v_0 = nullptr, *v_1 = nullptr;
@@ -1894,8 +1889,8 @@ static void setup_dd_communication(gmx_domdec_t*                dd,
         v_1 = ddbox->v[dim1];
     }
 
-    zone_cg_range = zones->cg_range;
-    cginfo_mb     = fr->cginfo_mb;
+    zone_cg_range                        = zones->cg_range;
+    gmx::ArrayRef<cginfo_mb_t> cginfo_mb = fr->cginfo_mb;
 
     zone_cg_range[0]   = 0;
     zone_cg_range[1]   = dd->ncg_home;
@@ -2089,7 +2084,7 @@ static void setup_dd_communication(gmx_domdec_t*                dd,
             ddSendrecv<int>(dd, dim_ind, dddirBackward, work.atomGroupBuffer, integerBufferRef);
 
             /* Make space for cg_cm */
-            dd_check_alloc_ncg(fr, state, f, pos_cg + ind->nrecv[nzone]);
+            dd_resize_atominfo_and_state(fr, state, pos_cg + ind->nrecv[nzone]);
 
             /* Communicate the coordinates */
             gmx::ArrayRef<gmx::RVec> rvecBufferRef;
@@ -2629,27 +2624,27 @@ void print_dd_statistics(const t_commrec* cr, const t_inputrec* ir, FILE* fplog)
 }
 
 //!\brief TODO Remove fplog when group scheme and charge groups are gone
-void dd_partition_system(FILE*                        fplog,
-                         const gmx::MDLogger&         mdlog,
-                         int64_t                      step,
-                         const t_commrec*             cr,
-                         gmx_bool                     bMasterState,
-                         int                          nstglobalcomm,
-                         t_state*                     state_global,
-                         const gmx_mtop_t&            top_global,
-                         const t_inputrec*            ir,
-                         gmx::ImdSession*             imdSession,
-                         pull_t*                      pull_work,
-                         t_state*                     state_local,
-                         PaddedHostVector<gmx::RVec>* f,
-                         gmx::MDAtoms*                mdAtoms,
-                         gmx_localtop_t*              top_local,
-                         t_forcerec*                  fr,
-                         gmx_vsite_t*                 vsite,
-                         gmx::Constraints*            constr,
-                         t_nrnb*                      nrnb,
-                         gmx_wallcycle*               wcycle,
-                         gmx_bool                     bVerbose)
+void dd_partition_system(FILE*                     fplog,
+                         const gmx::MDLogger&      mdlog,
+                         int64_t                   step,
+                         const t_commrec*          cr,
+                         gmx_bool                  bMasterState,
+                         int                       nstglobalcomm,
+                         t_state*                  state_global,
+                         const gmx_mtop_t&         top_global,
+                         const t_inputrec*         ir,
+                         gmx::ImdSession*          imdSession,
+                         pull_t*                   pull_work,
+                         t_state*                  state_local,
+                         gmx::ForceBuffers*        f,
+                         gmx::MDAtoms*             mdAtoms,
+                         gmx_localtop_t*           top_local,
+                         t_forcerec*               fr,
+                         gmx::VirtualSitesHandler* vsite,
+                         gmx::Constraints*         constr,
+                         t_nrnb*                   nrnb,
+                         gmx_wallcycle*            wcycle,
+                         gmx_bool                  bVerbose)
 {
     gmx_domdec_t*      dd;
     gmx_domdec_comm_t* comm;
@@ -2865,10 +2860,10 @@ void dd_partition_system(FILE*                        fplog,
 
         set_ddbox(*dd, true, DDMASTER(dd) ? state_global->box : nullptr, true, xGlobal, &ddbox);
 
-        distributeState(mdlog, dd, top_global, state_global, ddbox, state_local, f);
+        distributeState(mdlog, dd, top_global, state_global, ddbox, state_local);
 
         /* Ensure that we have space for the new distribution */
-        dd_check_alloc_ncg(fr, state_local, f, dd->ncg_home);
+        dd_resize_atominfo_and_state(fr, state_local, dd->ncg_home);
 
         inc_nrnb(nrnb, eNR_CGCM, comm->atomRanges.numHomeAtoms());
 
@@ -2961,7 +2956,7 @@ void dd_partition_system(FILE*                        fplog,
         wallcycle_sub_start(wcycle, ewcsDD_REDIST);
 
         ncgindex_set = dd->ncg_home;
-        dd_redistribute_cg(fplog, step, dd, ddbox.tric_dir, state_local, f, fr, nrnb, &ncg_moved);
+        dd_redistribute_cg(fplog, step, dd, ddbox.tric_dir, state_local, fr, nrnb, &ncg_moved);
 
         GMX_RELEASE_ASSERT(bSortCG, "Sorting is required after redistribution");
 
@@ -3015,7 +3010,7 @@ void dd_partition_system(FILE*                        fplog,
         dd_sort_state(dd, fr, state_local);
 
         /* After sorting and compacting we set the correct size */
-        dd_resize_state(state_local, f, comm->atomRanges.numHomeAtoms());
+        state_change_natoms(state_local, comm->atomRanges.numHomeAtoms());
 
         /* Rebuild all the indices */
         dd->ga2la->clear();
@@ -3049,7 +3044,7 @@ void dd_partition_system(FILE*                        fplog,
     make_dd_indices(dd, ncgindex_set);
 
     /* Setup up the communication and communicate the coordinates */
-    setup_dd_communication(dd, state_local->box, &ddbox, fr, state_local, f);
+    setup_dd_communication(dd, state_local->box, &ddbox, fr, state_local);
 
     /* Set the indices for the halo atoms */
     make_dd_indices(dd, dd->ncg_home);
@@ -3057,11 +3052,8 @@ void dd_partition_system(FILE*                        fplog,
     /* Set the charge group boundaries for neighbor searching */
     set_cg_boundaries(&comm->zones);
 
-    if (fr->cutoff_scheme == ecutsVERLET)
-    {
-        /* When bSortCG=true, we have already set the size for zone 0 */
-        set_zones_size(dd, state_local->box, &ddbox, bSortCG ? 1 : 0, comm->zones.n, 0);
-    }
+    /* When bSortCG=true, we have already set the size for zone 0 */
+    set_zones_size(dd, state_local->box, &ddbox, bSortCG ? 1 : 0, comm->zones.n, 0);
 
     wallcycle_sub_stop(wcycle, ewcsDD_SETUPCOMM);
 
@@ -3093,7 +3085,7 @@ void dd_partition_system(FILE*                        fplog,
         switch (range)
         {
             case DDAtomRanges::Type::Vsites:
-                if (vsite && vsite->numInterUpdategroupVsites)
+                if (vsite && vsite->numInterUpdategroupVirtualSites())
                 {
                     n = dd_make_local_vsites(dd, n, top_local->idef.il);
                 }
@@ -3120,29 +3112,22 @@ void dd_partition_system(FILE*                        fplog,
      */
     state_local->natoms = comm->atomRanges.numAtomsTotal();
 
-    dd_resize_state(state_local, f, state_local->natoms);
+    state_change_natoms(state_local, state_local->natoms);
 
-    if (fr->haveDirectVirialContributions)
+    if (vsite && vsite->numInterUpdategroupVirtualSites())
     {
-        if (vsite && vsite->numInterUpdategroupVsites)
-        {
-            nat_f_novirsum = comm->atomRanges.end(DDAtomRanges::Type::Vsites);
-        }
-        else
-        {
-            if (EEL_FULL(ir->coulombtype) && dd->haveExclusions)
-            {
-                nat_f_novirsum = comm->atomRanges.end(DDAtomRanges::Type::Zones);
-            }
-            else
-            {
-                nat_f_novirsum = comm->atomRanges.numHomeAtoms();
-            }
-        }
+        nat_f_novirsum = comm->atomRanges.end(DDAtomRanges::Type::Vsites);
     }
     else
     {
-        nat_f_novirsum = 0;
+        if (EEL_FULL(ir->coulombtype) && dd->haveExclusions)
+        {
+            nat_f_novirsum = comm->atomRanges.end(DDAtomRanges::Type::Zones);
+        }
+        else
+        {
+            nat_f_novirsum = comm->atomRanges.numHomeAtoms();
+        }
     }
 
     /* Set the number of atoms required for the force calculation.
@@ -3155,7 +3140,7 @@ void dd_partition_system(FILE*                        fplog,
                         comm->atomRanges.end(DDAtomRanges::Type::Constraints), nat_f_novirsum);
 
     /* Update atom data for mdatoms and several algorithms */
-    mdAlgorithmsSetupAtomData(cr, ir, top_global, top_local, fr, nullptr, mdAtoms, constr, vsite, nullptr);
+    mdAlgorithmsSetupAtomData(cr, ir, top_global, top_local, fr, f, mdAtoms, constr, vsite, nullptr);
 
     auto mdatoms = mdAtoms->mdatoms();
     if (!thisRankHasDuty(cr, DUTY_PME))
@@ -3192,7 +3177,7 @@ void dd_partition_system(FILE*                        fplog,
      * the last vsite construction, we need to communicate the constructing
      * atom coordinates again (for spreading the forces this MD step).
      */
-    dd_move_x_vsites(dd, state_local->box, state_local->x.rvec_array());
+    dd_move_x_vsites(*dd, state_local->box, state_local->x.rvec_array());
 
     wallcycle_sub_stop(wcycle, ewcsDD_TOPOTHER);
 
@@ -3228,14 +3213,14 @@ void dd_partition_system(FILE*                        fplog,
 }
 
 /*! \brief Check whether bonded interactions are missing, if appropriate */
-void checkNumberOfBondedInteractions(const gmx::MDLogger&  mdlog,
-                                     t_commrec*            cr,
-                                     int                   totalNumberOfBondedInteractions,
-                                     const gmx_mtop_t*     top_global,
-                                     const gmx_localtop_t* top_local,
-                                     const rvec*           x,
-                                     const matrix          box,
-                                     bool*                 shouldCheckNumberOfBondedInteractions)
+void checkNumberOfBondedInteractions(const gmx::MDLogger&           mdlog,
+                                     t_commrec*                     cr,
+                                     int                            totalNumberOfBondedInteractions,
+                                     const gmx_mtop_t*              top_global,
+                                     const gmx_localtop_t*          top_local,
+                                     gmx::ArrayRef<const gmx::RVec> x,
+                                     const matrix                   box,
+                                     bool* shouldCheckNumberOfBondedInteractions)
 {
     if (*shouldCheckNumberOfBondedInteractions)
     {

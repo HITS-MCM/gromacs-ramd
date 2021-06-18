@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -175,11 +176,9 @@ gmx_bool gmx_mtop_bondeds_free_energy(const gmx_mtop_t* mtop)
     return bPert;
 }
 
-void gmx_sort_ilist_fe(t_idef* idef, const real* qA, const real* qB)
+void gmx_sort_ilist_fe(InteractionDefinitions* idef, const real* qA, const real* qB)
 {
     int      ftype, nral, i, ic, ib, a;
-    t_ilist* ilist;
-    t_iatom* iatoms;
     t_iatom* iabuf;
     int      iabuf_nalloc;
 
@@ -188,25 +187,25 @@ void gmx_sort_ilist_fe(t_idef* idef, const real* qA, const real* qB)
         qB = qA;
     }
 
+    bool havePerturbedInteractions = false;
+
     iabuf_nalloc = 0;
     iabuf        = nullptr;
-
-    const t_iparams* iparams = idef->iparams;
 
     for (ftype = 0; ftype < F_NRE; ftype++)
     {
         if (interaction_function[ftype].flags & IF_BOND)
         {
-            ilist  = &idef->il[ftype];
-            iatoms = ilist->iatoms;
-            nral   = NRAL(ftype);
-            ic     = 0;
-            ib     = 0;
-            i      = 0;
-            while (i < ilist->nr)
+            InteractionList* ilist  = &idef->il[ftype];
+            int*             iatoms = ilist->iatoms.data();
+            nral                    = NRAL(ftype);
+            ic                      = 0;
+            ib                      = 0;
+            i                       = 0;
+            while (i < ilist->size())
             {
                 /* Check if this interaction is perturbed */
-                if (ip_q_pert(ftype, iatoms + i, iparams, qA, qB))
+                if (ip_q_pert(ftype, iatoms + i, idef->iparams.data(), qA, qB))
                 {
                     /* Copy to the perturbed buffer */
                     if (ib + 1 + nral > iabuf_nalloc)
@@ -218,6 +217,8 @@ void gmx_sort_ilist_fe(t_idef* idef, const real* qA, const real* qB)
                     {
                         iabuf[ib++] = iatoms[i++];
                     }
+
+                    havePerturbedInteractions = true;
                 }
                 else
                 {
@@ -228,8 +229,8 @@ void gmx_sort_ilist_fe(t_idef* idef, const real* qA, const real* qB)
                     }
                 }
             }
-            /* Now we now the number of non-perturbed interactions */
-            ilist->nr_nonperturbed = ic;
+            /* Now we know the number of non-perturbed interactions */
+            idef->numNonperturbedInteractions[ftype] = ic;
 
             /* Copy the buffer with perturbed interactions to the ilist */
             for (a = 0; a < ib; a++)
@@ -239,13 +240,14 @@ void gmx_sort_ilist_fe(t_idef* idef, const real* qA, const real* qB)
 
             if (debug)
             {
+                const int numNonperturbed = idef->numNonperturbedInteractions[ftype];
                 fprintf(debug, "%s non-pert %d pert %d\n", interaction_function[ftype].longname,
-                        ilist->nr_nonperturbed, ilist->nr - ilist->nr_nonperturbed);
+                        numNonperturbed, ilist->size() - numNonperturbed);
             }
         }
     }
 
     sfree(iabuf);
 
-    idef->ilsort = ilsortFE_SORTED;
+    idef->ilsort = (havePerturbedInteractions ? ilsortFE_SORTED : ilsortNO_FE);
 }

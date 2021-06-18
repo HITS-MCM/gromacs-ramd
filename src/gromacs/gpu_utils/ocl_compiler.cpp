@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+ * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -154,11 +155,11 @@ static void writeOclBuildLog(FILE*              fplog,
 
 /*! \brief Construct compiler options string
  *
- * \param deviceVendorId  Device vendor id. Used to
- *          automatically enable some vendor-specific options
+ * \param deviceVendor  Device vendor. Used to automatically enable some
+ *                      vendor-specific options.
  * \return The string with the compiler options
  */
-static std::string selectCompilerOptions(ocl_vendor_id_t deviceVendorId)
+static std::string selectCompilerOptions(DeviceVendor deviceVendor)
 {
     std::string compilerOptions;
 
@@ -178,12 +179,12 @@ static std::string selectCompilerOptions(ocl_vendor_id_t deviceVendorId)
         compilerOptions += " -cl-denorms-are-zero";
     }
 
-    if ((deviceVendorId == OCL_VENDOR_NVIDIA) && getenv("GMX_OCL_VERBOSE"))
+    if ((deviceVendor == DeviceVendor::Nvidia) && getenv("GMX_OCL_VERBOSE"))
     {
         compilerOptions += " -cl-nv-verbose";
     }
 
-    if ((deviceVendorId == OCL_VENDOR_AMD) && getenv("GMX_OCL_DUMP_INTERM_FILES"))
+    if ((deviceVendor == DeviceVendor::Amd) && getenv("GMX_OCL_DUMP_INTERM_FILES"))
     {
         /* To dump OpenCL build intermediate files, caching must be off */
         if (!useBuildCache)
@@ -308,21 +309,19 @@ size_t getDeviceWarpSize(cl_context context, cl_device_id deviceId)
 
 /*! \brief Select a compilation-line define for a vendor-specific kernel choice from vendor id
  *
- * \param[in] vendorId Vendor id enumerator
+ * \param[in] deviceVendor Vendor id enumerator
  *
  * \return The appropriate compilation-line define
  */
-static const char* makeVendorFlavorChoice(ocl_vendor_id_t vendorId)
+static std::string makeVendorFlavorChoice(DeviceVendor deviceVendor)
 {
-    const char* choice;
-    switch (vendorId)
+    switch (deviceVendor)
     {
-        case OCL_VENDOR_AMD: choice = "-D_AMD_SOURCE_"; break;
-        case OCL_VENDOR_NVIDIA: choice = "-D_NVIDIA_SOURCE_"; break;
-        case OCL_VENDOR_INTEL: choice = "-D_INTEL_SOURCE_"; break;
-        default: choice = ""; break;
+        case DeviceVendor::Amd: return "-D_AMD_SOURCE_";
+        case DeviceVendor::Nvidia: return "-D_NVIDIA_SOURCE_";
+        case DeviceVendor::Intel: return "-D_INTEL_SOURCE_";
+        default: return "";
     }
-    return choice;
 }
 
 /*! \brief Create include paths for kernel sources.
@@ -379,7 +378,7 @@ static void removeExtraSpaces(std::string* str)
 static std::string makePreprocessorOptions(const std::string& kernelRootPath,
                                            const std::string& includeRootPath,
                                            size_t             warpSize,
-                                           ocl_vendor_id_t    deviceVendorId,
+                                           DeviceVendor       deviceVendor,
                                            const std::string& extraDefines)
 {
     std::string preprocessorOptions;
@@ -387,11 +386,11 @@ static std::string makePreprocessorOptions(const std::string& kernelRootPath,
     /* Compose the complete build options */
     preprocessorOptions = formatString("-DWARP_SIZE_TEST=%d", static_cast<int>(warpSize));
     preprocessorOptions += ' ';
-    preprocessorOptions += makeVendorFlavorChoice(deviceVendorId);
+    preprocessorOptions += makeVendorFlavorChoice(deviceVendor);
     preprocessorOptions += ' ';
     preprocessorOptions += extraDefines;
     preprocessorOptions += ' ';
-    preprocessorOptions += selectCompilerOptions(deviceVendorId);
+    preprocessorOptions += selectCompilerOptions(deviceVendor);
     preprocessorOptions += ' ';
     preprocessorOptions += makeKernelIncludePathOption(kernelRootPath);
     preprocessorOptions += ' ';
@@ -409,7 +408,7 @@ cl_program compileProgram(FILE*              fplog,
                           const std::string& extraDefines,
                           cl_context         context,
                           cl_device_id       deviceId,
-                          ocl_vendor_id_t    deviceVendorId)
+                          DeviceVendor       deviceVendor)
 {
     cl_int cl_error;
     // Let the kernel find include files from its module.
@@ -424,7 +423,7 @@ cl_program compileProgram(FILE*              fplog,
 
     /* Make the build options */
     std::string preprocessorOptions = makePreprocessorOptions(
-            kernelRootPath, rootPath, getDeviceWarpSize(context, deviceId), deviceVendorId, extraDefines);
+            kernelRootPath, rootPath, getDeviceWarpSize(context, deviceId), deviceVendor, extraDefines);
 
     bool buildCacheWasRead = false;
 
@@ -451,11 +450,15 @@ cl_program compileProgram(FILE*              fplog,
                 // Failing to read from the cache is not a critical error
                 formatExceptionMessageToFile(fplog, e);
             }
+            fprintf(fplog, "OpenCL binary cache file %s is present, will load kernels.\n",
+                    cacheFilename.c_str());
         }
         else
         {
             fprintf(fplog,
-                    "No OpenCL binary cache file was present, so will compile kernels normally.\n");
+                    "No OpenCL binary cache file was present for %s, so will compile kernels "
+                    "normally.\n",
+                    kernelBaseFilename.c_str());
         }
     }
     if (program == nullptr)
@@ -510,7 +513,7 @@ cl_program compileProgram(FILE*              fplog,
             }
         }
     }
-    if ((OCL_VENDOR_NVIDIA == deviceVendorId) && getenv("GMX_OCL_DUMP_INTERM_FILES"))
+    if ((deviceVendor == DeviceVendor::Nvidia) && getenv("GMX_OCL_DUMP_INTERM_FILES"))
     {
         /* If dumping intermediate files has been requested and this is an NVIDIA card
            => write PTX to file */

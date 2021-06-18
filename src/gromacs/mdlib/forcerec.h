@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013-2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -37,30 +38,25 @@
 #ifndef GMX_MDLIB_FORCEREC_H
 #define GMX_MDLIB_FORCEREC_H
 
-#include "gromacs/mdlib/force_flags.h"
-#include "gromacs/mdlib/tgroup.h"
-#include "gromacs/mdlib/vsite.h"
-#include "gromacs/mdtypes/forcerec.h"
+#include "gromacs/math/vec.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/utility/arrayref.h"
 
-struct gmx_device_info_t;
 struct gmx_hw_info_t;
 struct t_commrec;
-struct t_fcdata;
+struct t_forcerec;
 struct t_filenm;
 struct t_inputrec;
-struct gmx_gpu_info_t;
+struct gmx_localtop_t;
+struct gmx_mtop_t;
 struct gmx_wallcycle;
+struct interaction_const_t;
 
 namespace gmx
 {
 class MDLogger;
 class PhysicalNodeCommunicator;
 } // namespace gmx
-
-//! Destroy a forcerec.
-void done_forcerec(t_forcerec* fr, int numMolBlocks);
 
 /*! \brief Print the contents of the forcerec to a file
  *
@@ -84,17 +80,18 @@ void forcerec_set_ranges(t_forcerec* fr, int natoms_force, int natoms_force_cons
 /*! \brief Initiate table constants
  *
  * Initializes the tables in the interaction constant data structure.
- * \param[in] fp   File for debugging output
- * \param[in] ic   Structure holding the table constant
+ * \param[in] fp                     File for debugging output
+ * \param[in] ic                     Structure holding the table constant
+ * \param[in] rlist                  Length of the neighbour list
+ * \param[in] tableExtensionLength   Length by which to extend the tables. Taken from the input record.
  */
-void init_interaction_const_tables(FILE* fp, interaction_const_t* ic);
+void init_interaction_const_tables(FILE* fp, interaction_const_t* ic, real rlist, real tableExtensionLength);
 
 /*! \brief Initialize forcerec structure.
  *
  * \param[in]  fplog              File for printing
  * \param[in]  mdlog              File for printing
  * \param[out] fr                 The forcerec
- * \param[in]  fcd                Force constant data
  * \param[in]  ir                 Inputrec structure
  * \param[in]  mtop               Molecular topology
  * \param[in]  cr                 Communication structures
@@ -102,17 +99,11 @@ void init_interaction_const_tables(FILE* fp, interaction_const_t* ic);
  * \param[in]  tabfn              Table potential file for non-bonded interactions
  * \param[in]  tabpfn             Table potential file for pair interactions
  * \param[in]  tabbfnm            Table potential files for bonded interactions
- * \param[in]  hardwareInfo       Information about hardware
- * \param[in]  deviceInfo         Info about GPU device to use for short-ranged work
- * \param[in]  useGpuForBonded    Whether bonded interactions will run on a GPU
- * \param[in]  pmeOnlyRankUsesGpu Whether there is a PME task on a GPU on a PME-only rank
  * \param[in]  print_force        Print forces for atoms with force >= print_force
- * \param[out] wcycle             Pointer to cycle counter object
  */
 void init_forcerec(FILE*                            fplog,
                    const gmx::MDLogger&             mdlog,
                    t_forcerec*                      fr,
-                   t_fcdata*                        fcd,
                    const t_inputrec*                ir,
                    const gmx_mtop_t*                mtop,
                    const t_commrec*                 cr,
@@ -120,12 +111,7 @@ void init_forcerec(FILE*                            fplog,
                    const char*                      tabfn,
                    const char*                      tabpfn,
                    gmx::ArrayRef<const std::string> tabbfnm,
-                   const gmx_hw_info_t&             hardwareInfo,
-                   const gmx_device_info_t*         deviceInfo,
-                   bool                             useGpuForBonded,
-                   bool                             pmeOnlyRankUsesGpu,
-                   real                             print_force,
-                   gmx_wallcycle*                   wcycle);
+                   real                             print_force);
 
 /*! \brief Check whether molecules are ever distributed over PBC boundaries
  *
@@ -145,9 +131,5 @@ bool areMoleculesDistributedOverPbc(const t_inputrec& ir, const gmx_mtop_t& mtop
  * \param[in]  top The topology
  */
 void forcerec_set_excl_load(t_forcerec* fr, const gmx_localtop_t* top);
-
-void free_gpu_resources(t_forcerec*                          fr,
-                        const gmx::PhysicalNodeCommunicator& physicalNodeCommunicator,
-                        const gmx_gpu_info_t&                gpu_info);
 
 #endif

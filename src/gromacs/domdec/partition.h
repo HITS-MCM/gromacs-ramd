@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -45,7 +45,8 @@
 #ifndef GMX_DOMDEC_PARTITION_H
 #define GMX_DOMDEC_PARTITION_H
 
-#include "gromacs/gpu_utils/hostallocator.h"
+#include <cstdio>
+
 #include "gromacs/math/vectypes.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
@@ -54,7 +55,6 @@ struct gmx_ddbox_t;
 struct gmx_domdec_t;
 struct gmx_localtop_t;
 struct gmx_mtop_t;
-struct gmx_vsite_t;
 struct gmx_wallcycle;
 struct pull_t;
 struct t_commrec;
@@ -65,10 +65,14 @@ class t_state;
 
 namespace gmx
 {
+template<typename>
+class ArrayRef;
 class Constraints;
+class ForceBuffers;
 class ImdSession;
 class MDAtoms;
 class MDLogger;
+class VirtualSitesHandler;
 } // namespace gmx
 
 //! Check whether the DD grid has moved too far for correctness.
@@ -97,36 +101,36 @@ void print_dd_statistics(const t_commrec* cr, const t_inputrec* ir, FILE* fplog)
  * \param[in] pull_work     Pulling data
  * \param[in] state_local   Local state
  * \param[in] f             Force buffer
- * \param[in] mdatoms       MD atoms
+ * \param[in] mdAtoms       MD atoms
  * \param[in] top_local     Local topology
  * \param[in] fr            Force record
- * \param[in] vsite         Virtual sites
+ * \param[in] vsite         Virtual sites handler
  * \param[in] constr        Constraints
  * \param[in] nrnb          Cycle counters
  * \param[in] wcycle        Timers
  * \param[in] bVerbose      Be verbose
  */
-void dd_partition_system(FILE*                             fplog,
-                         const gmx::MDLogger&              mdlog,
-                         int64_t                           step,
-                         const t_commrec*                  cr,
-                         gmx_bool                          bMasterState,
-                         int                               nstglobalcomm,
-                         t_state*                          state_global,
-                         const gmx_mtop_t&                 top_global,
-                         const t_inputrec*                 ir,
-                         gmx::ImdSession*                  imdSession,
-                         pull_t*                           pull_work,
-                         t_state*                          state_local,
-                         gmx::PaddedHostVector<gmx::RVec>* f,
-                         gmx::MDAtoms*                     mdatoms,
-                         gmx_localtop_t*                   top_local,
-                         t_forcerec*                       fr,
-                         gmx_vsite_t*                      vsite,
-                         gmx::Constraints*                 constr,
-                         t_nrnb*                           nrnb,
-                         gmx_wallcycle*                    wcycle,
-                         gmx_bool                          bVerbose);
+void dd_partition_system(FILE*                     fplog,
+                         const gmx::MDLogger&      mdlog,
+                         int64_t                   step,
+                         const t_commrec*          cr,
+                         gmx_bool                  bMasterState,
+                         int                       nstglobalcomm,
+                         t_state*                  state_global,
+                         const gmx_mtop_t&         top_global,
+                         const t_inputrec*         ir,
+                         gmx::ImdSession*          imdSession,
+                         pull_t*                   pull_work,
+                         t_state*                  state_local,
+                         gmx::ForceBuffers*        f,
+                         gmx::MDAtoms*             mdAtoms,
+                         gmx_localtop_t*           top_local,
+                         t_forcerec*               fr,
+                         gmx::VirtualSitesHandler* vsite,
+                         gmx::Constraints*         constr,
+                         t_nrnb*                   nrnb,
+                         gmx_wallcycle*            wcycle,
+                         gmx_bool                  bVerbose);
 
 /*! \brief Check whether bonded interactions are missing, if appropriate
  *
@@ -139,13 +143,13 @@ void dd_partition_system(FILE*                             fplog,
  * \param[in]    box                                    Box matrix for the error message
  * \param[in,out] shouldCheckNumberOfBondedInteractions Whether we should do the check. Always set to false.
  */
-void checkNumberOfBondedInteractions(const gmx::MDLogger&  mdlog,
-                                     t_commrec*            cr,
-                                     int                   totalNumberOfBondedInteractions,
-                                     const gmx_mtop_t*     top_global,
-                                     const gmx_localtop_t* top_local,
-                                     const rvec*           x,
-                                     const matrix          box,
-                                     bool*                 shouldCheckNumberOfBondedInteractions);
+void checkNumberOfBondedInteractions(const gmx::MDLogger&           mdlog,
+                                     t_commrec*                     cr,
+                                     int                            totalNumberOfBondedInteractions,
+                                     const gmx_mtop_t*              top_global,
+                                     const gmx_localtop_t*          top_local,
+                                     gmx::ArrayRef<const gmx::RVec> x,
+                                     const matrix                   box,
+                                     bool* shouldCheckNumberOfBondedInteractions);
 
 #endif

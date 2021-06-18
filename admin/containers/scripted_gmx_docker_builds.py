@@ -33,7 +33,8 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out http://www.gromacs.org.
 
-"""
+"""Building block based Dockerfile generation for CI testing images.
+
 Generates a set of docker images used for running GROMACS CI on Gitlab.
 The images are prepared according to a selection of build configuration targets
 that hope to cover a broad enough scope of different possible systems,
@@ -43,6 +44,9 @@ described as an entry in the build_configs dictionary, with the script
 analysing the logic and adding build stages as needed.
 
 Based on the example script provided by the NVidia HPCCM repository.
+
+Reference:
+    `NVidia HPC Container Maker <https://github.com/NVIDIA/hpc-container-maker>`__
 
 Authors:
     * Paul Bauer <paul.bauer.q@gmail.com>
@@ -55,6 +59,9 @@ Usage::
     $ python3 scripted_gmx_docker_builds.py --help
     $ python3 scripted_gmx_docker_builds.py --format docker > Dockerfile && docker build .
     $ python3 scripted_gmx_docker_builds.py | docker build -
+
+See Also:
+    :file:`buildall.sh`
 
 """
 
@@ -80,6 +87,7 @@ _common_packages = ['build-essential',
                     'ccache',
                     'git',
                     'gnupg',
+                    'gpg-agent',
                     'libfftw3-dev',
                     'libhwloc-dev',
                     'liblapack-dev',
@@ -91,6 +99,22 @@ _common_packages = ['build-essential',
                     'vim',
                     'wget',
                     'xsltproc']
+
+_opencl_extra_packages = [
+    'nvidia-opencl-dev',
+    # The following require apt_ppas=['ppa:intel-opencl/intel-opencl']
+    'intel-opencl-icd',
+    'ocl-icd-libopencl1',
+    'ocl-icd-opencl-dev',
+    'opencl-headers',
+    # The following require
+    #             apt_keys=['http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key'],
+    #             apt_repositories=['deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main']
+    'libelf1',
+    'rocm-opencl',
+    'rocm-dev',
+    'clinfo'
+]
 
 # Extra packages needed to build Python installations from source.
 _python_extra_packages = ['build-essential',
@@ -127,25 +151,20 @@ _docs_extra_packages = ['autoconf',
                         'linkchecker',
                         'mscgen',
                         'm4',
+                        'openssh-client',
                         'texinfo',
                         'texlive-latex-base',
                         'texlive-latex-extra',
                         'texlive-fonts-recommended',
                         'texlive-fonts-extra']
 
-# Supported Python versions for maintained branches.
-# TODO: Remove '3.5.9' from defaults in master once script in release-2020 diverges.
-_python_versions = ['3.5.9', '3.6.10', '3.7.7', '3.8.2']
-
 # Parse command line arguments
-parser = argparse.ArgumentParser(description='GROMACS CI image creation script', parents=[utility.parser])
+parser = argparse.ArgumentParser(description='GROMACS CI image creation script',
+                                 parents=[utility.parser])
 
 parser.add_argument('--format', type=str, default='docker',
                     choices=['docker', 'singularity'],
                     help='Container specification format (default: docker)')
-parser.add_argument('--venvs', nargs='*', type=str, default=_python_versions,
-                    help='List of Python versions ("major.minor.patch") for which to install venvs. '
-                         'Default: {}'.format(' '.join(_python_versions)))
 
 
 def base_image_tag(args) -> str:
@@ -174,11 +193,17 @@ def get_llvm_packages(args) -> typing.Iterable[str]:
     # If we use the package version of LLVM, we need to install extra packages for it.
     if (args.llvm is not None) and (args.tsan is None):
         return ['libomp-dev',
+                'libomp5',
                 'clang-format-' + str(args.llvm),
                 'clang-tidy-' + str(args.llvm)]
     else:
         return []
 
+def get_opencl_packages(args) -> typing.Iterable[str]:
+    if (args.doxygen is None) and (args.oneapi is None):
+        return _opencl_extra_packages
+    else:
+        return []
 
 def get_compiler(args, compiler_build_stage: hpccm.Stage = None) -> bb_base:
     # Compiler
@@ -195,6 +220,18 @@ def get_compiler(args, compiler_build_stage: hpccm.Stage = None) -> bb_base:
         # Build the default compiler if we don't need special support
         else:
             compiler = hpccm.building_blocks.llvm(extra_repository=True, version=args.llvm)
+
+    elif args.oneapi is not None:
+        if compiler_build_stage is not None:
+            compiler = compiler_build_stage.runtime(_from='oneapi')
+            # Prepare the toolchain (needed only for builds done within the Dockerfile, e.g.
+            # OpenMPI builds, which don't currently work for other reasons)
+            oneapi_toolchain = hpccm.toolchain(CC='/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icc',
+                                               CXX='/opt/intel/oneapi/compiler/latest/linux/bin/intel64/icpc')
+            setattr(compiler, 'toolchain', oneapi_toolchain)
+
+        else:
+            raise RuntimeError('No oneAPI compiler build stage!')
 
     elif args.gcc is not None:
         compiler = hpccm.building_blocks.gnu(extra_repository=True,
@@ -214,42 +251,22 @@ def get_mpi(args, compiler):
                 use_cuda = True
 
             if hasattr(compiler, 'toolchain'):
+                if args.oneapi is not None:
+                    raise RuntimeError('oneAPI building OpenMPI is not supported')
                 return hpccm.building_blocks.openmpi(toolchain=compiler.toolchain, cuda=use_cuda, infiniband=False)
             else:
                 raise RuntimeError('compiler is not an HPCCM compiler building block!')
 
         elif args.mpi == 'impi':
+            # TODO Intel MPI from the oneAPI repo is not working reliably,
+            # reasons are unclear. When solved, add packagages called:
+            # 'intel-oneapi-mpi', 'intel-oneapi-mpi-devel'
+            # during the compiler stage.
             # TODO also consider hpccm's intel_mpi package if that doesn't need
             # a license to run.
             raise RuntimeError('Intel MPI recipe not implemented yet.')
         else:
             raise RuntimeError('Requested unknown MPI implementation.')
-    else:
-        return None
-
-
-def get_opencl(args):
-    # Add OpenCL environment if needed
-    if (args.opencl is not None):
-        if args.opencl == 'nvidia':
-            if (args.cuda is None):
-                raise RuntimeError('Need Nvidia environment for Nvidia OpenCL image')
-
-            return hpccm.building_blocks.packages(ospackages=['nvidia-opencl-dev'])
-
-        elif args.opencl == 'intel':
-            return hpccm.building_blocks.packages(
-                    apt_ppas=['ppa:intel-opencl/intel-opencl'],
-                    ospackages=['opencl-headers', 'ocl-icd-libopencl1',
-                                'ocl-icd-opencl-dev', 'intel-opencl-icd'])
-
-        elif args.opencl == 'amd':
-            # libelf1 is a necessary dependency for something in the ROCm stack,
-            # which they should set up, but seem to have omitted.
-            return hpccm.building_blocks.packages(
-                    apt_keys=['http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key'],
-                    apt_repositories=['deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main'],
-                    ospackages=['ocl-icd-libopencl1', 'ocl-icd-opencl-dev', 'opencl-headers', 'libelf1', 'rocm-opencl'])
     else:
         return None
 
@@ -300,10 +317,53 @@ def add_tsan_compiler_build_stage(input_args, output_stages: typing.Mapping[str,
                      'ln -s /usr/local/libexec/c++-analyzer /usr/local/bin/c++-analyzer-' + str(input_args.llvm)])
     output_stages['compiler_build'] = tsan_stage
 
+def oneapi_runtime(_from='0'):
+    oneapi_runtime_stage = hpccm.Stage()
+    oneapi_runtime_stage += hpccm.primitives.copy(_from='oneapi-build',
+                                                  files={"/opt/intel": "/opt/intel",
+                                                         "/etc/bash.bashrc": "/etc/bash.bashrc"})
+    return oneapi_runtime_stage
+
+def add_oneapi_compiler_build_stage(input_args, output_stages: typing.Mapping[str, hpccm.Stage]):
+    """Isolate the oneAPI preparation stage.
+
+    This stage is isolated so that its installed components are minimized in the
+    final image (chiefly /opt/intel) and its environment setup script can be
+    sourced. This also helps with rebuild time and final image size.
+
+    Note that the ICC compiler inside oneAPI on linux also needs
+    gcc to build other components and provide libstdc++.
+    """
+    if not isinstance(output_stages, collections.abc.MutableMapping):
+        raise RuntimeError('Need output_stages container.')
+    oneapi_stage = hpccm.Stage()
+    oneapi_stage += hpccm.primitives.baseimage(image=base_image_tag(input_args), _as='oneapi-build')
+
+    version = str(input_args.oneapi)
+
+    # Add required components for the next stage (both for hpccm and Intel's setvars.sh script)
+    oneapi_stage += hpccm.building_blocks.packages(ospackages=['wget', 'gnupg2', 'ca-certificates', 'lsb-release'])
+    oneapi_stage += hpccm.building_blocks.packages(
+        apt_keys=['https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2023.PUB'],
+        apt_repositories=['deb https://apt.repos.intel.com/oneapi all main'],
+        # Add minimal packages (not the whole HPC toolkit!)
+        ospackages=['intel-oneapi-dpcpp-cpp-{}'.format(version),
+            'intel-oneapi-openmp-{}'.format(version),
+            'intel-oneapi-mkl-{}'.format(version),
+            'intel-oneapi-mkl-devel-{}'.format(version)]
+    )
+    # Ensure that all bash shells on the final container will have access to oneAPI
+    oneapi_stage += hpccm.primitives.shell(
+            commands=['echo "source /opt/intel/oneapi/setvars.sh" >> /etc/bash.bashrc']
+            )
+    setattr(oneapi_stage, 'runtime', oneapi_runtime)
+
+    output_stages['compiler_build'] = oneapi_stage
+
 def prepare_venv(version: StrictVersion) -> typing.Sequence[str]:
     """Get shell commands to set up the venv for the requested Python version."""
     major = version.version[0]
-    minor = version.version[1]
+    minor = version.version[1]  # type: int
 
     pyenv = '$HOME/.pyenv/bin/pyenv'
 
@@ -322,15 +382,20 @@ def prepare_venv(version: StrictVersion) -> typing.Sequence[str]:
     # WARNING: Please keep this list synchronized with python_packaging/requirements-test.txt
     # TODO: Get requirements.txt from an input argument.
     commands.append("""{path}/bin/python -m pip install --upgrade \
-            'cmake>=3.9.6' \
+            'cmake>=3.13' \
             'flake8>=3.7.7' \
-            'mpi4py>=2' \
+            'mpi4py>=3.0.3' \
             'networkx>=2.0' \
             'numpy>=1' \
             'pip>=10.1' \
             'pytest>=3.9' \
-            'setuptools>=28.0.0' \
-            'scikit-build>=0.7'""".format(path=venv_path))
+            'setuptools>=42' \
+            'scikit-build>=0.10'""".format(path=venv_path))
+
+    # TODO: Remove 'importlib_resources' dependency when Python >=3.7 is required.
+    if minor == 6:
+        commands.append("""{path}/bin/python -m pip install --upgrade \
+                'importlib_resources'""".format(path=venv_path))
 
     return commands
 
@@ -405,6 +470,47 @@ def add_python_stages(building_blocks: typing.Mapping[str, bb_base],
     output_stages['pyenv'] = pyenv_stage
 
 
+def add_documentation_dependencies(input_args,
+                                   output_stages: typing.MutableMapping[str, hpccm.Stage]):
+    """Add appropriate layers according to doxygen input arguments."""
+    if input_args.doxygen is None:
+        return
+    output_stages['main'] += hpccm.primitives.shell(
+        commands=['sed -i \'/\"XPS\"/d;/\"PDF\"/d;/\"PS\"/d;/\"EPS\"/d;/disable ghostscript format types/d\' /etc/ImageMagick-6/policy.xml'])
+    output_stages['main'] += hpccm.building_blocks.pip(pip='pip3', packages=['sphinx==1.6.1', 'gcovr'])
+    if input_args.doxygen == '1.8.5':
+        doxygen_commit = 'ed4ed873ab0e7f15116e2052119a6729d4589f7a'
+        output_stages['main'] += hpccm.building_blocks.generic_autotools(
+            repository='https://github.com/westes/flex.git',
+            commit='f7788a9a0ecccdc953ed12043ccb59ca25714018',
+            prefix='/tmp/install-of-flex',
+            configure_opts=['--disable-shared'],
+            preconfigure=['./autogen.sh'])
+        output_stages['main'] += hpccm.building_blocks.generic_autotools(
+            repository='https://github.com/doxygen/doxygen.git',
+            commit=doxygen_commit,
+            prefix='',
+            configure_opts=[
+                '--flex /tmp/install-of-flex/bin/flex',
+                '--static'])
+    else:
+        version = input_args.doxygen
+        archive_name = 'doxygen-{}.linux.bin.tar.gz'.format(version)
+        archive_url = 'https://sourceforge.net/projects/doxygen/files/rel-{}/{}'.format(
+            version,
+            archive_name
+        )
+        binary_path = 'doxygen-{}/bin/doxygen'.format(version)
+        commands = [
+            'mkdir doxygen && cd doxygen',
+            'wget {}'.format(archive_url),
+            'tar xf {} {}'.format(archive_name, binary_path),
+            'cp {} /usr/local/bin/'.format(binary_path),
+            'cd .. && rm -rf doxygen'
+        ]
+        output_stages['main'] += hpccm.primitives.shell(commands=commands)
+
+
 def build_stages(args) -> typing.Iterable[hpccm.Stage]:
     """Define and sequence the stages for the recipe corresponding to *args*."""
 
@@ -422,23 +528,37 @@ def build_stages(args) -> typing.Iterable[hpccm.Stage]:
     # installed.
     if args.llvm is not None and args.tsan is not None:
         add_tsan_compiler_build_stage(input_args=args, output_stages=stages)
+    if args.oneapi is not None:
+        add_oneapi_compiler_build_stage(input_args=args, output_stages=stages)
 
     # Building blocks are chunks of container-builder instructions that can be
     # copied to any build stage with the addition operator.
     building_blocks = collections.OrderedDict()
+    building_blocks['base_packages'] = hpccm.building_blocks.packages(
+        ospackages=_common_packages)
 
     # These are the most expensive and most reusable layers, so we put them first.
     building_blocks['compiler'] = get_compiler(args, compiler_build_stage=stages.get('compiler_build'))
     building_blocks['mpi'] = get_mpi(args, building_blocks['compiler'])
+    for i, cmake in enumerate(args.cmake):
+        building_blocks['cmake' + str(i)] = hpccm.building_blocks.cmake(
+            eula=True,
+            prefix='/usr/local/cmake-{}'.format(cmake),
+            version=cmake)
 
     # Install additional packages early in the build to optimize Docker build layer cache.
-    os_packages = _common_packages + get_llvm_packages(args)
+    os_packages = list(get_llvm_packages(args)) + get_opencl_packages(args)
     if args.doxygen is not None:
         os_packages += _docs_extra_packages
-    building_blocks['ospackages'] = hpccm.building_blocks.packages(ospackages=os_packages)
+    if args.oneapi is not None:
+        os_packages += ['lsb-release']
+    building_blocks['extra_packages'] = hpccm.building_blocks.packages(
+        ospackages=os_packages,
+        apt_ppas=['ppa:intel-opencl/intel-opencl'],
+        apt_keys=['http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key'],
+        apt_repositories=['deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main']
+    )
 
-    building_blocks['cmake'] = hpccm.building_blocks.cmake(eula=True, version=args.cmake)
-    building_blocks['opencl'] = get_opencl(args)
     building_blocks['clfft'] = get_clfft(args)
 
     # Add Python environments to MPI images, only, so we don't have to worry
@@ -460,27 +580,8 @@ def build_stages(args) -> typing.Iterable[hpccm.Stage]:
                                                 packages=['pytest', 'networkx', 'numpy'])
 
     # Add documentation requirements (doxygen and sphinx + misc).
-    if (args.doxygen is not None):
-        if (args.doxygen == '1.8.5'):
-            doxygen_commit = 'ed4ed873ab0e7f15116e2052119a6729d4589f7a'
-        else:
-            doxygen_commit = 'a6d4f4df45febe588c38de37641513fd576b998f'
-        stages['main'] += hpccm.building_blocks.generic_autotools(
-            repository='https://github.com/westes/flex.git',
-            commit='f7788a9a0ecccdc953ed12043ccb59ca25714018',
-            prefix='/tmp/install-of-flex',
-            configure_opts=['--disable-shared'],
-            preconfigure=['./autogen.sh'])
-        stages['main'] += hpccm.building_blocks.generic_autotools(
-            repository='https://github.com/doxygen/doxygen.git',
-            commit=doxygen_commit,
-            prefix='',
-            configure_opts=[
-                '--flex /tmp/install-of-flex/bin/flex',
-                '--static'],
-            postinstall=[
-                'sed -i \'/\"XPS\"/d;/\"PDF\"/d;/\"PS\"/d;/\"EPS\"/d;/disable ghostscript format types/d\' /etc/ImageMagick-6/policy.xml'])
-        stages['main'] += hpccm.building_blocks.pip(pip='pip3', packages=['sphinx==1.6.1'])
+    if args.doxygen is not None:
+        add_documentation_dependencies(args, stages)
 
     if 'pyenv' in stages and stages['pyenv'] is not None:
         stages['main'] += hpccm.primitives.copy(_from='pyenv', _mkdir=True, src=['/root/.pyenv/'],
@@ -491,6 +592,11 @@ def build_stages(args) -> typing.Iterable[hpccm.Stage]:
         # TODO: If we activate pyenv for login shells, the `global` "version" should be full-featured.
         # stages['main'] += hpccm.primitives.copy(_from='pyenv', src=['/root/.bashrc'],
         #                                         dest='/root/')
+
+    # Make sure that `python` resolves to something.
+    stages['main'] += hpccm.primitives.shell(commands=['test -x /usr/bin/python || '
+                                                       'update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && '
+                                                       '/usr/bin/python --version'])
 
     # Note that the list of stages should be sorted in dependency order.
     for build_stage in stages.values():

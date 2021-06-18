@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2014,2015,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -39,12 +40,11 @@
 
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/math/vectypes.h"
-#include "gromacs/mdtypes/forcerec.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/nblist.h"
 #include "gromacs/utility/real.h"
 
 struct t_blocka;
+struct t_mdatoms;
 
 /* Structure to collect kernel data not available in forcerec or mdatoms structures.
  * This is only used inside the nonbonded module.
@@ -53,7 +53,7 @@ typedef struct
 {
     int                    flags;
     const struct t_blocka* exclusions;
-    real*                  lambda;
+    const real*            lambda;
     real*                  dvdl;
 
     /* pointers to tables */

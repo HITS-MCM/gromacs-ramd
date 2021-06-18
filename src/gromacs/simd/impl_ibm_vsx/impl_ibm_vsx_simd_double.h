@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -348,6 +349,7 @@ static inline SimdDouble gmx_simdcall trunc(SimdDouble x)
     return { vec_trunc(x.simdInternal_) };
 }
 
+template<MathOptimization opt = MathOptimization::Safe>
 static inline SimdDouble frexp(SimdDouble value, SimdDInt32* exponent)
 {
     const __vector double exponentMask =
@@ -355,6 +357,9 @@ static inline SimdDouble frexp(SimdDouble value, SimdDInt32* exponent)
     const __vector signed int exponentBias = vec_splats(1022);
     const __vector double     half         = vec_splats(0.5);
     __vector signed int       iExponent;
+
+    __vector vsxBool long long valueIsZero =
+            vec_cmpeq(value.simdInternal_, reinterpret_cast<__vector double>(vec_splats(0.0)));
 
     iExponent = reinterpret_cast<__vector signed int>(vec_and(value.simdInternal_, exponentMask));
     // The data is in the upper half of each double (corresponding to elements 1 and 3).
@@ -365,10 +370,15 @@ static inline SimdDouble frexp(SimdDouble value, SimdDInt32* exponent)
     const __vector unsigned char perm = { 4, 5, 6, 7, 0, 1, 2, 3, 12, 13, 14, 15, 8, 9, 10, 11 };
     iExponent                         = vec_perm(iExponent, iExponent, perm);
 #endif
-    iExponent               = vec_sub(iExponent, exponentBias);
+    iExponent = vec_sub(iExponent, exponentBias);
+    iExponent = vec_andc(iExponent, reinterpret_cast<__vector int>(valueIsZero));
+
+    __vector double result = vec_or(vec_andc(value.simdInternal_, exponentMask), half);
+    result                 = vec_sel(result, value.simdInternal_, valueIsZero);
+
     exponent->simdInternal_ = iExponent;
 
-    return { vec_or(vec_andc(value.simdInternal_, exponentMask), half) };
+    return { result };
 }
 
 template<MathOptimization opt = MathOptimization::Safe>

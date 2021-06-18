@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -48,17 +49,29 @@
 
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/utility/basedefinitions.h"
+#include "gromacs/utility/gmxmpi.h"
 
 struct gmx_mtop_t;
 struct gmx_multisim_t;
 class history_t;
 struct t_commrec;
+struct t_disresdata;
+struct t_fcdata;
 struct t_inputrec;
 struct t_pbc;
 class t_state;
+enum class DDRole;
+enum class NumRanks;
+
+//! Whether distance restraints are called from mdrun or from an analysis tool
+enum class DisResRunMode
+{
+    MDRun,
+    AnalysisTool
+};
 
 /*! \brief
- * Initiates *fcd data.
+ * Initiates *disresdata.
  *
  * Must be called once, nbonds is the number
  * of iatoms in the ilist of the idef struct.
@@ -70,9 +83,12 @@ class t_state;
 void init_disres(FILE*                 fplog,
                  const gmx_mtop_t*     mtop,
                  t_inputrec*           ir,
-                 const t_commrec*      cr,
+                 DisResRunMode         disResRunMode,
+                 DDRole                ddRole,
+                 NumRanks              numRanks,
+                 MPI_Comm              communicator,
                  const gmx_multisim_t* ms,
-                 t_fcdata*             fcd,
+                 t_disresdata*         disresdata,
                  t_state*              state,
                  gmx_bool              bIsREMD);
 
@@ -86,7 +102,7 @@ void calc_disres_R_6(const t_commrec*      cr,
                      const t_iatom*        fa,
                      const rvec*           x,
                      const t_pbc*          pbc,
-                     t_fcdata*             fcd,
+                     t_disresdata*         disresdata,
                      history_t*            hist);
 
 //! Calculates the distance restraint forces, return the potential.
@@ -97,14 +113,13 @@ real ta_disres(int              nfa,
                rvec4            f[],
                rvec             fshift[],
                const t_pbc*     pbc,
-               const t_graph*   g,
                real             lambda,
                real*            dvdlambda,
                const t_mdatoms* md,
-               t_fcdata*        fcd,
+               t_fcdata*        fcdata,
                int*             global_atom_index);
 
 //! Copies the new time averages that have been calculated in calc_disres_R_6.
-void update_disres_history(const t_fcdata* fcd, history_t* hist);
+void update_disres_history(const t_disresdata& disresdata, history_t* hist);
 
 #endif

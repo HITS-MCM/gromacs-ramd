@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9.6)
+cmake_minimum_required(VERSION 3.13.0)
 # If you are using this repository as a template, you should probably change the
 # project name and adopt your own versioning scheme.
 project(sample_restraint VERSION 0.0.8)
@@ -21,7 +21,7 @@ endif()
 # the paackage that should be installed with GROMACS, but the pybind sources
 # would only be available to this project with some additional management by
 # the parent project CMake configuration.
-# Also reference https://redmine.gromacs.org/issues/2896
+# Also reference https://gitlab.com/gromacs/gromacs/-/issues/2896
 if(GMXAPI_EXTENSION_MASTER_PROJECT)
     # TODO: (Issue #3027) Handle locally available sources.
     set(GMXAPI_EXTENSION_USE_BUNDLED_PYBIND OFF CACHE BOOL
@@ -62,7 +62,7 @@ endif()
 # versions of GROMACS. If building from the command line, you can specify a Python executable with the PYTHON_EXECUTABLE
 # variable. For instance, to make sure you are building for your default Python, cmake -DPYTHON_EXECUTABLE=`which python`.
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
 # CMake modules are in a subdirectory to keep this file cleaner

@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -319,6 +320,7 @@ static inline SimdFloat gmx_simdcall trunc(SimdFloat x)
     return { vec_trunc(x.simdInternal_) };
 }
 
+template<MathOptimization opt = MathOptimization::Safe>
 static inline SimdFloat gmx_simdcall frexp(SimdFloat value, SimdFInt32* exponent)
 {
     const __vector float exponentMask = reinterpret_cast<__vector float>(vec_splats(0x7F800000U));
@@ -326,11 +328,19 @@ static inline SimdFloat gmx_simdcall frexp(SimdFloat value, SimdFInt32* exponent
     const __vector float      half         = vec_splats(0.5F);
     __vector signed int       iExponent;
 
+    __vector vsxBool int valueIsZero =
+            vec_cmpeq(value.simdInternal_, reinterpret_cast<__vector float>(vec_splats(0.0)));
+
     iExponent = reinterpret_cast<__vector signed int>(vec_and(value.simdInternal_, exponentMask));
     iExponent = vec_sub(vec_sr(iExponent, vec_splats(23U)), exponentBias);
+    iExponent = vec_andc(iExponent, reinterpret_cast<__vector int>(valueIsZero));
+
+    __vector float result = vec_or(vec_andc(value.simdInternal_, exponentMask), half);
+    result                = vec_sel(result, value.simdInternal_, valueIsZero);
+
     exponent->simdInternal_ = iExponent;
 
-    return { vec_or(vec_andc(value.simdInternal_, exponentMask), half) };
+    return { result };
 }
 
 template<MathOptimization opt = MathOptimization::Safe>

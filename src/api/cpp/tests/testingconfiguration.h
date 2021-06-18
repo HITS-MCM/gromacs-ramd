@@ -36,7 +36,7 @@
 #ifndef GROMACS_TESTINGCONFIGURATION_H
 #define GROMACS_TESTINGCONFIGURATION_H
 
-#include <gtest/gtest.h>
+#include "config.h"
 
 #include <string>
 #include <vector>
@@ -48,9 +48,9 @@
 #include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/textwriter.h"
 
+#include "programs/mdrun/tests/moduletest.h"
 #include "testutils/cmdlinetest.h"
 #include "testutils/testfilemanager.h"
-#include "programs/mdrun/tests/moduletest.h"
 
 namespace gmxapi
 {

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2012, The GROMACS development team.
- * Copyright (c) 2013-2019, by the GROMACS development team, led by
+ * Copyright (c) 2013-2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -49,6 +49,7 @@
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/devicebuffer.h"
+#include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/gpu_utils/gputraits.cuh"
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/nbnxm/gpu_types_common.h"
@@ -72,63 +73,13 @@ const int c_cudaPruneKernelJ4Concurrency = GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY
 
 /* TODO: consider moving this to kernel_utils */
 /* Convenience defines */
-/*! \brief number of clusters per supercluster. */
-static const int c_numClPerSupercl = c_nbnxnGpuNumClusterPerSupercluster;
 /*! \brief cluster size = number of atoms per cluster. */
-static const int c_clSize = c_nbnxnGpuClusterSize;
-
-/*! \brief Electrostatic CUDA kernel flavors.
- *
- *  Types of electrostatics implementations available in the CUDA non-bonded
- *  force kernels. These represent both the electrostatics types implemented
- *  by the kernels (cut-off, RF, and Ewald - a subset of what's defined in
- *  enums.h) as well as encode implementation details analytical/tabulated
- *  and single or twin cut-off (for Ewald kernels).
- *  Note that the cut-off and RF kernels have only analytical flavor and unlike
- *  in the CPU kernels, the tabulated kernels are ATM Ewald-only.
- *
- *  The row-order of pointers to different electrostatic kernels defined in
- *  nbnxn_cuda.cu by the nb_*_kfunc_ptr function pointer table
- *  should match the order of enumerated types below.
- */
-enum eelCu
-{
-    eelCuCUT,
-    eelCuRF,
-    eelCuEWALD_TAB,
-    eelCuEWALD_TAB_TWIN,
-    eelCuEWALD_ANA,
-    eelCuEWALD_ANA_TWIN,
-    eelCuNR
-};
-
-/*! \brief VdW CUDA kernel flavors.
- *
- * The enumerates values correspond to the LJ implementations in the CUDA non-bonded
- * kernels.
- *
- * The column-order of pointers to different electrostatic kernels defined in
- * nbnxn_cuda.cu by the nb_*_kfunc_ptr function pointer table
- * should match the order of enumerated types below.
- */
-enum evdwCu
-{
-    evdwCuCUT,
-    evdwCuCUTCOMBGEOM,
-    evdwCuCUTCOMBLB,
-    evdwCuFSWITCH,
-    evdwCuPSWITCH,
-    evdwCuEWALDGEOM,
-    evdwCuEWALDLB,
-    evdwCuNR
-};
+static constexpr int c_clSize = c_nbnxnGpuClusterSize;
 
 /* All structs prefixed with "cu_" hold data used in GPU calculations and
  * are passed to the kernels, except cu_timers_t. */
 /*! \cond */
 typedef struct cu_atomdata cu_atomdata_t;
-typedef struct cu_nbparam  cu_nbparam_t;
-typedef struct nb_staging  nb_staging_t;
 /*! \endcond */
 
 
@@ -138,11 +89,14 @@ typedef struct nb_staging  nb_staging_t;
  *  The energies/shift forces get downloaded here first, before getting added
  *  to the CPU-side aggregate values.
  */
-struct nb_staging
+struct nb_staging_t
 {
-    float*  e_lj;   /**< LJ energy            */
-    float*  e_el;   /**< electrostatic energy */
-    float3* fshift; /**< shift forces         */
+    //! LJ energy
+    float* e_lj = nullptr;
+    //! electrostatic energy
+    float* e_el = nullptr;
+    //! shift forces
+    float3* fshift = nullptr;
 };
 
 /** \internal
@@ -150,71 +104,38 @@ struct nb_staging
  */
 struct cu_atomdata
 {
-    int natoms;       /**< number of atoms                              */
-    int natoms_local; /**< number of local atoms                        */
-    int nalloc;       /**< allocation size for the atom data (xq, f)    */
+    //! number of atoms
+    int natoms;
+    //! number of local atoms
+    int natoms_local;
+    //! allocation size for the atom data (xq, f)
+    int nalloc;
 
-    float4* xq; /**< atom coordinates + charges, size natoms      */
-    float3* f;  /**< force output array, size natoms              */
+    //! atom coordinates + charges, size natoms
+    DeviceBuffer<float4> xq;
+    //! force output array, size natoms
+    DeviceBuffer<float3> f;
 
-    float* e_lj; /**< LJ energy output, size 1                     */
-    float* e_el; /**< Electrostatics energy input, size 1          */
+    //! LJ energy output, size 1
+    DeviceBuffer<float> e_lj;
+    //! Electrostatics energy input, size 1
+    DeviceBuffer<float> e_el;
 
-    float3* fshift; /**< shift forces                                 */
+    //! shift forces
+    DeviceBuffer<float3> fshift;
 
-    int     ntypes;     /**< number of atom types                         */
-    int*    atom_types; /**< atom type indices, size natoms               */
-    float2* lj_comb;    /**< sqrt(c6),sqrt(c12) size natoms               */
+    //! number of atom types
+    int ntypes;
+    //! atom type indices, size natoms
+    DeviceBuffer<int> atom_types;
+    //! sqrt(c6),sqrt(c12) size natoms
+    DeviceBuffer<float2> lj_comb;
 
-    float3* shift_vec;         /**< shifts                                       */
-    bool    bShiftVecUploaded; /**< true if the shift vector has been uploaded   */
+    //! shifts
+    DeviceBuffer<float3> shift_vec;
+    //! true if the shift vector has been uploaded
+    bool bShiftVecUploaded;
 };
-
-/** \internal
- * \brief Parameters required for the CUDA nonbonded calculations.
- */
-struct cu_nbparam
-{
-
-    int eeltype; /**< type of electrostatics, takes values from #eelCu */
-    int vdwtype; /**< type of VdW impl., takes values from #evdwCu     */
-
-    float epsfac;      /**< charge multiplication factor                      */
-    float c_rf;        /**< Reaction-field/plain cutoff electrostatics const. */
-    float two_k_rf;    /**< Reaction-field electrostatics constant            */
-    float ewald_beta;  /**< Ewald/PME parameter                               */
-    float sh_ewald;    /**< Ewald/PME correction term substracted from the direct-space potential */
-    float sh_lj_ewald; /**< LJ-Ewald/PME correction term added to the correction potential        */
-    float ewaldcoeff_lj; /**< LJ-Ewald/PME coefficient                          */
-
-    float rcoulomb_sq; /**< Coulomb cut-off squared                           */
-
-    float rvdw_sq;           /**< VdW cut-off squared                               */
-    float rvdw_switch;       /**< VdW switched cut-off                              */
-    float rlistOuter_sq;     /**< Full, outer pair-list cut-off squared             */
-    float rlistInner_sq;     /**< Inner, dynamic pruned pair-list cut-off squared   */
-    bool  useDynamicPruning; /**< True if we use dynamic pair-list pruning          */
-
-    shift_consts_t  dispersion_shift; /**< VdW shift dispersion constants           */
-    shift_consts_t  repulsion_shift;  /**< VdW shift repulsion constants            */
-    switch_consts_t vdw_switch;       /**< VdW switch constants                     */
-
-    /* LJ non-bonded parameters - accessed through texture memory */
-    float*              nbfp; /**< nonbonded parameter table with C6/C12 pairs per atom type-pair, 2*ntype^2 elements */
-    cudaTextureObject_t nbfp_texobj; /**< texture object bound to nbfp */
-    float*              nbfp_comb; /**< nonbonded parameter table per atom type, 2*ntype elements */
-    cudaTextureObject_t nbfp_comb_texobj; /**< texture object bound to nbfp_texobj */
-
-    /* Ewald Coulomb force table data - accessed through texture memory */
-    float               coulomb_tab_scale;  /**< table scale/spacing                        */
-    float*              coulomb_tab;        /**< pointer to the table in the device memory  */
-    cudaTextureObject_t coulomb_tab_texobj; /**< texture object bound to coulomb_tab        */
-};
-
-/** \internal
- * \brief Pair list data.
- */
-using cu_plist_t = Nbnxm::gpu_plist;
 
 /** \internal
  * \brief Typedef of actual timer type.
@@ -223,85 +144,84 @@ typedef struct Nbnxm::gpu_timers_t cu_timers_t;
 
 class GpuEventSynchronizer;
 
-/** \internal
+/*! \internal
  * \brief Main data structure for CUDA nonbonded force calculations.
  */
-struct gmx_nbnxn_cuda_t
+struct NbnxmGpu
 {
-    //! CUDA device information
-    const gmx_device_info_t* dev_info;
-    //! true if doing both local/non-local NB work on GPU
-    bool bUseTwoStreams;
-    //! atom data
-    cu_atomdata_t* atdat;
-    //! f buf ops cell index mapping
-    int* cell;
-    //! number of indices in cell buffer
-    int ncell;
-    //! number of indices allocated in cell buffer
-    int ncell_alloc;
-    //! array of atom indices
-    int* atomIndices;
-    //! size of atom indices
-    int atomIndicesSize;
-    //! size of atom indices allocated in device buffer
-    int atomIndicesSize_alloc;
-    //! x buf ops num of atoms
-    int* cxy_na;
-    //! number of elements in cxy_na
-    int ncxy_na;
-    //! number of elements allocated allocated in device buffer
-    int ncxy_na_alloc;
-    //! x buf ops cell index mapping
-    int* cxy_ind;
-    //! number of elements in cxy_ind
-    int ncxy_ind;
-    //! number of elements allocated allocated in device buffer
-    int ncxy_ind_alloc;
-    //! parameters required for the non-bonded calc.
-    cu_nbparam_t* nbparam;
-    //! pair-list data structures (local and non-local)
-    gmx::EnumerationArray<Nbnxm::InteractionLocality, cu_plist_t*> plist;
-    //! staging area where fshift/energies get downloaded
-    nb_staging_t nbst;
-    //! local and non-local GPU streams
-    gmx::EnumerationArray<Nbnxm::InteractionLocality, cudaStream_t> stream;
-
-    /** events used for synchronization */
-    cudaEvent_t nonlocal_done; /**< event triggered when the non-local non-bonded kernel
-                                  is done (and the local transfer can proceed)           */
-    cudaEvent_t misc_ops_and_local_H2D_done; /**< event triggered when the tasks issued in
-                                                the local stream that need to precede the
-                                                non-local force or buffer operation calculations are
-                                                done (e.g. f buffer 0-ing, local x/q H2D, buffer op
-                                                initialization in local stream that is required also
-                                                by nonlocal stream ) */
-
-    //! True if there has been local/nonlocal GPU work, either bonded or nonbonded, scheduled
-    //  to be executed in the current domain. As long as bonded work is not split up into
-    //  local/nonlocal, if there is bonded GPU work, both flags will be true.
-    gmx::EnumerationArray<Nbnxm::InteractionLocality, bool> haveWork;
-
-    /*! \brief Pointer to event synchronizer triggered when the local GPU buffer ops / reduction is complete
+    /*! \brief GPU device context.
      *
-     * \note That the synchronizer is managed outside of this module in StatePropagatorDataGpu.
+     * \todo Make it constant reference, once NbnxmGpu is a proper class.
      */
-    GpuEventSynchronizer* localFReductionDone;
+    const DeviceContext* deviceContext_;
+    /*! \brief true if doing both local/non-local NB work on GPU */
+    bool bUseTwoStreams = false;
+    /*! \brief atom data */
+    cu_atomdata_t* atdat = nullptr;
+    /*! \brief array of atom indices */
+    int* atomIndices = nullptr;
+    /*! \brief size of atom indices */
+    int atomIndicesSize = 0;
+    /*! \brief size of atom indices allocated in device buffer */
+    int atomIndicesSize_alloc = 0;
+    /*! \brief x buf ops num of atoms */
+    int* cxy_na = nullptr;
+    /*! \brief number of elements in cxy_na */
+    int ncxy_na = 0;
+    /*! \brief number of elements allocated allocated in device buffer */
+    int ncxy_na_alloc = 0;
+    /*! \brief x buf ops cell index mapping */
+    int* cxy_ind = nullptr;
+    /*! \brief number of elements in cxy_ind */
+    int ncxy_ind = 0;
+    /*! \brief number of elements allocated allocated in device buffer */
+    int ncxy_ind_alloc = 0;
+    /*! \brief parameters required for the non-bonded calc. */
+    NBParamGpu* nbparam = nullptr;
+    /*! \brief pair-list data structures (local and non-local) */
+    gmx::EnumerationArray<Nbnxm::InteractionLocality, Nbnxm::gpu_plist*> plist = { { nullptr } };
+    /*! \brief staging area where fshift/energies get downloaded */
+    nb_staging_t nbst;
+    /*! \brief local and non-local GPU streams */
+    gmx::EnumerationArray<Nbnxm::InteractionLocality, const DeviceStream*> deviceStreams;
 
-    GpuEventSynchronizer* xNonLocalCopyD2HDone; /**< event triggered when
-                                                   non-local coordinate buffer has been
-                                                   copied from device to host*/
+    /*! \brief Events used for synchronization */
+    /*! \{ */
+    /*! \brief Event triggered when the non-local non-bonded
+     * kernel is done (and the local transfer can proceed) */
+    cudaEvent_t nonlocal_done = nullptr;
+    /*! \brief Event triggered when the tasks issued in the local
+     * stream that need to precede the non-local force or buffer
+     * operation calculations are done (e.g. f buffer 0-ing, local
+     * x/q H2D, buffer op initialization in local stream that is
+     * required also by nonlocal stream ) */
+    cudaEvent_t misc_ops_and_local_H2D_done = nullptr;
+    /*! \} */
+
+    /*! \brief True if there is work for the current domain in the
+     * respective locality.
+     *
+     * This includes local/nonlocal GPU work, either bonded or
+     * nonbonded, scheduled to be executed in the current
+     * domain. As long as bonded work is not split up into
+     * local/nonlocal, if there is bonded GPU work, both flags
+     * will be true. */
+    gmx::EnumerationArray<Nbnxm::InteractionLocality, bool> haveWork = { { false } };
+
+    /*! \brief Event triggered when non-local coordinate buffer
+     * has been copied from device to host. */
+    GpuEventSynchronizer* xNonLocalCopyD2HDone = nullptr;
 
     /* NOTE: With current CUDA versions (<=5.0) timing doesn't work with multiple
      * concurrent streams, so we won't time if both l/nl work is done on GPUs.
      * Timer init/uninit is still done even with timing off so only the condition
      * setting bDoTime needs to be change if this CUDA "feature" gets fixed. */
-    //! True if event-based timing is enabled.
-    bool bDoTime;
-    //! CUDA event-based timers.
-    cu_timers_t* timers;
-    //! Timing data. TODO: deprecate this and query timers for accumulated data instead
-    gmx_wallclock_gpu_nbnxn_t* timings;
+    /*! \brief True if event-based timing is enabled. */
+    bool bDoTime = false;
+    /*! \brief CUDA event-based timers. */
+    cu_timers_t* timers = nullptr;
+    /*! \brief Timing data. TODO: deprecate this and query timers for accumulated data instead */
+    gmx_wallclock_gpu_nbnxn_t* timings = nullptr;
 };
 
 #endif /* NBNXN_CUDA_TYPES_H */

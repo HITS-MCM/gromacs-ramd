@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010,2011,2012,2013,2014,2015,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2010,2011,2012,2013,2014 by the GROMACS development team.
+ * Copyright (c) 2015,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -50,6 +51,8 @@
 #include "gromacs/options/timeunitmanager.h"
 #include "gromacs/utility/classhelpers.h"
 
+enum class XvgFormat : int;
+
 namespace gmx
 {
 
@@ -75,10 +78,8 @@ public:
     TimeUnit timeUnit() const { return timeUnit_; }
     /*! \brief
      * Returns the plot format.
-     *
-     * \todo Use a proper enum.
      */
-    int plotFormat() const { return plotFormat_; }
+    XvgFormat plotFormat() const { return plotFormat_; }
 
     /*! \brief
      * Set selection collection to print as comments into the output.
@@ -110,7 +111,7 @@ public:
 private:
     const SelectionCollection* selections_;
     TimeUnit                   timeUnit_;
-    int                        plotFormat_;
+    XvgFormat                  plotFormat_;
 };
 
 /*! \brief

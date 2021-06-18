@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -51,9 +51,10 @@
  *  \author Aleksei Iupinov <a.yupinov@gmail.com>
  */
 
-#include "pme_gpu_types.h"
-#include "pme_gpu_utils.clh"
 #include "gromacs/gpu_utils/vectype_ops.clh"
+
+#include "pme_gpu_calculate_splines.clh"
+#include "pme_gpu_types.h"
 
 /*
  * This define affects the spline calculation behaviour in the kernel.
@@ -72,25 +73,25 @@
 /*! \brief
  * General purpose function for loading atom-related data from global to shared memory.
  *
- * \param[in]  kernelParams      Input PME GPU data in constant memory.
  * \param[out] sm_destination    Local memory array for output.
  * \param[in]  gm_source         Global memory array for input.
- * \param[in] dataCountPerAtom   Number of data elements per single atom (e.g. DIM for an rvec coordinates array).
+ * \param[in]  dataCountPerAtom  Number of data elements per single
+ * atom (e.g. DIM for an rvec coordinates array).
  *
  */
-inline void pme_gpu_stage_atom_data(const struct PmeOpenCLKernelParams kernelParams,
-                                    __local float* __restrict__ sm_destination,
+inline void pme_gpu_stage_atom_data(__local float* __restrict__ sm_destination,
                                     __global const float* __restrict__ gm_source,
                                     const int dataCountPerAtom)
 {
-    const size_t threadLocalIndex =
-            ((get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0));
-    const size_t localIndex      = threadLocalIndex;
-    const size_t globalIndexBase = get_group_id(XX) * atomsPerBlock * dataCountPerAtom;
-    const size_t globalIndex     = globalIndexBase + localIndex;
-    const int    globalCheck =
-            pme_gpu_check_atom_data_index(globalIndex, kernelParams.atoms.nAtoms * dataCountPerAtom);
-    if ((localIndex < atomsPerBlock * dataCountPerAtom) & globalCheck)
+    assert((get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0)
+           < MAX_INT);
+    const int threadLocalIndex =
+            (int)((get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0)
+                  + get_local_id(0));
+    const int localIndex      = threadLocalIndex;
+    const int globalIndexBase = (int)get_group_id(XX) * atomsPerBlock * dataCountPerAtom;
+    const int globalIndex     = globalIndexBase + localIndex;
+    if (localIndex < atomsPerBlock * dataCountPerAtom)
     {
         assert(isfinite(float(gm_source[globalIndex])));
         sm_destination[localIndex] = gm_source[globalIndex];
@@ -113,24 +114,27 @@ inline void pme_gpu_stage_atom_data(const struct PmeOpenCLKernelParams kernelPar
  * \param[out] gm_dtheta                Atom spline parameter derivatives
  * \param[out] gm_gridlineIndices       Same as \p sm_gridlineIndices but in global memory.
  * \param[in]  gm_fractShiftsTable      Atom fractional coordinates correction table
- * \param[in]  gm_gridlineIndicesTable  Atom fractional coordinates correction table
+ * \param[in]  gm_gridlineIndicesTable  Table with atom gridline indices
  */
-inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
-                              const int                          atomIndexOffset,
-                              __local const float* __restrict__ sm_coordinates,
-                              __local const float* __restrict__ sm_coefficients,
-                              __local float* __restrict__ sm_theta,
-                              __local int* __restrict__ sm_gridlineIndices,
-                              __local float* __restrict__ sm_fractCoords,
-                              __global float* __restrict__ gm_theta,
-                              __global float* __restrict__ gm_dtheta,
-                              __global int* __restrict__ gm_gridlineIndices,
-                              __global const float* __restrict__ gm_fractShiftsTable,
-                              __global const int* __restrict__ gm_gridlineIndicesTable)
+gmx_opencl_inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
+                                         const int                          atomIndexOffset,
+                                         __local const float* __restrict__ sm_coordinates,
+                                         __local const float* __restrict__ sm_coefficients,
+                                         __local float* __restrict__ sm_theta,
+                                         __local int* __restrict__ sm_gridlineIndices,
+                                         __local float* __restrict__ sm_fractCoords,
+                                         __global float* __restrict__ gm_theta,
+                                         __global float* __restrict__ gm_dtheta,
+                                         __global int* __restrict__ gm_gridlineIndices,
+                                         __global const float* __restrict__ gm_fractShiftsTable,
+                                         __global const int* __restrict__ gm_gridlineIndicesTable)
 {
     /* Thread index w.r.t. block */
+    assert((get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0)
+           < MAX_INT);
     const int threadLocalIndex =
-            ((get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0) + get_local_id(0));
+            (int)((get_local_id(2) * get_local_size(1) + get_local_id(1)) * get_local_size(0)
+                  + get_local_id(0));
     /* Warp index w.r.t. block - could probably be obtained easier? */
     const int warpIndex = threadLocalIndex / warp_size;
     /* Thread index w.r.t. warp */
@@ -140,8 +144,6 @@ inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
     /* Atom index w.r.t. block/shared memory */
     const int atomIndexLocal = warpIndex * atomsPerWarp + atomWarpIndex;
 
-    /* Atom index w.r.t. global memory */
-    const int atomIndexGlobal = atomIndexOffset + atomIndexLocal;
     /* Spline contribution index in one dimension */
     const int orderIndex = threadWarpIndex / (atomsPerWarp * DIM);
     /* Dimension index */
@@ -172,16 +174,16 @@ inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
 #    define SPLINE_DATA(i) (*SPLINE_DATA_PTR(i))
 
     const int localCheck = (dimIndex < DIM) && (orderIndex < (PME_GPU_PARALLEL_SPLINE ? order : 1));
-    const int globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
 
-    if (localCheck && globalCheck)
+    if (localCheck)
     {
         /* Indices interpolation */
         if (orderIndex == 0)
         {
-            int          tableIndex, tInt;
-            float        n, t;
-            const float3 x = vload3(atomIndexLocal, sm_coordinates);
+            int          tableIndex = 0;
+            float        n          = 0.0F;
+            float        t          = 0.0F;
+            const float3 x          = vload3(atomIndexLocal, sm_coordinates);
 
             /* Accessing fields in fshOffset/nXYZ/recipbox/... with dimIndex offset
              * puts them into local memory(!) instead of accessing the constant memory directly.
@@ -213,13 +215,17 @@ inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
                                 .z
                         * kernelParams.current.recipBox[dimIndex][ZZ];
                     break;
+                default:
+                    assert(false);
+                    return;
+                    break;
             }
             const float shift = c_pmeMaxUnitcellShift;
 
             /* Fractional coordinates along box vectors, adding a positive shift to ensure t is positive for triclinic boxes */
             t                                 = (t + shift) * n;
-            tInt                              = (int)t;
-            sm_fractCoords[sharedMemoryIndex] = t - tInt;
+            const int tInt                    = (int)t;
+            sm_fractCoords[sharedMemoryIndex] = t - (float)tInt;
             tableIndex += tInt;
             assert(tInt >= 0);
             assert(tInt < c_pmeNeighborUnitcellCount * n);
@@ -234,30 +240,30 @@ inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
         const int chargeCheck = pme_gpu_check_atom_charge(sm_coefficients[atomIndexLocal]);
         if (chargeCheck)
         {
-            float div;
             int o = orderIndex; // This is an index that is set once for PME_GPU_PARALLEL_SPLINE == 1
 
             const float dr = sm_fractCoords[sharedMemoryIndex];
             assert(isfinite(dr));
 
             /* dr is relative offset from lower cell limit */
-            *SPLINE_DATA_PTR(order - 1) = 0.0f;
+            *SPLINE_DATA_PTR(order - 1) = 0.0F;
             *SPLINE_DATA_PTR(1)         = dr;
-            *SPLINE_DATA_PTR(0)         = 1.0f - dr;
+            *SPLINE_DATA_PTR(0)         = 1.0F - dr;
 
 #    pragma unroll order
             for (int k = 3; k < order; k++)
             {
-                div                     = 1.0f / (k - 1.0f);
+                const float div         = 1.0F / ((float)k - 1.0F);
                 *SPLINE_DATA_PTR(k - 1) = div * dr * SPLINE_DATA(k - 2);
 #    pragma unroll
                 for (int l = 1; l < (k - 1); l++)
                 {
-                    *SPLINE_DATA_PTR(k - l - 1) = div
-                                                  * ((dr + l) * SPLINE_DATA(k - l - 2)
-                                                     + (k - l - dr) * SPLINE_DATA(k - l - 1));
+                    *SPLINE_DATA_PTR(k - l - 1) =
+                            div
+                            * ((dr + (float)l) * SPLINE_DATA(k - l - 2)
+                               + ((float)k - (float)l - dr) * SPLINE_DATA(k - l - 1));
                 }
-                *SPLINE_DATA_PTR(0) = div * (1.0f - dr) * SPLINE_DATA(0);
+                *SPLINE_DATA_PTR(0) = div * (1.0F - dr) * SPLINE_DATA(0);
             }
 
             const int thetaIndexBase        = getSplineParamIndexBase(warpIndex, atomWarpIndex);
@@ -274,21 +280,21 @@ inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
                 const int thetaIndex       = getSplineParamIndex(thetaIndexBase, dimIndex, o);
                 const int thetaGlobalIndex = thetaGlobalOffsetBase + thetaIndex;
 
-                const float dtheta = ((o > 0) ? SPLINE_DATA(o - 1) : 0.0f) - SPLINE_DATA(o);
+                const float dtheta = ((o > 0) ? SPLINE_DATA(o - 1) : 0.0F) - SPLINE_DATA(o);
                 assert(isfinite(dtheta));
                 gm_dtheta[thetaGlobalIndex] = dtheta;
             }
 
-            div                         = 1.0f / (order - 1.0f);
+            const float div             = 1.0F / (order - 1.0F);
             *SPLINE_DATA_PTR(order - 1) = div * dr * SPLINE_DATA(order - 2);
 #    pragma unroll
             for (int k = 1; k < (order - 1); k++)
             {
                 *SPLINE_DATA_PTR(order - k - 1) = div
-                                                  * ((dr + k) * SPLINE_DATA(order - k - 2)
+                                                  * ((dr + (float)k) * SPLINE_DATA(order - k - 2)
                                                      + (order - k - dr) * SPLINE_DATA(order - k - 1));
             }
-            *SPLINE_DATA_PTR(0) = div * (1.0f - dr) * SPLINE_DATA(0);
+            *SPLINE_DATA_PTR(0) = div * (1.0F - dr) * SPLINE_DATA(0);
 
             /* Storing the spline values (theta) */
 #    if !PME_GPU_PARALLEL_SPLINE
@@ -314,17 +320,16 @@ inline void calculate_splines(const struct PmeOpenCLKernelParams kernelParams,
  * Second stage of the whole kernel.
  *
  * \param[in]  kernelParams         Input PME GPU data in constant memory.
- * \param[in]  atomIndexOffset      Starting atom index for the execution block w.r.t. global
- * memory. \param[in]  sm_coefficients      Atom coefficents/charges in the shared memory. \param[in]
- * sm_gridlineIndices   Atom gridline indices in the shared memory. \param[in]  sm_theta Atom spline
- * values in the shared memory. \param[out] gm_grid              Global 3D grid for spreading.
+ * \param[in]  sm_coefficients      Atom coefficents/charges in the shared memory.
+ * \param[in]  sm_gridlineIndices   Atom gridline indices in the shared memory.
+ * \param[in]  sm_theta             Atom spline values in the shared memory.
+ * \param[out] gm_grid              Global 3D grid for spreading.
  */
-inline void spread_charges(const struct PmeOpenCLKernelParams kernelParams,
-                           int                                atomIndexOffset,
-                           __local const float* __restrict__ sm_coefficients,
-                           __local const int* __restrict__ sm_gridlineIndices,
-                           __local const float* __restrict__ sm_theta,
-                           __global float* __restrict__ gm_grid)
+gmx_opencl_inline void spread_charges(const struct PmeOpenCLKernelParams kernelParams,
+                                      __local const float* __restrict__ sm_coefficients,
+                                      __local const int* __restrict__ sm_gridlineIndices,
+                                      __local const float* __restrict__ sm_theta,
+                                      __global float* __restrict__ gm_grid)
 {
     const int nx  = kernelParams.grid.realGridSize[XX];
     const int ny  = kernelParams.grid.realGridSize[YY];
@@ -332,14 +337,14 @@ inline void spread_charges(const struct PmeOpenCLKernelParams kernelParams,
     const int pny = kernelParams.grid.realGridSizePadded[YY];
     const int pnz = kernelParams.grid.realGridSizePadded[ZZ];
 
-    const int offx = 0, offy = 0, offz = 0; // unused for now
+    const int offx = 0;
+    const int offy = 0;
+    const int offz = 0;
 
-    const int atomIndexLocal  = get_local_id(ZZ);
-    const int atomIndexGlobal = atomIndexOffset + atomIndexLocal;
+    const int atomIndexLocal = get_local_id(ZZ);
 
-    const int globalCheck = pme_gpu_check_atom_data_index(atomIndexGlobal, kernelParams.atoms.nAtoms);
     const int chargeCheck = pme_gpu_check_atom_charge(sm_coefficients[atomIndexLocal]);
-    if (chargeCheck & globalCheck)
+    if (chargeCheck)
     {
         // Spline Y/Z coordinates
         const int ithy   = get_local_id(YY);
@@ -398,10 +403,17 @@ inline void spread_charges(const struct PmeOpenCLKernelParams kernelParams,
  * \param[in,out] gm_theta                 Atom spline parameter values
  * \param[out]    gm_dtheta                Atom spline parameter derivatives
  * \param[in,out] gm_gridlineIndices       Atom gridline indices (ivec)
- * \param[out]    gm_grid                  Global 3D grid for charge spreading.
+ * \param[out]    gm_gridA                 Global 3D grid for charge spreading.
+ * Grid for the unperturbed state, FEP state A or the single grid used for
+ * interpolated coefficients on one grid in FEP A/B.
+ * \param[out]    gm_gridB                 Global 3D grid for charge spreading.
+ * FEP state B when using dual grids (when calculating energy and virials).
  * \param[in]     gm_fractShiftsTable      Atom fractional coordinates correction table
- * \param[in]     gm_gridlineIndicesTable  Atom fractional coordinates correction table
- * \param[in]     gm_coefficients          Atom charges/coefficients.
+ * \param[in]     gm_gridlineIndicesTable  Table with atom gridline indices
+ * \param[in]     gm_coefficientsA         Atom charges/coefficients of the unperturbed state
+ * or FEP state A.
+ * \param[in]     gm_coefficientsB         Atom charges/coefficients in FEP state B. Only
+ * used when spreading interpolated coefficients on one grid.
  * \param[in]     gm_coordinates           Atom coordinates (rvec)
  */
 __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) __kernel void CUSTOMIZED_KERNEL_NAME(
@@ -409,10 +421,12 @@ __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) __kernel void
                                       __global float* __restrict__ gm_theta,
                                       __global float* __restrict__ gm_dtheta,
                                       __global int* __restrict__ gm_gridlineIndices,
-                                      __global float* __restrict__ gm_grid,
+                                      __global float* __restrict__ gm_gridA,
+                                      __global float* __restrict__ gm_gridB,
                                       __global const float* __restrict__ gm_fractShiftsTable,
                                       __global const int* __restrict__ gm_gridlineIndicesTable,
-                                      __global const float* __restrict__ gm_coefficients,
+                                      __global const float* __restrict__ gm_coefficientsA,
+                                      __global const float* __restrict__ gm_coefficientsB,
                                       __global const float* __restrict__ gm_coordinates)
 {
     // Gridline indices, ivec
@@ -426,15 +440,16 @@ __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) __kernel void
     // Staging coordinates - only for spline computation
     __local float sm_coordinates[DIM * atomsPerBlock];
 
-    const int atomIndexOffset = get_group_id(XX) * atomsPerBlock;
+    const int atomIndexOffset = (int)get_group_id(XX) * atomsPerBlock;
+    int       gridIndex       = 0;
 
     /* Staging coefficients/charges for both spline and spread */
-    pme_gpu_stage_atom_data(kernelParams, sm_coefficients, gm_coefficients, 1);
+    pme_gpu_stage_atom_data(sm_coefficients, gm_coefficientsA, 1);
 
     if (computeSplines)
     {
         /* Staging coordinates */
-        pme_gpu_stage_atom_data(kernelParams, sm_coordinates, gm_coordinates, DIM);
+        pme_gpu_stage_atom_data(sm_coordinates, gm_coordinates, DIM);
 
         barrier(CLK_LOCAL_MEM_FENCE);
         calculate_splines(kernelParams, atomIndexOffset, sm_coordinates, sm_coefficients, sm_theta,
@@ -454,9 +469,9 @@ __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) __kernel void
          * as in after running the spline kernel)
          */
         /* Spline data - only thetas (dthetas will only be needed in gather) */
-        pme_gpu_stage_atom_data(kernelParams, sm_theta, gm_theta, DIM * order);
+        pme_gpu_stage_atom_data(sm_theta, gm_theta, DIM * order);
         /* Gridline indices - they're actually int and not float, but C99 is angry about overloads */
-        pme_gpu_stage_atom_data(kernelParams, (__local float*)sm_gridlineIndices,
+        pme_gpu_stage_atom_data((__local float*)sm_gridlineIndices,
                                 (__global const float*)gm_gridlineIndices, DIM);
 
         barrier(CLK_LOCAL_MEM_FENCE);
@@ -464,6 +479,17 @@ __attribute__((reqd_work_group_size(order, order, atomsPerBlock))) __kernel void
     /* Spreading */
     if (spreadCharges)
     {
-        spread_charges(kernelParams, atomIndexOffset, sm_coefficients, sm_gridlineIndices, sm_theta, gm_grid);
+        spread_charges(kernelParams, sm_coefficients, sm_gridlineIndices, sm_theta, gm_gridA);
+    }
+    if (numGrids == 2)
+    {
+        barrier(CLK_LOCAL_MEM_FENCE);
+        gridIndex = 1;
+        pme_gpu_stage_atom_data(sm_coefficients, gm_coefficientsB, 1);
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (spreadCharges)
+        {
+            spread_charges(kernelParams, sm_coefficients, sm_gridlineIndices, sm_theta, gm_gridB);
+        }
     }
 }

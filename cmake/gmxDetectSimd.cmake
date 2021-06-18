@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -127,6 +128,8 @@ function(gmx_suggest_simd _suggested_simd)
                 set(OUTPUT_SIMD "IBM_VSX")
             elseif(CPU_DETECTION_FEATURES MATCHES " vmx ")
                 set(OUTPUT_SIMD "IBM_VMX")
+            elseif(CPU_DETECTION_FEATURES MATCHES " sve ")
+                set(OUTPUT_SIMD "ARM_SVE")
             elseif(CPU_DETECTION_FEATURES MATCHES " neon_asimd ")
                 set(OUTPUT_SIMD "ARM_NEON_ASIMD")
             elseif(CPU_DETECTION_FEATURES MATCHES " neon " AND NOT GMX_DOUBLE)

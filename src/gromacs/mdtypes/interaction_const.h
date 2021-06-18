@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -42,6 +43,8 @@
 #include "gromacs/utility/alignedallocator.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
+
+struct t_lambda;
 
 /* Used with force switching or a constant potential shift:
  * rsw       = max(r - r_switch, 0)
@@ -103,7 +106,25 @@ struct EwaldCorrectionTables
  */
 struct interaction_const_t
 {
-    int cutoff_scheme = ecutsVERLET;
+    /* This struct contains the soft-core parameters from t_lambda,
+     * but processed for direct use in the kernels.
+     */
+    struct SoftCoreParameters
+    {
+        // Constructor
+        SoftCoreParameters(const t_lambda& fepvals);
+
+        // Alpha parameter for Van der Waals interactions
+        real alphaVdw;
+        // Alpha parameter for Coulomb interactions
+        real alphaCoulomb;
+        // Exponent for the dependence of the soft-core on lambda
+        int lambdaPower;
+        // Value for sigma^6 for LJ interaction with C6<=0 and/or C12<=0
+        real sigma6WithInvalidSigma;
+        // Minimum value for sigma^6, used when soft-core is applied to Coulomb interactions
+        real sigma6Minimum;
+    };
 
     /* VdW */
     int                    vdwtype          = evdwCUT;
@@ -145,6 +166,9 @@ struct interaction_const_t
     std::unique_ptr<EwaldCorrectionTables> coulombEwaldTables;
     // Van der Waals Ewald correction table
     std::unique_ptr<EwaldCorrectionTables> vdwEwaldTables;
+
+    // Free-energy parameters, only present when free-energy calculations are requested
+    std::unique_ptr<SoftCoreParameters> softCoreParameters;
 };
 
 #endif

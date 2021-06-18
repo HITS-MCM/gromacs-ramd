@@ -3,7 +3,9 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2006, The GROMACS development team.
- * Copyright (c) 2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2008,2009,2010,2011,2012 by the GROMACS development team.
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -114,12 +116,12 @@ struct t_conect
 void add_rec(t_conect c[], int i, int j, real d2)
 {
     if (c[i].aa == -1)
-    {
+    { // NOLINT bugprone-branch-clone
         c[i].aa  = j;
         c[i].d2a = d2;
     }
     else if (c[i].ab == -1)
-    {
+    { // NOLINT bugprone-branch-clone
         c[i].ab  = j;
         c[i].d2b = d2;
     }
@@ -203,7 +205,7 @@ void connolly_plot(const char*  fn,
                    rvec         x[],
                    t_atoms*     atoms,
                    t_symtab*    symtab,
-                   int          ePBC,
+                   PbcType      pbcType,
                    const matrix box,
                    gmx_bool     bIncludeSolute)
 {
@@ -252,7 +254,7 @@ void connolly_plot(const char*  fn,
         }
         atoms->nr   = i0 + ndots;
         atoms->nres = r0 + 1;
-        write_sto_conf(fn, title, atoms, xnew, nullptr, ePBC, const_cast<rvec*>(box));
+        write_sto_conf(fn, title, atoms, xnew, nullptr, pbcType, const_cast<rvec*>(box));
         atoms->nres = r0;
         atoms->nr   = i0;
     }
@@ -276,7 +278,7 @@ void connolly_plot(const char*  fn,
             aaa.pdbinfo[ii0].occup  = 0.0;
         }
         aaa.nr = ndots;
-        write_sto_conf(fn, title, &aaa, xnew, nullptr, ePBC, const_cast<rvec*>(box));
+        write_sto_conf(fn, title, &aaa, xnew, nullptr, pbcType, const_cast<rvec*>(box));
         do_conect(fn, ndots, xnew);
         done_atom(&aaa);
     }
@@ -547,7 +549,7 @@ void Sasa::initAnalysis(const TrajectoryAnalysisSettings& settings, const Topolo
     }
 
     please_cite(stderr, "Eisenhaber95");
-    // if ((top.ePBC() != epbcXYZ) || (TRICLINIC(fr.box)))
+    // if ((top.pbcType() != PbcType::Xyz) || (TRICLINIC(fr.box)))
     //{
     //    fprintf(stderr, "\n\nWARNING: non-rectangular boxes may give erroneous results or crashes.\n"
     //            "Analysis based on vacuum simulations (with the possibility of evaporation)\n"
@@ -904,8 +906,8 @@ void Sasa::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAn
     AnalysisDataHandle   aah        = pdata->dataHandle(atomArea_);
     AnalysisDataHandle   rah        = pdata->dataHandle(residueArea_);
     AnalysisDataHandle   vh         = pdata->dataHandle(volume_);
-    const Selection&     surfaceSel = pdata->parallelSelection(surfaceSel_);
-    const SelectionList& outputSel  = pdata->parallelSelections(outputSel_);
+    const Selection&     surfaceSel = TrajectoryAnalysisModuleData::parallelSelection(surfaceSel_);
+    const SelectionList& outputSel  = TrajectoryAnalysisModuleData::parallelSelections(outputSel_);
     SasaModuleData&      frameData  = *static_cast<SasaModuleData*>(pdata);
 
     const bool bResAt    = !frameData.res_a_.empty();
@@ -984,7 +986,7 @@ void Sasa::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAn
         // one else uses the topology after initialization, it may just work
         // even with future parallelization.
         connolly_plot(fnConnolly_.c_str(), nsurfacedots, surfacedots, fr.x, atoms_.get(),
-                      &mtop_->symtab, fr.ePBC, fr.box, bIncludeSolute_);
+                      &mtop_->symtab, fr.pbcType, fr.box, bIncludeSolute_);
     }
 
     ah.startFrame(frnr, fr.time);

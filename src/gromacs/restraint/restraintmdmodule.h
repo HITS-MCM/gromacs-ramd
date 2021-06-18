@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -53,6 +53,7 @@ namespace gmx
 
 // Forward declaration to allow opaque pointer to library internal class.
 class RestraintMDModuleImpl;
+struct MdModulesNotifier;
 
 /*! \libinternal \ingroup module_restraint
  * \brief MDModule wrapper for Restraint implementations.
@@ -75,16 +76,14 @@ public:
     /*!
      * \brief Wrap a restraint potential as an MDModule
      *
-     * \param restraint shared ownership of an object for calculating restraint forces.
-     * \return new wrapper object sharing ownership of restraint.
-     *
      * Consumers of the interfaces provided by an IMDModule do not extend the lifetime
      * of the interface objects returned by mdpOptionProvider(), outputProvider(), or
      * registered via initForceProviders(). Calling code must keep this object alive
      * as long as those interfaces are needed (probably the duration of an MD run).
      *
-     * \param restraint handle to object to wrap
+     * \param restraint shared ownership of an object for calculating restraint forces
      * \param sites list of sites for the framework to pass to the restraint
+     * \return new wrapper object sharing ownership of restraint
      */
     static std::unique_ptr<RestraintMDModule> create(std::shared_ptr<gmx::IRestraintPotential> restraint,
                                                      const std::vector<int>& sites);
@@ -114,6 +113,11 @@ public:
      * \param forceProviders manager in the force record.
      */
     void initForceProviders(ForceProviders* forceProviders) override;
+
+    //! Subscribe to simulation setup notifications
+    void subscribeToSimulationSetupNotifications(MdModulesNotifier* notifier) override;
+    //! Subscribe to pre processing notifications
+    void subscribeToPreProcessingNotifications(MdModulesNotifier* notifier) override;
 
 private:
     /*!

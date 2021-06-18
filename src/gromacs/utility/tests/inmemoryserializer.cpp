@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -109,13 +109,13 @@ public:
         real           realValue_;
     };
 
-    void serialize(ISerializer* serializer, SerializerValues* values)
+    static void serialize(ISerializer* serializer, SerializerValues* values)
     {
         EXPECT_FALSE(serializer->reading());
         doValues(serializer, values);
     }
 
-    SerializerValues deserialize(ISerializer* serializer)
+    static SerializerValues deserialize(ISerializer* serializer)
     {
         EXPECT_TRUE(serializer->reading());
         SerializerValues result;
@@ -123,7 +123,7 @@ public:
         return result;
     }
 
-    void checkSerializerValuesforEquality(const SerializerValues& lhs, const SerializerValues& rhs)
+    static void checkSerializerValuesforEquality(const SerializerValues& lhs, const SerializerValues& rhs)
     {
         EXPECT_EQ(lhs.boolValue_, rhs.boolValue_);
         EXPECT_EQ(lhs.unsignedCharValue_, rhs.unsignedCharValue_);
@@ -138,7 +138,7 @@ public:
     }
 
 private:
-    void doValues(ISerializer* serializer, SerializerValues* values)
+    static void doValues(ISerializer* serializer, SerializerValues* values)
     {
         serializer->doBool(&values->boolValue_);
         serializer->doUChar(&values->unsignedCharValue_);
@@ -162,7 +162,7 @@ protected:
                                         c_int64Value,
                                         c_intAndFloat64.doubleValue_,
                                         integerSizeDependentTestingValue(),
-                                        std::is_same<real, double>::value
+                                        std::is_same_v<real, double>
                                                 ? static_cast<real>(c_intAndFloat64.doubleValue_)
                                                 : static_cast<real>(c_intAndFloat32.floatValue_) };
 
@@ -176,8 +176,8 @@ protected:
         c_int64ValueSwapped,
         c_intAndFloat64Swapped.doubleValue_,
         integerSizeDependentTestingValueEndianessSwapped(),
-        std::is_same<real, float>::value ? static_cast<real>(c_intAndFloat32Swapped.floatValue_)
-                                         : static_cast<real>(c_intAndFloat64Swapped.doubleValue_)
+        std::is_same_v<real, float> ? static_cast<real>(c_intAndFloat32Swapped.floatValue_)
+                                    : static_cast<real>(c_intAndFloat64Swapped.doubleValue_)
     };
 };
 
@@ -189,7 +189,7 @@ TEST_F(InMemorySerializerTest, Roundtrip)
 
     auto buffer = serializer.finishAndGetBuffer();
 
-    InMemoryDeserializer deserializer(buffer, std::is_same<real, double>::value);
+    InMemoryDeserializer deserializer(buffer, std::is_same_v<real, double>);
 
     SerializerValues deserialisedValues = deserialize(&deserializer);
 
@@ -204,7 +204,7 @@ TEST_F(InMemorySerializerTest, RoundtripWithEndianessSwap)
 
     auto buffer = serializerWithSwap.finishAndGetBuffer();
 
-    InMemoryDeserializer deserializerWithSwap(buffer, std::is_same<real, double>::value,
+    InMemoryDeserializer deserializerWithSwap(buffer, std::is_same_v<real, double>,
                                               EndianSwapBehavior::Swap);
 
     SerializerValues deserialisedValues = deserialize(&deserializerWithSwap);
@@ -220,7 +220,7 @@ TEST_F(InMemorySerializerTest, SerializerExplicitEndianessSwap)
 
     auto buffer = serializerWithSwap.finishAndGetBuffer();
 
-    InMemoryDeserializer deserializerWithOutSwap(buffer, std::is_same<real, double>::value);
+    InMemoryDeserializer deserializerWithOutSwap(buffer, std::is_same_v<real, double>);
 
     SerializerValues deserialisedValues = deserialize(&deserializerWithOutSwap);
     checkSerializerValuesforEquality(endianessSwappedValues_, deserialisedValues);
@@ -234,7 +234,7 @@ TEST_F(InMemorySerializerTest, DeserializerExplicitEndianessSwap)
 
     auto buffer = serializer.finishAndGetBuffer();
 
-    InMemoryDeserializer deserializerWithSwap(buffer, std::is_same<real, double>::value,
+    InMemoryDeserializer deserializerWithSwap(buffer, std::is_same_v<real, double>,
                                               EndianSwapBehavior::Swap);
 
     SerializerValues deserialisedValues = deserialize(&deserializerWithSwap);

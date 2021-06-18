@@ -1,7 +1,8 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
+# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -33,26 +34,33 @@
 # the research papers on the package. Check out http://www.gromacs.org.
 
 gmx_add_unit_test(UtilityUnitTests utility-test
-                  alignedallocator.cpp
-                  arrayref.cpp
-                  bitmask32.cpp bitmask64.cpp bitmask128.cpp
-                  cstringutil.cpp
-                  defaultinitializationallocator.cpp
-                  enumerationhelpers.cpp
-                  fixedcapacityvector.cpp
-                  inmemoryserializer.cpp
-                  keyvaluetreeserializer.cpp
-                  keyvaluetreetransform.cpp
-                  logger.cpp
-                  mutex.cpp
-                  path.cpp
-                  physicalnodecommunicator.cpp
-                  stringutil.cpp
-                  textreader.cpp
-                  textwriter.cpp
-                  typetraits.cpp
-                  )
+    CPP_SOURCE_FILES
+        alignedallocator.cpp
+        arrayref.cpp
+        bitmask32.cpp bitmask64.cpp bitmask128.cpp
+        cstringutil.cpp
+        defaultinitializationallocator.cpp
+        enumerationhelpers.cpp
+        fixedcapacityvector.cpp
+        inmemoryserializer.cpp
+        keyvaluetreeserializer.cpp
+        keyvaluetreetransform.cpp
+        listoflists.cpp
+        logger.cpp
+        mdmodulenotification-impl.cpp
+        mutex.cpp
+        path.cpp
+        physicalnodecommunicator.cpp
+        range.cpp
+        strconvert.cpp
+        stringutil.cpp
+        template_mp.cpp
+        textreader.cpp
+        textwriter.cpp
+        typetraits.cpp
+        )
 
 gmx_add_mpi_unit_test(UtilityMpiUnitTests utility-mpi-test 4
-                  physicalnodecommunicator_mpi.cpp
-                  )
+    CPP_SOURCE_FILES
+        physicalnodecommunicator_mpi.cpp
+        )

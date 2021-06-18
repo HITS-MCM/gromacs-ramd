@@ -554,7 +554,7 @@ void OptionStorageTemplate<T>::commitValues()
     store_->reserve(setValues_.size());
     // For bool the loop variable isn't a reference (it's its special reference type)
     // clang-format off
-    CLANG_DIAGNOSTIC_IGNORE(-Wrange-loop-analysis)
+    CLANG_DIAGNOSTIC_IGNORE(-Wrange-loop-analysis);
     // clang-format on
     for (const auto& value : setValues_)
     {

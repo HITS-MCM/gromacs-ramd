@@ -1,7 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
+ * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
+ * Copyright (c) 2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -2584,22 +2586,7 @@ static void free_item_compilerdata(const SelectionTreeElementPointer& sel)
 namespace gmx
 {
 
-SelectionCompiler::SelectionCompiler() {}
-
-/*!
- * \param[in,out] coll Selection collection to be compiled.
- * \returns       0 on successful compilation, a non-zero error code on error.
- *
- * Before compilation, the selection collection should have been initialized
- * with gmx_ana_selcollection_parse_*().
- * The compiled selection collection can be passed to
- * gmx_ana_selcollection_evaluate() to evaluate the selection for a frame.
- * If an error occurs, \p sc is cleared.
- *
- * The covered fraction information in \p sc is initialized to
- * \ref CFRAC_NONE.
- */
-void SelectionCompiler::compile(SelectionCollection* coll)
+void compileSelection(SelectionCollection* coll)
 {
     gmx_ana_selcollection_t*    sc = &coll->impl_->sc_;
     gmx_sel_evaluate_t          evaldata;
@@ -2607,7 +2594,8 @@ void SelectionCompiler::compile(SelectionCollection* coll)
     e_poscalc_t                 post;
     size_t                      i;
     int                         flags;
-    bool bDebug = (coll->impl_->debugLevel_ >= 2 && coll->impl_->debugLevel_ != 3);
+    bool bDebug = (coll->impl_->debugLevel_ == SelectionCollection::Impl::DebugLevel::Compiled
+                   && coll->impl_->debugLevel_ == SelectionCollection::Impl::DebugLevel::Full);
 
     /* FIXME: Clean up the collection on exceptions */
 

@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2012,2013,2014,2015,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -117,23 +118,20 @@
 #include "gromacs/mdtypes/locality.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/enumerationhelpers.h"
-#include "gromacs/utility/range.h"
 #include "gromacs/utility/real.h"
 
-// TODO: Remove this include
-#include "nbnxm_gpu.h"
-
-struct gmx_device_info_t;
+struct DeviceInformation;
 struct gmx_domdec_zones_t;
 struct gmx_enerdata_t;
 struct gmx_hw_info_t;
 struct gmx_mtop_t;
+struct NbnxmGpu;
 struct gmx_wallcycle;
 struct interaction_const_t;
+struct nbnxn_atomdata_t;
 struct nonbonded_verlet_t;
 class PairSearch;
 class PairlistSets;
-struct t_blocka;
 struct t_commrec;
 struct t_lambda;
 struct t_mdatoms;
@@ -141,19 +139,19 @@ struct t_nrnb;
 struct t_forcerec;
 struct t_inputrec;
 
-/*! \brief Switch for whether to use GPU for buffer ops*/
-enum class BufferOpsUseGpu
-{
-    True,
-    False
-};
-
 class GpuEventSynchronizer;
 
 namespace gmx
 {
+class DeviceStreamManager;
 class ForceWithShiftForces;
+class GpuBonded;
+template<typename>
+class ListOfLists;
 class MDLogger;
+template<typename>
+class Range;
+class StepWorkload;
 class UpdateGroupsCog;
 } // namespace gmx
 
@@ -221,7 +219,7 @@ public:
                        std::unique_ptr<PairSearch>       pairSearch,
                        std::unique_ptr<nbnxn_atomdata_t> nbat,
                        const Nbnxm::KernelSetup&         kernelSetup,
-                       gmx_nbnxn_gpu_t*                  gpu_nbv,
+                       NbnxmGpu*                         gpu_nbv,
                        gmx_wallcycle*                    wcycle);
 
     ~nonbonded_verlet_t();
@@ -250,11 +248,27 @@ public:
     //! Returns the index position of the atoms on the search grid
     gmx::ArrayRef<const int> getGridIndices() const;
 
-    //! Constructs the pairlist for the given locality
-    void constructPairlist(gmx::InteractionLocality iLocality, const t_blocka* excl, int64_t step, t_nrnb* nrnb);
+    /*! \brief Constructs the pairlist for the given locality
+     *
+     * When there are no non-self exclusions, \p exclusions can be empty.
+     * Otherwise the number of lists in \p exclusions should match the number
+     * of atoms when not using DD, or the total number of atoms in the i-zones
+     * when using DD.
+     *
+     * \param[in] iLocality   The interaction locality: local or non-local
+     * \param[in] exclusions  Lists of exclusions for every atom.
+     * \param[in] step        Used to set the list creation step
+     * \param[in,out] nrnb    Flop accounting struct, can be nullptr
+     */
+    void constructPairlist(gmx::InteractionLocality     iLocality,
+                           const gmx::ListOfLists<int>& exclusions,
+                           int64_t                      step,
+                           t_nrnb*                      nrnb);
 
     //! Updates all the atom properties in Nbnxm
-    void setAtomProperties(const t_mdatoms& mdatoms, gmx::ArrayRef<const int> atomInfo);
+    void setAtomProperties(gmx::ArrayRef<const int>  atomTypes,
+                           gmx::ArrayRef<const real> atomCharges,
+                           gmx::ArrayRef<const int>  atomInfo);
 
     /*!\brief Convert the coordinates to NBNXM format for the given locality.
      *
@@ -275,10 +289,10 @@ public:
      * \param[in] d_x             GPU coordinates buffer in plain rvec format to be transformed.
      * \param[in] xReadyOnDevice  Event synchronizer indicating that the coordinates are ready in the device memory.
      */
-    void convertCoordinatesGpu(gmx::AtomLocality     locality,
-                               bool                  fillLocal,
-                               DeviceBuffer<float>   d_x,
-                               GpuEventSynchronizer* xReadyOnDevice);
+    void convertCoordinatesGpu(gmx::AtomLocality       locality,
+                               bool                    fillLocal,
+                               DeviceBuffer<gmx::RVec> d_x,
+                               GpuEventSynchronizer*   xReadyOnDevice);
 
     //! Init for GPU version of setup coordinates in Nbnxm
     void atomdata_init_copy_x_to_nbat_x_gpu();
@@ -317,7 +331,7 @@ public:
                                   gmx::ForceWithShiftForces* forceWithShiftForces,
                                   const t_mdatoms&           mdatoms,
                                   t_lambda*                  fepvals,
-                                  real*                      lambda,
+                                  gmx::ArrayRef<const real>  lambda,
                                   gmx_enerdata_t*            enerd,
                                   const gmx::StepWorkload&   stepWork,
                                   t_nrnb*                    nrnb);
@@ -338,20 +352,24 @@ public:
      * \param [in]     accumulateForce      If the total force buffer already contains data
      */
     void atomdata_add_nbat_f_to_f_gpu(gmx::AtomLocality                          locality,
-                                      DeviceBuffer<float>                        totalForcesDevice,
+                                      DeviceBuffer<gmx::RVec>                    totalForcesDevice,
                                       void*                                      forcesPmeDevice,
                                       gmx::ArrayRef<GpuEventSynchronizer* const> dependencyList,
                                       bool useGpuFPmeReduction,
                                       bool accumulateForce);
 
-    /*! \brief Outer body of function to perform initialization for F buffer operations on GPU.
+    /*! \brief Get the number of atoms for a given locality
      *
-     * \param localReductionDone     Pointer to an event synchronizer that marks the completion of the local f buffer ops kernel.
+     * \param [in] locality   Local or non-local
+     * \returns               The number of atoms for given locality
      */
-    void atomdata_init_add_nbat_f_to_f_gpu(GpuEventSynchronizer* localReductionDone);
+    int getNumAtoms(gmx::AtomLocality locality);
 
-    /*! \brief return GPU pointer to f in rvec format */
-    void* get_gpu_frvec();
+    /*! \brief Get the pointer to the GPU nonbonded force buffer
+     *
+     * \returns A pointer to the force buffer in GPU memory
+     */
+    void* getGpuForces();
 
     //! Return the kernel setup
     const Nbnxm::KernelSetup& kernelSetup() const { return kernelSetup_; }
@@ -366,19 +384,7 @@ public:
     void changePairlistRadii(real rlistOuter, real rlistInner);
 
     //! Set up internal flags that indicate what type of short-range work there is.
-    void setupGpuShortRangeWork(const gmx::GpuBonded* gpuBonded, const gmx::InteractionLocality iLocality)
-    {
-        if (useGpu() && !emulateGpu())
-        {
-            Nbnxm::setupGpuShortRangeWork(gpu_nbv, gpuBonded, iLocality);
-        }
-    }
-
-    //! Returns true if there is GPU short-range work for the given atom locality.
-    bool haveGpuShortRangeWork(const gmx::AtomLocality aLocality)
-    {
-        return ((useGpu() && !emulateGpu()) && Nbnxm::haveGpuShortRangeWork(gpu_nbv, aLocality));
-    }
+    void setupGpuShortRangeWork(const gmx::GpuBonded* gpuBonded, gmx::InteractionLocality iLocality);
 
     // TODO: Make all data members private
 public:
@@ -397,23 +403,23 @@ private:
 
 public:
     //! GPU Nbnxm data, only used with a physical GPU (TODO: use unique_ptr)
-    gmx_nbnxn_gpu_t* gpu_nbv;
+    NbnxmGpu* gpu_nbv;
 };
 
 namespace Nbnxm
 {
 
 /*! \brief Creates an Nbnxm object */
-std::unique_ptr<nonbonded_verlet_t> init_nb_verlet(const gmx::MDLogger&     mdlog,
-                                                   gmx_bool                 bFEP_NonBonded,
-                                                   const t_inputrec*        ir,
-                                                   const t_forcerec*        fr,
-                                                   const t_commrec*         cr,
-                                                   const gmx_hw_info_t&     hardwareInfo,
-                                                   const gmx_device_info_t* deviceInfo,
-                                                   const gmx_mtop_t*        mtop,
-                                                   matrix                   box,
-                                                   gmx_wallcycle*           wcycle);
+std::unique_ptr<nonbonded_verlet_t> init_nb_verlet(const gmx::MDLogger& mdlog,
+                                                   const t_inputrec*    ir,
+                                                   const t_forcerec*    fr,
+                                                   const t_commrec*     cr,
+                                                   const gmx_hw_info_t& hardwareInfo,
+                                                   bool                 useGpuForNonbonded,
+                                                   const gmx::DeviceStreamManager* deviceStreamManager,
+                                                   const gmx_mtop_t*               mtop,
+                                                   matrix                          box,
+                                                   gmx_wallcycle*                  wcycle);
 
 } // namespace Nbnxm
 

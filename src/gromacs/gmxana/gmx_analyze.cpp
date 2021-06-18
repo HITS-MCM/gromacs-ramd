@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -630,13 +631,13 @@ static void estimate_error(const char*             eefile,
             tau2 = fitparm[2];
         }
         fprintf(stdout, "Set %3d:  err.est. %g  a %g  tau1 %g  tau2 %g\n", s + 1, ee, a, tau1, tau2);
-        if (output_env_get_xvg_format(oenv) == exvgXMGR)
+        if (output_env_get_xvg_format(oenv) == XvgFormat::Xmgr)
         {
             fprintf(fp, "@ legend string %d \"av %f\"\n", 2 * s, av[s]);
             fprintf(fp, "@ legend string %d \"ee %6g\"\n", 2 * s + 1,
                     optimal_error_estimate(sig[s], fitparm, n * dt));
         }
-        else if (output_env_get_xvg_format(oenv) == exvgXMGRACE)
+        else if (output_env_get_xvg_format(oenv) == XvgFormat::Xmgrace)
         {
             fprintf(fp, "@ s%d legend \"av %f\"\n", 2 * s, av[s]);
             fprintf(fp, "@ s%d legend \"ee %6g\"\n", 2 * s + 1,

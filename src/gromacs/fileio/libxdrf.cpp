@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -61,7 +62,14 @@ const char* xdr_datatype_names[] = { "int", "float", "double", "large int", "cha
  | with some routines to assist in this task (those are marked
  | static and cannot be called from user programs)
  */
-#define MAXABS (INT_MAX - 2)
+
+// Integers above 2^24 do not have unique representations in
+// 32-bit floats ie with 24 bits of precision.  We use maxAbsoluteInt
+// to check that float values can be transformed into an in-range
+// 32-bit integer. There is no need to ensure we are within the range
+// of ints with exact floating-point representations. However, we should
+// reject all floats above that which converts to an in-range 32-bit integer.
+const float maxAbsoluteInt = nextafterf(float(INT_MAX), 0.F); // NOLINT(cert-err58-cpp)
 
 #ifndef SQR
 #    define SQR(x) ((x) * (x))
@@ -489,7 +497,7 @@ int xdr3dfcoord(XDR* xdrs, float* fp, int* size, float* precision)
             {
                 lf = *lfp * *precision - 0.5;
             }
-            if (std::fabs(lf) > MAXABS)
+            if (std::fabs(lf) > maxAbsoluteInt)
             {
                 /* scaling would cause overflow */
                 errval = 0;
@@ -513,7 +521,7 @@ int xdr3dfcoord(XDR* xdrs, float* fp, int* size, float* precision)
             {
                 lf = *lfp * *precision - 0.5;
             }
-            if (std::fabs(lf) > MAXABS)
+            if (std::fabs(lf) > maxAbsoluteInt)
             {
                 /* scaling would cause overflow */
                 errval = 0;
@@ -537,7 +545,7 @@ int xdr3dfcoord(XDR* xdrs, float* fp, int* size, float* precision)
             {
                 lf = *lfp * *precision - 0.5;
             }
-            if (std::abs(lf) > MAXABS)
+            if (std::abs(lf) > maxAbsoluteInt)
             {
                 /* scaling would cause overflow */
                 errval = 0;
@@ -574,9 +582,9 @@ int xdr3dfcoord(XDR* xdrs, float* fp, int* size, float* precision)
             return 0;
         }
 
-        if (static_cast<float>(maxint[0]) - static_cast<float>(minint[0]) >= MAXABS
-            || static_cast<float>(maxint[1]) - static_cast<float>(minint[1]) >= MAXABS
-            || static_cast<float>(maxint[2]) - static_cast<float>(minint[2]) >= MAXABS)
+        if (static_cast<float>(maxint[0]) - static_cast<float>(minint[0]) >= maxAbsoluteInt
+            || static_cast<float>(maxint[1]) - static_cast<float>(minint[1]) >= maxAbsoluteInt
+            || static_cast<float>(maxint[2]) - static_cast<float>(minint[2]) >= maxAbsoluteInt)
         {
             /* turning value in unsigned by subtracting minint
              * would cause overflow

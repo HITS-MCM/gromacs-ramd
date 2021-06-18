@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -59,11 +60,12 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/force.h"
 #include "gromacs/mdlib/mdatoms.h"
+#include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/fcdata.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/ishift.h"
-#include "gromacs/pbcutil/mshift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/rmpbc.h"
 #include "gromacs/topology/index.h"
@@ -145,21 +147,19 @@ static void print5(FILE* fp)
     fprintf(fp, "\n");
 }
 
-static void check_viol(FILE*       log,
-                       t_ilist*    disres,
-                       t_iparams   forceparams[],
-                       rvec        x[],
-                       rvec4       f[],
-                       t_pbc*      pbc,
-                       t_graph*    g,
-                       t_dr_result dr[],
-                       int         clust_id,
-                       int         isize,
-                       const int   index[],
-                       real        vvindex[],
-                       t_fcdata*   fcd)
+static void check_viol(FILE*                          log,
+                       const InteractionList&         disres,
+                       gmx::ArrayRef<const t_iparams> forceparams,
+                       rvec                           x[],
+                       rvec4                          f[],
+                       t_pbc*                         pbc,
+                       t_dr_result                    dr[],
+                       int                            clust_id,
+                       int                            isize,
+                       const int                      index[],
+                       real                           vvindex[],
+                       t_disresdata*                  disresdata)
 {
-    t_iatom*        forceatoms;
     int             i, j, nat, n, type, nviol, ndr, label;
     real            rt, mviol, tviol, viol, lam, dvdl, drt;
     rvec*           fshift;
@@ -175,7 +175,7 @@ static void check_viol(FILE*       log,
     {
         reset5();
     }
-    forceatoms = disres->iatoms;
+    gmx::ArrayRef<const int> forceatoms = disres.iatoms;
     for (j = 0; (j < isize); j++)
     {
         vvindex[j] = 0;
@@ -185,7 +185,7 @@ static void check_viol(FILE*       log,
     // The label for a distance restraint should be at most one larger
     // than the previous label.
     int label_old = forceparams[forceatoms[0]].disres.label;
-    for (i = 0; (i < disres->nr); i += nat)
+    for (i = 0; (i < disres.size()); i += nat)
     {
         type  = forceatoms[i];
         label = forceparams[type].disres.label;
@@ -201,9 +201,14 @@ static void check_viol(FILE*       log,
                       i / nat, label, label_old, label_old + 1);
         }
     }
+
+    // Set up t_fcdata, only needed for calling ta_disres()
+    t_fcdata fcd;
+    fcd.disres = disresdata;
+
     // Get offset for label index
     label_old = forceparams[forceatoms[0]].disres.label;
-    for (i = 0; (i < disres->nr);)
+    for (i = 0; (i < disres.size());)
     {
         type  = forceatoms[i];
         n     = 0;
@@ -215,27 +220,28 @@ static void check_viol(FILE*       log,
         do
         {
             n += nat;
-        } while (((i + n) < disres->nr)
+        } while (((i + n) < disres.size())
                  && (forceparams[forceatoms[i + n]].disres.label == label + label_old));
 
-        calc_disres_R_6(nullptr, nullptr, n, &forceatoms[i], x, pbc, fcd, nullptr);
+        calc_disres_R_6(nullptr, nullptr, n, &forceatoms[i], x, pbc, disresdata, nullptr);
 
-        if (fcd->disres.Rt_6[label] <= 0)
+        if (disresdata->Rt_6[label] <= 0)
         {
-            gmx_fatal(FARGS, "ndr = %d, rt_6 = %f", ndr, fcd->disres.Rt_6[label]);
+            gmx_fatal(FARGS, "ndr = %d, rt_6 = %f", ndr, disresdata->Rt_6[label]);
         }
 
-        rt = gmx::invsixthroot(fcd->disres.Rt_6[label]);
+        rt = gmx::invsixthroot(disresdata->Rt_6[label]);
         dr[clust_id].aver1[ndr] += rt;
         dr[clust_id].aver2[ndr] += gmx::square(rt);
         drt = 1.0 / gmx::power3(rt);
         dr[clust_id].aver_3[ndr] += drt;
-        dr[clust_id].aver_6[ndr] += fcd->disres.Rt_6[label];
+        dr[clust_id].aver_6[ndr] += disresdata->Rt_6[label];
 
         snew(fshift, SHIFTS);
-        ta_disres(n, &forceatoms[i], forceparams, x, f, fshift, pbc, g, lam, &dvdl, nullptr, fcd, nullptr);
+        ta_disres(n, &forceatoms[i], forceparams.data(), x, f, fshift, pbc, lam, &dvdl, nullptr,
+                  &fcd, nullptr);
         sfree(fshift);
-        viol = fcd->disres.sumviol;
+        viol = disresdata->sumviol;
 
         if (viol > 0)
         {
@@ -253,7 +259,7 @@ static void check_viol(FILE*       log,
             {
                 if (index[j] == forceparams[type].disres.label)
                 {
-                    vvindex[j] = gmx::invsixthroot(fcd->disres.Rt_6[label]);
+                    vvindex[j] = gmx::invsixthroot(disresdata->Rt_6[label]);
                 }
             }
         }
@@ -268,7 +274,7 @@ static void check_viol(FILE*       log,
 
     if (bFirst)
     {
-        fprintf(stderr, "\nThere are %d restraints and %d pairs\n", ndr, disres->nr / nat);
+        fprintf(stderr, "\nThere are %d restraints and %d pairs\n", ndr, disres.size() / nat);
         bFirst = FALSE;
     }
     if (ntop)
@@ -369,15 +375,15 @@ static gmx_bool is_core(int i, int isize, const int index[])
     return bIC;
 }
 
-static void dump_stats(FILE*               log,
-                       int                 nsteps,
-                       const t_disresdata& dd,
-                       const t_ilist*      disres,
-                       t_iparams           ip[],
-                       t_dr_result*        dr,
-                       int                 isize,
-                       int                 index[],
-                       t_atoms*            atoms)
+static void dump_stats(FILE*                          log,
+                       int                            nsteps,
+                       const t_disresdata&            dd,
+                       const InteractionList&         disres,
+                       gmx::ArrayRef<const t_iparams> ip,
+                       t_dr_result*                   dr,
+                       int                            isize,
+                       int                            index[],
+                       t_atoms*                       atoms)
 {
     t_dr_stats* drs;
 
@@ -385,15 +391,15 @@ static void dump_stats(FILE*               log,
     fprintf(log, "++++++++++++++ STATISTICS ++++++++++++++++++++++++\n");
     snew(drs, dd.nres);
     const int nra = interaction_function[F_DISRES].nratoms + 1;
-    for (int j = 0; j < disres->nr; j += nra)
+    for (int j = 0; j < disres.size(); j += nra)
     {
         // Note that the restraint i can be used by multiple pairs
-        const int i = disres->iatoms[j] - dd.type_min;
+        const int i = disres.iatoms[j] - dd.type_min;
         GMX_RELEASE_ASSERT(i >= 0 && i < dd.nres, "The restraint index should be in range");
 
-        drs[i].label  = ip[disres->iatoms[j]].disres.label;
+        drs[i].label  = ip[disres.iatoms[j]].disres.label;
         drs[i].bCore  = is_core(drs[i].label, isize, index);
-        drs[i].up1    = ip[disres->iatoms[j]].disres.up1;
+        drs[i].up1    = ip[disres.iatoms[j]].disres.up1;
         drs[i].r      = dr->aver1[i] / nsteps;
         drs[i].rT3    = gmx::invcbrt(dr->aver_3[i] / nsteps);
         drs[i].rT6    = gmx::invsixthroot(dr->aver_6[i] / nsteps);
@@ -402,8 +408,8 @@ static void dump_stats(FILE*               log,
         drs[i].violT6 = std::max(0.0, static_cast<double>(drs[i].rT6 - drs[i].up1));
         if (atoms)
         {
-            int j1 = disres->iatoms[j + 1];
-            int j2 = disres->iatoms[j + 2];
+            int j1 = disres.iatoms[j + 1];
+            int j2 = disres.iatoms[j + 2];
             atoms->pdbinfo[j1].bfac += drs[i].violT3 * 5;
             atoms->pdbinfo[j2].bfac += drs[i].violT3 * 5;
         }
@@ -420,15 +426,15 @@ static void dump_stats(FILE*               log,
     sfree(drs);
 }
 
-static void dump_clust_stats(FILE*               fp,
-                             const t_disresdata& dd,
-                             const t_ilist*      disres,
-                             t_iparams           ip[],
-                             t_blocka*           clust,
-                             t_dr_result         dr[],
-                             char*               clust_name[],
-                             int                 isize,
-                             int                 index[])
+static void dump_clust_stats(FILE*                          fp,
+                             const t_disresdata&            dd,
+                             const InteractionList&         disres,
+                             gmx::ArrayRef<const t_iparams> ip,
+                             t_blocka*                      clust,
+                             t_dr_result                    dr[],
+                             char*                          clust_name[],
+                             int                            isize,
+                             int                            index[])
 {
     int         k, nra, mmm = 0;
     double      sumV, maxV, sumVT3, sumVT6, maxVT3, maxVT6;
@@ -465,16 +471,16 @@ static void dump_clust_stats(FILE*               fp,
         for (int j = 0; j < dd.nres; j += nra)
         {
             // Note that the restraint i can be used by multiple pairs
-            const int i = disres->iatoms[j] - dd.type_min;
+            const int i = disres.iatoms[j] - dd.type_min;
 
             if (restraintHasBeenProcessed[i])
             {
                 continue;
             }
 
-            drs[i].label = ip[disres->iatoms[j]].disres.label;
+            drs[i].label = ip[disres.iatoms[j]].disres.label;
             drs[i].bCore = is_core(drs[i].label, isize, index);
-            drs[i].up1   = ip[disres->iatoms[j]].disres.up1;
+            drs[i].up1   = ip[disres.iatoms[j]].disres.up1;
             drs[i].r     = dr[k].aver1[i] / dr[k].nframes;
             if ((dr[k].aver_3[i] <= 0) || !std::isfinite(dr[k].aver_3[i]))
             {
@@ -519,15 +525,15 @@ static void init_dr_res(t_dr_result* dr, int ndr)
     dr->averv   = 0;
 }
 
-static void dump_disre_matrix(const char*       fn,
-                              t_dr_result*      dr,
-                              int               ndr,
-                              int               nsteps,
-                              t_idef*           idef,
-                              const gmx_mtop_t* mtop,
-                              real              max_dr,
-                              int               nlevels,
-                              gmx_bool          bThird)
+static void dump_disre_matrix(const char*                   fn,
+                              t_dr_result*                  dr,
+                              int                           ndr,
+                              int                           nsteps,
+                              const InteractionDefinitions& idef,
+                              const gmx_mtop_t*             mtop,
+                              real                          max_dr,
+                              int                           nlevels,
+                              gmx_bool                      bThird)
 {
     FILE*  fp;
     int*   resnr;
@@ -570,16 +576,16 @@ static void dump_disre_matrix(const char*       fn,
         snew(matrix[i], n_res);
     }
     nratoms = interaction_function[F_DISRES].nratoms;
-    nra     = (idef->il[F_DISRES].nr / (nratoms + 1));
+    nra     = (idef.il[F_DISRES].size() / (nratoms + 1));
     snew(ptr, nra + 1);
     index  = 0;
     nlabel = 0;
     ptr[0] = 0;
     snew(w_dr, ndr);
-    for (i = 0; (i < idef->il[F_DISRES].nr); i += nratoms + 1)
+    for (i = 0; (i < idef.il[F_DISRES].size()); i += nratoms + 1)
     {
-        tp    = idef->il[F_DISRES].iatoms[i];
-        label = idef->iparams[tp].disres.label;
+        tp    = idef.il[F_DISRES].iatoms[i];
+        label = idef.iparams[tp].disres.label;
 
         if (label != index)
         {
@@ -609,9 +615,9 @@ static void dump_disre_matrix(const char*       fn,
     {
         for (j = ptr[i]; (j < ptr[i + 1]); j += nratoms + 1)
         {
-            tp = idef->il[F_DISRES].iatoms[j];
-            ai = idef->il[F_DISRES].iatoms[j + 1];
-            aj = idef->il[F_DISRES].iatoms[j + 2];
+            tp = idef.il[F_DISRES].iatoms[j];
+            ai = idef.il[F_DISRES].iatoms[j + 1];
+            aj = idef.il[F_DISRES].iatoms[j + 2];
 
             ri = resnr[ai];
             rj = resnr[aj];
@@ -627,7 +633,7 @@ static void dump_disre_matrix(const char*       fn,
             {
                 fprintf(debug, "DR %d, atoms %d, %d, distance %g\n", i, ai, aj, rav);
             }
-            rviol = std::max(0.0_real, rav - idef->iparams[tp].disres.up1);
+            rviol = std::max(0.0_real, rav - idef.iparams[tp].disres.up1);
             matrix[ri][rj] += w_dr[i] * rviol;
             matrix[rj][ri] += w_dr[i] * rviol;
             hi = std::max(hi, matrix[ri][rj]);
@@ -697,20 +703,17 @@ int gmx_disre(int argc, char* argv[])
           "Use inverse third power averaging or linear for matrix output" }
     };
 
-    FILE *out = nullptr, *aver = nullptr, *numv = nullptr, *maxxv = nullptr, *xvg = nullptr;
-    gmx_localtop_t    top;
-    t_fcdata          fcd;
-    t_graph*          g;
-    int               i, j, kkk;
-    t_trxstatus*      status;
-    real              t;
-    rvec *            x, *xav = nullptr;
-    rvec4*            f;
-    matrix            box;
-    gmx_bool          bPDB;
-    int               isize;
-    int *             index = nullptr, *ind_fit = nullptr;
-    char*             grpname;
+    FILE *       out = nullptr, *aver = nullptr, *numv = nullptr, *maxxv = nullptr, *xvg = nullptr;
+    int          i, j, kkk;
+    t_trxstatus* status;
+    real         t;
+    rvec *       x, *xav = nullptr;
+    rvec4*       f;
+    matrix       box;
+    gmx_bool     bPDB;
+    int          isize;
+    int *        index = nullptr, *ind_fit = nullptr;
+    char*        grpname;
     t_cluster_ndx*    clust = nullptr;
     t_dr_result       dr, *dr_clust = nullptr;
     char**            leg;
@@ -770,20 +773,14 @@ int gmx_disre(int argc, char* argv[])
         atoms->havePdbInfo = TRUE;
     }
 
+    gmx_localtop_t top(topInfo.mtop()->ffparams);
     gmx_mtop_generate_local_top(*topInfo.mtop(), &top, ir->efep != efepNO);
+    const InteractionDefinitions& idef = top.idef;
 
-    g        = nullptr;
     pbc_null = nullptr;
-    if (ir->ePBC != epbcNONE)
+    if (ir->pbcType != PbcType::No)
     {
-        if (ir->bPeriodicMols)
-        {
-            pbc_null = &pbc;
-        }
-        else
-        {
-            g = mk_graph(fplog, &top.idef, 0, ntopatoms, FALSE, FALSE);
-        }
+        pbc_null = &pbc;
     }
 
     if (ftp2bSet(efNDX, NFILE, fnm))
@@ -808,19 +805,21 @@ int gmx_disre(int argc, char* argv[])
     }
 
     ir->dr_tau = 0.0;
-    init_disres(fplog, topInfo.mtop(), ir, nullptr, nullptr, &fcd, nullptr, FALSE);
+    t_disresdata disresdata;
+    init_disres(fplog, topInfo.mtop(), ir, DisResRunMode::AnalysisTool, DDRole::Master,
+                NumRanks::Single, MPI_COMM_NULL, nullptr, &disresdata, nullptr, FALSE);
 
     int natoms = read_first_x(oenv, &status, ftp2fn(efTRX, NFILE, fnm), &t, &x, box);
     snew(f, 5 * natoms);
 
-    init_dr_res(&dr, fcd.disres.nres);
+    init_dr_res(&dr, disresdata.nres);
     if (opt2bSet("-c", NFILE, fnm))
     {
         clust = cluster_index(fplog, opt2fn("-c", NFILE, fnm));
         snew(dr_clust, clust->clust->nr + 1);
         for (i = 0; (i <= clust->clust->nr); i++)
         {
-            init_dr_res(&dr_clust[i], fcd.disres.nres);
+            init_dr_res(&dr_clust[i], disresdata.nres);
         }
     }
     else
@@ -832,21 +831,21 @@ int gmx_disre(int argc, char* argv[])
     }
 
     auto mdAtoms = gmx::makeMDAtoms(fplog, *topInfo.mtop(), *ir, false);
-    atoms2md(topInfo.mtop(), ir, -1, nullptr, ntopatoms, mdAtoms.get());
+    atoms2md(topInfo.mtop(), ir, -1, {}, ntopatoms, mdAtoms.get());
     update_mdatoms(mdAtoms->mdatoms(), ir->fepvals->init_lambda);
-    if (ir->ePBC != epbcNONE)
+    if (ir->pbcType != PbcType::No)
     {
-        gpbc = gmx_rmpbc_init(&top.idef, ir->ePBC, natoms);
+        gpbc = gmx_rmpbc_init(idef, ir->pbcType, natoms);
     }
 
     j = 0;
     do
     {
-        if (ir->ePBC != epbcNONE)
+        if (ir->pbcType != PbcType::No)
         {
             if (ir->bPeriodicMols)
             {
-                set_pbc(&pbc, ir->ePBC, box);
+                set_pbc(&pbc, ir->pbcType, box);
             }
             else
             {
@@ -865,13 +864,13 @@ int gmx_disre(int argc, char* argv[])
             }
             my_clust = clust->inv_clust[j];
             range_check(my_clust, 0, clust->clust->nr);
-            check_viol(fplog, &(top.idef.il[F_DISRES]), top.idef.iparams, x, f, pbc_null, g,
-                       dr_clust, my_clust, isize, index, vvindex, &fcd);
+            check_viol(fplog, idef.il[F_DISRES], idef.iparams, x, f, pbc_null, dr_clust, my_clust,
+                       isize, index, vvindex, &disresdata);
         }
         else
         {
-            check_viol(fplog, &(top.idef.il[F_DISRES]), top.idef.iparams, x, f, pbc_null, g, &dr, 0,
-                       isize, index, vvindex, &fcd);
+            check_viol(fplog, idef.il[F_DISRES], idef.iparams, x, f, pbc_null, &dr, 0, isize, index,
+                       vvindex, &disresdata);
         }
         if (bPDB)
         {
@@ -907,26 +906,26 @@ int gmx_disre(int argc, char* argv[])
         j++;
     } while (read_next_x(oenv, status, &t, x, box));
     close_trx(status);
-    if (ir->ePBC != epbcNONE)
+    if (ir->pbcType != PbcType::No)
     {
         gmx_rmpbc_done(gpbc);
     }
 
     if (clust)
     {
-        dump_clust_stats(fplog, fcd.disres, &(top.idef.il[F_DISRES]), top.idef.iparams,
-                         clust->clust, dr_clust, clust->grpname, isize, index);
+        dump_clust_stats(fplog, disresdata, idef.il[F_DISRES], idef.iparams, clust->clust, dr_clust,
+                         clust->grpname, isize, index);
     }
     else
     {
-        dump_stats(fplog, j, fcd.disres, &(top.idef.il[F_DISRES]), top.idef.iparams, &dr, isize,
-                   index, bPDB ? atoms.get() : nullptr);
+        dump_stats(fplog, j, disresdata, idef.il[F_DISRES], idef.iparams, &dr, isize, index,
+                   bPDB ? atoms.get() : nullptr);
         if (bPDB)
         {
             write_sto_conf(opt2fn("-q", NFILE, fnm), "Coloured by average violation in Angstrom",
-                           atoms.get(), xav, nullptr, ir->ePBC, box);
+                           atoms.get(), xav, nullptr, ir->pbcType, box);
         }
-        dump_disre_matrix(opt2fn_null("-x", NFILE, fnm), &dr, fcd.disres.nres, j, &top.idef,
+        dump_disre_matrix(opt2fn_null("-x", NFILE, fnm), &dr, disresdata.nres, j, idef,
                           topInfo.mtop(), max_dr, nlevels, bThird);
         xvgrclose(out);
         xvgrclose(aver);

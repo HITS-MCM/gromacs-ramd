@@ -1,7 +1,8 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2011,2012,2013,2014,2015,2016,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2011,2012,2013,2014,2015 by the GROMACS development team.
+ * Copyright (c) 2016,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -101,7 +102,7 @@ public:
     //! Returns the error in column \p i.
     real error(int i) const { return values_[i].error; }
     //! Returns whether the value in column \p i is present.
-    bool present(int /*i*/) const { return true; }
+    static bool present(int /*i*/) { return true; }
     //! Returns an AnalysisDataValue for column \p i.
     AnalysisDataValue value(int i) const
     {
@@ -157,7 +158,7 @@ public:
     //! Returns x coordinate for the frame.
     real x() const { return x_; }
     //! Returns error in the x coordinate for the frame.
-    real dx() const { return 0.0; }
+    static real dx() { return 0.0; }
 
     //! Number of individual point sets in the frame.
     int pointSetCount() const { return pointSets_.size(); }

@@ -3,7 +3,8 @@
  *
  * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
  * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
+ * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -47,16 +48,23 @@
 #ifndef GMX_LISTED_FORCES_BONDED_H
 #define GMX_LISTED_FORCES_BONDED_H
 
+#include <string>
+
 #include "gromacs/math/vectypes.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/utility/basedefinitions.h"
 
 struct gmx_cmap_t;
 struct t_fcdata;
-struct t_graph;
 struct t_mdatom;
 struct t_nrnb;
 struct t_pbc;
+
+namespace gmx
+{
+template<typename EnumType, typename DataType, EnumType ArraySize>
+struct EnumerationArray;
+} // namespace gmx
 
 /*! \brief Calculate bond-angle. No PBC is taken into account (use mol-shift) */
 real bond_angle(const rvec          xi,
@@ -85,38 +93,36 @@ real dih_angle(const rvec          xi,
                int*                t3);
 
 /*! \brief Do an update of the forces for dihedral potentials */
-void do_dih_fup(int                   i,
-                int                   j,
-                int                   k,
-                int                   l,
-                real                  ddphi,
-                rvec                  r_ij,
-                rvec                  r_kj,
-                rvec                  r_kl,
-                rvec                  m,
-                rvec                  n,
-                rvec4                 f[],
-                rvec                  fshift[],
-                const struct t_pbc*   pbc,
-                const struct t_graph* g,
-                const rvec*           x,
-                int                   t1,
-                int                   t2,
-                int                   t3);
+void do_dih_fup(int                 i,
+                int                 j,
+                int                 k,
+                int                 l,
+                real                ddphi,
+                rvec                r_ij,
+                rvec                r_kj,
+                rvec                r_kl,
+                rvec                m,
+                rvec                n,
+                rvec4               f[],
+                rvec                fshift[],
+                const struct t_pbc* pbc,
+                const rvec*         x,
+                int                 t1,
+                int                 t2,
+                int                 t3);
 
 /*! \brief Make a dihedral fall in the range (-pi,pi) */
 void make_dp_periodic(real* dp);
 
 /*! \brief Compute CMAP dihedral energies and forces */
-real cmap_dihs(int                   nbonds,
-               const t_iatom         forceatoms[],
-               const t_iparams       forceparams[],
-               const gmx_cmap_t*     cmap_grid,
-               const rvec            x[],
-               rvec4                 f[],
-               rvec                  fshift[],
-               const struct t_pbc*   pbc,
-               const struct t_graph* g,
+real cmap_dihs(int                 nbonds,
+               const t_iatom       forceatoms[],
+               const t_iparams     forceparams[],
+               const gmx_cmap_t*   cmap_grid,
+               const rvec          x[],
+               rvec4               f[],
+               rvec                fshift[],
+               const struct t_pbc* pbc,
                real gmx_unused lambda,
                real gmx_unused* dvdlambda,
                const t_mdatoms gmx_unused* md,
@@ -132,6 +138,9 @@ enum class BondedKernelFlavor
     ForcesAndEnergy,          //!< Compute forces and energy (no SIMD)
     Count                     //!< The number of flavors
 };
+
+//! Helper strings for human-readable messages
+extern const gmx::EnumerationArray<BondedKernelFlavor, std::string, BondedKernelFlavor::Count> c_bondedKernelFlavorStrings;
 
 /*! \brief Returns whether the energy should be computed */
 static constexpr inline bool computeEnergy(const BondedKernelFlavor flavor)
@@ -159,19 +168,18 @@ static constexpr inline bool computeEnergyOrVirial(const BondedKernelFlavor flav
  * All pointers should be non-null, except for pbc and g which can be nullptr.
  * \returns the energy or 0 when \p bondedKernelFlavor did not request the energy.
  */
-real calculateSimpleBond(int                  ftype,
-                         int                  numForceatoms,
-                         const t_iatom        forceatoms[],
-                         const t_iparams      forceparams[],
-                         const rvec           x[],
-                         rvec4                f[],
-                         rvec                 fshift[],
-                         const struct t_pbc*  pbc,
-                         const struct t_graph gmx_unused* g,
-                         real                             lambda,
-                         real*                            dvdlambda,
-                         const t_mdatoms*                 md,
-                         t_fcdata*                        fcd,
+real calculateSimpleBond(int                 ftype,
+                         int                 numForceatoms,
+                         const t_iatom       forceatoms[],
+                         const t_iparams     forceparams[],
+                         const rvec          x[],
+                         rvec4               f[],
+                         rvec                fshift[],
+                         const struct t_pbc* pbc,
+                         real                lambda,
+                         real*               dvdlambda,
+                         const t_mdatoms*    md,
+                         t_fcdata*           fcd,
                          int gmx_unused*    global_atom_index,
                          BondedKernelFlavor bondedKernelFlavor);
 

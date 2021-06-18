@@ -1,7 +1,7 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
+ * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -113,6 +113,21 @@ void dumpKeyValueTree(TextWriter* writer, const KeyValueTreeObject& tree)
             dumpKeyValueTree(writer, value.asObject());
             writer->wrapperSettings().setIndent(oldIndent);
         }
+        else if (value.isArray()
+                 && std::all_of(value.asArray().values().begin(), value.asArray().values().end(),
+                                [](const auto& elem) { return elem.isObject(); }))
+        {
+            // Array containing only objects
+            writer->writeString(prop.key());
+            writer->writeLine(":");
+            int oldIndent = writer->wrapperSettings().indent();
+            writer->wrapperSettings().setIndent(oldIndent + 2);
+            for (const auto& elem : value.asArray().values())
+            {
+                dumpKeyValueTree(writer, elem.asObject());
+            }
+            writer->wrapperSettings().setIndent(oldIndent);
+        }
         else
         {
             int indent = writer->wrapperSettings().indent();
@@ -123,8 +138,10 @@ void dumpKeyValueTree(TextWriter* writer, const KeyValueTreeObject& tree)
                 writer->writeString("[");
                 for (const auto& elem : value.asArray().values())
                 {
-                    GMX_RELEASE_ASSERT(!elem.isObject() && !elem.isArray(),
-                                       "Arrays of objects not currently implemented");
+                    GMX_RELEASE_ASSERT(
+                            !elem.isObject() && !elem.isArray(),
+                            "Only arrays of simple types and array of objects are implemented. "
+                            "Arrays of arrays and mixed arrays are not supported.");
                     writer->writeString(" ");
                     writer->writeString(simpleValueToString(elem));
                 }
@@ -275,7 +292,7 @@ private:
         writer_->writeLine(message);
     }
 
-    std::string formatValueForMissingMessage(const KeyValueTreeValue& value)
+    static std::string formatValueForMissingMessage(const KeyValueTreeValue& value)
     {
         if (value.isObject() || value.isArray())
         {
