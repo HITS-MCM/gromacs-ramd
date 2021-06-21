@@ -231,7 +231,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         {
             get_pull_coord_value(pull, g * 3 + i, &pbc);
             apply_external_pull_coord_force(pull, g * 3 + i, direction[g][i] * params.group[g].force,
-                &forceProviderInput.mdatoms_, &forceProviderOutput->forceWithVirial_);
+                forceProviderInput.mdatoms_.massT, &forceProviderOutput->forceWithVirial_);
         }
     }
 }
