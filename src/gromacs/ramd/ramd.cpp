@@ -110,7 +110,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                            ForceProviderOutput*      forceProviderOutput)
 {
     t_pbc pbc;
-    set_pbc(&pbc, pull->ePBC, forceProviderInput.box_);
+    set_pbc(&pbc, pull->pbcType, forceProviderInput.box_);
 
     if (MASTER(cr) and out and (*pstep % params.eval_freq == 0))
     {
