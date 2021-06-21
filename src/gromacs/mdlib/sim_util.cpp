@@ -615,15 +615,16 @@ static void computeSpecialForces(FILE*                          fplog,
                                  gmx_edsam*                     ed,
                                  bool                           didNeighborSearch)
 {
-    if ((inputrec->bPull || inputrec->bRAMD) && pull_have_potential(pull_work))
-    {
-        pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
-                               lambda, t, wcycle);
+    // RAMD: Pull forces must be applied before ForceProviders
 
-        if (awh)
+    if ((inputrec->bPull || inputrec->bRAMD) && pull_have_potential(*pull_work))
+    {
+        const int mtsLevel = forceGroupMtsLevel(inputrec->mtsLevels, gmx::MtsForceGroups::Pull);
+        if (mtsLevel == 0 || stepWork.computeSlowForces)
         {
-            enerd->term[F_COM_PULL] += awh->applyBiasForcesAndUpdateBias(
-                    inputrec->ePBC, *mdatoms, box, forceWithVirial, t, step, wcycle, fplog);
+            auto& forceWithVirial = (mtsLevel == 0) ? forceWithVirialMtsLevel0 : forceWithVirialMtsLevel1;
+            pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
+                                   lambda.data(), t, wcycle);
         }
     }
 
@@ -639,16 +640,6 @@ static void computeSpecialForces(FILE*                          fplog,
         forceProviders->calculateForces(forceProviderInput, &forceProviderOutput);
     }
 
-    if (inputrec->bPull && pull_have_potential(*pull_work))
-    {
-        const int mtsLevel = forceGroupMtsLevel(inputrec->mtsLevels, gmx::MtsForceGroups::Pull);
-        if (mtsLevel == 0 || stepWork.computeSlowForces)
-        {
-            auto& forceWithVirial = (mtsLevel == 0) ? forceWithVirialMtsLevel0 : forceWithVirialMtsLevel1;
-            pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
-                                   lambda.data(), t, wcycle);
-        }
-    }
     if (awh)
     {
         const int mtsLevel = forceGroupMtsLevel(inputrec->mtsLevels, gmx::MtsForceGroups::Pull);
