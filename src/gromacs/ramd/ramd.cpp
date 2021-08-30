@@ -127,7 +127,9 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
 
             if (MASTER(cr) and out)
             {
-                auto dist = std::sqrt((com_lig_prev[g] - com_rec_prev[g]).norm2());
+                DVec curr_dist_vect;
+                pbc_dx_d(&pbc, com_lig_prev[g], com_rec_prev[g], curr_dist_vect);
+                auto dist = std::sqrt(curr_dist_vect.norm2());
                 fprintf(out, "\t%g", dist);
             }
         }
@@ -144,7 +146,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             DVec com_lig_curr = pull->group[g * 2 + 2].x;
             DVec curr_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
-            auto curr_dist = std::sqrt((curr_dist_vect).norm2());
+            auto curr_dist = std::sqrt(curr_dist_vect.norm2());
 
             if (MASTER(cr) and debug)
             {
@@ -180,7 +182,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             // difference of the COM ligand-receptor distance between current and the last evaluation step
             DVec walk_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr - com_rec_curr, com_lig_prev[g] - com_rec_prev[g], walk_dist_vect);
-            auto walk_dist = std::sqrt((walk_dist_vect).norm2());
+            auto walk_dist = std::sqrt(walk_dist_vect.norm2());
 
             if (MASTER(cr) and debug)
             {
