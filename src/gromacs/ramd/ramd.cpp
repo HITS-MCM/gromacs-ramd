@@ -40,6 +40,7 @@
 #include "ramd.h"
 
 #include <cassert>
+#include <numeric>
 
 #include "gromacs/commandline/filenm.h"
 #include "gromacs/fileio/gmxfio.h"
