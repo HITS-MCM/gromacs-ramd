@@ -1,7 +1,8 @@
 {
     "cmake.configureSettings": {
         "GMX_BUILD_OWN_FFTW": "ON",
-        "GMX_GPU": "CUDA"
+        "GMX_GPU": "CUDA",
+        "REGRESSIONTEST_DOWNLOAD": "ON"
     },
     "cmake.generator": "Unix Makefiles",
     "clang-format.executable": "/usr/bin/clang-format-7",
