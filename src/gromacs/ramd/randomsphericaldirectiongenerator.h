@@ -40,6 +40,7 @@
 #include <iostream>
 #include <random>
 
+#include "gromacs/math/utilities.h"
 #include "gromacs/math/vectypes.h"
 
 namespace gmx
