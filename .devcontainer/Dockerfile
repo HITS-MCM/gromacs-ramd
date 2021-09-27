@@ -1,7 +1,7 @@
 # See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.187.0/containers/cpp/.devcontainer/base.Dockerfile
 
 #FROM nvidia/cuda:10.2-devel
-FROM braintwister/ubuntu-20.04-cuda-devel-11.3-gcc-8
+FROM braintwister/cuda-devel-11.4.2-gcc-8
 
 RUN conan config set general.revisions_enabled=1 \
  && conan profile new default --detect \
