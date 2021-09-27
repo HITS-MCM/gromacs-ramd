@@ -1,0 +1,374 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) 1WDHI grompp ramd",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/1WDHI/ramd.mdp",
+                     "-c", "/data/gromacs-ramd/1WDHI/1WDHI_box.gro",
+                     "-p", "/data/gromacs-ramd/1WDHI/topol.top",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) 1WDHI grompp ramd multi-ligand",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/1WDHI/ramd-2.mdp",
+                     "-c", "/data/gromacs-ramd/1WDHI/1WDHI_box.gro",
+                     "-p", "/data/gromacs-ramd/1WDHI/topol.top",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) 1WDHI grompp pull",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/1WDHI/pull.mdp",
+                     "-c", "/data/gromacs-ramd/1WDHI/1WDHI_box.gro",
+                     "-p", "/data/gromacs-ramd/1WDHI/topol.top",
+                     "-o", "1WDHI-ramd.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) 1WDHI grompp pull-direction",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/1WDHI/pull-direction.mdp",
+                     "-c", "/data/gromacs-ramd/1WDHI/1WDHI_box.gro",
+                     "-p", "/data/gromacs-ramd/1WDHI/topol.top",
+                     "-o", "1WDHI-ramd.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) HSP90 grompp ramd",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/hsp90/ramd.mdp",
+                     "-c", "/data/gromacs-ramd/hsp90/hsp90.gro",
+                     "-p", "/data/gromacs-ramd/hsp90/hsp90.top",
+                     "-n", "/data/gromacs-ramd/hsp90/hsp90.ndx",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) GlyR grompp",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/GlyR-5TIO/ramd-2.mdp",
+                     "-c", "/data/gromacs-ramd/GlyR-5TIO/gromacs_eq.tpr",
+                     "-p", "/data/gromacs-ramd/GlyR-5TIO/glyr.top",
+                     "-n", "/data/gromacs-ramd/GlyR-5TIO/index.ndx",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) 1WDHI grompp gen-vel",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/gromacs-ramd/1WDHI/gen-vel.mdp",
+                     "-c", "/data/gromacs-ramd/1WDHI/1WDHI_box.gro",
+                     "-p", "/data/gromacs-ramd/1WDHI/topol.top",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) 1WDHI grompp gerald",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/ramd-issues/gerald/trj/gromacs_ramd.mdp",
+                     "-c", "/data/ramd-issues/gerald/trj/coord.gro",
+                     "-p", "/data/ramd-issues/gerald/trj/gromacs.top",
+                     "-t", "/data/ramd-issues/gerald/trj/state.cpt",
+                     "-n", "/data/ramd-issues/gerald/trj/index.ndx",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) 1WDHI grompp cynthia-3",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "/data/ramd-issues/cynthia-3/ramd/gromacs_ramd.mdp",
+                     "-c", "/data/ramd-issues/cynthia-3/ramd/RasGDPPi-md.gro",
+                     "-p", "/data/ramd-issues/cynthia-3/ramd/RasGDPPi-solv.top",
+                     "-n", "/data/ramd-issues/cynthia-3/ramd/index.ndx",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) mdrun",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["mdrun",
+                     "-s", "topol.tpr",
+                     "-c", "conf.gro"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) mdrun, 3000 steps",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["mdrun", "-s", "topol.tpr", "-nsteps", "3000"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) mdrun file default",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["mdrun", "-s", "topol.tpr", "-ramd", "-c"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) mdrun file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["mdrun", "-s", "topol.tpr", "-nsteps", "3000", "-ramd", "ramd-2.xvg"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) mdrun debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["mdrun", "-s", "topol.tpr", "-debug", "-ramd"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) mdrun threadMPI",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["mdrun", "-s", "topol.tpr", "-ntmpi", "2", "-ramd"],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) MdrunModulesTests",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/mdrun-modules-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(gdb) RAMDTest",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/ramd-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
