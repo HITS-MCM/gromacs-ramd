@@ -1,0 +1,15 @@
+buildType:
+  default: debug
+  choices:
+    debug:
+      short: Debug
+      long: Build code with debugging information
+      buildType: Debug
+    release:
+      short: Release
+      long: Optimize code for production
+      buildType: Release
+    reference:
+      short: Reference
+      long: Build code for generating regression test references
+      buildType: Reference
