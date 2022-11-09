@@ -108,4 +108,6 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
                 prefix + "-vec", v[d]);
         }
     }
+
+    ramdparams->connected_ligands = get_estr(inp, "ramd-connected-ligands", "yes");
 }

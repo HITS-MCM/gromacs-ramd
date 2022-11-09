@@ -659,6 +659,7 @@ static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams* ramdparams)
     PI("ramd-eval-freq", ramdparams->eval_freq);
     PI("ramd-force-out-freq", ramdparams->force_out_freq);
     PS("ramd-old-angle-dist", EBOOL(ramdparams->old_angle_dist));
+    PS("ramd-connected-ligands", EBOOL(ramdparams->connected_ligands));
 }
 
 static void pr_awh_bias_dim(FILE* fp, int indent, gmx::AwhDimParams* awhDimParams, const char* prefix)

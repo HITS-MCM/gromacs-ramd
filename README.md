@@ -14,7 +14,7 @@ See http://manual.gromacs.org/documentation/2020/install-guide/index.html
 
 ## HPC deployment with EasyBuild
 
-The [EasyBuild](http://easybuilders.github.io/easybuild/) recipe is available [here](https://github.com/BerndDoser/easybuild-easyconfigs/blob/hits/easybuild/easyconfigs/g/GROMACS/GROMACS-2020.5-RAMD-2.0-fosscuda-2019b.eb). 
+The [EasyBuild](http://easybuilders.github.io/easybuild/) recipe is available [here](https://github.com/BerndDoser/easybuild-easyconfigs/blob/hits/easybuild/easyconfigs/g/GROMACS/GROMACS-2020.5-RAMD-2.0-fosscuda-2019b.eb).
 
 ## Usage
 
@@ -70,7 +70,7 @@ Please use following mdp options:
    of a long dissociation channel (as in many membrane proteins) maxDist must be
    increased accordingly. Method performance is not very sensitive to the
    upper limit of this parameter since motion of the free ligand due to the
-   external force is very fast (i.e. the last part of the trajectory, where the 
+   external force is very fast (i.e. the last part of the trajectory, where the
    ligand does not interact with the protein, usually has a negligible contribution
    to the observed dissociation time).
 
@@ -96,3 +96,12 @@ Please use following mdp options:
 
    The value will be forwarded to pull-pbc-ref-prev-step-com. Default value is 'yes'.
 
+ * ramd-connected-ligands
+
+   If ‘yes’, the trajectory will be terminated when all ligands have left the radius.
+   If one ligand leaves the radius, its last assigned force will continue to be
+   applied until the simulation end or radius re-entry.SRS for MCM-RAMD-3.
+   If ‘no’, this should revert to standard RAMD for multiple disconnected ligands.
+   Each ligand is subject to a RAMD force until the individual ligand has left the
+   dissociation radius. The simulation stops when all ligands have left the
+   dissociation radius. Default value is 'yes'.

@@ -2193,6 +2193,17 @@ applied to a molecule in the system.
    (yes)
    The value will be forwarded to pull-pbc-ref-prev-step-com. Default value is 'yes'.
 
+.. mdp:: ramd-connected-ligands
+
+   (yes)
+   If ‘yes’, the trajectory will be terminated when all ligands have left the radius.
+   If one ligand leaves the radius, its last assigned force will continue to be
+   applied until the simulation end or radius re-entry.SRS for MCM-RAMD-3.
+   If ‘no’, this should revert to standard RAMD for multiple disconnected ligands.
+   Each ligand is subject to a RAMD force until the individual ligand has left the
+   dissociation radius. The simulation stops when all ligands have left the
+   dissociation radius. Default value is 'yes'.
+
 Enforced rotation
 ^^^^^^^^^^^^^^^^^
 
@@ -2557,7 +2568,7 @@ Free energy calculations
    power 6 for the radial term in the soft-core equation.
 
    (48)
-   (deprecated) power 48 for the radial term in the soft-core equation. 
+   (deprecated) power 48 for the radial term in the soft-core equation.
    Note that sc-alpha should generally be much lower (between 0.001 and 0.003).
 
 .. mdp:: sc-coul
