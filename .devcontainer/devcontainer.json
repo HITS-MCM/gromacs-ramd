@@ -1,15 +1,10 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.187.0/containers/cpp
 {
 	"name": "C++",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
-	"runArgs": [ 
+	"image": "ghcr.io/ulfsoft-harbour/cuda/sdk-vscode:11.6.0",
+	"runArgs": [
 		"--cap-add=SYS_PTRACE",
-		"--security-opt",
-		"seccomp=unconfined",
-		"--runtime=nvidia"
+		"--security-opt", "seccomp=unconfined",
+		"--gpus=all"
 	],
 
 	// Set *default* container specific settings.json values on container create.
@@ -17,9 +12,7 @@
 
 	// Add the IDs of extensions you want installed when the container is created.
 	"extensions": [
-		"ms-vscode.cpptools",
-		"twxs.cmake",
-		"ms-vscode.cmake-tools"
+		"ms-vscode.cpptools-extension-pack"
 	],
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
@@ -29,9 +22,9 @@
 	// "postCreateCommand": []
 
 	// Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-	// "remoteUser": "bernd"
+	"remoteUser": "vscode"
 
-    "mounts": [
-		"source=${localEnv:HOME}/HITS/data,target=/data,type=bind,consistency=cached"
-	]
+    // "mounts": [
+	// 	"source=${localEnv:HOME}/HITS/data,target=/data,type=bind,consistency=cached"
+	// ]
 }
