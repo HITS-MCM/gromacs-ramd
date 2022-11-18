@@ -82,6 +82,8 @@ public:
     void calculateForces(const ForceProviderInput& forceProviderInput,
                          ForceProviderOutput*      forceProviderOutput) override;
 
+    RAMDParams getParams() const { return params; }
+
 private:
 
     /// RAMD parameters

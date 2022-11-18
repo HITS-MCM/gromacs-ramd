@@ -58,12 +58,12 @@ struct RAMDTest : public ::testing::Test
 {
 protected:
 
+    RAMDParams params;
     std::unique_ptr<RAMD> ramd;
     CommrecHandle cr;
 
     void SetUp() override
     {
-        RAMDParams params;
         params.seed = 9876;
         params.ngroup = 1;
         snew(params.group, 1);
@@ -96,12 +96,17 @@ protected:
 
         ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
     }
+
+    void TearDown() override
+    {
+        ramd.reset();
+    }
 };
 
-TEST_F(RAMDTest, construction)
-{
-    EXPECT_TRUE(ramd);
-}
+// TEST_F(RAMDTest, construction)
+// {
+//     EXPECT_TRUE(ramd);
+// }
 
 TEST_F(RAMDTest, calculateForces)
 {
@@ -111,8 +116,9 @@ TEST_F(RAMDTest, calculateForces)
     ForceProviderInput forceProviderInput({}, md, time, box, *cr);
 
     PaddedVector<RVec>  f = {{0, 0, 0}};
-    ForceWithVirial     forceWithVirial(f, true);
-    gmx_enerdata_t      enerd(1, 0);
+    ForceWithVirial forceWithVirial(f, true);
+    gmx_enerdata_t enerd(1, 0);
+    // std::cout << ramd->getParams().eval_freq << std::endl;
     ForceProviderOutput forceProviderOutput(&forceWithVirial, &enerd);
 
     ramd->calculateForces(forceProviderInput, &forceProviderOutput);
