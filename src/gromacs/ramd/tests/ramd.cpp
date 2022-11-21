@@ -103,22 +103,22 @@ protected:
     }
 };
 
-// TEST_F(RAMDTest, construction)
-// {
-//     EXPECT_TRUE(ramd);
-// }
+TEST_F(RAMDTest, construction)
+{
+    EXPECT_TRUE(ramd);
+}
 
 TEST_F(RAMDTest, calculateForces)
 {
+    PaddedVector<RVec> x = {{0, 0, 0}};
     t_mdatoms md;
     double time = 0.0;
     matrix box = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    ForceProviderInput forceProviderInput({}, md, time, box, *cr);
+    ForceProviderInput forceProviderInput(x, md, time, box, *cr);
 
-    PaddedVector<RVec>  f = {{0, 0, 0}};
+    PaddedVector<RVec> f = {{0, 0, 0}};
     ForceWithVirial forceWithVirial(f, true);
     gmx_enerdata_t enerd(1, 0);
-    // std::cout << ramd->getParams().eval_freq << std::endl;
     ForceProviderOutput forceProviderOutput(&forceWithVirial, &enerd);
 
     ramd->calculateForces(forceProviderInput, &forceProviderOutput);
