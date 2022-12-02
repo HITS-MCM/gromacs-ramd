@@ -276,11 +276,36 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
         gen_temp                 = 300
         gen_seed                 = 1993
         constraints              = none
+
+        ramd                     = yes
+        ramd-seed                = 1234
+        ramd-eval_freq           = 2
+        ramd-force_out_freq      = 2
+        ramd-old-angle-dist      = no
+        ramd-ngroups             = 2
+        ramd-group1-receptor     = Gly1
+        ramd-group1-ligand       = Gly2
+        ramd-group1-force        = 600
+        ramd-group1-max_dist     = 40.0
+        ramd-group1-r_min_dist   = 0.0025
+        ramd-group2-receptor     = Gly1
+        ramd-group2-ligand       = Gly3
+        ramd-group2-force        = 600
+        ramd-group2-max_dist     = 40.0
+        ramd-group2-r_min_dist   = 0.0025
+
+        ramd-group1-ligand-pbcatom   = 0
+        ramd-group1-receptor-pbcatom = 0
+        ramd-group2-ligand-pbcatom   = 0
+        ramd-group2-receptor-pbcatom = 0
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
+    CommandLine caller;
+    caller.addOption("-ramd");
+
     EXPECT_EQ(0, runner_.callGrompp());
-    ASSERT_EQ(0, runner_.callMdrun());
+    ASSERT_EQ(0, runner_.callMdrun(caller));
     gmx_reset_stop_condition();
 }
 
