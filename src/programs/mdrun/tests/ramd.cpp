@@ -247,9 +247,35 @@ TEST_F(RAMDTest, RAMD_GlyR)
 
 TEST_F(RAMDTest, RAMD_connected_ligands)
 {
-    runner_.useTopGroAndNdxFromDatabase("glyr");
-    auto mdpContents = glyr_mdp_base + R"(
-        ramd-connected-ligands = yes
+    runner_.useTopGroAndNdxFromDatabase("glycine_trimer");
+    auto mdpContents = R"(
+        integrator               = md
+        dt                       = 0.001
+        nsteps                   = 10
+        nstxout                  = 1
+        nstlog                   = 1
+        nstenergy                = 1
+        nstlist                  = 5
+        ns_type                  = simple
+        rlist                    = 1.0
+        coulombtype              = Cut-off
+        rcoulomb-switch          = 0
+        rcoulomb                 = 1.0
+        epsilon-r                = 1
+        epsilon_rf               = 1
+        vdw-type                 = Cut-off
+        rvdw-switch              = 0
+        rvdw                     = 1.0
+        DispCorr                 = no
+        Tcoupl                   = v-rescale
+        tc-grps                  = System
+        tau_t                    = 0.1
+        ref_t                    = 300
+        Pcoupl                   = no
+        gen_vel                  = yes
+        gen_temp                 = 300
+        gen_seed                 = 1993
+        constraints              = none
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
