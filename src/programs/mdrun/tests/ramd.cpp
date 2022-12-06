@@ -247,16 +247,13 @@ TEST_F(RAMDTest, RAMD_GlyR)
 
 TEST_F(RAMDTest, RAMD_connected_ligands)
 {
-    runner_.useTopGroAndNdxFromDatabase("glycine_trimer");
+    runner_.useTopGroAndNdxFromDatabase("4water");
     auto mdpContents = R"(
         integrator               = md
         dt                       = 0.001
         nsteps                   = 10
         nstxout                  = 1
         nstlog                   = 1
-        nstenergy                = 1
-        nstlist                  = 5
-        ns_type                  = simple
         rlist                    = 1.0
         coulombtype              = Cut-off
         rcoulomb-switch          = 0
@@ -267,15 +264,8 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
         rvdw-switch              = 0
         rvdw                     = 1.0
         DispCorr                 = no
-        Tcoupl                   = v-rescale
-        tc-grps                  = System
-        tau_t                    = 0.1
-        ref_t                    = 300
+        Tcoupl                   = no
         Pcoupl                   = no
-        gen_vel                  = yes
-        gen_temp                 = 300
-        gen_seed                 = 1993
-        constraints              = none
 
         ramd                     = yes
         ramd-seed                = 1234
@@ -283,13 +273,13 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
         ramd-force_out_freq      = 2
         ramd-old-angle-dist      = no
         ramd-ngroups             = 2
-        ramd-group1-receptor     = Gly1
-        ramd-group1-ligand       = Gly2
+        ramd-group1-receptor     = 1SOL
+        ramd-group1-ligand       = 2SOL
         ramd-group1-force        = 600
         ramd-group1-max_dist     = 40.0
         ramd-group1-r_min_dist   = 0.0025
-        ramd-group2-receptor     = Gly1
-        ramd-group2-ligand       = Gly3
+        ramd-group2-receptor     = 1SOL
+        ramd-group2-ligand       = 3SOL
         ramd-group2-force        = 600
         ramd-group2-max_dist     = 40.0
         ramd-group2-r_min_dist   = 0.0025
