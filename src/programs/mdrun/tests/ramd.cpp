@@ -251,9 +251,9 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
     auto mdpContents = R"(
         integrator               = md
         dt                       = 0.001
-        nsteps                   = 10
-        nstxout                  = 1
-        nstlog                   = 1
+        nsteps                   = 10000
+        nstxout                  = 1000
+        nstlog                   = 1000
         rlist                    = 1.0
         coulombtype              = Cut-off
         rcoulomb-switch          = 0
@@ -276,12 +276,12 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
         ramd-group1-receptor     = 1SOL
         ramd-group1-ligand       = 2SOL
         ramd-group1-force        = 600
-        ramd-group1-max_dist     = 40.0
+        ramd-group1-max_dist     = 1.0
         ramd-group1-r_min_dist   = 0.0025
         ramd-group2-receptor     = 1SOL
         ramd-group2-ligand       = 3SOL
         ramd-group2-force        = 600
-        ramd-group2-max_dist     = 40.0
+        ramd-group2-max_dist     = 1.0
         ramd-group2-r_min_dist   = 0.0025
 
         ramd-group1-ligand-pbcatom   = 0
@@ -295,7 +295,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
     caller.addOption("-ramd");
 
     EXPECT_EQ(0, runner_.callGrompp());
-    ASSERT_EQ(0, runner_.callMdrun(caller));
+    ASSERT_EQ(2, runner_.callMdrun(caller));
     gmx_reset_stop_condition();
 }
 
