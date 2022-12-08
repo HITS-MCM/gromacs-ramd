@@ -10,6 +10,7 @@
 
 #include "gmxpre.h"
 #include "gromacs/mdlib/sighandler.h"
+#include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/textreader.h"
 #include "programs/mdrun/tests/moduletest.h"
 
@@ -297,6 +298,16 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
     EXPECT_EQ(0, runner_.callGrompp());
     ASSERT_EQ(2, runner_.callMdrun(caller));
     gmx_reset_stop_condition();
+
+    TextReader reader(runner_.logFileName_);
+    std::string line;
+    int number_of_steps = -1;
+    while (reader.readLine(&line)) {
+       if (line.find("==== RAMD ==== GROMACS will be stopped after") != std::string::npos) {
+            number_of_steps = stoi(gmx::splitString(line)[8]);
+       }
+    }
+    EXPECT_EQ(number_of_steps, 230);
 }
 
 } // namespace test
