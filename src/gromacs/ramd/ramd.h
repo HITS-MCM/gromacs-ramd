@@ -76,7 +76,8 @@ public:
          const t_commrec*            cr,
          int                         nfile,
          const t_filenm              fnm[],
-         const gmx_output_env_t*     oenv);
+         const gmx_output_env_t*     oenv,
+         FILE*                       log = nullptr);
 
     //! \copydoc IForceProvider::calculateForces()
     void calculateForces(const ForceProviderInput& forceProviderInput,
@@ -115,6 +116,9 @@ private:
 
     /// Has the ligand left his binding site?
     std::vector<int> ligand_exited;
+
+    /// Logfile
+    FILE* log;
 
 };
 

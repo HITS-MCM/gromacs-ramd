@@ -62,7 +62,8 @@ RAMD::RAMD(const RAMDParams&           params,
            const t_commrec*            cr,
            int                         nfile,
            const t_filenm              fnm[],
-           const gmx_output_env_t*     oenv)
+           const gmx_output_env_t*     oenv,
+           FILE*                       log)
   : params(params),
     pull(pull),
     pstep(pstep),
@@ -72,7 +73,8 @@ RAMD::RAMD(const RAMDParams&           params,
     com_lig_prev(params.ngroup),
     out(nullptr),
     cr(cr),
-    ligand_exited(params.ngroup, 0)
+    ligand_exited(params.ngroup, 0),
+    log(log)
 {
     for (int g = 0; g < params.ngroup; ++g)
     {
@@ -174,7 +176,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 direction[g] = DVec(0.0, 0.0, 0.0);
                 if (MASTER(cr))
                 {
-                    fprintf(stdout, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
+                    fprintf(this->log, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
                             g, *pstep);
                 }
             }
@@ -222,7 +224,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         // Exit if all ligand-receptor COM distances are larger than max_dist
         if (std::accumulate(ligand_exited.begin(), ligand_exited.end(), 0) == params.ngroup)
         {
-            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+            fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
             gmx_set_stop_condition(gmx_stop_cond_next);
         }
     }
