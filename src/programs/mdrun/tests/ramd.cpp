@@ -303,11 +303,19 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
     std::string line;
     int number_of_steps = -1;
     while (reader.readLine(&line)) {
-       if (line.find("==== RAMD ==== GROMACS will be stopped after") != std::string::npos) {
+        if (line.find("==== RAMD ==== GROMACS will be stopped after") != std::string::npos) {
             number_of_steps = stoi(gmx::splitString(line)[8]);
-       }
+        }
     }
     EXPECT_EQ(number_of_steps, 230);
+
+    TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
+    // std::cout << reader_pullx.readAll();
+    while (reader_pullx.readLine(&line)) {
+        if (line.rfind("0.000", 0) != std::string::npos) {
+            EXPECT_EQ(std::string("0.0593702"), gmx::splitString(line)[1]);
+        }
+    }
 }
 
 } // namespace test
