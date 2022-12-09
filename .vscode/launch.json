@@ -368,7 +368,8 @@
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 }
-            ]
+            ],
+            "preLaunchTask": "CMake: build"
         },
         {
             "name": "(gdb) RAMDTest",
