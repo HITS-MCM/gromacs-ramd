@@ -246,49 +246,48 @@ TEST_F(RAMDTest, RAMD_GlyR)
     gmx_reset_stop_condition();
 }
 
+const std::string water4_mdp_base = R"(
+    integrator               = md
+    dt                       = 0.001
+    nsteps                   = 10000
+    nstxout                  = 1000
+    nstlog                   = 1000
+    rlist                    = 1.0
+    coulombtype              = Cut-off
+    rcoulomb-switch          = 0
+    rcoulomb                 = 1.0
+    epsilon-r                = 1
+    epsilon_rf               = 1
+    vdw-type                 = Cut-off
+    rvdw-switch              = 0
+    rvdw                     = 1.0
+    DispCorr                 = no
+    Tcoupl                   = no
+    Pcoupl                   = no
+
+    ramd                     = yes
+    ramd-seed                = 1234
+    ramd-eval_freq           = 2
+    ramd-force_out_freq      = 2
+    ramd-old-angle-dist      = no
+    ramd-ngroups             = 2
+    ramd-group1-receptor     = 1SOL
+    ramd-group1-ligand       = 2SOL
+    ramd-group1-force        = 600
+    ramd-group1-max_dist     = 1.0
+    ramd-group1-r_min_dist   = 0.0025
+    ramd-group2-receptor     = 1SOL
+    ramd-group2-ligand       = 3SOL
+    ramd-group2-force        = 600
+    ramd-group2-max_dist     = 1.0
+    ramd-group2-r_min_dist   = 0.0025
+)";
+
 TEST_F(RAMDTest, RAMD_connected_ligands)
 {
     runner_.useTopGroAndNdxFromDatabase("4water");
-    auto mdpContents = R"(
-        integrator               = md
-        dt                       = 0.001
-        nsteps                   = 10000
-        nstxout                  = 1000
-        nstlog                   = 1000
-        rlist                    = 1.0
-        coulombtype              = Cut-off
-        rcoulomb-switch          = 0
-        rcoulomb                 = 1.0
-        epsilon-r                = 1
-        epsilon_rf               = 1
-        vdw-type                 = Cut-off
-        rvdw-switch              = 0
-        rvdw                     = 1.0
-        DispCorr                 = no
-        Tcoupl                   = no
-        Pcoupl                   = no
-
-        ramd                     = yes
-        ramd-seed                = 1234
-        ramd-eval_freq           = 2
-        ramd-force_out_freq      = 2
-        ramd-old-angle-dist      = no
-        ramd-ngroups             = 2
-        ramd-group1-receptor     = 1SOL
-        ramd-group1-ligand       = 2SOL
-        ramd-group1-force        = 600
-        ramd-group1-max_dist     = 1.0
-        ramd-group1-r_min_dist   = 0.0025
-        ramd-group2-receptor     = 1SOL
-        ramd-group2-ligand       = 3SOL
-        ramd-group2-force        = 600
-        ramd-group2-max_dist     = 1.0
-        ramd-group2-r_min_dist   = 0.0025
-
-        ramd-group1-ligand-pbcatom   = 0
-        ramd-group1-receptor-pbcatom = 0
-        ramd-group2-ligand-pbcatom   = 0
-        ramd-group2-receptor-pbcatom = 0
+    auto mdpContents = water4_mdp_base + R"(
+        ramd-connected-ligands = True
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
