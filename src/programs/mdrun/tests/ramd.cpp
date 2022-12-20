@@ -292,7 +292,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
     runner_.useStringAsMdpFile(mdpContents);
 
     CommandLine caller;
-    caller.addOption("-ramd");
+    caller.addOption("-ramd", "ramd.xvg");
 
     EXPECT_EQ(0, runner_.callGrompp());
     ASSERT_EQ(2, runner_.callMdrun(caller));
@@ -316,11 +316,11 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
         }
     }
 
-    TextReader reader_ramd(fileManager_.getTemporaryFilePath("ramd.xvg"));
-    std::cout << reader_ramd.readAll();
+    TextReader reader_ramd(fileManager_.getTemporaryFilePath("state.xvg"));
+    // std::cout << reader_ramd.readAll();
     while (reader_ramd.readLine(&line)) {
         if (line.rfind("0.000", 0) != std::string::npos) {
-            EXPECT_EQ(std::string("0.0593702"), gmx::splitString(line)[1]);
+            EXPECT_EQ(std::string("0.423961"), gmx::splitString(line)[1]);
         }
     }
 }
