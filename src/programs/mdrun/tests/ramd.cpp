@@ -250,7 +250,7 @@ const std::string water4_mdp_base = R"(
     integrator               = md
     dt                       = 0.001
     nsteps                   = 10000
-    nstxout                  = 1000
+    nstxout                  = 1
     nstlog                   = 1000
     rlist                    = 1.0
     coulombtype              = Cut-off
@@ -292,7 +292,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
     runner_.useStringAsMdpFile(mdpContents);
 
     CommandLine caller;
-    caller.addOption("-ramd", "ramd.xvg");
+    caller.addOption("-ramd");
 
     EXPECT_EQ(0, runner_.callGrompp());
     ASSERT_EQ(2, runner_.callMdrun(caller));
