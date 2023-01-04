@@ -85,6 +85,12 @@ public:
 
     RAMDParams getParams() const { return params; }
 
+    gmx_bool getWriteTrajectoryAndReset() {
+        gmx_bool tmp = write_trajectory;
+        write_trajectory = false;
+        return tmp;
+    }
+
 private:
 
     /// RAMD parameters
@@ -116,6 +122,9 @@ private:
 
     /// Has the ligand left his binding site?
     std::vector<int> ligand_exited;
+
+    /// Control trajectory output
+    gmx_bool write_trajectory;
 
     /// Logfile
     FILE* log;

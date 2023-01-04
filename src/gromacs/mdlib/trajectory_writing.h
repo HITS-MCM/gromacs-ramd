@@ -80,7 +80,8 @@ void do_md_trajectory_writing(FILE*                    fplog,
                               gmx_bool                 bRerunMD,
                               gmx_bool                 bLastStep,
                               gmx_bool                 bDoConfOut,
-                              gmx_bool                 bSumEkinhOld);
+                              gmx_bool                 bSumEkinhOld,
+                              gmx_bool                 bRAMDTraj);
 
 
 #endif

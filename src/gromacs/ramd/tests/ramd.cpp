@@ -94,7 +94,8 @@ protected:
         pull.numUnregisteredExternalPotentials = 3;
         pull.ePBC = 0;
 
-        ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation, cr.get(), 1, fnm, nullptr);
+        ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation,
+            cr.get(), 1, fnm, nullptr);
     }
 
     void TearDown() override

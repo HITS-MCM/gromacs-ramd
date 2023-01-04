@@ -448,10 +448,12 @@ void gmx::LegacySimulator::do_mimic()
             const bool isCheckpointingStep = false;
             const bool doRerun             = false;
             const bool bSumEkinhOld        = false;
+            const bool bRAMDTraj           = false;
             do_md_trajectory_writing(fplog, cr, nfile, fnm, step, step_rel, t, ir, state,
                                      state_global, observablesHistory, top_global, fr, outf,
                                      energyOutput, ekind, f, isCheckpointingStep, doRerun,
-                                     isLastStep, mdrunOptions.writeConfout, bSumEkinhOld);
+                                     isLastStep, mdrunOptions.writeConfout, bSumEkinhOld,
+                                     bRAMDTraj);
         }
 
         stopHandler->setSignal();

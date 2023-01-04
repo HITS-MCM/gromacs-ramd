@@ -74,6 +74,7 @@ RAMD::RAMD(const RAMDParams&           params,
     out(nullptr),
     cr(cr),
     ligand_exited(params.ngroup, 0),
+    write_trajectory(false),
     log(log)
 {
     for (int g = 0; g < params.ngroup; ++g)
@@ -225,6 +226,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         if (std::accumulate(ligand_exited.begin(), ligand_exited.end(), 0) == params.ngroup)
         {
             fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+            this->write_trajectory = true;
             gmx_set_stop_condition(gmx_stop_cond_next);
         }
     }
