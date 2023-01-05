@@ -86,8 +86,8 @@ public:
     RAMDParams getParams() const { return params; }
 
     gmx_bool getWriteTrajectoryAndReset() {
-        gmx_bool tmp = write_trajectory;
-        write_trajectory = false;
+        gmx_bool tmp = this->write_trajectory;
+        this->write_trajectory = false;
         return tmp;
     }
 
