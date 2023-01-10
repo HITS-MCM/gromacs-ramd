@@ -249,15 +249,14 @@ TEST_F(RAMDTest, RAMD_GlyR)
 const std::string water4_mdp_base = R"(
     integrator               = md
     dt                       = 0.001
-    nsteps                   = 10000
-    nstxout                  = 100
-    nstlog                   = 1000
+    nsteps                   = 100000
+    nstlog                   = 10
     rlist                    = 1.0
     coulombtype              = Cut-off
     rcoulomb-switch          = 0
     rcoulomb                 = 1.0
     epsilon-r                = 1
-    epsilon_rf               = 1
+    epsilon-rf               = 1
     vdw-type                 = Cut-off
     rvdw-switch              = 0
     rvdw                     = 1.0
@@ -267,27 +266,27 @@ const std::string water4_mdp_base = R"(
 
     ramd                     = yes
     ramd-seed                = 1234
-    ramd-eval_freq           = 2
-    ramd-force_out_freq      = 2
+    ramd-eval-freq           = 10
+    ramd-force-out-freq      = 10
     ramd-old-angle-dist      = no
     ramd-ngroups             = 2
     ramd-group1-receptor     = 1SOL
     ramd-group1-ligand       = 2SOL
-    ramd-group1-force        = 600
-    ramd-group1-max_dist     = 1.0
-    ramd-group1-r_min_dist   = 0.0025
+    ramd-group1-force        = 10
+    ramd-group1-max-dist     = 1.0
+    ramd-group1-r-min-dist   = 0.0025
     ramd-group2-receptor     = 1SOL
     ramd-group2-ligand       = 3SOL
-    ramd-group2-force        = 600
-    ramd-group2-max_dist     = 1.0
-    ramd-group2-r_min_dist   = 0.0025
+    ramd-group2-force        = 10
+    ramd-group2-max-dist     = 1.0
+    ramd-group2-r-min-dist   = 0.0025
 )";
 
 TEST_F(RAMDTest, RAMD_connected_ligands)
 {
     runner_.useTopGroAndNdxFromDatabase("4water");
     auto mdpContents = water4_mdp_base + R"(
-        ramd-connected-ligands = True
+        ramd-connected-ligands = no
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
@@ -306,7 +305,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
             number_of_steps = stoi(gmx::splitString(line)[8]);
         }
     }
-    EXPECT_EQ(number_of_steps, 230);
+    EXPECT_EQ(number_of_steps, 16490);
 
     TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
     // std::cout << reader_pullx.readAll();
