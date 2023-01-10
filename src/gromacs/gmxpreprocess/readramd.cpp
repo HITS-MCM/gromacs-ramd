@@ -109,5 +109,5 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
         }
     }
 
-    ramdparams->connected_ligands = get_estr(inp, "ramd-connected-ligands", "yes");
+    ramdparams->connected_ligands = (get_eeenum(inp, "ramd-connected-ligands", yesno_names, wi) != 0);
 }
