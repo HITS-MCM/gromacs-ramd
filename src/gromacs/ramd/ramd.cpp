@@ -174,7 +174,11 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             if (curr_dist >= params.group[g].max_dist)
             {
                 ligand_exited[g] = 1;
-                direction[g] = DVec(0.0, 0.0, 0.0);
+                if (params.connected_ligands) {
+
+                } else {
+                    direction[g] = DVec(0.0, 0.0, 0.0);
+                }
                 if (MASTER(cr))
                 {
                     fprintf(this->log, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
