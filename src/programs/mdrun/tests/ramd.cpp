@@ -272,12 +272,12 @@ const std::string water4_mdp_base = R"(
     ramd-ngroups             = 2
     ramd-group1-receptor     = 1SOL
     ramd-group1-ligand       = 2SOL
-    ramd-group1-force        = 10
+    ramd-group1-force        = 100
     ramd-group1-max-dist     = 1.0
     ramd-group1-r-min-dist   = 0.0025
     ramd-group2-receptor     = 1SOL
     ramd-group2-ligand       = 3SOL
-    ramd-group2-force        = 10
+    ramd-group2-force        = 100
     ramd-group2-max-dist     = 1.0
     ramd-group2-r-min-dist   = 0.0025
 )";
@@ -306,7 +306,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
             number_of_steps = stoi(gmx::splitString(line)[8]);
         }
     }
-    EXPECT_EQ(number_of_steps, 16500);
+    EXPECT_EQ(number_of_steps, 630);
 
     TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
     // std::cout << reader_pullx.readAll();
