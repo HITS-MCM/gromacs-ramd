@@ -292,6 +292,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
 
     CommandLine caller;
     caller.addOption("-ramd");
+    caller.addOption("-reprod");
 
     EXPECT_EQ(0, runner_.callGrompp());
     ASSERT_EQ(2, runner_.callMdrun(caller));
@@ -305,7 +306,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
             number_of_steps = stoi(gmx::splitString(line)[8]);
         }
     }
-    EXPECT_EQ(number_of_steps, 16490);
+    EXPECT_EQ(number_of_steps, 16500);
 
     TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
     // std::cout << reader_pullx.readAll();
