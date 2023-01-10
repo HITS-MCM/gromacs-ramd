@@ -1,3 +1,3 @@
-mol new src/testutils/simulationdatabase/4water.gro type gro first 0 last -1 step 1 filebonds 1 autobonds 1 waitfor all
-mol addfile build/src/programs/mdrun/tests/Testing/Temporary/RAMDTest_RAMD_connected_ligands.trr type trr first 0 last -1 step 1 filebonds 1 autobonds 1 waitfor all
+mol new ../src/testutils/simulationdatabase/4water.gro type gro first 0 last -1 step 1 filebonds 1 autobonds 1 waitfor all
+mol addfile ../build/src/programs/mdrun/tests/Testing/Temporary/RAMDTest_RAMD_connected_ligands.trr type trr first 0 last -1 step 1 filebonds 1 autobonds 1 waitfor all
 
