@@ -1,10 +1,9 @@
 {
     "name": "C++",
-    "image": "ghcr.io/ulfsoft-harbour/cuda/sdk-vscode:11.6.0",
+    "image": "mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-20.04",
     "runArgs": [
         "--cap-add=SYS_PTRACE",
-        "--security-opt", "seccomp=unconfined",
-        "--gpus=all"
+        "--security-opt", "seccomp=unconfined"
     ],
 
     // Set *default* container specific settings.json values on container create.
