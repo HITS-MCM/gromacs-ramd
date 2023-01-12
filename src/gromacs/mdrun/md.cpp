@@ -524,14 +524,6 @@ void gmx::LegacySimulator::do_md()
                            cr,
                            startingBehavior != StartingBehavior::NewSimulation);
 
-    /* RAMD */
-    std::unique_ptr<RAMD> ramd = nullptr;
-    if (ir->bRAMD)
-    {
-        ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, startingBehavior, cr, nfile, fnm, oenv, fplog);
-        fr->forceProviders->addForceProvider(ramd.get());
-    }
-
     // TODO: Remove this by converting AWH into a ForceProvider
     auto awh = prepareAwhModule(fplog,
                                 *ir,
@@ -639,6 +631,14 @@ void gmx::LegacySimulator::do_md()
 
     int64_t step     = ir->init_step;
     int64_t step_rel = 0;
+
+    /* RAMD */
+    std::unique_ptr<RAMD> ramd = nullptr;
+    if (ir->bRAMD)
+    {
+        ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, startingBehavior, cr, nfile, fnm, oenv, fplog);
+        fr->forceProviders->addForceProvider(ramd.get());
+    }
 
     /* To minimize communication, compute_globals computes the COM velocity
      * and the kinetic energy for the velocities without COM motion removed.

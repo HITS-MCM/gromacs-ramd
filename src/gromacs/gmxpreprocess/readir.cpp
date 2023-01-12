@@ -2439,7 +2439,7 @@ void get_ir(const char*     mdparin,
 
     /* RAMD */
     printStringNewline(&inp, "RAMD");
-    ir->bRAMD = (getEnum<Boolean>(&inp, "ramd", wi) != Boolean::No);
+    ir->bRAMD = getEnum<Boolean>(&inp, "ramd", wi) != Boolean::No;
     if (ir->bRAMD)
     {
         snew(ir->ramdParams, 1);

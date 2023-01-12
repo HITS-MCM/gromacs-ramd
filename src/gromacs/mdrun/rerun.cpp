@@ -702,6 +702,7 @@ void gmx::LegacySimulator::do_rerun()
             const bool isCheckpointingStep = false;
             const bool doRerun             = true;
             const bool bSumEkinhOld        = false;
+            const bool bRAMDTraj           = false;
             do_md_trajectory_writing(fplog,
                                      cr,
                                      nfile,

@@ -79,7 +79,7 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
 
     ramdparams->eval_freq = get_eint(inp, "ramd-eval-freq", 50, wi);
     ramdparams->force_out_freq = get_eint(inp, "ramd-force-out-freq", 100, wi);
-    ramdparams->old_angle_dist = (get_eeenum(inp, "ramd-old-angle-dist", yesno_names, wi) != 0);
+    ramdparams->old_angle_dist = getEnum<Boolean>(inp, "ramd-old-angle-dist", wi) != Boolean::No;
 
     inp->emplace_back(0, 1, false, false, false, "pull-ngroups",
         std::to_string(ramdparams->ngroup * 2));
@@ -109,5 +109,5 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, w
         }
     }
 
-    ramdparams->connected_ligands = (get_eeenum(inp, "ramd-connected-ligands", yesno_names, wi) != 0);
+    ramdparams->connected_ligands = getEnum<Boolean>(inp, "ramd-connected-ligands", wi) != Boolean::No;
 }

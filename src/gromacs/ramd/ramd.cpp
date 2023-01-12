@@ -229,7 +229,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         {
             fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
             this->write_trajectory = true;
-            gmx_set_stop_condition(gmx_stop_cond_next);
+            gmx_set_stop_condition(StopCondition::Next);
         }
     }
 
@@ -237,9 +237,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     {
         for (int i = 0; i < 3; ++i)
         {
-            get_pull_coord_value(pull, g * 3 + i, &pbc);
-            apply_external_pull_coord_force(pull, g * 3 + i, direction[g][i] * params.group[g].force,
-                forceProviderInput.mdatoms_.massT, &forceProviderOutput->forceWithVirial_);
+            get_pull_coord_value(pull, g * 3 + i, pbc);
+            apply_external_pull_coord_force(pull, g * 3 + i, direction[g][i] * params.group[g].force);
         }
     }
 }

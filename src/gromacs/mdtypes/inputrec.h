@@ -525,7 +525,7 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
 
     /* RAMD */
     //! Do we do RAMD?
-    gmx_bool bRAMD;
+    bool bRAMD;
     //! RAMD parameters
     gmx::RAMDParams* ramdParams;
 

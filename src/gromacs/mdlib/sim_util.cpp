@@ -649,14 +649,13 @@ static void computeSpecialForces(FILE*                          fplog,
 {
     // RAMD: Pull forces must be applied before ForceProviders
 
-    if ((inputrec->bPull || inputrec->bRAMD) && pull_have_potential(*pull_work))
+    if ((inputrec.bPull || inputrec.bRAMD) && pull_have_potential(*pull_work))
     {
-        const int mtsLevel = forceGroupMtsLevel(inputrec->mtsLevels, gmx::MtsForceGroups::Pull);
+        const int mtsLevel = forceGroupMtsLevel(inputrec.mtsLevels, gmx::MtsForceGroups::Pull);
         if (mtsLevel == 0 || stepWork.computeSlowForces)
         {
             auto& forceWithVirial = (mtsLevel == 0) ? forceWithVirialMtsLevel0 : forceWithVirialMtsLevel1;
-            pull_potential_wrapper(cr, inputrec, box, x, forceWithVirial, mdatoms, enerd, pull_work,
-                                   lambda.data(), t, wcycle);
+            pull_potential_wrapper(cr, inputrec, box, x, mdatoms, enerd, pull_work, lambda.data(), t, wcycle);
         }
     }
 
