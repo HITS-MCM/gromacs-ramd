@@ -41,7 +41,7 @@ TEST_F(RAMDTest, RAMD_1whhi)
     const std::string mdpContents = R"(
         dt                       = 0.004
         nsteps                   = 4
-        tcoupl                   = Berendsen
+        tcoupl                   = V-rescale
         tc-grps                  = System
         tau-t                    = 0.5
         ref-t                    = 300
@@ -74,7 +74,7 @@ TEST_F(RAMDTest, RAMD_membrane)
     const std::string mdpContents = R"(
         dt                       = 0.004
         nsteps                   = 4
-        tcoupl                   = Berendsen
+        tcoupl                   = V-rescale
         tc-grps                  = System
         tau-t                    = 0.5
         ref-t                    = 300
