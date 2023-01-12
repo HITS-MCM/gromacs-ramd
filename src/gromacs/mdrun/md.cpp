@@ -461,7 +461,7 @@ void gmx::LegacySimulator::do_md()
     std::unique_ptr<RAMD> ramd = nullptr;
     if (ir->bRAMD)
     {
-        ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, startingBehavior, cr, nfile, fnm, oenv);
+        ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, startingBehavior, cr, nfile, fnm, oenv, fplog);
         fr->forceProviders->addForceProvider(ramd.get());
     }
 
@@ -1167,7 +1167,8 @@ void gmx::LegacySimulator::do_md()
         do_md_trajectory_writing(fplog, cr, nfile, fnm, step, step_rel, t, ir, state, state_global,
                                  observablesHistory, top_global, fr, outf, energyOutput, ekind,
                                  f.view().force(), checkpointHandler->isCheckpointingStep(),
-                                 bRerunMD, bLastStep, mdrunOptions.writeConfout, bSumEkinhOld);
+                                 bRerunMD, bLastStep, mdrunOptions.writeConfout, bSumEkinhOld,
+                                 ir->bRAMD && ramd->getWriteTrajectoryAndReset());
         /* Check if IMD step and do IMD communication, if bIMD is TRUE. */
         bInteractiveMDstep = imdSession->run(step, bNS, state->box, state->x.rvec_array(), t);
 

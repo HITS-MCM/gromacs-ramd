@@ -10,6 +10,8 @@
 
 #include "gmxpre.h"
 #include "gromacs/mdlib/sighandler.h"
+#include "gromacs/utility/stringutil.h"
+#include "gromacs/utility/textreader.h"
 #include "programs/mdrun/tests/moduletest.h"
 
 namespace gmx {
@@ -166,81 +168,161 @@ TEST_F(RAMDTest, RAMD_hsp90)
     gmx_reset_stop_condition();
 }
 
-// heat shock protein 90
+const std::string glyr_mdp_base = R"(
+    integrator               = md
+    dt                       = 0.002
+    nsteps                   = 4
+    nstlog                   = 1
+    nstenergy                = 1
+    nstxout-compressed       = 1
+    continuation             = yes
+    constraints              = h-bonds
+    constraint-algorithm     = lincs
+    cutoff-scheme            = Verlet
+    coulombtype              = PME
+    rcoulomb                 = 1.2
+    vdwtype                  = Cut-off
+    rvdw                     = 1.2
+    DispCorr                 = EnerPres
+    tcoupl                   = Nose-Hoover
+    tc-grps                  = System
+    tau-t                    = 1.0
+    ref-t                    = 300
+    pcoupl                   = Parrinello-Rahman
+    tau-p                    = 5.0
+    compressibility          = 4.5e-5
+    ref-p                    = 1.0
+    ramd                     = yes
+    ramd-seed                = 1234
+    ramd-ngroups             = 5
+    ramd-group1-receptor     = Protein1
+    ramd-group1-ligand       = INH1
+    ramd-group1-force        = 600
+    ramd-group1-max_dist     = 40.0
+    ramd-group1-r_min_dist   = 0.0025
+    ramd-group2-receptor     = Protein2
+    ramd-group2-ligand       = INH2
+    ramd-group2-force        = 600
+    ramd-group2-max_dist     = 40.0
+    ramd-group2-r_min_dist   = 0.0025
+    ramd-group3-receptor     = Protein3
+    ramd-group3-ligand       = INH3
+    ramd-group3-force        = 600
+    ramd-group3-max_dist     = 40.0
+    ramd-group3-r_min_dist   = 0.0025
+    ramd-group4-receptor     = Protein4
+    ramd-group4-ligand       = INH4
+    ramd-group4-force        = 600
+    ramd-group4-max_dist     = 40.0
+    ramd-group4-r_min_dist   = 0.0025
+    ramd-group5-receptor     = Protein5
+    ramd-group5-ligand       = INH5
+    ramd-group5-force        = 600
+    ramd-group5-max_dist     = 40.0
+    ramd-group5-r_min_dist   = 0.0025
+    ramd-eval_freq           = 2
+    ramd-force_out_freq      = 2
+    ramd-old-angle-dist      = no
+    ramd-group1-ligand-pbcatom   = 0
+    ramd-group1-receptor-pbcatom = 2692
+    ramd-group2-ligand-pbcatom   = 0
+    ramd-group2-receptor-pbcatom = 8075
+    ramd-group3-ligand-pbcatom   = 0
+    ramd-group3-receptor-pbcatom = 13458
+    ramd-group4-ligand-pbcatom   = 0
+    ramd-group4-receptor-pbcatom = 18841
+    ramd-group5-ligand-pbcatom   = 0
+    ramd-group5-receptor-pbcatom = 24224
+)";
+
 TEST_F(RAMDTest, RAMD_GlyR)
 {
     runner_.useTopGroAndNdxFromDatabase("glyr");
-    const std::string mdpContents = R"(
-        integrator               = md
-        dt                       = 0.002
-        nsteps                   = 4
-        nstlog                   = 1
-        nstenergy                = 1
-        nstxout-compressed       = 1
-        continuation             = yes
-        constraints              = h-bonds
-        constraint-algorithm     = lincs
-        cutoff-scheme            = Verlet
-        coulombtype              = PME
-        rcoulomb                 = 1.2
-        vdwtype                  = Cut-off
-        rvdw                     = 1.2
-        DispCorr                 = EnerPres
-        tcoupl                   = Nose-Hoover
-        tc-grps                  = System
-        tau-t                    = 1.0
-        ref-t                    = 300
-        pcoupl                   = Parrinello-Rahman
-        tau-p                    = 5.0
-        compressibility          = 4.5e-5
-        ref-p                    = 1.0
-        ramd                     = yes
-        ramd-seed                = 1234
-        ramd-ngroups             = 5
-        ramd-group1-receptor     = Protein1
-        ramd-group1-ligand       = INH1
-        ramd-group1-force        = 600
-        ramd-group1-max_dist     = 40.0
-        ramd-group1-r_min_dist   = 0.0025
-        ramd-group2-receptor     = Protein2
-        ramd-group2-ligand       = INH2
-        ramd-group2-force        = 600
-        ramd-group2-max_dist     = 40.0
-        ramd-group2-r_min_dist   = 0.0025
-        ramd-group3-receptor     = Protein3
-        ramd-group3-ligand       = INH3
-        ramd-group3-force        = 600
-        ramd-group3-max_dist     = 40.0
-        ramd-group3-r_min_dist   = 0.0025
-        ramd-group4-receptor     = Protein4
-        ramd-group4-ligand       = INH4
-        ramd-group4-force        = 600
-        ramd-group4-max_dist     = 40.0
-        ramd-group4-r_min_dist   = 0.0025
-        ramd-group5-receptor     = Protein5
-        ramd-group5-ligand       = INH5
-        ramd-group5-force        = 600
-        ramd-group5-max_dist     = 40.0
-        ramd-group5-r_min_dist   = 0.0025
-        ramd-eval_freq           = 2
-        ramd-force_out_freq      = 2
-        ramd-old-angle-dist      = no
-        ramd-group1-ligand-pbcatom   = 0
-        ramd-group1-receptor-pbcatom = 2692
-        ramd-group2-ligand-pbcatom   = 0
-        ramd-group2-receptor-pbcatom = 8075
-        ramd-group3-ligand-pbcatom   = 0
-        ramd-group3-receptor-pbcatom = 13458
-        ramd-group4-ligand-pbcatom   = 0
-        ramd-group4-receptor-pbcatom = 18841
-        ramd-group5-ligand-pbcatom   = 0
-        ramd-group5-receptor-pbcatom = 24224
-    )";
+    const std::string mdpContents = glyr_mdp_base;
     runner_.useStringAsMdpFile(mdpContents);
 
     EXPECT_EQ(0, runner_.callGrompp());
     ASSERT_EQ(0, runner_.callMdrun());
     gmx_reset_stop_condition();
+}
+
+const std::string water4_mdp_base = R"(
+    integrator               = md
+    dt                       = 0.001
+    nsteps                   = 100000
+    nstlog                   = 10
+    rlist                    = 1.0
+    coulombtype              = Cut-off
+    rcoulomb-switch          = 0
+    rcoulomb                 = 1.0
+    epsilon-r                = 1
+    epsilon-rf               = 1
+    vdw-type                 = Cut-off
+    rvdw-switch              = 0
+    rvdw                     = 1.0
+    DispCorr                 = no
+    Tcoupl                   = no
+    Pcoupl                   = no
+
+    ramd                     = yes
+    ramd-seed                = 1234
+    ramd-eval-freq           = 10
+    ramd-force-out-freq      = 10
+    ramd-old-angle-dist      = no
+    ramd-ngroups             = 2
+    ramd-group1-receptor     = 1SOL
+    ramd-group1-ligand       = 2SOL
+    ramd-group1-force        = 100
+    ramd-group1-max-dist     = 1.0
+    ramd-group1-r-min-dist   = 0.0025
+    ramd-group2-receptor     = 1SOL
+    ramd-group2-ligand       = 3SOL
+    ramd-group2-force        = 100
+    ramd-group2-max-dist     = 1.0
+    ramd-group2-r-min-dist   = 0.0025
+)";
+
+TEST_F(RAMDTest, RAMD_connected_ligands)
+{
+    runner_.useTopGroAndNdxFromDatabase("4water");
+    auto mdpContents = water4_mdp_base + R"(
+        ramd-connected-ligands = no
+    )";
+    runner_.useStringAsMdpFile(mdpContents);
+
+    CommandLine caller;
+    caller.addOption("-ramd");
+    caller.addOption("-reprod");
+
+    EXPECT_EQ(0, runner_.callGrompp());
+    ASSERT_EQ(2, runner_.callMdrun(caller));
+    gmx_reset_stop_condition();
+
+    TextReader reader_log(runner_.logFileName_);
+    std::string line;
+    int number_of_steps = -1;
+    while (reader_log.readLine(&line)) {
+        if (line.find("==== RAMD ==== GROMACS will be stopped after") != std::string::npos) {
+            number_of_steps = stoi(gmx::splitString(line)[8]);
+        }
+    }
+    EXPECT_EQ(number_of_steps, 630);
+
+    TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
+    // std::cout << reader_pullx.readAll();
+    while (reader_pullx.readLine(&line)) {
+        if (line.rfind("0.000", 0) != std::string::npos) {
+            EXPECT_EQ(std::string("0.0593702"), gmx::splitString(line)[1]);
+        }
+    }
+
+    TextReader reader_ramd(fileManager_.getTemporaryFilePath("state.xvg"));
+    // std::cout << reader_ramd.readAll();
+    while (reader_ramd.readLine(&line)) {
+        if (line.rfind("0.000", 0) != std::string::npos) {
+            EXPECT_EQ(std::string("0.423961"), gmx::splitString(line)[1]);
+        }
+    }
 }
 
 } // namespace test

@@ -2253,6 +2253,17 @@ applied to a molecule in the system.
    (yes)
    The value will be forwarded to pull-pbc-ref-prev-step-com. Default value is 'yes'.
 
+.. mdp:: ramd-connected-ligands
+
+   (yes)
+   If ‘yes’, the trajectory will be terminated when all ligands have left the radius.
+   If one ligand leaves the radius, its last assigned force will continue to be
+   applied until the simulation end or radius re-entry.SRS for MCM-RAMD-3.
+   If ‘no’, this should revert to standard RAMD for multiple disconnected ligands.
+   Each ligand is subject to a RAMD force until the individual ligand has left the
+   dissociation radius. The simulation stops when all ligands have left the
+   dissociation radius. Default value is 'yes'.
+
 Enforced rotation
 ^^^^^^^^^^^^^^^^^
 
@@ -3383,7 +3394,7 @@ electron-microscopy experiments. (See the `reference manual`_ for details)
 
 .. mdp:: density-guided-simulation-shift-vector
 
-   (0,0,0) [nm] Add this vector to all atoms in the 
+   (0,0,0) [nm] Add this vector to all atoms in the
    density-guided-simulation-group before calculating forces and energies for
    density-guided-simulations. Affects only the density-guided-simulation forces
    and energies. Corresponds to a shift of the input density in the opposite
@@ -3391,7 +3402,7 @@ electron-microscopy experiments. (See the `reference manual`_ for details)
 
 .. mdp:: density-guided-simulation-transformation-matrix
 
-   (1,0,0,0,1,0,0,0,1) Multiply all atoms with this matrix in the 
+   (1,0,0,0,1,0,0,0,1) Multiply all atoms with this matrix in the
    density-guided-simulation-group before calculating forces and energies for
    density-guided-simulations. Affects only the density-guided-simulation forces
    and energies. Corresponds to a transformation of the input density by the

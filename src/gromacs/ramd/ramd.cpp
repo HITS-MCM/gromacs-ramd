@@ -63,7 +63,8 @@ RAMD::RAMD(const RAMDParams&           params,
            const t_commrec*            cr,
            int                         nfile,
            const t_filenm              fnm[],
-           const gmx_output_env_t*     oenv)
+           const gmx_output_env_t*     oenv,
+           FILE*                       log)
   : params(params),
     pull(pull),
     pstep(pstep),
@@ -73,7 +74,9 @@ RAMD::RAMD(const RAMDParams&           params,
     com_lig_prev(params.ngroup),
     out(nullptr),
     cr(cr),
-    ligand_exited(params.ngroup, 0)
+    ligand_exited(params.ngroup, 0),
+    write_trajectory(false),
+    log(log)
 {
     for (int g = 0; g < params.ngroup; ++g)
     {
@@ -166,18 +169,19 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 fprintf(out, "\t%g", curr_dist);
             }
 
-            /// Do not set a new direction, if the ligand has exited the binding site
-            if (ligand_exited[g]) continue;
-
             if (curr_dist >= params.group[g].max_dist)
             {
                 ligand_exited[g] = 1;
-                direction[g] = DVec(0.0, 0.0, 0.0);
+                if (!params.connected_ligands) {
+                    direction[g] = DVec(0.0, 0.0, 0.0);
+                }
                 if (MASTER(cr))
                 {
-                    fprintf(stdout, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
+                    fprintf(this->log, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
                             g, *pstep);
                 }
+            } else if (ligand_exited[g] == 1) {
+                ligand_exited[g] = 0;
             }
 
             // difference of the COM ligand-receptor distance between current and the last evaluation step
@@ -223,7 +227,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         // Exit if all ligand-receptor COM distances are larger than max_dist
         if (std::accumulate(ligand_exited.begin(), ligand_exited.end(), 0) == params.ngroup)
         {
-            fprintf(stdout, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+            fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+            this->write_trajectory = true;
             gmx_set_stop_condition(gmx_stop_cond_next);
         }
     }

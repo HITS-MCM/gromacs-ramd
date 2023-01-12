@@ -1,37 +1,29 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.187.0/containers/cpp
 {
-	"name": "C++",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
-	"runArgs": [ 
-		"--cap-add=SYS_PTRACE",
-		"--security-opt",
-		"seccomp=unconfined",
-		"--runtime=nvidia"
-	],
+    "name": "C++",
+    "image": "mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-20.04",
+    "runArgs": [
+        "--cap-add=SYS_PTRACE",
+        "--security-opt", "seccomp=unconfined"
+    ],
 
-	// Set *default* container specific settings.json values on container create.
-	"settings": {},
+    // Set *default* container specific settings.json values on container create.
+    "settings": {},
 
-	// Add the IDs of extensions you want installed when the container is created.
-	"extensions": [
-		"ms-vscode.cpptools",
-		"twxs.cmake",
-		"ms-vscode.cmake-tools"
-	],
+    // Add the IDs of extensions you want installed when the container is created.
+    "extensions": [
+        "ms-vscode.cpptools-extension-pack"
+    ],
 
-	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	// "forwardPorts": [],
+    // Use 'forwardPorts' to make a list of ports inside the container available locally.
+    // "forwardPorts": [],
 
-	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": []
+    // Use 'postCreateCommand' to run commands after the container is created.
+    // "postCreateCommand": []
 
-	// Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-	// "remoteUser": "bernd"
+    // Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
+    "remoteUser": "vscode",
 
     "mounts": [
-		"source=${localEnv:HOME}/HITS/data,target=/data,type=bind,consistency=cached"
-	]
+        "source=${localEnv:HOME}/data/gromacs-ramd,target=/data,type=bind,consistency=cached"
+    ]
 }

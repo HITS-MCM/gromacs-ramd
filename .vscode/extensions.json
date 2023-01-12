@@ -1,6 +1,6 @@
 {
     "recommendations": [
-        "eamodio.gitlens"
+        "eamodio.gitlens",
         "kriegalex.vscode-cudacpp",
         "ms-python.python",
         "ms-vscode.cmake-tools",
