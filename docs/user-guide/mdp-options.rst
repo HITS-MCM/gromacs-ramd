@@ -2258,7 +2258,7 @@ applied to a molecule in the system.
    (yes)
    If ‘yes’, the trajectory will be terminated when all ligands have left the radius.
    If one ligand leaves the radius, its last assigned force will continue to be
-   applied until the simulation end or radius re-entry.SRS for MCM-RAMD-3.
+   applied until the simulation end or radius re-entry.
    If ‘no’, this should revert to standard RAMD for multiple disconnected ligands.
    Each ligand is subject to a RAMD force until the individual ligand has left the
    dissociation radius. The simulation stops when all ligands have left the
