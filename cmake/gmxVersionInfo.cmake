@@ -2,7 +2,7 @@
 # This file is part of the GROMACS molecular simulation package.
 #
 # Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
-# Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
+# Copyright (c) 2019,2020,2021,2022, by the GROMACS development team, led by
 # Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
 # and including many others, as listed in the AUTHORS file in the
 # top-level source directory and at http://www.gromacs.org.
@@ -198,7 +198,7 @@
 # The GROMACS convention is that these are the version number of the next
 # release that is going to be made from this branch.
 set(GMX_VERSION_MAJOR 2021)
-set(GMX_VERSION_PATCH 3)
+set(GMX_VERSION_PATCH 6)
 # The suffix, on the other hand, is used mainly for betas and release
 # candidates, where it signifies the most recent such release from
 # this branch; it will be empty before the first such release, as well
@@ -228,6 +228,15 @@ else()
 endif()
 set(GMX_VERSION_STRING "${GMX_VERSION}${GMX_VERSION_SUFFIX}")
 
+set(REGRESSIONTEST_VERSION "${GMX_VERSION_STRING}")
+set(REGRESSIONTEST_BRANCH "release-2021")
+# Run the regressiontests packaging job with the correct pakage
+# version string, and the release box checked, in order to have it
+# build the regressiontests tarball with all the right naming. The
+# naming affects the md5sum that has to go here, and if it isn't right
+# release workflow will report a failure.
+set(REGRESSIONTEST_MD5SUM "5f05ce3bb742b5db0ced02b34c8d1f1a" CACHE INTERNAL "MD5 sum of the regressiontests tarball for this GROMACS version")
+
 # If you are making a custom fork of GROMACS, please describe your
 # fork, perhaps with its version number, in the value of
 # GMX_VERSION_STRING_OF_FORK here. This string will appear in the
@@ -255,20 +264,11 @@ if (NOT SOURCE_IS_SOURCE_DISTRIBUTION AND
     set(GMX_VERSION_STRING "${GMX_VERSION_STRING}-dev")
 endif()
 
-set(REGRESSIONTEST_VERSION "${GMX_VERSION_STRING}")
-set(REGRESSIONTEST_BRANCH "release-2021") 
-# Run the regressiontests packaging job with the correct pakage
-# version string, and the release box checked, in order to have it
-# build the regressiontests tarball with all the right naming. The
-# naming affects the md5sum that has to go here, and if it isn't right
-# release workflow will report a failure.
-set(REGRESSIONTEST_MD5SUM "93956ea42c4d16fdd541518c05972989" CACHE INTERNAL "MD5 sum of the regressiontests tarball for this GROMACS version")
-
 math(EXPR GMX_VERSION_NUMERIC
      "${GMX_VERSION_MAJOR}*10000 + ${GMX_VERSION_PATCH}")
 set(GMX_API_VERSION ${GMX_VERSION_NUMERIC})
 
-# If run with cmake -P from releng scripts, print out necessary version info
+# If run with cmake -P from GitLab scripts, print out necessary version info
 # as JSON.
 if (CMAKE_SCRIPT_MODE_FILE)
     message("{ \"version\": \"${GMX_VERSION_STRING}\", \"regressiontest-md5sum\": \"${REGRESSIONTEST_MD5SUM}\" }")
@@ -285,8 +285,8 @@ if (GMX_VERSION_STRING_OF_FORK)
     set(GMX_MANUAL_DOI_INTERNAL "")
     set(GMX_SOURCE_DOI_INTERNAL "")
 else()
-    set(GMX_MANUAL_DOI_INTERNAL "10.5281/zenodo.5053220") # Set correct doi string here
-    set(GMX_SOURCE_DOI_INTERNAL "10.5281/zenodo.5053201") # Set correct doi string here
+    set(GMX_MANUAL_DOI_INTERNAL "10.5281/zenodo.6801839") # Set correct doi string here
+    set(GMX_SOURCE_DOI_INTERNAL "10.5281/zenodo.6801842") # Set correct doi string here
 endif()
 set(GMX_MANUAL_DOI ${GMX_MANUAL_DOI_INTERNAL} CACHE INTERNAL "reserved doi for GROMACS manual" FORCE)
 set(GMX_SOURCE_DOI ${GMX_SOURCE_DOI_INTERNAL} CACHE INTERNAL "reserved doi for GROMACS source code" FORCE)
@@ -413,20 +413,15 @@ if (GMX_GIT_VERSION_INFO)
 else()
     # Leave these to be substituted by the custom target below.
     # Specific for building from source tarball.
-    set(GMX_RELEASE_SOURCE_FILE_CHECKSUM "\@GMX_RELEASE_SOURCE_FILE_CHECKSUM\@")
-    set(GMX_CURRENT_SOURCE_FILE_CHECKSUM "\@GMX_CURRENT_SOURCE_FILE_CHECKSUM\@")
     gmx_add_custom_output_target(release-version-info RUN_ALWAYS
         OUTPUT ${VERSION_INFO_CMAKE_FILE}
         COMMAND ${CMAKE_COMMAND}
             -D PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-            -D HAVE_FULL_FUNCTIONING_PYTHON=${HAVE_FULL_FUNCTIONING_PYTHON}
             -D PROJECT_VERSION=${GMX_VERSION_STRING}
             -D PROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-            -D DIRECTORIES_TO_CHECKSUM=${DIRECTORIES_TO_CHECKSUM_STRING}
             -D VERSION_CMAKEIN=${VERSION_INFO_CMAKEIN_FILE_PARTIAL}
             -D VERSION_OUT=${VERSION_INFO_CMAKE_FILE}
             -D VERSION_STRING_OF_FORK=${GMX_VERSION_STRING_OF_FORK}
-            -D SOURCE_IS_SOURCE_DISTRIBUTION=${SOURCE_IS_SOURCE_DISTRIBUTION}
             -P ${CMAKE_CURRENT_LIST_DIR}/gmxGenerateVersionInfoWithoutGit.cmake
         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         COMMENT "Generating release version information")
@@ -438,39 +433,7 @@ configure_file(${VERSION_INFO_CMAKEIN_FILE}
 unset(GMX_VERSION_STRING_FULL)
 unset(GMX_VERSION_FULL_HASH)
 unset(GMX_VERSION_CENTRAL_BASE_HASH)
-unset(GMX_RELEASE_SOURCE_FILE_CHECKSUM)
-unset(GMX_CURRENT_SOURCE_FILE_CHECKSUM)
 
-
-# What file the checksum should be written to
-set(CHECKSUM_FILE "${PROJECT_SOURCE_DIR}/src/reference_checksum")
-
-# Target that allows checksumming a source tree when producing a tarball.
-# Allows verification of builds from the tarball to make sure the source had
-# not been tampered with.
-# Note: The RUN_ALWAYS here is to regenerate the hash file only, it does not
-# mean that the target is run in all builds
-if (HAVE_FULL_FUNCTIONING_PYTHON)
-    # We need the full path to the directories after passing it through
-    set(FULL_PATH_DIRECTORIES "")
-    foreach(DIR ${SET_OF_DIRECTORIES_TO_CHECKSUM})
-        list(APPEND FULL_PATH_DIRECTORIES "${PROJECT_SOURCE_DIR}/${DIR}")
-    endforeach()
-    gmx_add_custom_output_target(reference_checksum RUN_ALWAYS
-        OUTPUT ${CHECKSUM_FILE}
-        COMMAND ${PYTHON_EXECUTABLE}
-            ${PROJECT_SOURCE_DIR}/admin/createFileHash.py
-            -s ${FULL_PATH_DIRECTORIES}
-            -o ${CHECKSUM_FILE}
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-        COMMENT "Generating reference checksum of source files")
-else()
-    add_custom_target(reference_checksum
-        COMMAND ${CMAKE_COMMAND} -E echo
-        "Can not checksum files without python3 being available"
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-        COMMENT "Generating reference checksum of source files")
-endif()
 
 # The main user-visible interface to the machinery.
 # See documentation at the top of the script.

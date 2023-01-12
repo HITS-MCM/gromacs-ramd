@@ -2,7 +2,7 @@
  * This file is part of the GROMACS molecular simulation package.
  *
  * Copyright (c) 2015,2016,2017,2018,2019 by the GROMACS development team.
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
+ * Copyright (c) 2020,2021,2022, by the GROMACS development team, led by
  * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
  * and including many others, as listed in the AUTHORS file in the
  * top-level source directory and at http://www.gromacs.org.
@@ -154,6 +154,7 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(const TaskTarget        non
 
 bool decideWhetherToUseGpusForPmeWithThreadMpi(const bool              useGpuForNonbonded,
                                                const TaskTarget        pmeTarget,
+                                               const TaskTarget        pmeFftTarget,
                                                const int               numDevicesToUse,
                                                const std::vector<int>& userGpuTaskAssignment,
                                                const gmx_hw_info_t&    hardwareInfo,
@@ -165,8 +166,15 @@ bool decideWhetherToUseGpusForPmeWithThreadMpi(const bool              useGpuFor
     if ((pmeTarget == TaskTarget::Cpu) || !useGpuForNonbonded || !pme_gpu_supports_build(nullptr)
         || !pme_gpu_supports_hardware(hardwareInfo, nullptr) || !pme_gpu_supports_input(inputrec, nullptr))
     {
-        // PME can't run on a GPU. If the user required that, we issue
-        // an error later.
+        // PME can't run on a GPU. If the user required that, we issue an error later.
+        return false;
+    }
+
+    if (pmeFftTarget == TaskTarget::Cpu && !pme_gpu_mixed_mode_supports_input(inputrec, nullptr))
+    {
+        /* User requested PME FFT on CPU, but the current system is not compatible with Mixed mode,
+         * so we don't use GPUs at all.
+         * If the user had -pme gpu, we issue an error later. */
         return false;
     }
 
@@ -327,6 +335,7 @@ bool decideWhetherToUseGpusForNonbonded(const TaskTarget          nonbondedTarge
 
 bool decideWhetherToUseGpusForPme(const bool              useGpuForNonbonded,
                                   const TaskTarget        pmeTarget,
+                                  const TaskTarget        pmeFftTarget,
                                   const std::vector<int>& userGpuTaskAssignment,
                                   const gmx_hw_info_t&    hardwareInfo,
                                   const t_inputrec&       inputrec,
@@ -371,6 +380,16 @@ bool decideWhetherToUseGpusForPme(const bool              useGpuForNonbonded,
         if (pmeTarget == TaskTarget::Gpu)
         {
             GMX_THROW(NotImplementedError("Cannot compute PME interactions on a GPU, because " + message));
+        }
+        return false;
+    }
+    if (pmeFftTarget == TaskTarget::Cpu && !pme_gpu_mixed_mode_supports_input(inputrec, &message))
+    {
+        /* User requested PME FFT on CPU, but the current system is not compatible with Mixed mode,
+         * so we don't use GPUs at all. */
+        if (pmeTarget == TaskTarget::Gpu)
+        {
+            GMX_THROW(NotImplementedError("Cannot compute PME interactions in Mixed mode, because " + message));
         }
         return false;
     }
@@ -433,7 +452,7 @@ bool decideWhetherToUseGpusForPme(const bool              useGpuForNonbonded,
 
 PmeRunMode determinePmeRunMode(const bool useGpuForPme, const TaskTarget& pmeFftTarget, const t_inputrec& inputrec)
 {
-    if (!EEL_PME(inputrec.coulombtype))
+    if (!EEL_PME(inputrec.coulombtype) && !EVDW_PME(inputrec.vdwtype))
     {
         return PmeRunMode::None;
     }

@@ -223,8 +223,8 @@ configuring with ``GMX_SIMD_ARM_SVE_LENGTH=<len>``.
 The supported vector lengths are 128, 256, 512 and 1024. Since the SIMD short-range non-bonded kernels
 only support up to 16 floating point numbers per SIMD vector, 1024 bits vector length is only
 valid in double precision (e.g. ``-DGMX_DOUBLE=on``).
-Note that even if `mdrun` does check the SIMD vector length at runtime, running with a different
-vector length than the one used at CMake time is undefined behavior, and `mdrun` might crash before reaching
+Note that even if :ref:`mdrun <gmx mdrun>` does check the SIMD vector length at runtime, running with a different
+vector length than the one used at CMake time is undefined behavior, and :ref:`mdrun <gmx mdrun>` might crash before reaching
 the check (that would abort with a user-friendly error message).
 
 Process(-or) level parallelization via OpenMP
@@ -922,7 +922,7 @@ The Wallcycle module is used for runtime performance measurement of :ref:`gmx md
 At the end of the log file of each run, the "Real cycle and time accounting" section
 provides a table with runtime statistics for different parts of the :ref:`gmx mdrun` code
 in rows of the table.
-The table contains colums indicating the number of ranks and threads that
+The table contains columns indicating the number of ranks and threads that
 executed the respective part of the run, wall-time and cycle
 count aggregates (across all threads and ranks) averaged over the entire run.
 The last column also shows what precentage of the total runtime each row represents.
