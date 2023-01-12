@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief
@@ -46,15 +45,15 @@
 #ifndef GMX_MDTYPES_IFORCEPROVIDER_H
 #define GMX_MDTYPES_IFORCEPROVIDER_H
 
+#include <memory>
+
 #include "gromacs/math/vec.h"
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/classhelpers.h"
 #include "gromacs/utility/gmxassert.h"
 
 struct gmx_enerdata_t;
 struct t_commrec;
 struct t_forcerec;
-struct t_mdatoms;
 
 namespace gmx
 {
@@ -81,28 +80,34 @@ class ForceProviderInput
 public:
     /*! \brief Constructor assembles all necessary force provider input data
      *
-     * \param[in]  x        Atomic positions
-     * \param[in]  cr       Communication record structure
-     * \param[in]  box      The simulation box
-     * \param[in]  time     The current time in the simulation
-     * \param[in]  mdatoms  The atomic data
+     * \param[in]  x        Atomic positions.
+     * \param[in]  homenr   Number of atoms on the domain.
+     * \param[in]  chargeA  Atomic charges for atoms on the domain.
+     * \param[in]  massT    Atomic masses for atoms on the domain.
+     * \param[in]  time     The current time in the simulation.
+     * \param[in]  step     The current step in the simulation
+     * \param[in]  box      The simulation box.
+     * \param[in]  cr       Communication record structure.
      */
     ForceProviderInput(ArrayRef<const RVec> x,
-                       const t_mdatoms&     mdatoms,
+                       int                  homenr,
+                       ArrayRef<const real> chargeA,
+                       ArrayRef<const real> massT,
                        double               time,
+                       int64_t              step,
                        const matrix         box,
                        const t_commrec&     cr) :
-        x_(x),
-        mdatoms_(mdatoms),
-        t_(time),
-        cr_(cr)
+        x_(x), homenr_(homenr), chargeA_(chargeA), massT_(massT), t_(time), step_(step), cr_(cr)
     {
         copy_mat(box, box_);
     }
 
-    ArrayRef<const RVec> x_;       //!< The atomic positions
-    const t_mdatoms&     mdatoms_; //!< Atomic data
-    double               t_;       //!< The current time in the simulation
+    ArrayRef<const RVec> x_; //!< The atomic positions
+    int                  homenr_;
+    ArrayRef<const real> chargeA_;
+    ArrayRef<const real> massT_;
+    double               t_;    //!< The current time in the simulation
+    int64_t              step_; //!< The current step in the simulation
     matrix               box_ = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }; //!< The simulation box
     const t_commrec&     cr_; //!< Communication record structure
 };
@@ -130,8 +135,7 @@ public:
      * \param[in,out]  enerd            Structure containing energy data
      */
     ForceProviderOutput(ForceWithVirial* forceWithVirial, gmx_enerdata_t* enerd) :
-        forceWithVirial_(makeRefFromPointer(forceWithVirial)),
-        enerd_(makeRefFromPointer(enerd))
+        forceWithVirial_(makeRefFromPointer(forceWithVirial)), enerd_(makeRefFromPointer(enerd))
     {
     }
 
@@ -200,7 +204,7 @@ public:
 private:
     class Impl;
 
-    gmx::PrivateImplPointer<Impl> impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 } // namespace gmx

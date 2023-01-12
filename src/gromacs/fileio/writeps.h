@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_FILEIO_WRITEPS_H
 #define GMX_FILEIO_WRITEPS_H
@@ -63,21 +60,21 @@ typedef enum
     eYBottom
 } eYPos;
 
-enum
+enum class Fonts : int
 {
-    efontTIMES,
-    efontTIMESITALIC,
-    efontTIMESBOLD,
-    efontTIMESBOLDITALIC,
-    efontHELV,
-    efontHELVITALIC,
-    efontHELVBOLD,
-    efontHELVBOLDITALIC,
-    efontCOUR,
-    efontCOURITALIC,
-    efontCOURBOLD,
-    efontCOURBOLDITALIC,
-    efontNR
+    Times,
+    TimesItalic,
+    TimesBold,
+    TimesBoldItalic,
+    Helvetica,
+    HelveticaItalic,
+    HelveticaBold,
+    HelveticaBoldItalic,
+    Courier,
+    CourierItalic,
+    CourierBold,
+    CourierBoldItalic,
+    Count
 };
 
 
@@ -91,7 +88,7 @@ struct t_psdata
 };
 
 
-extern const char* fontnm[efontNR];
+const char* enumValueToString(Fonts enumValue);
 
 t_psdata ps_open(const char* fn, real x1, real y1, real x2, real y2);
 
@@ -122,7 +119,7 @@ void ps_fillarcslice(t_psdata* ps, real xc, real yc, real rad1, real rad2, real 
 
 void ps_circle(t_psdata* ps, real x1, real y1, real rad);
 
-void ps_font(t_psdata* ps, int font, real size);
+void ps_font(t_psdata* ps, Fonts font, real size);
 void ps_strfont(t_psdata* ps, char* font, real size);
 
 void ps_text(t_psdata* ps, real x1, real y1, const std::string& str);

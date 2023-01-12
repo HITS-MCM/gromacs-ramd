@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,26 +26,31 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include "writeps.h"
 
 #include "gromacs/fileio/gmxfio.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 
 using namespace gmx;
 
-const char* fontnm[efontNR] = {
-    "Times-Roman", "Times-Italic",      "Times-Bold",     "Times-BoldItalic",
-    "Helvetica",   "Helvetica-Oblique", "Helvetica-Bold", "Helvetica-BoldOblique",
-    "Courier",     "Courier-Oblique",   "Courier-Bold",   "Courier-BoldOblique"
-};
+const char* enumValueToString(Fonts enumValue)
+{
+    gmx::EnumerationArray<Fonts, const char*> fontNames = {
+        "Times-Roman", "Times-Italic",      "Times-Bold",     "Times-BoldItalic",
+        "Helvetica",   "Helvetica-Oblique", "Helvetica-Bold", "Helvetica-BoldOblique",
+        "Courier",     "Courier-Oblique",   "Courier-Bold",   "Courier-BoldOblique"
+    };
+    return fontNames[enumValue];
+}
 
 t_psdata ps_open(const char* fn, real x1, real y1, real x2, real y2)
 {
@@ -127,7 +128,12 @@ void ps_init_rgb_nbox(t_psdata* ps, real xbox, real ybox)
     fprintf(ps->fp,
             "/by {def currentpoint "
             "%g y r %g %g r %g y neg r %g %g r f y add moveto} bind def\n",
-            0.0, xbox, 0.0, 0.0, -xbox, 0.0);
+            0.0,
+            xbox,
+            0.0,
+            0.0,
+            -xbox,
+            0.0);
     /* macro bn is used in ps_rgb_nbox to draw rectangular boxes */
 }
 
@@ -155,7 +161,15 @@ void ps_init_rgb_box(t_psdata* ps, real xbox, real ybox)
     fprintf(ps->fp,
             "/b {currentpoint "
             "%g %g r %g %g r %g %g r %g %g r f %g add moveto} bind def\n",
-            0.0, ybox, xbox, 0.0, 0.0, -ybox, -xbox, 0.0, ybox);
+            0.0,
+            ybox,
+            xbox,
+            0.0,
+            0.0,
+            -ybox,
+            -xbox,
+            0.0,
+            ybox);
     /* macro b is used in search_col to define macro B */
 }
 
@@ -225,14 +239,12 @@ void ps_fillarc(t_psdata* ps, real x1, real y1, real rad, real a0, real a1)
 
 void ps_arcslice(t_psdata* ps, real xc, real yc, real rad1, real rad2, real a0, real a1)
 {
-    fprintf(ps->fp, "newpath %g %g %g %g %g arc %g %g %g %g %g arcn closepath s\n", xc, yc, rad1,
-            a0, a1, xc, yc, rad2, a1, a0);
+    fprintf(ps->fp, "newpath %g %g %g %g %g arc %g %g %g %g %g arcn closepath s\n", xc, yc, rad1, a0, a1, xc, yc, rad2, a1, a0);
 }
 
 void ps_fillarcslice(t_psdata* ps, real xc, real yc, real rad1, real rad2, real a0, real a1)
 {
-    fprintf(ps->fp, "newpath %g %g %g %g %g arc %g %g %g %g %g arcn closepath f\n", xc, yc, rad1,
-            a0, a1, xc, yc, rad2, a1, a0);
+    fprintf(ps->fp, "newpath %g %g %g %g %g arc %g %g %g %g %g arcn closepath f\n", xc, yc, rad1, a0, a1, xc, yc, rad2, a1, a0);
 }
 
 void ps_circle(t_psdata* ps, real x1, real y1, real rad)
@@ -240,15 +252,15 @@ void ps_circle(t_psdata* ps, real x1, real y1, real rad)
     ps_arc(ps, x1, y1, rad, 0, 360);
 }
 
-void ps_font(t_psdata* ps, int font, real size)
+void ps_font(t_psdata* ps, Fonts font, real size)
 {
 
-    if ((font < 0) || (font > efontNR))
+    if (font == Fonts::Count)
     {
-        fprintf(stderr, "Invalid Font: %d, using %s\n", font, fontnm[0]);
-        font = 0;
+        fprintf(stderr, "Invalid Font: %d, using %s\n", static_cast<int>(font), enumValueToString(Fonts::Times));
+        font = Fonts::Times;
     }
-    fprintf(ps->fp, "/%s findfont\n", fontnm[font]);
+    fprintf(ps->fp, "/%s findfont\n", enumValueToString(font));
     fprintf(ps->fp, "%g scalefont setfont\n", size);
 }
 

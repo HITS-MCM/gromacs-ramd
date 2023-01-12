@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -52,12 +50,15 @@
 
 #include <gtest/gtest.h>
 
+#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/utility/basenetwork.h"
+#include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/path.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/utility/stringutil.h"
 
 #include "testutils/cmdlinetest.h"
+#include "testutils/mpitest.h"
 
 #include "moduletest.h"
 #include "terminationhelper.h"
@@ -70,9 +71,14 @@ namespace test
 MultiSimTest::MultiSimTest() :
     size_(gmx_node_num()),
     rank_(gmx_node_rank()),
+    numRanksPerSimulation_(std::get<0>(GetParam())),
+    simulationNumber_(rank_ / numRanksPerSimulation_),
     mdrunCaller_(new CommandLine)
 
 {
+    // Zero or less ranks doesn't make sense
+    GMX_RELEASE_ASSERT(numRanksPerSimulation_ > 0, "Invalid number of ranks per simulation.");
+
     const char* directoryNameFormat = "sim_%d";
 
     // Modify the file manager to have a temporary directory unique to
@@ -81,89 +87,165 @@ MultiSimTest::MultiSimTest() :
     // constructed it.
     std::string originalTempDirectory = fileManager_.getOutputTempDirectory();
     std::string newTempDirectory =
-            Path::join(originalTempDirectory, formatString(directoryNameFormat, rank_));
-    Directory::create(newTempDirectory);
+            Path::join(originalTempDirectory, formatString(directoryNameFormat, simulationNumber_));
+    if (rank_ % numRanksPerSimulation_ == 0)
+    {
+        // Only one rank per simulation creates directory
+        Directory::create(newTempDirectory);
+    }
+#if GMX_LIB_MPI
+    // Make sure directories got created.
+    MPI_Barrier(MdrunTestFixtureBase::s_communicator);
+#endif
     fileManager_.setOutputTempDirectory(newTempDirectory);
 
     mdrunCaller_->append("mdrun");
     mdrunCaller_->addOption("-multidir");
-    for (int i = 0; i != size_; ++i)
+    for (int i = 0; i < size_ / numRanksPerSimulation_; ++i)
     {
         mdrunCaller_->append(Path::join(originalTempDirectory, formatString(directoryNameFormat, i)));
     }
 }
 
-void MultiSimTest::organizeMdpFile(SimulationRunner* runner, const char* controlVariable, int numSteps)
+bool MultiSimTest::mpiSetupValid() const
 {
+    // Single simulation case is not implemented in multi-sim
+    const bool haveAtLeastTwoSimulations = ((size_ / numRanksPerSimulation_) >= 2);
+    // Mdrun will throw error if simulations don't have identical number of ranks
+    const bool simulationsHaveIdenticalRankNumber = ((size_ % numRanksPerSimulation_) == 0);
+
+    return (haveAtLeastTwoSimulations && simulationsHaveIdenticalRankNumber);
+}
+
+void MultiSimTest::organizeMdpFile(SimulationRunner*    runner,
+                                   IntegrationAlgorithm integrator,
+                                   TemperatureCoupling  tcoupl,
+                                   PressureCoupling     pcoupl,
+                                   int                  numSteps,
+                                   bool                 doRegression) const
+{
+    GMX_RELEASE_ASSERT(mpiSetupValid(), "Creating the mdp file without valid MPI setup is useless.");
     const real  baseTemperature = 298;
     const real  basePressure    = 1;
     std::string mdpFileContents = formatString(
+            "integrator = %s\n"
+            "tcoupl = %s\n"
+            "pcoupl = %s\n"
             "nsteps = %d\n"
             "nstlog = 1\n"
             "nstcalcenergy = 1\n"
-            "tcoupl = v-rescale\n"
             "tc-grps = System\n"
             "tau-t = 1\n"
             "ref-t = %f\n"
             // pressure coupling (if active)
-            "tau-p = 1\n"
+            "tau-p = 2\n"
             "ref-p = %f\n"
             "compressibility = 4.5e-5\n"
             // velocity generation
             "gen-vel = yes\n"
             "gen-temp = %f\n"
-            // control variable specification
-            "%s\n",
-            numSteps, baseTemperature + 0.0001 * rank_, basePressure * std::pow(1.01, rank_),
+            "gen-seed = %d\n"
+            // v-rescale and c-rescale use ld-seed
+            "ld-seed = %d\n"
+            // Two systems are used: spc2    non-interacting also at cutoff 1nm
+            //                       tip3p5  has box length of 1.86
+            "rcoulomb = 0.7\n"
+            "rvdw = 0.7\n"
+            // Trajectory output if required
+            "nstxout = %d\n"
+            "nstvout = %d\n"
+            "nstfout = %d\n"
+            "nstenergy = %d\n",
+            enumValueToString(integrator),
+            enumValueToString(tcoupl),
+            enumValueToString(pcoupl),
+            numSteps,
+            baseTemperature + 0.0001 * rank_,
+            basePressure * std::pow(1.01, rank_),
             /* Set things up so that the initial KE decreases with
                increasing replica number, so that the (identical)
                starting PE decreases on the first step more for the
                replicas with higher number, which will tend to force
                replica exchange to occur. */
-            std::max(baseTemperature - 10 * rank_, real(0)), controlVariable);
+            std::max(baseTemperature - 10 * rank_, real(0)),
+            // If we do regression, we need reproducible velocity
+            // generation, which can be different per simulation
+            (doRegression ? 671324 + simulationNumber_ : -1),
+            // If we do regression, we need reproducible temperature and
+            // pressure coupling, which can be different per simulation
+            (doRegression ? 51203 + simulationNumber_ : -1),
+            // If we do regression, write one intermediate point
+            (doRegression ? int(numSteps / 2) : 0),
+            (doRegression ? int(numSteps / 2) : 0),
+            (doRegression ? int(numSteps / 2) : 0),
+            // If we do regression, print energies every step so
+            // we're sure to catch the replica exchange steps
+            (doRegression ? 1 : 1000));
     runner->useStringAsMdpFile(mdpFileContents);
+}
+
+void MultiSimTest::runGrompp(SimulationRunner* runner, int numSteps, bool doRegression, int maxWarnings) const
+{
+    // Call grompp once per simulation
+    if (rank_ % numRanksPerSimulation_ == 0)
+    {
+        const auto& simulator = std::get<1>(GetParam());
+        const auto& tcoupl    = std::get<2>(GetParam());
+        const auto& pcoupl    = std::get<3>(GetParam());
+        int         maxWarn   = maxWarnings;
+        if (pcoupl == PressureCoupling::Berendsen)
+        {
+            maxWarn++;
+        }
+        if (tcoupl == TemperatureCoupling::Berendsen)
+        {
+            maxWarn++;
+        }
+        organizeMdpFile(runner, simulator, tcoupl, pcoupl, numSteps, doRegression);
+        runner->setMaxWarn(maxWarn);
+        CommandLine caller;
+        EXPECT_EQ(0, runner->callGromppOnThisRank(caller));
+    }
+
+#if GMX_LIB_MPI
+    // Make sure simulation masters have written the .tpr file before other ranks try to read it.
+    MPI_Barrier(MdrunTestFixtureBase::s_communicator);
+#endif
 }
 
 void MultiSimTest::runExitsNormallyTest()
 {
-    if (size_ <= 1)
+    if (!mpiSetupValid())
     {
-        /* Can't test multi-sim without multiple ranks. */
+        // Can't test multi-sim without multiple simulations
         return;
     }
 
     SimulationRunner runner(&fileManager_);
     runner.useTopGroAndNdxFromDatabase("spc2");
 
-    const char* pcoupl = GetParam();
-    organizeMdpFile(&runner, pcoupl);
-    /* Call grompp on every rank - the standard callGrompp() only runs
-       grompp on rank 0. */
-    EXPECT_EQ(0, runner.callGromppOnThisRank());
+    runGrompp(&runner);
 
     ASSERT_EQ(0, runner.callMdrun(*mdrunCaller_));
 }
 
 void MultiSimTest::runMaxhTest()
 {
-    if (size_ <= 1)
+    if (!mpiSetupValid())
     {
-        /* Can't test replica exchange without multiple ranks. */
+        // Can't test multi-sim without multiple simulations
         return;
     }
 
     SimulationRunner runner(&fileManager_);
     runner.useTopGroAndNdxFromDatabase("spc2");
 
-    TerminationHelper helper(&fileManager_, mdrunCaller_.get(), &runner);
+    TerminationHelper helper(mdrunCaller_.get(), &runner);
     // Make sure -maxh has a chance to propagate
     int numSteps = 100;
-    organizeMdpFile(&runner, "pcoupl = no", numSteps);
-    /* Call grompp on every rank - the standard callGrompp() only runs
-       grompp on rank 0. */
-    EXPECT_EQ(0, runner.callGromppOnThisRank());
+    runGrompp(&runner, numSteps);
 
-    helper.runFirstMdrun(runner.cptFileName_);
+    helper.runFirstMdrun(runner.cptOutputFileName_);
     helper.runSecondMdrun();
 }
 

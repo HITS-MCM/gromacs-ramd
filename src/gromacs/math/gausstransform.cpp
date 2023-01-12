@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -51,7 +50,9 @@
 
 #include "gromacs/math/functions.h"
 #include "gromacs/math/multidimarray.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
+#include "gromacs/utility/basedefinitions.h"
 
 namespace gmx
 {
@@ -115,10 +116,10 @@ GaussianOn1DLattice::Impl::Impl(int numGridPointsForSpreadingHalfWidth, real sig
             std::min(maxEvaluatedSpreadDistance_,
                      static_cast<int>(std::floor(sigma * sqrt(-2.0 * c_logMinFloat))) - 1);
 
-    std::generate_n(std::back_inserter(e3_), maxEvaluatedSpreadDistance_ + 1,
-                    [sigma, latticeIndex = 0]() mutable {
-                        return std::exp(-0.5 * square(latticeIndex++ / sigma));
-                    });
+    std::generate_n(
+            std::back_inserter(e3_), maxEvaluatedSpreadDistance_ + 1, [sigma, latticeIndex = 0]() mutable {
+                return std::exp(-0.5 * square(latticeIndex++ / sigma));
+            });
 
     std::fill(std::begin(spreadingResult_), std::end(spreadingResult_), 0.);
 };
@@ -235,7 +236,8 @@ IVec rangeBeginWithinLattice(const IVec& index, const IVec& range)
  */
 IVec rangeEndWithinLattice(const IVec& index, const dynamicExtents3D& extents, const IVec& range)
 {
-    IVec extentAsIvec(static_cast<int>(extents.extent(ZZ)), static_cast<int>(extents.extent(YY)),
+    IVec extentAsIvec(static_cast<int>(extents.extent(ZZ)),
+                      static_cast<int>(extents.extent(YY)),
                       static_cast<int>(extents.extent(XX)));
     return elementWiseMin(extentAsIvec, index + range);
 }
@@ -247,15 +249,16 @@ IVec rangeEndWithinLattice(const IVec& index, const dynamicExtents3D& extents, c
  * OuterProductEvaluator
  */
 
-mdspan<const float, dynamic_extent, dynamic_extent> OuterProductEvaluator::
-                                                    operator()(ArrayRef<const float> x, ArrayRef<const float> y)
+mdspan<const float, dynamic_extent, dynamic_extent>
+OuterProductEvaluator::operator()(ArrayRef<const float> x, ArrayRef<const float> y)
 {
     data_.resize(ssize(x), ssize(y));
     for (gmx::index xIndex = 0; xIndex < ssize(x); ++xIndex)
     {
         const auto xValue = x[xIndex];
-        std::transform(std::begin(y), std::end(y), begin(data_.asView()[xIndex]),
-                       [xValue](float yValue) { return xValue * yValue; });
+        std::transform(std::begin(y), std::end(y), begin(data_.asView()[xIndex]), [xValue](float yValue) {
+            return xValue * yValue;
+        });
     }
     return data_.asConstView();
 }
@@ -356,8 +359,8 @@ void GaussTransform3D::Impl::add(const GaussianSpreadKernelParameters::PositionA
     {
         // multiply with amplitude so that Gauss3D = (amplitude * Gauss_x) * Gauss_y * Gauss_z
         const float gauss1DAmplitude = dimension > XX ? 1.0 : localParameters.amplitude_;
-        gauss1d_[dimension].spread(gauss1DAmplitude, localParameters.coordinate_[dimension]
-                                                             - closestLatticePoint[dimension]);
+        gauss1d_[dimension].spread(
+                gauss1DAmplitude, localParameters.coordinate_[dimension] - closestLatticePoint[dimension]);
     }
 
     const auto spreadZY         = outerProductZY_(gauss1d_[ZZ].view(), gauss1d_[YY].view());

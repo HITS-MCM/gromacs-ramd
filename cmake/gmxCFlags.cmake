@@ -1,12 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
-# Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
-# Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2009- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,13 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
+
+include(CheckCCompilerFlag)
+include(CheckCXXCompilerFlag)
 
 # Test C flags FLAGS, and set VARIABLE to true if the work. Also add the
 # flags to CFLAGSVAR.
@@ -59,11 +59,23 @@ ENDMACRO(GMX_TEST_CXXFLAG VARIABLE FLAGS CXXFLAGSVAR)
 # Prepare some local variables so CUDA and non-CUDA code in targets
 # works the same way.
 function(gmx_target_compile_options_inner)
-    set (CFLAGS "${SIMD_C_FLAGS};${MPI_COMPILE_FLAGS};${EXTRA_C_FLAGS};${GMXC_CFLAGS}" PARENT_SCOPE)
+    set(CFLAGS
+            ${SIMD_C_FLAGS}
+            ${MPI_C_COMPILE_OPTIONS}
+            ${EXTRA_C_FLAGS}
+            ${GMXC_CFLAGS}
+         PARENT_SCOPE)
+
     # When SYCL support has been enabled (so the flag is non-empty), we still *disable* things
     # by default to avoid running each file three passes through the compiler. Then we'll explicitly
     # enable SYCL for the few files using it, as well as the linker.
-    set (CXXFLAGS "${SIMD_CXX_FLAGS};${MPI_COMPILE_FLAGS};${DISABLE_SYCL_CXX_FLAGS};${EXTRA_CXX_FLAGS};${GMXC_CXXFLAGS}" PARENT_SCOPE)
+    set(CXXFLAGS
+            ${SIMD_CXX_FLAGS}
+            ${MPI_CXX_COMPILE_OPTIONS}
+            ${DISABLE_SYCL_CXX_FLAGS}
+            ${EXTRA_CXX_FLAGS}
+            ${GMXC_CXXFLAGS}
+        PARENT_SCOPE)
 endfunction()
 
 # Implementation function to add compiler flags expected for all
@@ -256,88 +268,6 @@ macro (gmx_c_flags)
         GMX_TEST_CXXFLAG(CXXFLAGS_NOINLINE "-fno-inline" GMXC_CXXFLAGS_DEBUG)
     endif()
 
-    # icc
-    if (CMAKE_C_COMPILER_ID STREQUAL "Intel")
-        if (NOT WIN32)
-            if(NOT GMX_OPENMP)
-# 3180: unrecognized OpenMP #pragma
-                GMX_TEST_CFLAG(CFLAGS_PRAGMA "-wd3180" GMXC_CFLAGS)
-            endif()
-            if (GMX_COMPILER_WARNINGS)
-# -w3 enables a lot of useful diagnostics but we don't care about all. -wd disables some selectively.
-# 177: function/variable ".." was declared but never referenced
-# 280: selector expression is constant
-# 411: class defines no constructor to initialize the following (incorrect for struct, initializer list works)
-# 593: variable ".." was set but never used
-# 981: operands are evaluated in unspecified order
-#1418: external function definition with no prior declaration
-#1419: external declaration in primary source file
-#1572: floating-point equality and inequality comparisons are unreliable
-#1599: declaration hides variable ".."
-#2259: non-pointer conversion from ".." to ".." may lose significant bits
-#2415: variable ".." of static storage duration was declared but never referenced
-#2547: ".." was specified as both a system and non-system include directory
-#2557: comparison between signed and unsigned operands
-#3280: declaration hides member ".."
-#11074: Inlining inhibited by limit max-size(/max-total-size)
-#11076: To get full report use -opt-report=3 -opt-report-phase ipo (shown for previous remark)
-                GMX_TEST_CFLAG(CFLAGS_WARN "-w3;-wd177;-wd280;-wd411;-wd593;-wd981;-wd1418;-wd1419;-wd1572;-wd1599;-wd2259;-wd2415;-wd2547;-wd2557;-wd3280;-wd11074;-wd11076" GMXC_CFLAGS)
-            endif()
-            GMX_TEST_CFLAG(CFLAGS_STDGNU "-std=gnu99" GMXC_CFLAGS)
-            GMX_TEST_CFLAG(CFLAGS_OPT "-ip;-funroll-all-loops;-alias-const;-ansi-alias;-no-prec-div;-fimf-domain-exclusion=14;-qoverride-limits" GMXC_CFLAGS_RELEASE)
-            GMX_TEST_CFLAG(CFLAGS_DEBUG "-O0" GMXC_CFLAGS_DEBUG) #icc defaults to -O2 even with -g
-            # The "except" fp-model requires something other than the
-            # default "fast" model, so we test and use it with
-            # "precise".
-            GMX_TEST_CFLAG(CFLAGS_FP_MODEL_RELASSERT "-fp-model=except;-fp-model=precise" GMXC_CFLAGS_RELWITHASSERT)
-        else()
-            if(NOT GMX_OPENMP)
-                GMX_TEST_CFLAG(CFLAGS_PRAGMA "/wd3180" GMXC_CFLAGS)
-            endif()
-            if (GMX_COMPILER_WARNINGS)
-#only on Windows
-#161: unrecognized pragma
-#1786 function was declared deprecated (is issued for stdlib function such as strncpy which have a _s version)
-GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd1419;/wd1572;/wd1599;/wd1786;/wd2259;/wd2415;/wd2547;/wd2557;/wd3280" GMXC_CFLAGS)
-            endif()
-            GMX_TEST_CFLAG(CFLAGS_OPT "/Qip" GMXC_CFLAGS_RELEASE)
-        endif()
-    endif()
-
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
-        if (NOT WIN32) 
-            if(NOT GMX_OPENMP)
-                GMX_TEST_CXXFLAG(CXXFLAGS_PRAGMA "-wd3180" GMXC_CXXFLAGS)
-            endif()
-            if (GMX_COMPILER_WARNINGS)
-#All but the following warnings are identical for the C-compiler (see above)
-# 304: access control not specified
-# 383: value copied to temporary, reference to temporary used
-# 444: destructor for base class ".." is not virtual
-# 869: was never referenced (false positives)
-#2282: unrecognized GCC pragma
-#2621: attribute "unused" does not apply here
-                GMX_TEST_CXXFLAG(CXXFLAGS_WARN "-w3;-wd177;-wd280;-wd304;-wd383;-wd411;-wd444;-wd869;-wd981;-wd1418;-wd1572;-wd1599;-wd2259;-wd2547;-wd2621;-wd3280;-wd11074;-wd11076;-wd2282" GMXC_CXXFLAGS)
-            endif()
-            GMX_TEST_CXXFLAG(CXXFLAGS_OPT "-ip;-funroll-all-loops;-alias-const;-ansi-alias;-no-prec-div;-fimf-domain-exclusion=14;-qoverride-limits" GMXC_CXXFLAGS_RELEASE)
-            GMX_TEST_CXXFLAG(CXXFLAGS_DEBUG "-O0" GMXC_CXXFLAGS_DEBUG)
-            # The "except" fp-model requires something other than the
-            # default "fast" model, so we test and use it with
-            # "precise".
-            GMX_TEST_CXXFLAG(CXXFLAGS_FP_MODEL_RELASSERT "-fp-model=except;-fp-model=precise" GMXC_CXXFLAGS_RELWITHASSERT)
-        else()
-            if(NOT GMX_OPENMP)
-                GMX_TEST_CXXFLAG(CXXFLAGS_PRAGMA "/wd3180" GMXC_CFLAGS)
-            endif()
-            if (GMX_COMPILER_WARNINGS)
-#161: unrecognized pragma
-#809: exception specification for virtual function X is incompatible with that of overridden function
-                GMX_TEST_CXXFLAG(CXXFLAGS_WARN "/W3;/wd161;/wd177;/wd280;/wd304;/wd383;/wd411;/wd444;/wd809;/wd869;/wd981;/wd1418;/wd1572;/wd1599;/wd1786;/wd2259;/wd2547;/wd3280;/wd11074;/wd11076;/wd2282" GMXC_CXXFLAGS)
-            endif()
-            GMX_TEST_CXXFLAG(CXXFLAGS_OPT "/Qip" GMXC_CXXFLAGS_RELEASE)
-        endif()
-    endif()
-
     # PGI
     # Inter-procedural analysis causes pgcc/pgc++ to crash when linking the library with PGI release 15.7.
     if (CMAKE_C_COMPILER_ID MATCHES "PGI")
@@ -443,10 +373,14 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
         if(NOT GMX_OPENMP)
             GMX_TEST_CXXFLAG(CXXFLAGS_PRAGMA "-Wno-unknown-pragmas" GMXC_CXXFLAGS)
         endif()
+        GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_RESERVED_IDENTIFIER "-Wno-reserved-identifier" GMXC_CXXFLAGS) # LLVM BUG #50644
         GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CXXFLAGS)
-	# Intel LLVM 2021.2 defaults to no-finite-math which isn't OK for GROMACS
-	if(GMX_INTEL_LLVM AND GMX_INTEL_LLVM_VERSION GREATER_EQUAL 2021020)
-	    GMX_TEST_CXXFLAG(CXXFLAGS_FINITE_MATH "-fno-finite-math-only" GMXC_CXXFLAGS)
+        # Some versions of Intel ICPX compiler (at least 2021.1.1 to 2021.3.0) fail to unroll a loop
+        # in sycl::accessor::__init, and emit -Wpass-failed=transform-warning. This is a useful
+        # warning, but mostly noise right now. Probably related to using shared memory accessors.
+        # Note: not a typo: ICPX 2021.1.1 has GMX_INTEL_LLVM_VERSION 202110; 2021.2.0 has 20210200.
+        if(GMX_INTEL_LLVM AND GMX_INTEL_LLVM_VERSION GREATER_EQUAL 202110)
+            GMX_TEST_CXXFLAG(CXXFLAGS_NO_UNROLL_WARNING "-Wno-pass-failed" GMXC_CXXFLAGS)
         endif()
     endif()
 
@@ -486,19 +420,117 @@ GMX_TEST_CFLAG(CFLAGS_WARN "/W3;/wd161;/wd177;/wd411;/wd593;/wd981;/wd1418;/wd14
             # does not align the stack properly. Embarrassing, Apple...
             GMX_TEST_CXXFLAG(CXXFLAG_NO_STACK_CHECK "-fno-stack-check" GMXC_CXXFLAGS)
         endif()
-    endif()
-
-    # Fujitsu compilers on PrimeHPC/Sparc64
-    if(${CMAKE_C_COMPILER_ID} MATCHES Fujitsu OR
-       (${CMAKE_C_COMPILER_ID} MATCHES unknown AND ${CMAKE_C_COMPILER} MATCHES ^fcc))
-        GMX_TEST_CFLAG(CFLAG_GNUCOMPAT "-Xg;-w" GMXC_CFLAGS)
-        GMX_TEST_CFLAG(CFLAG_OPT "-Kfast,reduction,swp,simd=2,uxsimd,fsimple;-x100" GMXC_CFLAGS)
-    endif()
-
-    if(${CMAKE_CXX_COMPILER_ID} MATCHES Fujitsu OR
-       (${CMAKE_CXX_COMPILER_ID} MATCHES unknown AND ${CMAKE_CXX_COMPILER} MATCHES ^FCC))
-        GMX_TEST_CXXFLAG(CXXFLAG_GNUCOMPAT "-Xg;-w" GMXC_CXXFLAGS)
-        GMX_TEST_CXXFLAG(CXXFLAG_OPT "-Kfast,reduction,swp,simd=2,uxsimd,fsimple;-x100" GMXC_CXXFLAGS)
     endif()
 
 endmacro()
+
+# Make sure we generate warnings (and hopefully fix) "everything"
+# reported by compilers that support that (ie recent clang and its
+# derivatives).
+function(gmx_warn_on_everything target)
+
+    # If the compiler suports warning on "everything" then we'll turn
+    # it on. Note that all warnings become errors for developer
+    # builds, but not for user builds.
+    gmx_target_warning_suppression(${target} "-Weverything" HAS_WARNING_EVERYTHING)
+
+    if (NOT HAS_WARNING_EVERYTHING)
+        # There's no need to suppress aspects of "-Weverything" if
+        # that warning is not supported.
+        return()
+    endif()
+
+    # We don't actually fix everything, so list the exceptions that we
+    # choose to make. We may be able to eliminate some of these over
+    # time.
+    #
+    # We check whether the flag is accepted first, so that we suppress
+    # such warnings also with compilers that don't directly identify
+    # as e.g. clang despite being based on it (e.g. most vendor
+    # compilers), and also don't fail to compile GROMACS when future
+    # versions of any such compiler changes how the warnings
+    # look/work.
+
+    # We have no intention of C++98 compability
+    gmx_target_warning_suppression(${target} "-Wno-c++98-compat" HAS_WARNING_NO_CPLUSPLUS98_COMPAT)
+    gmx_target_warning_suppression(${target} "-Wno-c++98-compat-pedantic" HAS_WARNING_NO_CPLUSPLUS98_COMPAT_PEDANTIC)
+
+    # Don't warn for use of OpenMP pragmas in no-omp build
+    gmx_target_warning_suppression(${target} "-Wno-source-uses-openmp" HAS_WARNING_NO_SOURCE_USED_OPENMP)
+
+    # Allowed in attributes (compilers are required to ignore unknown attributes)
+    gmx_target_warning_suppression(${target} "-Wno-c++17-extensions" HAS_WARNING_NO_CPLUSPLUS17_EXTENSIONS)
+
+    # Custom Doxygen commands are used
+    gmx_target_warning_suppression(${target} "-Wno-documentation-unknown-command" HAS_WARNING_NO_DOCUMENTATION_UNKNOWN_COMMAND)
+
+    # We need to use default labels in switch statements, because GCC gives
+    # maybe-uninitialized without default label and checks for illegal enum values.
+    gmx_target_warning_suppression(${target} "-Wno-covered-switch-default" HAS_WARNING_NO_COVERED_SWITCH_DEFAULT)
+
+    # Default statement for enum is OK.
+    # It's OK to not have branches for Count members of enum classes
+    gmx_target_warning_suppression(${target} "-Wno-switch-enum" HAS_WARNING_NO_SWITCH_ENUM)
+
+    # We need to use macros like
+    # GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR and
+    # CLANG_DIAGNOSTIC_IGNORE. Those will look strange if they don't
+    # have a semicolon after them, and might confuse tools like IDEs
+    # also.
+    gmx_target_warning_suppression(${target} "-Wno-extra-semi-stmt" HAS_WARNING_NO_EXTRA_SEMI_STMT)
+
+    # We intend to use fully inline classes with virtual methods
+    gmx_target_warning_suppression(${target} "-Wno-weak-vtables" HAS_WARNING_NO_WEAK_VTABLES)
+
+    # We intend to use constructor arguments that shadow member variables
+    gmx_target_warning_suppression(${target} "-Wno-shadow" HAS_WARNING_NO_SHADOW)
+
+    # Padding of structs is routine, we don't need to hear about it
+    gmx_target_warning_suppression(${target} "-Wno-padded" HAS_WARNING_NO_PADDED)
+
+    # Our uses of double underscores in macro names are OK
+    gmx_target_warning_suppression(${target} "-Wno-reserved-id-macro" HAS_WARNING_NO_RESERVED_ID_MACRO)
+
+    # Implicit conversion of float to double is fine
+    gmx_target_warning_suppression(${target} "-Wno-double-promotion" HAS_WARNING_NO_DOUBLE_PROMOTION)
+
+    # No resources in static variables need exit-time destructors
+    gmx_target_warning_suppression(${target} "-Wno-exit-time-destructors" HAS_WARNING_NO_EXIT_TIME_DESTRUCTORS)
+
+    # Global constructors are not needed
+    gmx_target_warning_suppression(${target} "-Wno-global-constructors" HAS_WARNING_NO_GLOBAL_CONSTRUCTORS)
+
+    # False positives are emitted
+    gmx_target_warning_suppression(${target} "-Wno-documentation" HAS_WARNING_NO_DOCUMENTATION)
+
+    # We intend to use format strings that we construct, even though that is a security risk
+    gmx_target_warning_suppression(${target} "-Wno-format-nonliteral" HAS_WARNING_NO_FORMAT_NONLITERAL)
+
+    # We do a lot of conditional compilation that sometimes uses a symbol and sometimes does not
+    gmx_target_warning_suppression(${target} "-Wno-used-but-marked-unused" HAS_WARNING_NO_USED_BUT_MARKED_UNUSED)
+
+    # It's only risky to compare floats for equality when they are the
+    # result of computation.  Unfortunately it's hard to tell the
+    # difference and there's no good way to suppress this on a
+    # case-by-base basis.
+    gmx_target_warning_suppression(${target} "-Wno-float-equal" HAS_WARNING_NO_FLOAT_EQUAL)
+
+    #
+    # Exceptions we should consider fixing
+    #
+
+    # Much code in gmxana uses complex logic that may or may not be valid
+    gmx_target_warning_suppression(${target} "-Wno-conditional-uninitialized" HAS_WARNING_CONDITIONAL_UNINITIALIZED)
+
+    # We have many places implicit conversions still occur, most of which need fixing
+    gmx_target_warning_suppression(${target} "-Wno-conversion" HAS_WARNING_NO_CONVERSION)
+
+    # We use the Linux signal handlers in the intended way, but it triggers this warning.
+    # It would be better to localize this exception.
+    gmx_target_warning_suppression(${target} "-Wno-disabled-macro-expansion" HAS_WARNING_NO_DISABLED_MACRO_EXPANSION)
+
+    # The NBNXM simd kernels define lots of macros that are not used
+    # It would be better to localize this exception.
+    gmx_target_warning_suppression(${target} "-Wno-unused-macros" HAS_WARNING_NO_UNUSED_MACROS)
+
+endfunction()

@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \brief
@@ -62,9 +59,9 @@
    }
    \endcode
  */
-extern FILE* debug;
+extern FILE* debug; //NOLINT(cppcoreguidelines-avoid-non-const-global-variables,-warnings-as-errors)
 /** Whether extra debugging is enabled. */
-extern gmx_bool gmx_debug_at;
+extern gmx_bool gmx_debug_at; //NOLINT(cppcoreguidelines-avoid-non-const-global-variables,-warnings-as-errors)
 
 /*! \brief
  * Initializes debugging variables.
@@ -145,6 +142,8 @@ enum ExitType
  *
  * This is used to implement gmx_fatal_collective() (which cannot be declared
  * here, since it would bring with it mdrun-specific dependencies).
+ *
+ * This function is deprecated and no new calls should be made to it.
  */
 [[noreturn]] void gmx_fatal_mpi_va(int         fatal_errno,
                                    const char* file,
@@ -170,6 +169,8 @@ enum ExitType
  * use gmx_fatal_collective(), declared in network.h,
  * to avoid having as many error messages as processes.
  *
+ * This function is deprecated and no new calls should be made to it.
+ *
  * The first three parameters can be provided through ::FARGS:
  * \code
    gmx_fatal(FARGS, fmt, ...);
@@ -180,21 +181,27 @@ enum ExitType
 /** Helper macro to pass first three parameters to gmx_fatal(). */
 #define FARGS 0, __FILE__, __LINE__
 
-/** Implementation for gmx_error(). */
-[[noreturn]] void _gmx_error(const char* key, const std::string& msg, const char* file, int line);
+/*! \brief Implementation for gmx_error().
+ *
+ * This function is deprecated and no new calls should be made to it. */
+[[noreturn]] void gmx_error_function(const char* key, const std::string& msg, const char* file, int line);
 /*! \brief
  * Alternative fatal error routine with canned messages.
  *
  * This works as gmx_fatal(), except that a generic error message is added
  * based on a string key, and printf-style formatting is not supported.
  * Should not typically be called directly, but through gmx_call() etc.
+ *
+ * This macro is deprecated and no new calls should be made to it.
  */
-#define gmx_error(key, msg) _gmx_error(key, msg, __FILE__, __LINE__)
+#define gmx_error(key, msg) gmx_error_function(key, msg, __FILE__, __LINE__)
 
 /*! \name Fatal error routines for certain types of errors
  *
  * These wrap gmx_error() and provide the \p key parameter as one of the
  * recognized strings.
+ *
+ * These macros are deprecated and no new calls should be made to them.
  */
 /*! \{ */
 #define gmx_call(msg) gmx_error("call", msg)
@@ -212,7 +219,7 @@ enum ExitType
  *
  * \p warn_str can be NULL.
  */
-void _range_check(int n, int n_min, int n_max, const char* warn_str, const char* var, const char* file, int line);
+void range_check_function(int n, int n_min, int n_max, const char* warn_str, const char* var, const char* file, int line);
 
 /*! \brief
  * Checks that a variable is within a range.
@@ -221,14 +228,15 @@ void _range_check(int n, int n_min, int n_max, const char* warn_str, const char*
  * \p n_min is inclusive, but \p n_max is not.
  */
 #define range_check_mesg(n, n_min, n_max, str) \
-    _range_check(n, n_min, n_max, str, #n, __FILE__, __LINE__)
+    range_check_function(n, n_min, n_max, str, #n, __FILE__, __LINE__)
 
 /*! \brief
  * Checks that a variable is within a range.
  *
  * This works as range_check_mesg(), but with a default error message.
  */
-#define range_check(n, n_min, n_max) _range_check(n, n_min, n_max, NULL, #n, __FILE__, __LINE__)
+#define range_check(n, n_min, n_max) \
+    range_check_function(n, n_min, n_max, NULL, #n, __FILE__, __LINE__)
 
 /*! \brief
  * Prints a warning message to stderr.

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -448,8 +447,8 @@ void LegacySymtabTest::dumpSymtab()
     int                      pos = 0;
     while (symbuf != nullptr)
     {
-        int i;
-        for (i = 0; (i < symbuf->bufsize) && (i < nr); i++)
+        int i = 0;
+        for (; (i < symbuf->bufsize) && (i < nr); i++)
         {
             symtabDump.emplace_back(formatString("Symtab[%d]=\"%s\"", pos++, symbuf->buf[i]));
         }
@@ -515,7 +514,7 @@ TEST_F(LegacySymtabTest, EmptyOnOpen)
 
 TEST_F(LegacySymtabTest, AddSingleEntry)
 {
-    auto fooSymbol = put_symtab(symtab(), "Foo");
+    auto* fooSymbol = put_symtab(symtab(), "Foo");
     ASSERT_EQ(1, symtab()->nr);
     compareSymtabLookupAndHandle(symtab(), fooSymbol);
     EXPECT_STREQ("Foo", *fooSymbol);
@@ -523,8 +522,8 @@ TEST_F(LegacySymtabTest, AddSingleEntry)
 
 TEST_F(LegacySymtabTest, AddTwoDistinctEntries)
 {
-    auto fooSymbol = put_symtab(symtab(), "Foo");
-    auto barSymbol = put_symtab(symtab(), "Bar");
+    auto* fooSymbol = put_symtab(symtab(), "Foo");
+    auto* barSymbol = put_symtab(symtab(), "Bar");
     ASSERT_EQ(2, symtab()->nr);
 
     compareSymtabLookupAndHandle(symtab(), fooSymbol);
@@ -538,8 +537,8 @@ TEST_F(LegacySymtabTest, AddTwoDistinctEntries)
 
 TEST_F(LegacySymtabTest, TryToAddDuplicates)
 {
-    auto fooSymbol = put_symtab(symtab(), "Foo");
-    auto barSymbol = put_symtab(symtab(), "Bar");
+    auto* fooSymbol = put_symtab(symtab(), "Foo");
+    auto* barSymbol = put_symtab(symtab(), "Bar");
     ASSERT_EQ(2, symtab()->nr);
 
     compareSymtabLookupAndHandle(symtab(), fooSymbol);
@@ -551,7 +550,7 @@ TEST_F(LegacySymtabTest, TryToAddDuplicates)
     EXPECT_STREQ("Bar", *barSymbol);
 
     // Insert a duplicate element
-    auto anotherFooSymbol = put_symtab(symtab(), "Foo");
+    auto* anotherFooSymbol = put_symtab(symtab(), "Foo");
     ASSERT_EQ(2, symtab()->nr);
 
     // Check for correct post-conditions
@@ -582,7 +581,7 @@ TEST_F(LegacySymtabTest, AddLargeNumberOfEntries)
         compareSymtabLookupAndHandle(symtab(), symbolsAdded[i]);
     }
     // Add something unrelated and check that indices still work afterward.
-    auto foobarSymbol = put_symtab(symtab(), "foobar");
+    auto* foobarSymbol = put_symtab(symtab(), "foobar");
     ASSERT_EQ(numStringsToAdd + 1, symtab()->nr);
     for (int i = 0; i < numStringsToAdd; ++i)
     {
@@ -608,7 +607,7 @@ TEST_F(LegacySymtabTest, NoDuplicatesInLargeTable)
     ASSERT_EQ(halfOfStringsToAdd, symtab()->nr);
 
     // We now try to mess around in the symtab.
-    auto bazSymbol = put_symtab(symtab(), "baz");
+    auto* bazSymbol = put_symtab(symtab(), "baz");
     ASSERT_EQ(halfOfStringsToAdd + 1, symtab()->nr);
     compareSymtabLookupAndHandle(symtab(), bazSymbol);
 

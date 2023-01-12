@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines the class to accumulate the data needed for the Leap-Frog integrator tests
@@ -83,6 +82,7 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
     f_(numAtoms),
     inverseMasses_(numAtoms),
     inverseMassesPerDim_(numAtoms),
+    kineticEnergyData_(numTCoupleGroups == 0 ? 1 : numTCoupleGroups, 0.0, 1),
     numTCoupleGroups_(numTCoupleGroups)
 {
     mdAtoms_.nr = numAtoms_;
@@ -123,34 +123,32 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
 
     if (numTCoupleGroups_ == 0)
     {
-        inputRecord_.etc = etcNO;
+        inputRecord_.etc = TemperatureCoupling::No;
         for (int i = 0; i < numAtoms_; i++)
         {
             mdAtoms_.cTC[i] = 0;
         }
-        kineticEnergyData_.ngtc = 1;
         t_grp_tcstat temperatureCouplingGroupData;
         temperatureCouplingGroupData.lambda = 1.0;
-        kineticEnergyData_.tcstat.emplace_back(temperatureCouplingGroupData);
+        kineticEnergyData_.tcstat[0]        = temperatureCouplingGroupData;
     }
     else
     {
-        inputRecord_.etc = etcYES;
+        inputRecord_.etc = TemperatureCoupling::Yes;
         for (int i = 0; i < numAtoms_; i++)
         {
             mdAtoms_.cTC[i] = i % numTCoupleGroups_;
         }
-        kineticEnergyData_.ngtc = numTCoupleGroups_;
-        for (int i = 0; i < numTCoupleGroups; i++)
+        for (int i = 0; i < numTCoupleGroups_; i++)
         {
             real         tCoupleLambda = 1.0 - (i + 1.0) / 10.0;
             t_grp_tcstat temperatureCouplingGroupData;
             temperatureCouplingGroupData.lambda = tCoupleLambda;
-            kineticEnergyData_.tcstat.emplace_back(temperatureCouplingGroupData);
+            kineticEnergyData_.tcstat[i]        = temperatureCouplingGroupData;
         }
     }
 
-    inputRecord_.eI      = eiMD;
+    inputRecord_.eI      = IntegrationAlgorithm::MD;
     inputRecord_.delta_t = timestep_;
 
     state_.flags = 0;
@@ -167,27 +165,23 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
     state_.box[ZZ][YY] = 0.0;
     state_.box[ZZ][ZZ] = 10.0;
 
-    kineticEnergyData_.bNEMD            = false;
-    kineticEnergyData_.cosacc.cos_accel = 0.0;
-
-    kineticEnergyData_.nthreads = 1;
-    snew(kineticEnergyData_.ekin_work_alloc, kineticEnergyData_.nthreads);
-    snew(kineticEnergyData_.ekin_work, kineticEnergyData_.nthreads);
-    snew(kineticEnergyData_.dekindl_work, kineticEnergyData_.nthreads);
-
     mdAtoms_.homenr                   = numAtoms_;
     mdAtoms_.haveVsites               = false;
     mdAtoms_.havePartiallyFrozenAtoms = false;
     mdAtoms_.cFREEZE                  = nullptr;
+    mdAtoms_.ptype                    = nullptr;
 
     update_ = std::make_unique<Update>(inputRecord_, nullptr);
-    update_->setNumAtoms(numAtoms);
+    update_->updateAfterPartition(numAtoms,
+                                  gmx::ArrayRef<const unsigned short>(),
+                                  gmx::arrayRefFromArray(mdAtoms_.cTC, mdAtoms_.nr),
+                                  gmx::ArrayRef<const unsigned short>());
 
     doPressureCouple_ = (nstpcouple != 0);
 
     if (doPressureCouple_)
     {
-        inputRecord_.epc        = epcPARRINELLORAHMAN;
+        inputRecord_.epc        = PressureCoupling::ParrinelloRahman;
         inputRecord_.nstpcouple = nstpcouple;
         dtPressureCouple_       = inputRecord_.nstpcouple * inputRecord_.delta_t;
 
@@ -205,7 +199,7 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
     }
     else
     {
-        inputRecord_.epc               = epcNO;
+        inputRecord_.epc               = PressureCoupling::No;
         velocityScalingMatrix_[XX][XX] = 1.0;
         velocityScalingMatrix_[XX][YY] = 0.0;
         velocityScalingMatrix_[XX][ZZ] = 0.0;

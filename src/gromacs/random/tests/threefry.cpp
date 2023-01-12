@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Tests for the ThreeFry random engine
@@ -123,8 +122,9 @@ const std::vector<uint64_t> bitsZero{ { 0, 0, 0, 0 } };
  *  The 2x64 flavors of ThreeFry64 will use the first four values, while
  *  the 4x64 version uses all eight.
  */
-const std::vector<uint64_t> bitsOne{ { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL,
-                                       0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL } };
+const std::vector<uint64_t> bitsOne{
+    { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL }
+};
 
 /*! \brief Constant array of integers with bitpattern from Pi.
  *
@@ -132,12 +132,13 @@ const std::vector<uint64_t> bitsOne{ { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFF
  *  The 2x64 flavors of ThreeFry64 will use the first four values, while
  *  the 4x64 version uses all eight.
  */
-const std::vector<uint64_t> bitsPi{ { 0x243f6a8885a308d3ULL, 0x13198a2e03707344ULL,
-                                      0xa4093822299f31d0ULL, 0x082efa98ec4e6c89ULL } };
+const std::vector<uint64_t> bitsPi{
+    { 0x243f6a8885a308d3ULL, 0x13198a2e03707344ULL, 0xa4093822299f31d0ULL, 0x082efa98ec4e6c89ULL }
+};
 
 // Test the known ansers for the ThreeFry random function when the argument
 // is (1) all zero, (2) all ones, (3) the bits of pi, for a bunch of different flavors of ThreeFry.
-INSTANTIATE_TEST_CASE_P(KnownAnswersTest, ThreeFry2x64Test, ::testing::Values(bitsZero, bitsOne, bitsPi));
+INSTANTIATE_TEST_SUITE_P(KnownAnswersTest, ThreeFry2x64Test, ::testing::Values(bitsZero, bitsOne, bitsPi));
 
 
 // ThreeFry2x64 tests

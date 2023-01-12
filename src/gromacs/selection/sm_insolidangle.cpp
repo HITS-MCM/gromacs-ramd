@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal
  * \page page_module_selection_insolidangle Selection method: insolidangle
@@ -356,8 +353,10 @@ gmx_ana_selmethod_t sm_insolidangle = {
     &init_frame_insolidangle,
     nullptr,
     &evaluate_insolidangle,
-    { "insolidangle center POS span POS_EXPR [cutoff REAL]", "Selecting atoms in a solid angle",
-      asize(help_insolidangle), help_insolidangle },
+    { "insolidangle center POS span POS_EXPR [cutoff REAL]",
+      "Selecting atoms in a solid angle",
+      asize(help_insolidangle),
+      help_insolidangle },
 };
 
 static void* init_data_insolidangle(int /* npar */, gmx_ana_selparam_t* param)
@@ -395,12 +394,12 @@ static void init_insolidangle(const gmx_mtop_t* /* top */,
         GMX_THROW(gmx::InvalidInputError("Angle cutoff should be > 0"));
     }
 
-    surf->angcut *= DEG2RAD;
+    surf->angcut *= gmx::c_deg2Rad;
 
     surf->distccut      = -std::cos(surf->angcut);
     surf->targetbinsize = surf->angcut / 2;
     surf->ntbins        = static_cast<int>(M_PI / surf->targetbinsize);
-    surf->tbinsize      = (180.0 / surf->ntbins) * DEG2RAD;
+    surf->tbinsize      = (180.0 / surf->ntbins) * gmx::c_deg2Rad;
 
     snew(surf->tbin, static_cast<int>(M_PI / surf->tbinsize) + 1);
     surf->maxbins = 0;

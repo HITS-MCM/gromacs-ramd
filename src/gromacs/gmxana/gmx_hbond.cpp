@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -60,6 +56,7 @@
 #include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
+#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -80,6 +77,7 @@
 #define max_hx 7
 typedef int t_hx[max_hx];
 #define NRHXTYPES max_hx
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static const char* hxtypenames[NRHXTYPES] = { "n-n",   "n-n+1", "n-n+2", "n-n+3",
                                               "n-n+4", "n-n+5", "n-n>6" };
 #define MAXHH 4
@@ -107,22 +105,16 @@ static const unsigned char c_acceptorMask = (1 << 0);
 static const unsigned char c_donorMask    = (1 << 1);
 static const unsigned char c_inGroupMask  = (1 << 2);
 
-
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static const char* grpnames[grNR] = { "0", "1", "I" };
-
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static gmx_bool bDebug = FALSE;
 
-#define HB_NO 0
-#define HB_YES 1 << 0
-#define HB_INS 1 << 1
-#define HB_YESINS (HB_YES | HB_INS)
 #define HB_NR (1 << 2)
 #define MAXHYDRO 4
 
 #define ISHB(h) ((h)&2)
 #define ISDIST(h) ((h)&1)
-#define ISDIST2(h) ((h)&4)
-#define ISACC(h) ((h)&c_acceptorMask)
 #define ISDON(h) ((h)&c_donorMask)
 #define ISINGRP(h) ((h)&c_inGroupMask)
 
@@ -265,7 +257,7 @@ static void add_frames(t_hbdata* hb, int nframes)
 #define OFFSET(frame) ((frame) / 32)
 #define MASK(frame) (1 << ((frame) % 32))
 
-static void _set_hb(unsigned int hbexist[], unsigned int frame, gmx_bool bValue)
+static void set_hb_function(unsigned int hbexist[], unsigned int frame, gmx_bool bValue)
 {
     if (bValue)
     {
@@ -299,7 +291,7 @@ static void set_hb(t_hbdata* hb, int id, int ih, int ia, int frame, int ihb)
         gmx_fatal(FARGS, "Incomprehensible iValue %d in set_hb", ihb);
     }
 
-    _set_hb(ghptr, frame - hb->hbmap[id][ia]->n0, TRUE);
+    set_hb_function(ghptr, frame - hb->hbmap[id][ia]->n0, TRUE);
 }
 
 static void add_ff(t_hbdata* hbd, int id, int h, int ia, int frame, int ihb)
@@ -368,7 +360,7 @@ static void inc_nhbonds(t_donors* ddd, int d, int h)
     }
 }
 
-static int _acceptor_index(t_acceptors* a, int grp, int i, const char* file, int line)
+static int acceptor_index_function(t_acceptors* a, int grp, int i, const char* file, int line)
 {
     int ai = a->aptr[i];
 
@@ -376,8 +368,7 @@ static int _acceptor_index(t_acceptors* a, int grp, int i, const char* file, int
     {
         if (debug && bDebug)
         {
-            fprintf(debug, "Acc. group inconsist.. grp[%d] = %d, grp = %d (%s, %d)\n", ai,
-                    a->grp[ai], grp, file, line);
+            fprintf(debug, "Acc. group inconsist.. grp[%d] = %d, grp = %d (%s, %d)\n", ai, a->grp[ai], grp, file, line);
         }
         return NOTSET;
     }
@@ -386,9 +377,9 @@ static int _acceptor_index(t_acceptors* a, int grp, int i, const char* file, int
         return ai;
     }
 }
-#define acceptor_index(a, grp, i) _acceptor_index(a, grp, i, __FILE__, __LINE__)
+#define acceptor_index(a, grp, i) acceptor_index_function(a, grp, i, __FILE__, __LINE__)
 
-static int _donor_index(t_donors* d, int grp, int i, const char* file, int line)
+static int donor_index_function(t_donors* d, int grp, int i, const char* file, int line)
 {
     int di = d->dptr[i];
 
@@ -401,8 +392,7 @@ static int _donor_index(t_donors* d, int grp, int i, const char* file, int line)
     {
         if (debug && bDebug)
         {
-            fprintf(debug, "Don. group inconsist.. grp[%d] = %d, grp = %d (%s, %d)\n", di,
-                    d->grp[di], grp, file, line);
+            fprintf(debug, "Don. group inconsist.. grp[%d] = %d, grp = %d (%s, %d)\n", di, d->grp[di], grp, file, line);
         }
         return NOTSET;
     }
@@ -411,7 +401,7 @@ static int _donor_index(t_donors* d, int grp, int i, const char* file, int line)
         return di;
     }
 }
-#define donor_index(d, grp, i) _donor_index(d, grp, i, __FILE__, __LINE__)
+#define donor_index(d, grp, i) donor_index_function(d, grp, i, __FILE__, __LINE__)
 
 static gmx_bool isInterchangable(t_hbdata* hb, int d, int a, int grpa, int grpd)
 {
@@ -436,8 +426,7 @@ add_hbond(t_hbdata* hb, int d, int a, int h, int grpd, int grpa, int frame, gmx_
     }
     else if (grpd != hb->d.grp[id])
     {
-        gmx_fatal(FARGS, "Inconsistent donor groups, %d instead of %d, atom %d", grpd,
-                  hb->d.grp[id], d + 1);
+        gmx_fatal(FARGS, "Inconsistent donor groups, %d instead of %d, atom %d", grpd, hb->d.grp[id], d + 1);
     }
     if ((ia = hb->a.aptr[a]) == NOTSET)
     {
@@ -445,8 +434,7 @@ add_hbond(t_hbdata* hb, int d, int a, int h, int grpd, int grpa, int frame, gmx_
     }
     else if (grpa != hb->a.grp[ia])
     {
-        gmx_fatal(FARGS, "Inconsistent acceptor groups, %d instead of %d, atom %d", grpa,
-                  hb->a.grp[ia], a + 1);
+        gmx_fatal(FARGS, "Inconsistent acceptor groups, %d instead of %d, atom %d", grpa, hb->a.grp[ia], a + 1);
     }
 
     if (bMerge)
@@ -470,8 +458,11 @@ add_hbond(t_hbdata* hb, int d, int a, int h, int grpd, int grpa, int frame, gmx_
             }
             else if (grpd != hb->d.grp[id])
             {
-                gmx_fatal(FARGS, "Inconsistent donor groups, %d instead of %d, atom %d", grpd,
-                          hb->d.grp[id], d + 1);
+                gmx_fatal(FARGS,
+                          "Inconsistent donor groups, %d instead of %d, atom %d",
+                          grpd,
+                          hb->d.grp[id],
+                          d + 1);
             }
             if ((ia = hb->a.aptr[a]) == NOTSET)
             {
@@ -479,8 +470,11 @@ add_hbond(t_hbdata* hb, int d, int a, int h, int grpd, int grpa, int frame, gmx_
             }
             else if (grpa != hb->a.grp[ia])
             {
-                gmx_fatal(FARGS, "Inconsistent acceptor groups, %d instead of %d, atom %d", grpa,
-                          hb->a.grp[ia], a + 1);
+                gmx_fatal(FARGS,
+                          "Inconsistent acceptor groups, %d instead of %d, atom %d",
+                          grpa,
+                          hb->a.grp[ia],
+                          a + 1);
             }
         }
     }
@@ -900,8 +894,7 @@ static t_gridcell*** init_grid(gmx_bool bBox, rvec box[], real rcut, ivec ngrid)
     }
     else
     {
-        printf("\nWill do grid-search on %dx%dx%d grid, rcut=%3.8f\n", ngrid[XX], ngrid[YY],
-               ngrid[ZZ], rcut);
+        printf("\nWill do grid-search on %dx%dx%d grid, rcut=%3.8f\n", ngrid[XX], ngrid[YY], ngrid[ZZ], rcut);
     }
     if (((ngrid[XX] * ngrid[YY] * ngrid[ZZ]) * sizeof(grid)) > INT_MAX)
     {
@@ -910,8 +903,14 @@ static t_gridcell*** init_grid(gmx_bool bBox, rvec box[], real rcut, ivec ngrid)
                   "the maximum of %zu. "
                   "You are likely either using a box that is too large (box dimensions are %3.8f "
                   "nm x%3.8f nm x%3.8f nm) or a cutoff (%3.8f nm) that is too small.",
-                  ngrid[XX], ngrid[YY], ngrid[ZZ], INT_MAX / sizeof(grid), box[XX][XX], box[YY][YY],
-                  box[ZZ][ZZ], rcut);
+                  ngrid[XX],
+                  ngrid[YY],
+                  ngrid[ZZ],
+                  INT_MAX / sizeof(grid),
+                  box[XX][XX],
+                  box[YY][YY],
+                  box[ZZ][ZZ],
+                  rcut);
     }
     snew(grid, ngrid[ZZ]);
     for (z = 0; z < ngrid[ZZ]; z++)
@@ -1453,8 +1452,8 @@ static void do_merge(t_hbdata* hb, int ntmp, bool htmp[], bool gtmp[], t_hbond* 
     /* Copy temp array to target array */
     for (m = 0; (m <= nnframes); m++)
     {
-        _set_hb(hb0->h[0], m, htmp[m]);
-        _set_hb(hb0->g[0], m, gtmp[m]);
+        set_hb_function(hb0->h[0], m, htmp[m]);
+        set_hb_function(hb0->g[0], m, gtmp[m]);
     }
 
     /* Set scalar variables */
@@ -1638,8 +1637,8 @@ static void do_hblife(const char* fn, t_hbdata* hb, gmx_bool bMerge, gmx_bool bC
     }
     else
     {
-        fp = xvgropen(fn, "Uninterrupted hydrogen bond lifetime", output_env_get_xvgr_tlabel(oenv),
-                      "()", oenv);
+        fp = xvgropen(
+                fn, "Uninterrupted hydrogen bond lifetime", output_env_get_xvgr_tlabel(oenv), "()", oenv);
     }
 
     xvgr_legend(fp, asize(leg), leg, oenv);
@@ -1734,14 +1733,14 @@ static real calc_dg(real tau, real temp)
 {
     real kbt;
 
-    kbt = BOLTZ * temp;
+    kbt = gmx::c_boltz * temp;
     if (tau <= 0)
     {
         return -666;
     }
     else
     {
-        return kbt * std::log(kbt * tau / PLANCK);
+        return kbt * std::log(kbt * tau / gmx::c_planck);
     }
 }
 
@@ -1855,19 +1854,27 @@ void analyse_corr(int  n,
                 {
                     chi2 += gmx::square(k * ct[i] - kp * nt[i] - kt[i]);
                 }
-                compute_weighted_rates(n, t, ct, nt, kt, sigma_ct, sigma_nt, sigma_kt, &k, &kp,
-                                       &sigma_k, &sigma_kp, fit_start);
+                compute_weighted_rates(
+                        n, t, ct, nt, kt, sigma_ct, sigma_nt, sigma_kt, &k, &kp, &sigma_k, &sigma_kp, fit_start);
                 Q   = 0; /* quality_of_fit(chi2, 2);*/
-                ddg = BOLTZ * temp * sigma_k / k;
+                ddg = gmx::c_boltz * temp * sigma_k / k;
                 printf("Fitting paramaters chi^2 = %10g, Quality of fit = %10g\n", chi2, Q);
                 printf("The Rate and Delta G are followed by an error estimate\n");
                 printf("----------------------------------------------------------\n"
                        "Type      Rate (1/ps)  Sigma Time (ps)  DG (kJ/mol)  Sigma\n");
-                printf("Forward    %10.3f %6.2f   %8.3f  %10.3f %6.2f\n", k, sigma_k, 1 / k,
-                       calc_dg(1 / k, temp), ddg);
-                ddg = BOLTZ * temp * sigma_kp / kp;
-                printf("Backward   %10.3f %6.2f   %8.3f  %10.3f %6.2f\n", kp, sigma_kp, 1 / kp,
-                       calc_dg(1 / kp, temp), ddg);
+                printf("Forward    %10.3f %6.2f   %8.3f  %10.3f %6.2f\n",
+                       k,
+                       sigma_k,
+                       1 / k,
+                       calc_dg(1 / k, temp),
+                       ddg);
+                ddg = gmx::c_boltz * temp * sigma_kp / kp;
+                printf("Backward   %10.3f %6.2f   %8.3f  %10.3f %6.2f\n",
+                       kp,
+                       sigma_kp,
+                       1 / kp,
+                       calc_dg(1 / kp, temp),
+                       ddg);
             }
             else
             {
@@ -1886,18 +1893,29 @@ void analyse_corr(int  n,
         if (sc2 > 0)
         {
             kow = 2 * sck / sc2;
-            printf("One-way    %10.3f   %s%8.3f  %10.3f\n", kow, bError ? "       " : "", 1 / kow,
+            printf("One-way    %10.3f   %s%8.3f  %10.3f\n",
+                   kow,
+                   bError ? "       " : "",
+                   1 / kow,
                    calc_dg(1 / kow, temp));
         }
         else
         {
             printf(" - Numerical problems computing HB thermodynamics:\n"
                    "sc2 = %g  sn2 = %g  sk2 = %g sck = %g snk = %g scn = %g\n",
-                   sc2, sn2, sk2, sck, snk, scn);
+                   sc2,
+                   sn2,
+                   sk2,
+                   sck,
+                   snk,
+                   scn);
         }
         /* Determine integral of the correlation function */
         tau_hb = evaluate_integral(n, t, ct, nullptr, (t[n - 1] - t[0]) / 2, &dtau);
-        printf("Integral   %10.3f   %s%8.3f  %10.3f\n", 1 / tau_hb, bError ? "       " : "", tau_hb,
+        printf("Integral   %10.3f   %s%8.3f  %10.3f\n",
+               1 / tau_hb,
+               bError ? "       " : "",
+               tau_hb,
                calc_dg(tau_hb, temp));
         e_1 = std::exp(-1.0);
         for (i = 0; (i < n - 2); i++)
@@ -1911,8 +1929,11 @@ void analyse_corr(int  n,
         {
             /* Determine tau_relax from linear interpolation */
             tau_rlx = t[i] - t[0] + (e_1 - ct[i]) * (t[i + 1] - t[i]) / (ct[i + 1] - ct[i]);
-            printf("Relaxation %10.3f   %8.3f  %s%10.3f\n", 1 / tau_rlx, tau_rlx,
-                   bError ? "       " : "", calc_dg(tau_rlx, temp));
+            printf("Relaxation %10.3f   %8.3f  %s%10.3f\n",
+                   1 / tau_rlx,
+                   tau_rlx,
+                   bError ? "       " : "",
+                   calc_dg(tau_rlx, temp));
         }
     }
     else
@@ -1973,14 +1994,16 @@ static void do_hbac(const char*             fn,
     FILE* fp;
     int   i, j, k, m, ihb, idist, n2, nn;
 
-    const char* legLuzar[] = { "Ac\\sfin sys\\v{}\\z{}(t)", "Ac(t)", "Cc\\scontact,hb\\v{}\\z{}(t)",
+    const char*    legLuzar[] = { "Ac\\sfin sys\\v{}\\z{}(t)",
+                               "Ac(t)",
+                               "Cc\\scontact,hb\\v{}\\z{}(t)",
                                "-dAc\\sfs\\v{}\\z{}/dt" };
-    gmx_bool    bNorm      = FALSE;
-    double      nhb        = 0;
-    real *      rhbex      = nullptr, *ht, *gt, *ght, *dght, *kt;
-    real *      ct, tail, tail2, dtail, *cct;
-    const real  tol     = 1e-3;
-    int         nframes = hb->nframes;
+    gmx_bool       bNorm      = FALSE;
+    double         nhb        = 0;
+    real *         rhbex      = nullptr, *ht, *gt, *ght, *dght, *kt;
+    real *         ct, tail, tail2, dtail, *cct;
+    const real     tol     = 1e-3;
+    int            nframes = hb->nframes;
     unsigned int **h = nullptr, **g = nullptr;
     int            nh, nhbonds, nhydro;
     t_hbond*       hbh;
@@ -2131,9 +2154,22 @@ static void do_hbac(const char*             fn,
                     }
 
                     /* The autocorrelation function is normalized after summation only */
-                    low_do_autocorr(nullptr, oenv, nullptr, nframes, 1, -1, &rhbex,
-                                    hb->time[1] - hb->time[0], eacNormal, 1, FALSE, bNorm, FALSE, 0,
-                                    -1, 0);
+                    low_do_autocorr(nullptr,
+                                    oenv,
+                                    nullptr,
+                                    nframes,
+                                    1,
+                                    -1,
+                                    &rhbex,
+                                    hb->time[1] - hb->time[0],
+                                    eacNormal,
+                                    1,
+                                    FALSE,
+                                    bNorm,
+                                    FALSE,
+                                    0,
+                                    -1,
+                                    0);
 
                     /* Cross correlation analysis for thermodynamics */
                     for (j = nframes; (j < n2); j++)
@@ -2176,7 +2212,9 @@ static void do_hbac(const char*             fn,
         printf("\nWARNING: Correlation function is probably not long enough\n"
                "because the standard deviation in the tail of C(t) > %g\n"
                "Tail value (average C(t) over second half of acf): %g +/- %g\n",
-               tol, tail, dtail);
+               tol,
+               tail,
+               dtail);
     }
     for (j = 0; (j < nn); j++)
     {
@@ -2204,8 +2242,7 @@ static void do_hbac(const char*             fn,
 
     for (j = 0; (j < nn); j++)
     {
-        fprintf(fp, "%10g  %10g  %10g  %10g  %10g\n", hb->time[j] - hb->time[0], ct[j], cct[j],
-                ght[j], kt[j]);
+        fprintf(fp, "%10g  %10g  %10g  %10g  %10g\n", hb->time[j] - hb->time[0], ct[j], cct[j], ght[j], kt[j]);
     }
     xvgrclose(fp);
 
@@ -2436,7 +2473,8 @@ int gmx_hbond(int argc, char* argv[])
 
         "If you set [TT]-shell[tt], you will be asked for an additional index group",
         "which should contain exactly one atom. In this case, only hydrogen",
-        "bonds between atoms within the shell distance from the one atom are", "considered.[PAR]",
+        "bonds between atoms within the shell distance from the one atom are",
+        "considered.[PAR]",
 
         "With option -ac, rate constants for hydrogen bonding can be derived with the",
         "model of Luzar and Chandler (Nature 379:55, 1996; J. Chem. Phys. 113:23, 2000).",
@@ -2444,7 +2482,8 @@ int gmx_hbond(int argc, char* argv[])
         "n(t) can be defined as either all pairs that are not within contact distance r at time t",
         "(corresponding to leaving the -r2 option at the default value 0) or all pairs that",
         "are within distance r2 (corresponding to setting a second cut-off value with option -r2).",
-        "See mentioned literature for more details and definitions.", "[PAR]",
+        "See mentioned literature for more details and definitions.",
+        "[PAR]",
 
         /*    "It is also possible to analyse specific hydrogen bonds with",
               "[TT]-sel[tt]. This index file must contain a group of atom triplets",
@@ -2460,7 +2499,9 @@ int gmx_hbond(int argc, char* argv[])
            "note also that no check is made for the types of atoms.[PAR]",
          */
 
-        "[BB]Output:[bb]", "", " * [TT]-num[tt]:  number of hydrogen bonds as a function of time.",
+        "[BB]Output:[bb]",
+        "",
+        " * [TT]-num[tt]:  number of hydrogen bonds as a function of time.",
         " * [TT]-ac[tt]:   average over all autocorrelations of the existence",
         "   functions (either 0 or 1) of all hydrogen bonds.",
         " * [TT]-dist[tt]: distance distribution of all hydrogen bonds.",
@@ -2474,11 +2515,13 @@ int gmx_hbond(int argc, char* argv[])
         "   all solvent atoms involved in insertion.",
         " * [TT]-hbm[tt]:  existence matrix for all hydrogen bonds over all",
         "   frames, this also contains information on solvent insertion",
-        "   into hydrogen bonds. Ordering is identical to that in [TT]-hbn[tt]", "   index file.",
+        "   into hydrogen bonds. Ordering is identical to that in [TT]-hbn[tt]",
+        "   index file.",
         " * [TT]-dan[tt]: write out the number of donors and acceptors analyzed for",
         "   each timeframe. This is especially useful when using [TT]-shell[tt].",
         " * [TT]-nhbdist[tt]: compute the number of HBonds per hydrogen in order to",
-        "   compare results to Raman Spectroscopy.", "",
+        "   compare results to Raman Spectroscopy.",
+        "",
         "Note: options [TT]-ac[tt], [TT]-life[tt], [TT]-hbn[tt] and [TT]-hbm[tt]",
         "require an amount of memory proportional to the total numbers of donors",
         "times the total number of acceptors in the selected group(s)."
@@ -2635,8 +2678,8 @@ int gmx_hbond(int argc, char* argv[])
     npargs = asize(pa);
     ppa    = add_acf_pargs(&npargs, pa);
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm, npargs, ppa,
-                           asize(desc), desc, asize(bugs), bugs, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm, npargs, ppa, asize(desc), desc, asize(bugs), bugs, &oenv))
     {
         sfree(ppa);
         return 0;
@@ -2644,7 +2687,7 @@ int gmx_hbond(int argc, char* argv[])
 
     /* process input */
     bSelected = FALSE;
-    ccut      = std::cos(acut * DEG2RAD);
+    ccut      = std::cos(acut * gmx::c_deg2Rad);
 
     if (bContact)
     {
@@ -2665,8 +2708,11 @@ int gmx_hbond(int argc, char* argv[])
     if (opt2bSet("-nhbdist", NFILE, fnm))
     {
         const char* leg[MAXHH + 1] = { "0 HBs", "1 HB", "2 HBs", "3 HBs", "Total" };
-        fpnhb = xvgropen(opt2fn("-nhbdist", NFILE, fnm), "Number of donor-H with N HBs",
-                         output_env_get_xvgr_tlabel(oenv), "N", oenv);
+        fpnhb                      = xvgropen(opt2fn("-nhbdist", NFILE, fnm),
+                         "Number of donor-H with N HBs",
+                         output_env_get_xvgr_tlabel(oenv),
+                         "N",
+                         oenv);
         xvgr_legend(fpnhb, asize(leg), leg, oenv);
     }
 
@@ -2734,8 +2780,7 @@ int gmx_hbond(int argc, char* argv[])
             {
                 if (ISINGRP(datable[index[1][i]]))
                 {
-                    gmx_fatal(FARGS, "Partial overlap between groups '%s' and '%s'", grpnames[0],
-                              grpnames[1]);
+                    gmx_fatal(FARGS, "Partial overlap between groups '%s' and '%s'", grpnames[0], grpnames[1]);
                 }
             }
         }
@@ -2743,13 +2788,19 @@ int gmx_hbond(int argc, char* argv[])
         {
             printf("Calculating %s "
                    "between %s (%d atoms) and %s (%d atoms)\n",
-                   bContact ? "contacts" : "hydrogen bonds", grpnames[0], isize[0], grpnames[1],
+                   bContact ? "contacts" : "hydrogen bonds",
+                   grpnames[0],
+                   isize[0],
+                   grpnames[1],
                    isize[1]);
         }
         else
         {
-            fprintf(stderr, "Calculating %s in %s (%d atoms)\n",
-                    bContact ? "contacts" : "hydrogen bonds", grpnames[0], isize[0]);
+            fprintf(stderr,
+                    "Calculating %s in %s (%d atoms)\n",
+                    bContact ? "contacts" : "hydrogen bonds",
+                    grpnames[0],
+                    isize[0]);
         }
     }
     sfree(datable);
@@ -2763,10 +2814,9 @@ int gmx_hbond(int argc, char* argv[])
             gen_datable(index[i], isize[i], datable, top.atoms.nr);
             if (bContact)
             {
-                search_acceptors(&top, isize[i], index[i], &hb->a, i, bNitAcc, TRUE,
-                                 (bTwo && (i == gr0)) || !bTwo, datable);
-                search_donors(&top, isize[i], index[i], &hb->d, i, TRUE,
-                              (bTwo && (i == gr1)) || !bTwo, datable);
+                search_acceptors(
+                        &top, isize[i], index[i], &hb->a, i, bNitAcc, TRUE, (bTwo && (i == gr0)) || !bTwo, datable);
+                search_donors(&top, isize[i], index[i], &hb->d, i, TRUE, (bTwo && (i == gr1)) || !bTwo, datable);
             }
             else
             {
@@ -2838,7 +2888,8 @@ int gmx_hbond(int argc, char* argv[])
         shatom = shidx[0];
         printf("Will calculate hydrogen bonds within a shell "
                "of %g nm around atom %i\n",
-               rshell, shatom + 1);
+               rshell,
+               shatom + 1);
     }
 
     /* Analyze trajectory */
@@ -2856,17 +2907,17 @@ int gmx_hbond(int argc, char* argv[])
     snew(rdist, nrbin + 1);
 
 #if !GMX_OPENMP
-#    define __ADIST adist
-#    define __RDIST rdist
-#    define __HBDATA hb
-#else /* GMX_OPENMP ==================================================    \
-       * Set up the OpenMP stuff,                                       | \
-       * like the number of threads and such                            | \
-       * Also start the parallel loop.                                  | \
-       */
-#    define __ADIST p_adist[threadNr]
-#    define __RDIST p_rdist[threadNr]
-#    define __HBDATA p_hb[threadNr]
+#    define __ADIST adist // NOLINT(bugprone-reserved-identifier)
+#    define __RDIST rdist // NOLINT(bugprone-reserved-identifier)
+#    define __HBDATA hb   // NOLINT(bugprone-reserved-identifier)
+#else                     /* GMX_OPENMP ==================================================    \
+                           * Set up the OpenMP stuff,                                       | \
+                           * like the number of threads and such                            | \
+                           * Also start the parallel loop.                                  | \
+                           */
+#    define __ADIST p_adist[threadNr] // NOLINT(bugprone-reserved-identifier)
+#    define __RDIST p_rdist[threadNr] // NOLINT(bugprone-reserved-identifier)
+#    define __HBDATA p_hb[threadNr]   // NOLINT(bugprone-reserved-identifier)
 #endif
     if (bOMP)
     {
@@ -2920,9 +2971,34 @@ int gmx_hbond(int argc, char* argv[])
     /* Make a thread pool here,
      * instead of forking anew at every frame. */
 
-#pragma omp parallel firstprivate(i) private(                                                   \
-        j, h, ii, hh, xi, yi, zi, xj, yj, zj, threadNr, dist, ang, icell, jcell, grp, ogrp, ai, \
-        aj, xjj, yjj, zjj, ihb, resdist, k, bTric, bEdge_xjj, bEdge_yjj) default(shared)
+#pragma omp parallel firstprivate(i) private(j,         \
+                                             h,         \
+                                             ii,        \
+                                             hh,        \
+                                             xi,        \
+                                             yi,        \
+                                             zi,        \
+                                             xj,        \
+                                             yj,        \
+                                             zj,        \
+                                             threadNr,  \
+                                             dist,      \
+                                             ang,       \
+                                             icell,     \
+                                             jcell,     \
+                                             grp,       \
+                                             ogrp,      \
+                                             ai,        \
+                                             aj,        \
+                                             xjj,       \
+                                             yjj,       \
+                                             zjj,       \
+                                             ihb,       \
+                                             resdist,   \
+                                             k,         \
+                                             bTric,     \
+                                             bEdge_xjj, \
+                                             bEdge_yjj) default(shared)
     { /* Start of parallel region */
         if (bOMP)
         {
@@ -2945,8 +3021,7 @@ int gmx_hbond(int argc, char* argv[])
             {
                 try
                 {
-                    build_grid(hb, x, x[shatom], bBox, box, hbox, (rcut > r2cut) ? rcut : r2cut,
-                               rshell, ngrid, grid);
+                    build_grid(hb, x, x[shatom], bBox, box, hbox, (rcut > r2cut) ? rcut : r2cut, rshell, ngrid, grid);
                     reset_nhbonds(&(hb->d));
 
                     if (debug && bDebug)
@@ -2984,8 +3059,8 @@ int gmx_hbond(int argc, char* argv[])
                             int dd       = index[0][i];
                             int aa       = index[0][i + 2];
                             /* int */ hh = index[0][i + 1];
-                            ihb = is_hbond(hb, ii, ii, dd, aa, rcut, r2cut, ccut, x, bBox, box,
-                                           hbox, &dist, &ang, bDA, &h, bContact, bMerge);
+                            ihb          = is_hbond(
+                                    hb, ii, ii, dd, aa, rcut, r2cut, ccut, x, bBox, box, hbox, &dist, &ang, bDA, &h, bContact, bMerge);
 
                             if (ihb)
                             {
@@ -3034,7 +3109,8 @@ int gmx_hbond(int argc, char* argv[])
 
                                         /* loop over all adjacent gridcells (xj,yj,zj) */
                                         for (zjj = grid_loop_begin(ngrid[ZZ], zi, bTric, FALSE);
-                                             zjj <= grid_loop_end(ngrid[ZZ], zi, bTric, FALSE); zjj++)
+                                             zjj <= grid_loop_end(ngrid[ZZ], zi, bTric, FALSE);
+                                             zjj++)
                                         {
                                             zj        = grid_mod(zjj, ngrid[ZZ]);
                                             bEdge_yjj = (zj == 0) || (zj == ngrid[ZZ] - 1);
@@ -3059,17 +3135,30 @@ int gmx_hbond(int argc, char* argv[])
                                                         j = jcell->atoms[aj];
 
                                                         /* check if this once was a h-bond */
-                                                        ihb = is_hbond(__HBDATA, grp, ogrp, i, j,
-                                                                       rcut, r2cut, ccut, x, bBox,
-                                                                       box, hbox, &dist, &ang, bDA,
-                                                                       &h, bContact, bMerge);
+                                                        ihb = is_hbond(__HBDATA,
+                                                                       grp,
+                                                                       ogrp,
+                                                                       i,
+                                                                       j,
+                                                                       rcut,
+                                                                       r2cut,
+                                                                       ccut,
+                                                                       x,
+                                                                       bBox,
+                                                                       box,
+                                                                       hbox,
+                                                                       &dist,
+                                                                       &ang,
+                                                                       bDA,
+                                                                       &h,
+                                                                       bContact,
+                                                                       bMerge);
 
                                                         if (ihb)
                                                         {
                                                             /* add to index if not already there */
                                                             /* Add a hbond */
-                                                            add_hbond(__HBDATA, i, j, h, grp, ogrp,
-                                                                      nframes, bMerge, ihb, bContact);
+                                                            add_hbond(__HBDATA, i, j, h, grp, ogrp, nframes, bMerge, ihb, bContact);
 
                                                             /* make angle and distance distributions */
                                                             if (ihb == hbHB && !bContact)
@@ -3083,7 +3172,7 @@ int gmx_hbond(int argc, char* argv[])
                                                                             "for an hbond: %f",
                                                                             dist);
                                                                 }
-                                                                ang *= RAD2DEG;
+                                                                ang *= gmx::c_rad2Deg;
                                                                 __ADIST[static_cast<int>(ang / abin)]++;
                                                                 __RDIST[static_cast<int>(dist / rbin)]++;
                                                                 if (!bTwo)
@@ -3092,7 +3181,8 @@ int gmx_hbond(int argc, char* argv[])
                                                                     {
                                                                         gmx_fatal(
                                                                                 FARGS,
-                                                                                "Invalid donor %d", i);
+                                                                                "Invalid donor %d",
+                                                                                i);
                                                                     }
                                                                     if (acceptor_index(&hb->a, ogrp, j)
                                                                         == NOTSET)
@@ -3239,8 +3329,7 @@ int gmx_hbond(int argc, char* argv[])
 
     if (nframes < 2 && (opt2bSet("-ac", NFILE, fnm) || opt2bSet("-life", NFILE, fnm)))
     {
-        gmx_fatal(FARGS,
-                  "Cannot calculate autocorrelation of life times with less than two frames");
+        gmx_fatal(FARGS, "Cannot calculate autocorrelation of life times with less than two frames");
     }
 
     free_grid(ngrid, &grid);
@@ -3277,7 +3366,9 @@ int gmx_hbond(int argc, char* argv[])
         {
             printf("Found %d different %s in trajectory\n"
                    "Found %d different atom-pairs within %s distance\n",
-                   hb->nrhb, bContact ? "contacts" : "hydrogen bonds", hb->nrdist,
+                   hb->nrhb,
+                   bContact ? "contacts" : "hydrogen bonds",
+                   hb->nrdist,
                    (r2cut > 0) ? "second cut-off" : "hydrogen bonding");
 
             if (bMerge)
@@ -3298,8 +3389,11 @@ int gmx_hbond(int argc, char* argv[])
     /* Print out number of hbonds and distances */
     aver_nhb  = 0;
     aver_dist = 0;
-    fp        = xvgropen(opt2fn("-num", NFILE, fnm), bContact ? "Contacts" : "Hydrogen Bonds",
-                  output_env_get_xvgr_tlabel(oenv), "Number", oenv);
+    fp        = xvgropen(opt2fn("-num", NFILE, fnm),
+                  bContact ? "Contacts" : "Hydrogen Bonds",
+                  output_env_get_xvgr_tlabel(oenv),
+                  "Number",
+                  oenv);
     snew(leg, 2);
     snew(leg[0], STRLEN);
     snew(leg[1], STRLEN);
@@ -3329,9 +3423,11 @@ int gmx_hbond(int argc, char* argv[])
             sum += rdist[i];
         }
 
-        fp = xvgropen(opt2fn("-dist", NFILE, fnm), "Hydrogen Bond Distribution",
+        fp = xvgropen(opt2fn("-dist", NFILE, fnm),
+                      "Hydrogen Bond Distribution",
                       bDA ? "Donor - Acceptor Distance (nm)" : "Hydrogen - Acceptor Distance (nm)",
-                      "", oenv);
+                      "",
+                      oenv);
         for (i = 0; i < nrbin; i++)
         {
             fprintf(fp, "%10g %10g\n", (i + 0.5) * rbin, rdist[i] / (rbin * sum));
@@ -3350,8 +3446,11 @@ int gmx_hbond(int argc, char* argv[])
             sum += adist[i];
         }
 
-        fp = xvgropen(opt2fn("-ang", NFILE, fnm), "Hydrogen Bond Distribution",
-                      "Hydrogen - Donor - Acceptor Angle (\\SO\\N)", "", oenv);
+        fp = xvgropen(opt2fn("-ang", NFILE, fnm),
+                      "Hydrogen Bond Distribution",
+                      "Hydrogen - Donor - Acceptor Angle (\\SO\\N)",
+                      "",
+                      oenv);
         for (i = 0; i < nabin; i++)
         {
             fprintf(fp, "%10g %10g\n", (i + 0.5) * abin, adist[i] / (abin * sum));
@@ -3362,8 +3461,11 @@ int gmx_hbond(int argc, char* argv[])
     /* Print HB in alpha-helix */
     if (opt2bSet("-hx", NFILE, fnm))
     {
-        fp = xvgropen(opt2fn("-hx", NFILE, fnm), "Hydrogen Bonds", output_env_get_xvgr_tlabel(oenv),
-                      "Count", oenv);
+        fp = xvgropen(opt2fn("-hx", NFILE, fnm),
+                      "Hydrogen Bonds",
+                      output_env_get_xvgr_tlabel(oenv),
+                      "Count",
+                      oenv);
         xvgr_legend(fp, NRHXTYPES, hxtypenames, oenv);
         for (i = 0; i < nframes; i++)
         {
@@ -3378,7 +3480,9 @@ int gmx_hbond(int argc, char* argv[])
     }
 
     printf("Average number of %s per timeframe %.3f out of %g possible\n",
-           bContact ? "contacts" : "hbonds", bContact ? aver_dist : aver_nhb, max_nhb);
+           bContact ? "contacts" : "hbonds",
+           bContact ? aver_dist : aver_nhb,
+           max_nhb);
 
     /* Do Autocorrelation etc. */
     if (hb->bHBmap)
@@ -3393,8 +3497,7 @@ int gmx_hbond(int argc, char* argv[])
         }
         if (opt2bSet("-ac", NFILE, fnm))
         {
-            do_hbac(opt2fn("-ac", NFILE, fnm), hb, nDump, bMerge, bContact, fit_start, temp,
-                    r2cut > 0, oenv, nThreads);
+            do_hbac(opt2fn("-ac", NFILE, fnm), hb, nDump, bMerge, bContact, fit_start, temp, r2cut > 0, oenv, nThreads);
         }
         if (opt2bSet("-life", NFILE, fnm))
         {
@@ -3481,8 +3584,11 @@ int gmx_hbond(int argc, char* argv[])
 
 #define USE_THIS_GROUP(j) (((j) == gr0) || (bTwo && ((j) == gr1)))
 
-        fp   = xvgropen(opt2fn("-dan", NFILE, fnm), "Donors and Acceptors",
-                      output_env_get_xvgr_tlabel(oenv), "Count", oenv);
+        fp   = xvgropen(opt2fn("-dan", NFILE, fnm),
+                      "Donors and Acceptors",
+                      output_env_get_xvgr_tlabel(oenv),
+                      "Count",
+                      oenv);
         nleg = (bTwo ? 2 : 1) * 2;
         snew(legnames, nleg);
         i = 0;

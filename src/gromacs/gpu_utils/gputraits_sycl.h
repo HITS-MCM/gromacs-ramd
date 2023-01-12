@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_GPU_UTILS_GPUTRAITS_SYCL_H
 #define GMX_GPU_UTILS_GPUTRAITS_SYCL_H
@@ -47,25 +46,30 @@
 #include <cstddef>
 
 #include "gromacs/gpu_utils/gmxsycl.h"
+#include "gromacs/math/vectypes.h"
 
+//! Type of device texture object. In SYCL, that would be \c sycl::image, but it's not used.
 using DeviceTexture = void*;
 
 //! \brief Single GPU call timing event, not used with SYCL
 using CommandEvent = void*;
 
+// TODO: Issue #3312
 //! Convenience alias.
-using float4 = cl::sycl::float4;
-
-//! Convenience alias. Not using cl::sycl::float3 due to alignment issues.
-using float3 = gmx::RVec;
-
-//! Convenience alias for cl::sycl::float2
-using float2 = cl::sycl::float2;
+using Float4 = sycl::float4;
+//! Convenience alias. Not using sycl::float3 due to alignment issues.
+using Float3 = gmx::RVec;
+//! Convenience alias for sycl::float2
+using Float2 = sycl::float2;
 
 /*! \internal \brief
- * GPU kernels scheduling description. This is same in OpenCL/CUDA.
- * Provides reasonable defaults, one typically only needs to set the GPU stream
- * and non-1 work sizes.
+ * GPU kernels scheduling description.
+ * One typically only needs to set non-1 work sizes.
+ *
+ * \note This struct uses CUDA/OpenCL layout, with the first dimension being contiguous.
+ *       It is different from the SYCL standard, where the last dimension is contiguous.
+ *       The transpose is to be performed internally in ISyclKernelFunctor::launch.
+ * \note \c sharedMemorySize is ignored in SYCL.
  */
 struct KernelLaunchConfig
 {
@@ -78,8 +82,13 @@ struct KernelLaunchConfig
 };
 
 /*! \brief Sets whether device code can use arrays that are embedded in structs.
- * \todo Probably can, must check
+ *
+ * That is not technically true for SYCL: the device code needs dedicated
+ * \c sycl::buffer/accessor objects.
+ * But our \c prepareGpuKernelArguments and \c launchGpuKernel functions deal
+ * with that, so we can pass embedded buffers to them, which is what this
+ * constant actually controls.
  */
-#define c_canEmbedBuffers false
+#define c_canEmbedBuffers true
 
 #endif

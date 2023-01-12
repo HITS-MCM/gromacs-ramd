@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 
@@ -46,24 +44,9 @@
     real* Vvdw = out->VSvdw.data();
     real* Vc   = out->VSc.data();
 #    else
-    real* Vvdw = out->Vvdw.data();
-    real* Vc   = out->Vc.data();
+    real*       Vvdw       = out->Vvdw.data();
+    real*       Vc         = out->Vc.data();
 #    endif
-#endif
-
-    const nbnxn_cj_t* l_cj;
-    int               ci, ci_sh;
-    int               ish, ish3;
-    gmx_bool          do_LJ, half_LJ, do_coul;
-    int               cjind0, cjind1, cjind;
-
-#ifdef ENERGY_GROUPS
-    int   Vstride_i;
-    int   egps_ishift, egps_imask;
-    int   egps_jshift, egps_jmask, egps_jstride;
-    int   egps_i;
-    real* vvdwtp[UNROLLI];
-    real* vctp[UNROLLI];
 #endif
 
     SimdReal shX_S;
@@ -99,11 +82,7 @@
 
 #ifdef CALC_COUL_TAB
     /* Coulomb table variables */
-    SimdReal    invtsp_S;
-    const real* tab_coul_F;
-#    if defined CALC_ENERGIES && !defined TAB_FDV0
-    const real*                           tab_coul_V;
-#    endif
+    SimdReal invtsp_S;
 
 #    ifdef CALC_ENERGIES
     SimdReal mhalfsp_S;
@@ -137,7 +116,6 @@
 #    endif
 #endif
 #ifdef LJ_EWALD_GEOM
-    real     lj_ewaldcoeff2, lj_ewaldcoeff6_6;
     SimdReal half_S, lje_c2_S, lje_c6_6_S;
 #endif
 
@@ -157,8 +135,6 @@
     SimdReal rcvdw2_S;
 #endif
 
-    int ninner;
-
 #ifdef COUNT_PAIRS
     int npair = 0;
 #endif
@@ -171,7 +147,7 @@
 #if !(defined LJ_COMB_GEOM || defined LJ_COMB_LB || defined FIX_LJ_C)
     /* No combination rule used */
     const real* gmx_restrict nbfp_ptr = nbatParams.nbfp_aligned.data();
-    const int* gmx_restrict type      = nbatParams.type.data();
+    const int* gmx_restrict  type     = nbatParams.type.data();
 #endif
 
     /* Load j-i for the first i */
@@ -219,10 +195,10 @@
 
 #ifdef CALC_COUL_RF
     /* Reaction-field constants */
-    mrc_3_S = SimdReal(-2 * ic->k_rf);
+    mrc_3_S = SimdReal(-2 * ic->reactionFieldCoefficient);
 #    ifdef CALC_ENERGIES
-    hrc_3_S  = SimdReal(ic->k_rf);
-    moh_rc_S = SimdReal(-ic->c_rf);
+    hrc_3_S  = SimdReal(ic->reactionFieldCoefficient);
+    moh_rc_S = SimdReal(-ic->reactionFieldShift);
 #    endif
 #endif
 
@@ -234,11 +210,11 @@
 #    endif
 
 #    ifdef TAB_FDV0
-    tab_coul_F = ic->coulombEwaldTables->tableFDV0.data();
+    const real* tab_coul_F = ic->coulombEwaldTables->tableFDV0.data();
 #    else
-    tab_coul_F = ic->coulombEwaldTables->tableF.data();
+    const real* tab_coul_F = ic->coulombEwaldTables->tableF.data();
 #        ifdef CALC_ENERGIES
-    tab_coul_V = ic->coulombEwaldTables->tableV.data();
+    const real* tab_coul_V = ic->coulombEwaldTables->tableV.data();
 #        endif
 #    endif
 #endif /* CALC_COUL_TAB */
@@ -293,11 +269,11 @@
 #    endif
 #endif
 #ifdef LJ_EWALD_GEOM
-    half_S           = SimdReal(0.5);
-    lj_ewaldcoeff2   = ic->ewaldcoeff_lj * ic->ewaldcoeff_lj;
-    lj_ewaldcoeff6_6 = lj_ewaldcoeff2 * lj_ewaldcoeff2 * lj_ewaldcoeff2 / 6;
-    lje_c2_S         = SimdReal(lj_ewaldcoeff2);
-    lje_c6_6_S       = SimdReal(lj_ewaldcoeff6_6);
+    half_S                      = SimdReal(0.5);
+    const real lj_ewaldcoeff2   = ic->ewaldcoeff_lj * ic->ewaldcoeff_lj;
+    const real lj_ewaldcoeff6_6 = lj_ewaldcoeff2 * lj_ewaldcoeff2 * lj_ewaldcoeff2 / 6;
+    lje_c2_S                    = SimdReal(lj_ewaldcoeff2);
+    lje_c6_6_S                  = SimdReal(lj_ewaldcoeff6_6);
 #    ifdef CALC_ENERGIES
     /* Determine the grid potential at the cut-off */
     SimdReal lje_vc_S = SimdReal(ic->sh_lj_ewald);
@@ -343,26 +319,25 @@
 #endif /* FIX_LJ_C */
 
 #ifdef ENERGY_GROUPS
-    egps_ishift  = nbatParams.neg_2log;
-    egps_imask   = (1 << egps_ishift) - 1;
-    egps_jshift  = 2 * nbatParams.neg_2log;
-    egps_jmask   = (1 << egps_jshift) - 1;
-    egps_jstride = (UNROLLJ >> 1) * UNROLLJ;
+    const int egps_ishift  = nbatParams.neg_2log;
+    const int egps_imask   = (1 << egps_ishift) - 1;
+    const int egps_jshift  = 2 * nbatParams.neg_2log;
+    const int egps_jmask   = (1 << egps_jshift) - 1;
+    const int egps_jstride = (UNROLLJ >> 1) * UNROLLJ;
     /* Major division is over i-particle energy groups, determine the stride */
-    Vstride_i = nbatParams.nenergrp * (1 << nbatParams.neg_2log) * egps_jstride;
+    const int Vstride_i = nbatParams.nenergrp * (1 << nbatParams.neg_2log) * egps_jstride;
 #endif
 
-    l_cj = nbl->cj.data();
+    const nbnxn_cj_t* l_cj = nbl->cj.data();
 
-    ninner = 0;
     for (const nbnxn_ci_t& ciEntry : nbl->ci)
     {
-        ish    = (ciEntry.shift & NBNXN_CI_SHIFT);
-        ish3   = ish * 3;
-        cjind0 = ciEntry.cj_ind_start;
-        cjind1 = ciEntry.cj_ind_end;
-        ci     = ciEntry.ci;
-        ci_sh  = (ish == CENTRAL ? ci : -1);
+        const int ish    = (ciEntry.shift & NBNXN_CI_SHIFT);
+        const int ish3   = ish * 3;
+        const int cjind0 = ciEntry.cj_ind_start;
+        const int cjind1 = ciEntry.cj_ind_end;
+        const int ci     = ciEntry.ci;
+        const int ci_sh  = (ish == gmx::c_centralShiftIndex ? ci : -1);
 
         shX_S = SimdReal(shiftvec[ish3]);
         shY_S = SimdReal(shiftvec[ish3 + 1]);
@@ -389,18 +364,18 @@
          * inner LJ + C      for full-LJ + C
          * inner LJ          for full-LJ + no-C / half-LJ + no-C
          */
-        do_LJ   = ((ciEntry.shift & NBNXN_CI_DO_LJ(0)) != 0);
-        do_coul = ((ciEntry.shift & NBNXN_CI_DO_COUL(0)) != 0);
-        half_LJ = (((ciEntry.shift & NBNXN_CI_HALF_LJ(0)) != 0) || !do_LJ) && do_coul;
+        const bool do_LJ   = ((ciEntry.shift & NBNXN_CI_DO_LJ(0)) != 0);
+        const bool do_coul = ((ciEntry.shift & NBNXN_CI_DO_COUL(0)) != 0);
+        const bool half_LJ = (((ciEntry.shift & NBNXN_CI_HALF_LJ(0)) != 0) || !do_LJ) && do_coul;
 
 #ifdef ENERGY_GROUPS
-        egps_i = nbatParams.energrp[ci];
+        const int egps_i = nbatParams.energrp[ci];
+        real*     vvdwtp[UNROLLI];
+        real*     vctp[UNROLLI];
         {
-            int ia, egp_ia;
-
-            for (ia = 0; ia < UNROLLI; ia++)
+            for (int ia = 0; ia < UNROLLI; ia++)
             {
-                egp_ia     = (egps_i >> (ia * egps_ishift)) & egps_imask;
+                int egp_ia = (egps_i >> (ia * egps_ishift)) & egps_imask;
                 vvdwtp[ia] = Vvdw + egp_ia * Vstride_i;
                 vctp[ia]   = Vc + egp_ia * Vstride_i;
             }
@@ -422,29 +397,24 @@
             {
                 if (do_coul)
                 {
-                    real Vc_sub_self;
-                    int  ia;
-
 #    ifdef CALC_COUL_RF
-                    Vc_sub_self = 0.5 * ic->c_rf;
+                    const real Vc_sub_self = 0.5 * ic->reactionFieldShift;
 #    endif
 #    ifdef CALC_COUL_TAB
 #        ifdef TAB_FDV0
-                    Vc_sub_self = 0.5 * tab_coul_F[2];
+                    const real Vc_sub_self = 0.5 * tab_coul_F[2];
 #        else
-                    Vc_sub_self = 0.5 * tab_coul_V[0];
+                    const real Vc_sub_self = 0.5 * tab_coul_V[0];
 #        endif
 #    endif
 #    ifdef CALC_COUL_EWALD
                     /* beta/sqrt(pi) */
-                    Vc_sub_self = 0.5 * ic->ewaldcoeff_q * M_2_SQRTPI;
+                    const real Vc_sub_self = 0.5 * ic->ewaldcoeff_q * M_2_SQRTPI;
 #    endif
 
-                    for (ia = 0; ia < UNROLLI; ia++)
+                    for (int ia = 0; ia < UNROLLI; ia++)
                     {
-                        real qi;
-
-                        qi = q[sci + ia];
+                        const real qi = q[sci + ia];
 #    ifdef ENERGY_GROUPS
                         vctp[ia][((egps_i >> (ia * egps_ishift)) & egps_imask) * egps_jstride]
 #    else
@@ -456,14 +426,11 @@
 
 #    ifdef LJ_EWALD_GEOM
                 {
-                    int ia;
-
-                    for (ia = 0; ia < UNROLLI; ia++)
+                    for (int ia = 0; ia < UNROLLI; ia++)
                     {
-                        real c6_i;
-
-                        c6_i = nbatParams.nbfp[nbatParams.type[sci + ia] * (nbatParams.numTypes + 1) * 2]
-                               / 6;
+                        const real c6_i =
+                                nbatParams.nbfp[nbatParams.type[sci + ia] * (nbatParams.numTypes + 1) * 2]
+                                / 6;
 #        ifdef ENERGY_GROUPS
                         vvdwtp[ia][((egps_i >> (ia * egps_ishift)) & egps_imask) * egps_jstride]
 #        else
@@ -561,7 +528,7 @@
         fiz_S0 = setZero();
         fiz_S2 = setZero();
 
-        cjind = cjind0;
+        int cjind = cjind0;
 
         /* Currently all kernels use (at least half) LJ */
 #define CALC_LJ
@@ -617,8 +584,6 @@
             }
         }
 #undef CALC_LJ
-        ninner += cjind1 - cjind0;
-
         /* Add accumulated i-forces to the force array */
         real fShiftX = reduceIncr4ReturnSumHsimd(f + scix, fix_S0, fix_S2);
         real fShiftY = reduceIncr4ReturnSumHsimd(f + sciy, fiy_S0, fiy_S2);

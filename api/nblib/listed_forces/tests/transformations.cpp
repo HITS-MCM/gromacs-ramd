@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -65,8 +64,8 @@ ListedInteractionData unsortedInteractions()
     std::vector<InteractionIndex<HarmonicBondType>> bondIndices{ { 0, 2, 0 }, { 0, 1, 0 } };
     pickType<HarmonicBondType>(interactions).indices = std::move(bondIndices);
 
-    std::vector<InteractionIndex<HarmonicAngleType>> angleIndices{ { 0, 1, 2, 0 }, { 1, 0, 2, 0 } };
-    pickType<HarmonicAngleType>(interactions).indices = std::move(angleIndices);
+    std::vector<InteractionIndex<HarmonicAngle>> angleIndices{ { 0, 1, 2, 0 }, { 1, 0, 2, 0 } };
+    pickType<HarmonicAngle>(interactions).indices = std::move(angleIndices);
 
     std::vector<InteractionIndex<ProperDihedral>> dihedralIndices{ { 0, 2, 1, 3, 0 }, { 0, 1, 2, 3, 0 } };
     pickType<ProperDihedral>(interactions).indices = std::move(dihedralIndices);
@@ -80,12 +79,12 @@ TEST(ListedTransformations, SortInteractionIndices)
     sortInteractions(interactions);
 
     std::vector<InteractionIndex<HarmonicBondType>> refBondIndices{ { 0, 1, 0 }, { 0, 2, 0 } };
-    std::vector<InteractionIndex<HarmonicAngleType>> refAngleIndices{ { 1, 0, 2, 0 }, { 0, 1, 2, 0 } };
-    std::vector<InteractionIndex<ProperDihedral>>    refDihedralIndices{ { 0, 1, 2, 3, 0 },
+    std::vector<InteractionIndex<HarmonicAngle>>  refAngleIndices{ { 1, 0, 2, 0 }, { 0, 1, 2, 0 } };
+    std::vector<InteractionIndex<ProperDihedral>> refDihedralIndices{ { 0, 1, 2, 3, 0 },
                                                                       { 0, 2, 1, 3, 0 } };
 
     EXPECT_EQ(pickType<HarmonicBondType>(interactions).indices, refBondIndices);
-    EXPECT_EQ(pickType<HarmonicAngleType>(interactions).indices, refAngleIndices);
+    EXPECT_EQ(pickType<HarmonicAngle>(interactions).indices, refAngleIndices);
     EXPECT_EQ(pickType<ProperDihedral>(interactions).indices, refDihedralIndices);
 }
 

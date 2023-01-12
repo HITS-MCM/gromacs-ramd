@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -145,8 +144,11 @@ void Molecule::addInteraction(const ParticleIdentifier&   particleI,
                              + name_.value());
     }
 
-    addInteractionImpl(interaction, particleI.particleName(), residueName(particleI),
-                       particleJ.particleName(), residueName(particleJ));
+    addInteractionImpl(interaction,
+                       particleI.particleName(),
+                       residueName(particleI),
+                       particleJ.particleName(),
+                       residueName(particleJ));
 }
 
 void Molecule::addInteraction(const ParticleIdentifier&     particleI,
@@ -161,8 +163,12 @@ void Molecule::addInteraction(const ParticleIdentifier&     particleI,
                              + name_.value());
     }
 
-    addInteractionImpl(interaction, particleI.particleName(), residueName(particleI),
-                       particleJ.particleName(), residueName(particleJ), particleK.particleName(),
+    addInteractionImpl(interaction,
+                       particleI.particleName(),
+                       residueName(particleI),
+                       particleJ.particleName(),
+                       residueName(particleJ),
+                       particleK.particleName(),
                        residueName(particleK));
 }
 
@@ -179,9 +185,15 @@ void Molecule::addInteraction(const ParticleIdentifier&    particleI,
                              + name_.value());
     }
 
-    addInteractionImpl(interaction, particleI.particleName(), residueName(particleI),
-                       particleJ.particleName(), residueName(particleJ), particleK.particleName(),
-                       residueName(particleK), particleL.particleName(), residueName(particleL));
+    addInteractionImpl(interaction,
+                       particleI.particleName(),
+                       residueName(particleI),
+                       particleJ.particleName(),
+                       residueName(particleJ),
+                       particleK.particleName(),
+                       residueName(particleK),
+                       particleL.particleName(),
+                       residueName(particleL));
 }
 
 void Molecule::addInteraction(const ParticleIdentifier&    particleI,
@@ -198,10 +210,17 @@ void Molecule::addInteraction(const ParticleIdentifier&    particleI,
                              + name_.value());
     }
 
-    addInteractionImpl(interaction, particleI.particleName(), residueName(particleI),
-                       particleJ.particleName(), residueName(particleJ), particleK.particleName(),
-                       residueName(particleK), particleL.particleName(), residueName(particleL),
-                       particleM.particleName(), residueName(particleM));
+    addInteractionImpl(interaction,
+                       particleI.particleName(),
+                       residueName(particleI),
+                       particleJ.particleName(),
+                       residueName(particleJ),
+                       particleK.particleName(),
+                       residueName(particleK),
+                       particleL.particleName(),
+                       residueName(particleL),
+                       particleM.particleName(),
+                       residueName(particleM));
 }
 
 
@@ -218,7 +237,8 @@ void Molecule::addExclusion(const ParticleIdentifier& particle, const ParticleId
     }
 
     // duplication for the swapped pair happens in getExclusions()
-    exclusionsByName_.emplace_back(std::make_tuple(particle.particleName(), residueName(particle),
+    exclusionsByName_.emplace_back(std::make_tuple(particle.particleName(),
+                                                   residueName(particle),
                                                    particleToExclude.particleName(),
                                                    residueName(particleToExclude)));
 }
@@ -280,8 +300,10 @@ std::vector<std::tuple<int, int>> Molecule::getExclusions() const
         const std::string& residueName2  = std::get<3>(tup);
 
         // look up first index (binary search)
-        auto it1 = std::lower_bound(std::begin(indexKey), std::end(indexKey),
-                                    std::make_tuple(particleName1, residueName2, 0), sortKey);
+        auto it1 = std::lower_bound(std::begin(indexKey),
+                                    std::end(indexKey),
+                                    std::make_tuple(particleName1, residueName2, 0),
+                                    sortKey);
 
         // make sure we have the (particleName,residueName) combo
         if (it1 == std::end(indexKey) or std::get<0>(*it1) != particleName1 or std::get<1>(*it1) != residueName1)
@@ -294,8 +316,10 @@ std::vector<std::tuple<int, int>> Molecule::getExclusions() const
         int firstIndex = std::get<2>(*it1);
 
         // look up second index (binary search)
-        auto it2 = std::lower_bound(std::begin(indexKey), std::end(indexKey),
-                                    std::make_tuple(particleName2, residueName2, 0), sortKey);
+        auto it2 = std::lower_bound(std::begin(indexKey),
+                                    std::end(indexKey),
+                                    std::make_tuple(particleName2, residueName2, 0),
+                                    sortKey);
 
         // make sure we have the (particleName,residueName) combo
         if (it2 == std::end(indexKey) or std::get<0>(*it2) != particleName2 or std::get<1>(*it2) != residueName2)

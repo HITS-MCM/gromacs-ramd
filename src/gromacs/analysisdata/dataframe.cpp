@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2017,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -56,9 +55,7 @@ AnalysisDataFrameHeader::AnalysisDataFrameHeader() : index_(-1), x_(0.0), dx_(0.
 
 
 AnalysisDataFrameHeader::AnalysisDataFrameHeader(int index, real x, real dx) :
-    index_(index),
-    x_(x),
-    dx_(dx)
+    index_(index), x_(x), dx_(dx)
 {
     GMX_ASSERT(index >= 0, "Invalid frame index");
 }
@@ -82,10 +79,7 @@ AnalysisDataPointSetRef::AnalysisDataPointSetRef(const AnalysisDataFrameHeader& 
 
 AnalysisDataPointSetRef::AnalysisDataPointSetRef(const AnalysisDataFrameHeader&        header,
                                                  const std::vector<AnalysisDataValue>& values) :
-    header_(header),
-    dataSetIndex_(0),
-    firstColumn_(0),
-    values_(values)
+    header_(header), dataSetIndex_(0), firstColumn_(0), values_(values)
 {
     GMX_ASSERT(header_.isValid(), "Invalid point set reference should not be constructed");
 }
@@ -94,9 +88,7 @@ AnalysisDataPointSetRef::AnalysisDataPointSetRef(const AnalysisDataFrameHeader& 
 AnalysisDataPointSetRef::AnalysisDataPointSetRef(const AnalysisDataPointSetRef& points,
                                                  int                            firstColumn,
                                                  int                            columnCount) :
-    header_(points.header()),
-    dataSetIndex_(points.dataSetIndex()),
-    firstColumn_(0)
+    header_(points.header()), dataSetIndex_(points.dataSetIndex()), firstColumn_(0)
 {
     GMX_ASSERT(firstColumn >= 0, "Invalid first column");
     GMX_ASSERT(columnCount >= 0, "Invalid column count");
@@ -152,9 +144,7 @@ AnalysisDataFrameRef::AnalysisDataFrameRef() {}
 AnalysisDataFrameRef::AnalysisDataFrameRef(const AnalysisDataFrameHeader&      header,
                                            const AnalysisDataValuesRef&        values,
                                            const AnalysisDataPointSetInfosRef& pointSets) :
-    header_(header),
-    values_(values),
-    pointSets_(pointSets)
+    header_(header), values_(values), pointSets_(pointSets)
 {
     GMX_ASSERT(!pointSets_.empty(), "There must always be a point set");
 }
@@ -163,9 +153,7 @@ AnalysisDataFrameRef::AnalysisDataFrameRef(const AnalysisDataFrameHeader&      h
 AnalysisDataFrameRef::AnalysisDataFrameRef(const AnalysisDataFrameHeader&               header,
                                            const std::vector<AnalysisDataValue>&        values,
                                            const std::vector<AnalysisDataPointSetInfo>& pointSets) :
-    header_(header),
-    values_(values),
-    pointSets_(pointSets)
+    header_(header), values_(values), pointSets_(pointSets)
 {
     GMX_ASSERT(!pointSets_.empty(), "There must always be a point set");
 }

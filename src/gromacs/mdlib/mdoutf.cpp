@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -47,14 +45,12 @@
 #include "gromacs/fileio/tngio.h"
 #include "gromacs/fileio/trrio.h"
 #include "gromacs/fileio/xtcio.h"
-#include "gromacs/fileio/xvgr.h"
 #include "gromacs/math/vec.h"
-#include "gromacs/mdlib/trajectory_writing.h"
+#include "gromacs/mdlib/energyoutput.h"
 #include "gromacs/mdrunutility/handlerestart.h"
 #include "gromacs/mdrunutility/multisim.h"
 #include "gromacs/mdtypes/awh_history.h"
 #include "gromacs/mdtypes/commrec.h"
-#include "gromacs/mdtypes/df_history.h"
 #include "gromacs/mdtypes/edsamhistory.h"
 #include "gromacs/mdtypes/energyhistory.h"
 #include "gromacs/mdtypes/imdoutputprovider.h"
@@ -75,45 +71,45 @@
 
 struct gmx_mdoutf
 {
-    t_fileio*                     fp_trn;
-    t_fileio*                     fp_xtc;
-    gmx_tng_trajectory_t          tng;
-    gmx_tng_trajectory_t          tng_low_prec;
-    int                           x_compression_precision; /* only used by XTC output */
-    ener_file_t                   fp_ene;
-    const char*                   fn_cpt;
-    gmx_bool                      bKeepAndNumCPT;
-    int                           eIntegrator;
-    gmx_bool                      bExpanded;
-    int                           elamstats;
-    int                           simulation_part;
-    FILE*                         fp_dhdl;
-    int                           natoms_global;
-    int                           natoms_x_compressed;
-    const SimulationGroups*       groups; /* for compressed position writing */
-    gmx_wallcycle_t               wcycle;
-    rvec*                         f_global;
-    gmx::IMDOutputProvider*       outputProvider;
-    const gmx::MdModulesNotifier* mdModulesNotifier;
-    bool                          simulationsShareState;
-    MPI_Comm                      mastersComm;
+    t_fileio*                      fp_trn;
+    t_fileio*                      fp_xtc;
+    gmx_tng_trajectory_t           tng;
+    gmx_tng_trajectory_t           tng_low_prec;
+    int                            x_compression_precision; /* only used by XTC output */
+    ener_file_t                    fp_ene;
+    const char*                    fn_cpt;
+    gmx_bool                       bKeepAndNumCPT;
+    IntegrationAlgorithm           eIntegrator;
+    gmx_bool                       bExpanded;
+    LambdaWeightCalculation        elamstats;
+    int                            simulation_part;
+    FILE*                          fp_dhdl;
+    int                            natoms_global;
+    int                            natoms_x_compressed;
+    const SimulationGroups*        groups; /* for compressed position writing */
+    gmx_wallcycle*                 wcycle;
+    rvec*                          f_global;
+    gmx::IMDOutputProvider*        outputProvider;
+    const gmx::MDModulesNotifiers* mdModulesNotifiers;
+    bool                           simulationsShareState;
+    MPI_Comm                       mastersComm;
 };
 
 
-gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
-                         int                           nfile,
-                         const t_filenm                fnm[],
-                         const gmx::MdrunOptions&      mdrunOptions,
-                         const t_commrec*              cr,
-                         gmx::IMDOutputProvider*       outputProvider,
-                         const gmx::MdModulesNotifier& mdModulesNotifier,
-                         const t_inputrec*             ir,
-                         const gmx_mtop_t*             top_global,
-                         const gmx_output_env_t*       oenv,
-                         gmx_wallcycle_t               wcycle,
-                         const gmx::StartingBehavior   startingBehavior,
-                         bool                          simulationsShareState,
-                         const gmx_multisim_t*         ms)
+gmx_mdoutf_t init_mdoutf(FILE*                          fplog,
+                         int                            nfile,
+                         const t_filenm                 fnm[],
+                         const gmx::MdrunOptions&       mdrunOptions,
+                         const t_commrec*               cr,
+                         gmx::IMDOutputProvider*        outputProvider,
+                         const gmx::MDModulesNotifiers& mdModulesNotifiers,
+                         const t_inputrec*              ir,
+                         const gmx_mtop_t&              top_global,
+                         const gmx_output_env_t*        oenv,
+                         gmx_wallcycle*                 wcycle,
+                         const gmx::StartingBehavior    startingBehavior,
+                         bool                           simulationsShareState,
+                         const gmx_multisim_t*          ms)
 {
     gmx_mdoutf_t of;
     const char * appendMode = "a+", *writeMode = "w+", *filemode;
@@ -164,7 +160,7 @@ gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
                     gmx_tng_open(filename, filemode[0], &of->tng_low_prec);
                     if (filemode[0] == 'w')
                     {
-                        gmx_tng_prepare_low_prec_writing(of->tng_low_prec, top_global, ir);
+                        gmx_tng_prepare_low_prec_writing(of->tng_low_prec, &top_global, ir);
                     }
                     bCiteTng = TRUE;
                     break;
@@ -193,7 +189,7 @@ gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
                     gmx_tng_open(filename, filemode[0], &of->tng);
                     if (filemode[0] == 'w')
                     {
-                        gmx_tng_prepare_md_writing(of->tng, top_global, ir);
+                        gmx_tng_prepare_md_writing(of->tng, &top_global, ir);
                     }
                     bCiteTng = TRUE;
                     break;
@@ -206,8 +202,8 @@ gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
         }
         of->fn_cpt = opt2fn("-cpo", nfile, fnm);
 
-        if ((ir->efep != efepNO || ir->bSimTemp) && ir->fepvals->nstdhdl > 0
-            && (ir->fepvals->separate_dhdl_file == esepdhdlfileYES) && EI_DYNAMICS(ir->eI))
+        if ((ir->efep != FreeEnergyPerturbationType::No || ir->bSimTemp) && ir->fepvals->nstdhdl > 0
+            && (ir->fepvals->separate_dhdl_file == SeparateDhdlFile::Yes) && EI_DYNAMICS(ir->eI))
         {
             if (restartWithAppending)
             {
@@ -220,16 +216,16 @@ gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
         }
 
         outputProvider->initOutput(fplog, nfile, fnm, restartWithAppending, oenv);
-        of->mdModulesNotifier = &mdModulesNotifier;
+        of->mdModulesNotifiers = &mdModulesNotifiers;
 
         /* Set up atom counts so they can be passed to actual
            trajectory-writing routines later. Also, XTC writing needs
            to know what (and how many) atoms might be in the XTC
            groups, and how to look up later which ones they are. */
-        of->natoms_global       = top_global->natoms;
-        of->groups              = &top_global->groups;
+        of->natoms_global       = top_global.natoms;
+        of->groups              = &top_global.groups;
         of->natoms_x_compressed = 0;
-        for (i = 0; (i < top_global->natoms); i++)
+        for (i = 0; (i < top_global.natoms); i++)
         {
             if (getGroupType(*of->groups, SimulationAtomGroupType::CompressedPositionOutput, i) == 0)
             {
@@ -237,9 +233,9 @@ gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
             }
         }
 
-        if (ir->nstfout && DOMAINDECOMP(cr))
+        if (ir->nstfout && haveDDAtomOrdering(*cr))
         {
-            snew(of->f_global, top_global->natoms);
+            snew(of->f_global, top_global.natoms);
         }
     }
 
@@ -261,7 +257,7 @@ FILE* mdoutf_get_fp_dhdl(gmx_mdoutf_t of)
     return of->fp_dhdl;
 }
 
-gmx_wallcycle_t mdoutf_get_wcycle(gmx_mdoutf_t of)
+gmx_wallcycle* mdoutf_get_wcycle(gmx_mdoutf_t of)
 {
     return of->wcycle;
 }
@@ -289,15 +285,15 @@ static void write_checkpoint(const char*                     fn,
                              const t_commrec*                cr,
                              ivec                            domdecCells,
                              int                             nppnodes,
-                             int                             eIntegrator,
+                             IntegrationAlgorithm            eIntegrator,
                              int                             simulation_part,
                              gmx_bool                        bExpanded,
-                             int                             elamstats,
+                             LambdaWeightCalculation         elamstats,
                              int64_t                         step,
                              double                          t,
                              t_state*                        state,
                              ObservablesHistory*             observablesHistory,
-                             const gmx::MdModulesNotifier&   mdModulesNotifier,
+                             const gmx::MDModulesNotifiers&  mdModulesNotifiers,
                              gmx::WriteCheckpointDataHolder* modularSimulatorCheckpointData,
                              bool                            applyMpiBarrierBeforeRename,
                              MPI_Comm                        mpiBarrierCommunicator)
@@ -308,7 +304,7 @@ static void write_checkpoint(const char*                     fn,
     char      buf[1024], suffix[5 + STEPSTRSIZE], sbuf[STEPSTRSIZE];
     t_fileio* ret;
 
-    if (DOMAINDECOMP(cr))
+    if (haveDDAtomOrdering(*cr))
     {
         npmenodes = cr->npmenodes;
     }
@@ -355,9 +351,9 @@ static void write_checkpoint(const char*                     fn,
     int             nED       = (edsamhist ? edsamhist->nED : 0);
 
     swaphistory_t* swaphist    = observablesHistory->swapHistory.get();
-    int            eSwapCoords = (swaphist ? swaphist->eSwapCoords : eswapNO);
+    SwapType       eSwapCoords = (swaphist ? swaphist->eSwapCoords : SwapType::No);
 
-    CheckpointHeaderContents headerContents = { 0,
+    CheckpointHeaderContents headerContents = { CheckPointVersion::UnknownVersion0,
                                                 { 0 },
                                                 { 0 },
                                                 { 0 },
@@ -389,13 +385,20 @@ static void write_checkpoint(const char*                     fn,
     std::strcpy(headerContents.version, gmx_version());
     std::strcpy(headerContents.fprog, gmx::getProgramContext().fullBinaryPath());
     std::strcpy(headerContents.ftime, timebuf.c_str());
-    if (DOMAINDECOMP(cr))
+    if (haveDDAtomOrdering(*cr))
     {
         copy_ivec(domdecCells, headerContents.dd_nc);
     }
 
-    write_checkpoint_data(fp, headerContents, bExpanded, elamstats, state, observablesHistory,
-                          mdModulesNotifier, &outputfiles, modularSimulatorCheckpointData);
+    write_checkpoint_data(fp,
+                          headerContents,
+                          bExpanded,
+                          elamstats,
+                          state,
+                          observablesHistory,
+                          mdModulesNotifiers,
+                          &outputfiles,
+                          modularSimulatorCheckpointData);
 
     /* we really, REALLY, want to make sure to physically write the checkpoint,
        and all the files it depends on, out to disk. Because we've
@@ -428,11 +431,12 @@ static void write_checkpoint(const char*                     fn,
 #if !GMX_NO_RENAME
     if (!bNumberAndKeep && !ret)
     {
+        // Add a barrier before renaming to reduce chance to get out of sync (#2440)
+        // Note: Checkpoint might only exist on some ranks, so put barrier before if clause (#3919)
+        mpiBarrierBeforeRename(applyMpiBarrierBeforeRename, mpiBarrierCommunicator);
         if (gmx_fexist(fn))
         {
             /* Rename the previous checkpoint file */
-            mpiBarrierBeforeRename(applyMpiBarrierBeforeRename, mpiBarrierCommunicator);
-
             std::strcpy(buf, fn);
             buf[std::strlen(fn) - std::strlen(ftp2ext(fn2ftp(fn))) - 1] = '\0';
             std::strcat(buf, "_prev");
@@ -458,9 +462,15 @@ static void write_checkpoint(const char*                     fn,
         /* Rename the checkpoint file from the temporary to the final name */
         mpiBarrierBeforeRename(applyMpiBarrierBeforeRename, mpiBarrierCommunicator);
 
-        if (gmx_file_rename(fntemp, fn) != 0)
+        try
         {
-            gmx_file("Cannot rename checkpoint file; maybe you are out of disk space?");
+            gmx_file_rename(fntemp, fn);
+        }
+        catch (gmx::FileIOError const&)
+        {
+            // In this case we can be more helpful than the generic message from gmx_file_rename
+            GMX_THROW(gmx::FileIOError(
+                    "Cannot rename checkpoint file; maybe you are out of disk space?"));
         }
     }
 #endif /* GMX_NO_RENAME */
@@ -502,12 +512,24 @@ void mdoutf_write_checkpoint(gmx_mdoutf_t                    of,
      * checkpoint files getting out of sync.
      */
     ivec one_ivec = { 1, 1, 1 };
-    write_checkpoint(of->fn_cpt, of->bKeepAndNumCPT, fplog, cr,
-                     DOMAINDECOMP(cr) ? cr->dd->numCells : one_ivec,
-                     DOMAINDECOMP(cr) ? cr->dd->nnodes : cr->nnodes, of->eIntegrator,
-                     of->simulation_part, of->bExpanded, of->elamstats, step, t, state_global,
-                     observablesHistory, *(of->mdModulesNotifier), modularSimulatorCheckpointData,
-                     of->simulationsShareState, of->mastersComm);
+    write_checkpoint(of->fn_cpt,
+                     of->bKeepAndNumCPT,
+                     fplog,
+                     cr,
+                     haveDDAtomOrdering(*cr) ? cr->dd->numCells : one_ivec,
+                     haveDDAtomOrdering(*cr) ? cr->dd->nnodes : cr->nnodes,
+                     of->eIntegrator,
+                     of->simulation_part,
+                     of->bExpanded,
+                     of->elamstats,
+                     step,
+                     t,
+                     state_global,
+                     observablesHistory,
+                     *(of->mdModulesNotifiers),
+                     modularSimulatorCheckpointData,
+                     of->simulationsShareState,
+                     of->mastersComm);
 }
 
 void mdoutf_write_to_trajectory_files(FILE*                           fplog,
@@ -525,7 +547,7 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
 {
     const rvec* f_global;
 
-    if (DOMAINDECOMP(cr))
+    if (haveDDAtomOrdering(*cr))
     {
         if (mdof_flags & MDOF_CPT)
         {
@@ -536,22 +558,36 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
             if (mdof_flags & (MDOF_X | MDOF_X_COMPRESSED))
             {
                 auto globalXRef = MASTER(cr) ? state_global->x : gmx::ArrayRef<gmx::RVec>();
-                dd_collect_vec(cr->dd, state_local->ddp_count, state_local->ddp_count_cg_gl,
-                               state_local->cg_gl, state_local->x, globalXRef);
+                dd_collect_vec(cr->dd,
+                               state_local->ddp_count,
+                               state_local->ddp_count_cg_gl,
+                               state_local->cg_gl,
+                               state_local->x,
+                               globalXRef);
             }
             if (mdof_flags & MDOF_V)
             {
                 auto globalVRef = MASTER(cr) ? state_global->v : gmx::ArrayRef<gmx::RVec>();
-                dd_collect_vec(cr->dd, state_local->ddp_count, state_local->ddp_count_cg_gl,
-                               state_local->cg_gl, state_local->v, globalVRef);
+                dd_collect_vec(cr->dd,
+                               state_local->ddp_count,
+                               state_local->ddp_count_cg_gl,
+                               state_local->cg_gl,
+                               state_local->v,
+                               globalVRef);
             }
         }
         f_global = of->f_global;
         if (mdof_flags & MDOF_F)
         {
-            dd_collect_vec(
-                    cr->dd, state_local->ddp_count, state_local->ddp_count_cg_gl, state_local->cg_gl, f_local,
-                    gmx::arrayRefFromArray(reinterpret_cast<gmx::RVec*>(of->f_global), f_local.size()));
+            auto globalFRef = MASTER(cr) ? gmx::arrayRefFromArray(
+                                      reinterpret_cast<gmx::RVec*>(of->f_global), of->natoms_global)
+                                         : gmx::ArrayRef<gmx::RVec>();
+            dd_collect_vec(cr->dd,
+                           state_local->ddp_count,
+                           state_local->ddp_count_cg_gl,
+                           state_local->cg_gl,
+                           f_local,
+                           globalFRef);
         }
     }
     else
@@ -566,8 +602,8 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
     {
         if (mdof_flags & MDOF_CPT)
         {
-            mdoutf_write_checkpoint(of, fplog, cr, step, t, state_global, observablesHistory,
-                                    modularSimulatorCheckpointData);
+            mdoutf_write_checkpoint(
+                    of, fplog, cr, step, t, state_global, observablesHistory, modularSimulatorCheckpointData);
         }
 
         if (mdof_flags & (MDOF_X | MDOF_V | MDOF_F))
@@ -578,8 +614,15 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
 
             if (of->fp_trn)
             {
-                gmx_trr_write_frame(of->fp_trn, step, t, state_local->lambda[efptFEP],
-                                    state_local->box, natoms, x, v, f);
+                gmx_trr_write_frame(of->fp_trn,
+                                    step,
+                                    t,
+                                    state_local->lambda[FreeEnergyPerturbationCouplingType::Fep],
+                                    state_local->box,
+                                    natoms,
+                                    x,
+                                    v,
+                                    f);
                 if (gmx_fio_flush(of->fp_trn) != 0)
                 {
                     gmx_file("Cannot write trajectory; maybe you are out of disk space?");
@@ -590,15 +633,31 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
                velocities and forces to it. */
             else if (of->tng)
             {
-                gmx_fwrite_tng(of->tng, FALSE, step, t, state_local->lambda[efptFEP],
-                               state_local->box, natoms, x, v, f);
+                gmx_fwrite_tng(of->tng,
+                               FALSE,
+                               step,
+                               t,
+                               state_local->lambda[FreeEnergyPerturbationCouplingType::Fep],
+                               state_local->box,
+                               natoms,
+                               x,
+                               v,
+                               f);
             }
             /* If only a TNG file is open for compressed coordinate output (no uncompressed
                coordinate output) also write forces and velocities to it. */
             else if (of->tng_low_prec)
             {
-                gmx_fwrite_tng(of->tng_low_prec, FALSE, step, t, state_local->lambda[efptFEP],
-                               state_local->box, natoms, x, v, f);
+                gmx_fwrite_tng(of->tng_low_prec,
+                               FALSE,
+                               step,
+                               t,
+                               state_local->lambda[FreeEnergyPerturbationCouplingType::Fep],
+                               state_local->box,
+                               natoms,
+                               x,
+                               v,
+                               f);
             }
         }
         if (mdof_flags & MDOF_X_COMPRESSED)
@@ -628,8 +687,7 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
                     }
                 }
             }
-            if (write_xtc(of->fp_xtc, of->natoms_x_compressed, step, t, state_local->box, xxtc,
-                          of->x_compression_precision)
+            if (write_xtc(of->fp_xtc, of->natoms_x_compressed, step, t, state_local->box, xxtc, of->x_compression_precision)
                 == 0)
             {
                 gmx_fatal(FARGS,
@@ -637,8 +695,16 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
                           "simulation with major instabilities resulting in coordinates "
                           "that are NaN or too large to be represented in the XTC format.\n");
             }
-            gmx_fwrite_tng(of->tng_low_prec, TRUE, step, t, state_local->lambda[efptFEP],
-                           state_local->box, of->natoms_x_compressed, xxtc, nullptr, nullptr);
+            gmx_fwrite_tng(of->tng_low_prec,
+                           TRUE,
+                           step,
+                           t,
+                           state_local->lambda[FreeEnergyPerturbationCouplingType::Fep],
+                           state_local->box,
+                           of->natoms_x_compressed,
+                           xxtc,
+                           nullptr,
+                           nullptr);
             if (of->natoms_x_compressed != of->natoms_global)
             {
                 sfree(xxtc);
@@ -656,7 +722,7 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
                 }
                 if (mdof_flags & MDOF_LAMBDA)
                 {
-                    lambda = state_local->lambda[efptFEP];
+                    lambda = state_local->lambda[FreeEnergyPerturbationCouplingType::Fep];
                 }
                 gmx_fwrite_tng(of->tng, FALSE, step, t, lambda, box, natoms, nullptr, nullptr, nullptr);
             }
@@ -674,10 +740,9 @@ void mdoutf_write_to_trajectory_files(FILE*                           fplog,
                 }
                 if (mdof_flags & MDOF_LAMBDA_COMPRESSED)
                 {
-                    lambda = state_local->lambda[efptFEP];
+                    lambda = state_local->lambda[FreeEnergyPerturbationCouplingType::Fep];
                 }
-                gmx_fwrite_tng(of->tng_low_prec, FALSE, step, t, lambda, box, natoms, nullptr,
-                               nullptr, nullptr);
+                gmx_fwrite_tng(of->tng_low_prec, FALSE, step, t, lambda, box, natoms, nullptr, nullptr, nullptr);
             }
         }
 
@@ -696,10 +761,10 @@ void mdoutf_tng_close(gmx_mdoutf_t of)
 {
     if (of->tng || of->tng_low_prec)
     {
-        wallcycle_start(of->wcycle, ewcTRAJ);
+        wallcycle_start(of->wcycle, WallCycleCounter::Traj);
         gmx_tng_close(&of->tng);
         gmx_tng_close(&of->tng_low_prec);
-        wallcycle_stop(of->wcycle, ewcTRAJ);
+        wallcycle_stop(of->wcycle, WallCycleCounter::Traj);
     }
 }
 

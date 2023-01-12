@@ -492,7 +492,9 @@ Neighbor searching
       a minimum value and :ref:`gmx mdrun` might increase it, unless
       it is set to 1. With parallel simulations and/or non-bonded
       force calculation on the GPU, a value of 20 or 40 often gives
-      the best performance.
+      the best performance. With energy minimization this parameter
+      is not used as the pair list is updated when at least one atom
+      has moved by more than half the pair list buffer size.
 
    .. mdp-value:: 0
 
@@ -847,10 +849,10 @@ Tables
 
    Currently unsupported.
    When user tables are used for electrostatics and/or VdW, here one
-   can give pairs of energy groups for which seperate user tables
+   can give pairs of energy groups for which separate user tables
    should be used. The two energy groups will be appended to the table
    file name, in order of their definition in :mdp:`energygrps`,
-   seperated by underscores. For example, if ``energygrps = Na Cl
+   separated by underscores. For example, if ``energygrps = Na Cl
    Sol`` and ``energygrp-table = Na Na Na Cl``, :ref:`gmx mdrun` will
    read ``table_Na_Na.xvg`` and ``table_Na_Cl.xvg`` in addition to the
    normal ``table.xvg`` which will be used for all other energy group
@@ -969,6 +971,9 @@ Temperature coupling
       temperature :mdp:`ref-t`, with time constant
       :mdp:`tau-t`. Several groups can be coupled separately, these
       are specified in the :mdp:`tc-grps` field separated by spaces.
+      This is a historical thermostat needed to be able to reproduce
+      previous simulations, but we strongly recommend not to use it
+      for new production runs. Consult the manual for details.
 
    .. mdp-value:: nose-hoover
 
@@ -1068,17 +1073,19 @@ Pressure coupling
    .. mdp-value:: Berendsen
 
       Exponential relaxation pressure coupling with time constant
-      :mdp:`tau-p`. The box is scaled every :mdp:`nstpcouple` steps. It has been
-      argued that this does not yield a correct thermodynamic
-      ensemble, but it is the most efficient way to scale a box at the
-      beginning of a run.
+      :mdp:`tau-p`. The box is scaled every :mdp:`nstpcouple` steps.
+      This barostat does not yield a correct thermodynamic ensemble;
+      it is only included to be able to reproduce previous runs,
+      and we strongly recommend against using it for new simulations.
+      See the manual for details.
 
    .. mdp-value:: C-rescale
 
       Exponential relaxation pressure coupling with time constant
       :mdp:`tau-p`, including a stochastic term to enforce correct
       volume fluctuations.  The box is scaled every :mdp:`nstpcouple`
-      steps. It can be used for both equilibration and production.
+      steps. It can be used for both equilibration and production,
+      but presently it cannot be used for full anisotropic coupling.
 
    .. mdp-value:: Parrinello-Rahman
 
@@ -1396,8 +1403,11 @@ Bonds
    the same order is applied on top of the normal expansion only for
    the couplings within such triangles. For "normal" MD simulations an
    order of 4 usually suffices, 6 is needed for large time-steps with
-   virtual sites or BD. For accurate energy minimization an order of 8
-   or more might be required. With domain decomposition, the cell size
+   virtual sites or BD. For accurate energy minimization in double
+   precision an order of 8 or more might be required. Note that in
+   single precision an order higher than 6 will often lead to worse
+   accuracy due to amplification of rounding errors.
+   With domain decomposition, the cell size
    is limited by the distance spanned by :mdp:`lincs-order` +1
    constraints. When one wants to scale further than this limit, one
    can decrease :mdp:`lincs-order` and increase :mdp:`lincs-iter`,
@@ -1410,7 +1420,10 @@ Bonds
    Number of iterations to correct for rotational lengthening in
    LINCS. For normal runs a single step is sufficient, but for NVE
    runs where you want to conserve energy accurately or for accurate
-   energy minimization you might want to increase it to 2.
+   energy minimization in double precision you might want to increase
+   it to 2. Note that in single precision using more than 1 iteration
+   will often lead to worse accuracy due to amplification of rounding
+   errors.
 
 .. mdp:: lincs-warnangle
 
@@ -1517,6 +1530,7 @@ Walls
 COM pulling
 ^^^^^^^^^^^
 
+Sets whether pulling on collective variables is active.
 Note that where pulling coordinates are applicable, there can be more
 than one (set with :mdp:`pull-ncoords`) and multiple related :ref:`mdp`
 variables will exist accordingly. Documentation references to things
@@ -1790,6 +1804,29 @@ pull-coord2-vec, pull-coord2-k, and so on.
       then defined as the angle between two planes: the plane spanned by the
       the two first vectors and the plane spanned the two last vectors.
 
+   .. mdp-value:: transformation
+
+      Transforms other pull coordinates using a mathematical expression defined by :mdp:`pull-coord1-expression`.
+      Pull coordinates of lower indices can be used as variables to this pull coordinate.
+      Thus, pull transformation coordinates should have a higher pull coordinate index
+      than all pull coordinates they transform.
+
+.. mdp:: pull-coord1-expression
+
+   Mathematical expression to transform pull coordinates of lower indices to a new one.
+   The pull coordinates are referred to as variables in the equation so that
+   pull-coord1's value becomes 'x1', pull-coord2 value becomes 'x2' etc.
+   The mathematical expression are evaluated using muParser.
+   Only relevant if :mdp:`pull-coord1-geometry` is set to :mdp-value:`transformation`.
+
+.. mdp:: pull-coord1-dx
+
+   (1e-9)
+   Size of finite difference to use in numerical derivation of the pull coordinate
+   with respect to other pull coordinates.
+   The current implementation uses a simple first order finite difference method to perform derivation so that
+   f'(x) = (f(x+dx)-f(x))/dx
+   Only relevant if :mdp:`pull-coord1-geometry` is set to :mdp-value:`transformation`.
 
 .. mdp:: pull-coord1-groups
 
@@ -2069,15 +2106,15 @@ AWH adaptive biasing
 
    .. mdp-value:: positive
 
-      Share the bias and PMF estimates within and/or between simulations.
-      Within a simulation, the bias will be shared between biases that have the
-      same :mdp:`awh1-share-group` index (note that the current code does not support this).
-      With :mdp-value:`awh-share-multisim=yes` and
-      :ref:`gmx mdrun` option ``-multidir`` the bias will also be shared across simulations.
+      Share the bias and PMF estimates between simulations. This currently
+      only works between biases with the same index. Note that currently
+      sharing within a single simulation is not supported.
+      The bias will be shared across simulations that specify the same
+      value for :mdp:`awh1-share-group`. To enable this, use
+      :mdp-value:`awh-share-multisim=yes` and the :ref:`gmx mdrun` option
+      ``-multidir``.
       Sharing may increase convergence initially, although the starting configurations
       can be critical, especially when sharing between many biases.
-      Currently, positive group values should start at 1 and increase
-      by 1 for each subsequent bias that is shared.
 
 .. mdp:: awh1-ndim
 
@@ -2115,7 +2152,7 @@ AWH adaptive biasing
 
 .. mdp:: awh1-dim1-start
 
-   (0.0) [nm] or [rad]
+   (0.0) [nm] or [deg]
    Start value of the sampling interval along this dimension. The range of allowed
    values depends on the relevant pull geometry (see :mdp:`pull-coord1-geometry`).
    For dihedral geometries :mdp:`awh1-dim1-start` greater than :mdp:`awh1-dim1-end`
@@ -2127,7 +2164,7 @@ AWH adaptive biasing
 
 .. mdp:: awh1-dim1-end
 
-   (0.0) [nm] or [rad]
+   (0.0) [nm] or [deg]
    End value defining the sampling interval together with :mdp:`awh1-dim1-start`.
 
 .. mdp:: awh1-dim1-diffusion
@@ -2141,7 +2178,7 @@ AWH adaptive biasing
 
 .. mdp:: awh1-dim1-cover-diameter
 
-   (0.0) [nm] or [rad]
+   (0.0) [nm] or [deg]
    Diameter that needs to be sampled by a single simulation around a coordinate value
    before the point is considered covered in the initial stage (see :mdp-value:`awh1-growth=exp-linear`).
    A value > 0  ensures that for each covering there is a continuous transition of this diameter
@@ -2519,7 +2556,9 @@ Free energy calculations
    starting value for lambda (float). Generally, this should only be
    used with slow growth (*i.e.* nonzero :mdp:`delta-lambda`). In
    other cases, :mdp:`init-lambda-state` should be specified
-   instead. Must be greater than or equal to 0.
+   instead. If a lambda vector is given, :mdp: `init-lambda` is used to
+   interpolate the vector instead of setting lambda directly.
+   Must be greater than or equal to 0.
 
 .. mdp:: delta-lambda
 
@@ -2542,7 +2581,8 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Free energy differences
+   steps. Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. Free energy differences
    between different lambda values can then be determined with
    :ref:`gmx bar`. :mdp:`fep-lambdas` is different from the
    other -lambdas keywords because all components of the lambda vector
@@ -2554,7 +2594,9 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Only the electrostatic
+   steps. Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. If soft-core potentials are
+   used, values must be between 0 and 1. Only the electrostatic
    interactions are controlled with this component of the lambda
    vector (and only if the lambda=0 and lambda=1 states have differing
    electrostatic interactions).
@@ -2564,7 +2606,9 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Only the van der Waals
+   steps.  Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. If soft-core potentials are
+   used, values must be between 0 and 1. Only the van der Waals
    interactions are controlled with this component of the lambda
    vector.
 
@@ -2573,7 +2617,8 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Only the bonded interactions
+   steps.  Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. Only the bonded interactions
    are controlled with this component of the lambda vector.
 
 .. mdp:: restraint-lambdas
@@ -2581,7 +2626,8 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Only the restraint
+   steps.  Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. Only the restraint
    interactions: dihedral restraints, and the pull code restraints are
    controlled with this component of the lambda vector.
 
@@ -2590,7 +2636,8 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Only the particle masses are
+   steps.  Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. Only the particle masses are
    controlled with this component of the lambda vector.
 
 .. mdp:: temperature-lambdas
@@ -2598,7 +2645,8 @@ Free energy calculations
    [array]
    Zero, one or more lambda values for which Delta H values will be
    determined and written to dhdl.xvg every :mdp:`nstdhdl`
-   steps. Values must be between 0 and 1. Only the temperatures
+   steps.  Values must be greater than or equal to 0; values greater than
+   1 are allowed but should be used carefully. Only the temperatures are
    controlled with this component of the lambda vector. Note that
    these lambdas should not be used for replica exchange, only for
    simulated tempering.
@@ -2616,16 +2664,31 @@ Free energy calculations
    written out. For normal BAR such as with :ref:`gmx bar`, a value of
    1 is sufficient, while for MBAR -1 should be used.
 
+.. mdp:: sc-function
+
+   (beutler)
+
+   .. mdp-value:: beutler
+
+   Beutler *et al.* soft-core function
+
+   .. mdp-value:: gapsys
+
+   Gapsys *et al.* soft-core function
+
 .. mdp:: sc-alpha
 
    (0)
-   the soft-core alpha parameter, a value of 0 results in linear
-   interpolation of the LJ and Coulomb interactions
+   for `sc-function=beutler` the soft-core alpha parameter,
+   a value of 0 results in linear interpolation of the
+   LJ and Coulomb interactions.
+   Used only with `sc-function=beutler`
 
 .. mdp:: sc-r-power
 
    (6)
    power 6 for the radial term in the soft-core equation.
+   Used only with `sc-function=beutler`
 
 .. mdp:: sc-coul
 
@@ -2638,18 +2701,47 @@ Free energy calculations
    states are used, not with :mdp:`couple-lambda0` /
    :mdp:`couple-lambda1`, and you can still turn off soft-core
    interactions by setting :mdp:`sc-alpha` to 0.
+   Used only with `sc-function=beutler`
 
 .. mdp:: sc-power
 
    (0)
    the power for lambda in the soft-core function, only the values 1
-   and 2 are supported
+   and 2 are supported. Used only with `sc-function=beutler`
 
 .. mdp:: sc-sigma
 
    (0.3) [nm]
-   the soft-core sigma for particles which have a C6 or C12 parameter
-   equal to zero or a sigma smaller than :mdp:`sc-sigma`
+   for `sc-function=beutler` the soft-core sigma for particles
+   which have a C6 or C12 parameter equal to zero or a sigma smaller
+   than :mdp:`sc-sigma`.
+   Used only with `sc-function=beutler`
+
+.. mdp:: sc-gapsys-scale-linpoint-lj
+
+   (0.85)
+   for `sc-function=gapsys` it is the unitless alphaLJ parameter.
+   It controls the softness of the van der Waals interactions
+   by scaling the point for linearizing the vdw force.
+   Setting it to 0 will result in the standard hard-core
+   van der Waals interactions.
+   Used only with `sc-function=gapsys`
+
+.. mdp:: sc-gapsys-scale-linpoint-q
+
+   (0.3) [nm/e^2]
+   For `sc-function=gapsys` the alphaQ parameter
+   with the unit of [nm/e^2] and default value of 0.3. It controls
+   the softness of the Coulombic interactions. Setting it to 0 will
+   result in the standard hard-core Coulombic interactions.
+   Used only with `sc-function=gapsys`
+
+.. mdp:: sc-gapsys-sigma-lj
+
+   (0.3) [nm]
+   for `sc-function=gapsys` the soft-core sigma for particles
+   which have a C6 or C12 parameter equal to zero.
+   Used only with `sc-function=gapsys`
 
 .. mdp:: couple-moltype
 
@@ -3068,7 +3160,10 @@ Non-equilibrium MD
 
    groups for constant acceleration (*e.g.* ``Protein Sol``) all atoms
    in groups Protein and Sol will experience constant acceleration as
-   specified in the :mdp:`accelerate` line. (Deprecated)
+   specified in the :mdp:`accelerate` line. Note that the kinetic energy
+   of the center of mass of accelarated groups contributes to the kinetic
+   energy and temperature of the system. If this is not desired, make
+   each accelerate group also a separate temperature coupling group.
 
 .. mdp:: accelerate
 
@@ -3076,7 +3171,7 @@ Non-equilibrium MD
    acceleration for :mdp:`acc-grps`; x, y and z for each group
    (*e.g.* ``0.1 0.0 0.0 -0.1 0.0 0.0`` means that first group has
    constant acceleration of 0.1 nm ps\ :sup:`-2` in X direction, second group
-   the opposite). (Deprecated)
+   the opposite).
 
 .. mdp:: freezegrps
 
@@ -3410,6 +3505,52 @@ electron-microscopy experiments. (See the `reference manual`_ for details)
    This option allows, e.g., rotation of the density-guided atom group around the
    z-axis by :math:`\theta` degress by using following input:
    :math:`(\cos \theta , -\sin \theta , 0 , \sin \theta , \cos \theta , 0 , 0 , 0 , 1)` .
+
+QM/MM simulations with CP2K Interface 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These options enable and control the calculation and application of additional
+QM/MM forces that are computed by the CP2K package if it is linked into |Gromacs|.
+For further details about QM/MM interface implementation follow :ref:`qmmm`. 
+
+.. mdp:: qmmm-cp2k-active
+
+   (false) Activate QM/MM simulations. Requires CP2K to be linked with |Gromacs|
+
+.. mdp:: qmmm-cp2k-qmgroup
+
+   (System) Index group with atoms that are treated with QM.
+
+.. mdp:: qmmm-cp2k-qmmethod
+
+   (PBE) Method used to describe the QM part of the system.
+
+   .. mdp-value:: PBE
+
+      DFT using PBE functional and DZVP-MOLOPT basis set.
+
+   .. mdp-value:: BLYP
+
+      DFT using BLYP functional and DZVP-MOLOPT basis set.
+
+   .. mdp-value:: INPUT
+
+      Provide an external input file for CP2K when running :ref:`gmx grompp` with the ``-qmi`` command-line option.
+      External input files are subject to the limitations that are described in :ref:`qmmm`.
+
+.. mdp:: qmmm-cp2k-qmcharge
+
+   (0) Total charge of the QM part.
+
+.. mdp:: qmmm-cp2k-qmmultiplicity
+
+   (1) Multiplicity or spin-state of QM part. Default value 1 means singlet state.
+
+.. mdp:: qmmm-cp2k-qmfilenames
+
+   () Names of the CP2K files that will be generated during the simulation. 
+   When using the default, empty, value the name of the simulation input file will be used 
+   with an additional ``_cp2k`` suffix.
 
 User defined thingies
 ^^^^^^^^^^^^^^^^^^^^^

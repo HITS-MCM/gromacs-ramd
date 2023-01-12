@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *  \brief
@@ -52,7 +50,6 @@
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/locality.h"
-#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/bitmask.h"
 #include "gromacs/utility/real.h"
 
@@ -64,7 +61,6 @@ class MDLogger;
 struct NbnxmGpu;
 struct nbnxn_atomdata_t;
 struct nonbonded_verlet_t;
-struct tMPI_Atomic;
 
 class GpuEventSynchronizer;
 
@@ -124,7 +120,7 @@ struct nbnxn_atomdata_output_t
 
     //! f, size natoms*fstride
     gmx::HostVector<real> f;
-    //! Shift force array, size SHIFTS*DIM
+    //! Shift force array, size c_numShiftVectors*DIM
     gmx::HostVector<real> fshift;
     //! Temporary Van der Waals group energy storage
     gmx::HostVector<real> Vvdw;
@@ -155,14 +151,21 @@ struct nbnxn_atomdata_output_t
 #define NBNXN_BUFFERFLAG_MAX_THREADS (BITMASK_SIZE)
 
 
-/*! \brief LJ combination rules: geometric, Lorentz-Berthelot, none */
-enum
+//! LJ combination rules
+enum class LJCombinationRule : int
 {
-    ljcrGEOM,
-    ljcrLB,
-    ljcrNONE,
-    ljcrNR
+    //! Geometric
+    Geometric,
+    //! Lorentz-Berthelot
+    LorentzBerthelot,
+    //! No rule
+    None,
+    //! Size of the enum
+    Count
 };
+
+//! String corresponding to LJ combination rule
+const char* enumValueToString(LJCombinationRule enumValue);
 
 /*! \internal
  * \brief Struct that stores atom related data for the nbnxn module
@@ -187,7 +190,7 @@ struct nbnxn_atomdata_t
         //! Lennard-Jone 6*C6 and 12*C12 parameters, size numTypes*2*2
         gmx::HostVector<real> nbfp;
         //! Combination rule, see enum defined above
-        int comb_rule;
+        LJCombinationRule ljCombinationRule;
         //! LJ parameters per atom type, size numTypes*2
         gmx::HostVector<real> nbfp_comb;
         //! As nbfp, but with a stride for the present SIMD architecture
@@ -226,9 +229,24 @@ struct nbnxn_atomdata_t
 
     /*! \brief Constructor
      *
-     * \param[in] pinningPolicy  Sets the pinning policy for all data that might be transfered to a GPU
+     * \param[in] pinningPolicy      Sets the pinning policy for all data that might be transferred
+     *                               to a GPU
+     * \param[in] mdlog              The logger
+     * \param[in] kernelType         Nonbonded NxN kernel type
+     * \param[in] enbnxninitcombrule LJ combination rule
+     * \param[in] ntype              Number of atom types
+     * \param[in] nbfp               Non-bonded force parameters
+     * \param[in] n_energygroups     Number of energy groups
+     * \param[in] nout               Number of output data structures
      */
-    nbnxn_atomdata_t(gmx::PinningPolicy pinningPolicy);
+    nbnxn_atomdata_t(gmx::PinningPolicy        pinningPolicy,
+                     const gmx::MDLogger&      mdlog,
+                     Nbnxm::KernelType         kernelType,
+                     int                       enbnxninitcombrule,
+                     int                       ntype,
+                     gmx::ArrayRef<const real> nbfp,
+                     int                       n_energygroups,
+                     int                       nout);
 
     //! Returns a const reference to the parameters
     const Params& params() const { return params_; }
@@ -265,7 +283,7 @@ public:
     //! The format of f, enum
     int FFormat;
     //! Do we need to update shift_vec every step?
-    gmx_bool bDynamicBox;
+    bool bDynamicBox;
     //! Shift vectors, copied from t_forcerec
     gmx::HostVector<gmx::RVec> shift_vec;
     //! stride for a coordinate in x (usually 3 or 4)
@@ -287,13 +305,9 @@ public:
     //! Reduction related data
     //! \{
     //! Use the flags or operate on all atoms
-    gmx_bool bUseBufferFlags;
+    bool bUseBufferFlags;
     //! Flags for buffer zeroing+reduc.
     std::vector<gmx_bitmask_t> buffer_flags;
-    //! Use tree for force reduction
-    gmx_bool bUseTreeReduce;
-    //! Synchronization step for tree reduce
-    tMPI_Atomic* syncStep;
     //! \}
 };
 
@@ -311,31 +325,15 @@ enum
     enbnxninitcombruleNONE
 };
 
-/*! \brief Initialize the non-bonded atom data structure.
- *
- * The enum for nbatXFormat is in the file defining nbnxn_atomdata_t.
- * Copy the ntypes*ntypes*2 sized nbfp non-bonded parameter list
- * to the atom data structure.
- * enbnxninitcombrule sets what combination rule data gets stored in nbat.
- */
-void nbnxn_atomdata_init(const gmx::MDLogger&      mdlog,
-                         nbnxn_atomdata_t*         nbat,
-                         Nbnxm::KernelType         kernelType,
-                         int                       enbnxninitcombrule,
-                         int                       ntype,
-                         gmx::ArrayRef<const real> nbfp,
-                         int                       n_energygroups,
-                         int                       nout);
-
 //! Sets the atomdata after pair search
-void nbnxn_atomdata_set(nbnxn_atomdata_t*         nbat,
-                        const Nbnxm::GridSet&     gridSet,
-                        gmx::ArrayRef<const int>  atomTypes,
-                        gmx::ArrayRef<const real> atomCharges,
-                        gmx::ArrayRef<const int>  atomInfo);
+void nbnxn_atomdata_set(nbnxn_atomdata_t*            nbat,
+                        const Nbnxm::GridSet&        gridSet,
+                        gmx::ArrayRef<const int>     atomTypes,
+                        gmx::ArrayRef<const real>    atomCharges,
+                        gmx::ArrayRef<const int64_t> atomInfo);
 
 //! Copy the shift vectors to nbat
-void nbnxn_atomdata_copy_shiftvec(gmx_bool dynamic_box, rvec* shift_vec, nbnxn_atomdata_t* nbat);
+void nbnxn_atomdata_copy_shiftvec(bool dynamic_box, gmx::ArrayRef<gmx::RVec> shift_vec, nbnxn_atomdata_t* nbat);
 
 /*! \brief Transform coordinates to xbat layout
  *
@@ -343,13 +341,11 @@ void nbnxn_atomdata_copy_shiftvec(gmx_bool dynamic_box, rvec* shift_vec, nbnxn_a
  *
  * \param[in] gridSet      The grids data.
  * \param[in] locality     If the transformation should be applied to local or non local coordinates.
- * \param[in] fillLocal    Tells if the local filler particle coordinates should be zeroed.
  * \param[in] coordinates  Coordinates in plain rvec format.
  * \param[in,out] nbat     Data in NBNXM format, used for mapping formats and to locate the output buffer.
  */
 void nbnxn_atomdata_copy_x_to_nbat_x(const Nbnxm::GridSet& gridSet,
                                      gmx::AtomLocality     locality,
-                                     bool                  fillLocal,
                                      const rvec*           coordinates,
                                      nbnxn_atomdata_t*     nbat);
 
@@ -360,14 +356,12 @@ void nbnxn_atomdata_copy_x_to_nbat_x(const Nbnxm::GridSet& gridSet,
  *
  * \param[in]     gridSet    The grids data.
  * \param[in]     locality   If the transformation should be applied to local or non local coordinates.
- * \param[in]     fillLocal  Tells if the local filler particle coordinates should be zeroed.
  * \param[in,out] gpu_nbv    The NBNXM GPU data structure.
  * \param[in]     d_x        Coordinates to be copied (in plain rvec format).
  * \param[in]     xReadyOnDevice   Event synchronizer indicating that the coordinates are ready in the device memory.
  */
 void nbnxn_atomdata_x_to_nbat_x_gpu(const Nbnxm::GridSet&   gridSet,
                                     gmx::AtomLocality       locality,
-                                    bool                    fillLocal,
                                     NbnxmGpu*               gpu_nbv,
                                     DeviceBuffer<gmx::RVec> d_x,
                                     GpuEventSynchronizer*   xReadyOnDevice);

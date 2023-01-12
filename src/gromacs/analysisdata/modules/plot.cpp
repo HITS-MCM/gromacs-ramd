@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -73,9 +71,7 @@ namespace gmx
  */
 
 AnalysisDataPlotSettings::AnalysisDataPlotSettings() :
-    selections_(nullptr),
-    timeUnit_(TimeUnit::Default),
-    plotFormat_(XvgFormat::Xmgrace)
+    selections_(nullptr), timeUnit_(TimeUnit::Default), plotFormat_(XvgFormat::Xmgrace)
 {
 }
 
@@ -89,8 +85,9 @@ void AnalysisDataPlotSettings::setSelectionCollection(const SelectionCollection*
  * Technically this duplicates a definition in pargs.cpp for legacy
  * support code, but as the latter will go away and the alternatives
  * are ugly, the duplication is acceptable. */
-const gmx::EnumerationArray<XvgFormat, const char*> c_xvgFormatNames = { { "xmgrace", "xmgr",
-                                                                           "none" } };
+const gmx::EnumerationArray<XvgFormat, const char*> c_xvgFormatNames = {
+    { "xmgrace", "xmgr", "none" }
+};
 
 void AnalysisDataPlotSettings::initOptions(IOptionsContainer* options)
 {
@@ -312,8 +309,8 @@ void AbstractPlotModule::dataStarted(AbstractAnalysisData* /* data */)
             gmx_output_env_t* oenv;
             output_env_init(&oenv, getProgramContext(), timeUnit, FALSE, xvgFormat, 0);
             const unique_cptr<gmx_output_env_t, output_env_done> oenvGuard(oenv);
-            impl_->fp_ = xvgropen(impl_->filename_.c_str(), impl_->title_.c_str(), impl_->xlabel_,
-                                  impl_->ylabel_, oenv);
+            impl_->fp_ = xvgropen(
+                    impl_->filename_.c_str(), impl_->title_.c_str(), impl_->xlabel_, impl_->ylabel_, oenv);
             const SelectionCollection* selections = impl_->settings_.selectionCollection();
             if (selections != nullptr && output_env_get_xvg_format(oenv) != XvgFormat::None)
             {
@@ -419,8 +416,7 @@ AnalysisDataVectorPlotModule::AnalysisDataVectorPlotModule() : bWrite_{ true, tr
 
 
 AnalysisDataVectorPlotModule::AnalysisDataVectorPlotModule(const AnalysisDataPlotSettings& settings) :
-    AbstractPlotModule(settings),
-    bWrite_{ true, true, true, false }
+    AbstractPlotModule(settings), bWrite_{ true, true, true, false }
 {
 }
 

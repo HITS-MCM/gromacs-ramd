@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2008,2009,2010,2011,2012 by the GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2008- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /* The source code in this file should be thread-safe.
@@ -77,6 +74,7 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/baseversion.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/gmxassert.h"
@@ -84,7 +82,7 @@
 #include "gromacs/utility/keyvaluetree.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreeserializer.h"
-#include "gromacs/utility/mdmodulenotification.h"
+#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/programcontext.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/sysinfo.h"
@@ -142,26 +140,6 @@ template void writeKvtCheckpointValue(const real&               value,
 
 } // namespace gmx
 
-/*! \brief Enum of values that describe the contents of a cpt file
- * whose format matches a version number
- *
- * The enum helps the code be more self-documenting and ensure merges
- * do not silently resolve when two patches make the same bump. When
- * adding new functionality, add a new element just above cptv_Count
- * in this enumeration, and write code below that does the right thing
- * according to the value of file_version.
- */
-enum cptv
-{
-    cptv_Unknown = 17,                  /**< Version before numbering scheme */
-    cptv_RemoveBuildMachineInformation, /**< remove functionality that makes mdrun builds non-reproducible */
-    cptv_ComPrevStepAsPullGroupReference, /**< Allow using COM of previous step as pull group PBC reference */
-    cptv_PullAverage,      /**< Added possibility to output average pull force and position */
-    cptv_MdModules,        /**< Added checkpointing for MdModules */
-    cptv_ModularSimulator, /**< Added checkpointing for modular simulator */
-    cptv_Count             /**< the total number of cptv versions */
-};
-
 /*! \brief Version number of the file format written to checkpoint
  * files by this version of the code.
  *
@@ -173,188 +151,235 @@ enum cptv
  * (but can read a new format when new entries are not present).
  *
  * The cpt_version increases whenever the file format in the main
- * development branch changes, due to an extension of the cptv enum above.
+ * development branch changes, due to an extension of the CheckPointVersion
+ * enum (see src/gromacs/fileio/checkpoint.h).
  * Backward compatibility for reading old run input files is maintained
  * by checking this version number against that of the file and then using
  * the correct code path. */
-static const int cpt_version = cptv_Count - 1;
+static constexpr CheckPointVersion cpt_version = CheckPointVersion::CurrentVersion;
 
-
-const char* est_names[estNR] = { "FE-lambda",
-                                 "box",
-                                 "box-rel",
-                                 "box-v",
-                                 "pres_prev",
-                                 "nosehoover-xi",
-                                 "thermostat-integral",
-                                 "x",
-                                 "v",
-                                 "sdx-unsupported",
-                                 "CGp",
-                                 "LD-rng-unsupported",
-                                 "LD-rng-i-unsupported",
-                                 "disre_initf",
-                                 "disre_rm3tav",
-                                 "orire_initf",
-                                 "orire_Dtav",
-                                 "svir_prev",
-                                 "nosehoover-vxi",
-                                 "v_eta",
-                                 "vol0",
-                                 "nhpres_xi",
-                                 "nhpres_vxi",
-                                 "fvir_prev",
-                                 "fep_state",
-                                 "MC-rng-unsupported",
-                                 "MC-rng-i-unsupported",
-                                 "barostat-integral" };
-
-enum
+const char* enumValueToString(StateEntry enumValue)
 {
-    eeksEKIN_N,
-    eeksEKINH,
-    eeksDEKINDL,
-    eeksMVCOS,
-    eeksEKINF,
-    eeksEKINO,
-    eeksEKINSCALEF,
-    eeksEKINSCALEH,
-    eeksVSCALE,
-    eeksEKINTOTAL,
-    eeksNR
+    static constexpr gmx::EnumerationArray<StateEntry, const char*> stateEntryNames = {
+        "FE-lambda",
+        "box",
+        "box-rel",
+        "box-v",
+        "pres_prev",
+        "nosehoover-xi",
+        "thermostat-integral",
+        "x",
+        "v",
+        "sdx-unsupported",
+        "CGp",
+        "LD-rng-unsupported",
+        "LD-rng-i-unsupported",
+        "disre_initf",
+        "disre_rm3tav",
+        "orire_initf",
+        "orire_Dtav",
+        "svir_prev",
+        "nosehoover-vxi",
+        "v_eta",
+        "vol0",
+        "nhpres_xi",
+        "nhpres_vxi",
+        "fvir_prev",
+        "fep_state",
+        "MC-rng-unsupported",
+        "MC-rng-i-unsupported",
+        "barostat-integral"
+    };
+    return stateEntryNames[enumValue];
+}
+
+enum class StateKineticEntry : int
+{
+    EkinNumber,
+    EkinHalfStep,
+    DEkinDLambda,
+    Mvcos,
+    EkinFullStep,
+    EkinHalfStepOld,
+    EkinNoseHooverScaleFullStep,
+    EkinNoseHooverScaleHalfStep,
+    VelocityScale,
+    EkinTotal,
+    Count
 };
 
-static const char* eeks_names[eeksNR] = { "Ekin_n",         "Ekinh",          "dEkindlambda",
-                                          "mv_cos",         "Ekinf",          "Ekinh_old",
-                                          "EkinScaleF_NHC", "EkinScaleH_NHC", "Vscale_NHC",
-                                          "Ekin_Total" };
-
-enum
+static const char* enumValueToString(StateKineticEntry enumValue)
 {
-    eenhENERGY_N,
-    eenhENERGY_AVER,
-    eenhENERGY_SUM,
-    eenhENERGY_NSUM,
-    eenhENERGY_SUM_SIM,
-    eenhENERGY_NSUM_SIM,
-    eenhENERGY_NSTEPS,
-    eenhENERGY_NSTEPS_SIM,
-    eenhENERGY_DELTA_H_NN,
-    eenhENERGY_DELTA_H_LIST,
-    eenhENERGY_DELTA_H_STARTTIME,
-    eenhENERGY_DELTA_H_STARTLAMBDA,
-    eenhNR
+    static constexpr gmx::EnumerationArray<StateKineticEntry, const char*> stateKineticEntryNames = {
+        "Ekin_n",    "Ekinh",          "dEkindlambda",   "mv_cos",     "Ekinf",
+        "Ekinh_old", "EkinScaleF_NHC", "EkinScaleH_NHC", "Vscale_NHC", "Ekin_Total"
+    };
+    return stateKineticEntryNames[enumValue];
+}
+
+enum class StateEnergyEntry : int
+{
+    N,
+    Aver,
+    Sum,
+    NumSum,
+    SumSim,
+    NumSumSim,
+    NumSteps,
+    NumStepsSim,
+    DeltaHNN,
+    DeltaHList,
+    DeltaHStartTime,
+    DeltaHStartLambda,
+    Count
 };
 
-enum
+enum class StatePullEntry : int
 {
-    epullhPULL_NUMCOORDINATES,
-    epullhPULL_NUMGROUPS,
-    epullhPULL_NUMVALUESINXSUM,
-    epullhPULL_NUMVALUESINFSUM,
-    epullhNR
+    NumCoordinates,
+    NumGroups,
+    NumValuesInXSum,
+    NumValuesInFSum,
+    Count
 };
 
-enum
+enum class StatePullCoordEntry : int
 {
-    epullcoordh_VALUE_REF_SUM,
-    epullcoordh_VALUE_SUM,
-    epullcoordh_DR01_SUM,
-    epullcoordh_DR23_SUM,
-    epullcoordh_DR45_SUM,
-    epullcoordh_FSCAL_SUM,
-    epullcoordh_DYNAX_SUM,
-    epullcoordh_NR
+    ValueReferenceSum,
+    ValueSum,
+    DR01Sum,
+    DR23Sum,
+    DR45Sum,
+    FScalarSum,
+    DynaxSum,
+    Count
 };
 
-enum
+static const char* enumValueToString(StatePullCoordEntry enumValue)
 {
-    epullgrouph_X_SUM,
-    epullgrouph_NR
+    static constexpr gmx::EnumerationArray<StatePullCoordEntry, const char*> statePullCoordEntryNames = {
+        "reference-sum", "sum", "dr01-sum", "dr23-sum", "dr45-sum", "fscal-sum", "dynax-sum"
+    };
+    return statePullCoordEntryNames[enumValue];
+}
+
+enum class StatePullGroupEntry : int
+{
+    XSum,
+    Count
 };
 
-static const char* eenh_names[eenhNR] = { "energy_n",
-                                          "energy_aver",
-                                          "energy_sum",
-                                          "energy_nsum",
-                                          "energy_sum_sim",
-                                          "energy_nsum_sim",
-                                          "energy_nsteps",
-                                          "energy_nsteps_sim",
-                                          "energy_delta_h_nn",
-                                          "energy_delta_h_list",
-                                          "energy_delta_h_start_time",
-                                          "energy_delta_h_start_lambda" };
+static const char* enumValueToString(StatePullGroupEntry enumValue)
+{
+    static constexpr gmx::EnumerationArray<StatePullGroupEntry, const char*> statePullGroupEntryNames = {
+        "coordinate-sum"
+    };
+    return statePullGroupEntryNames[enumValue];
+}
 
-static const char* ePullhNames[epullhNR] = { "pullhistory_numcoordinates", "pullhistory_numgroups",
-                                             "pullhistory_numvaluesinxsum",
-                                             "pullhistory_numvaluesinfsum" };
+static const char* enumValueToString(StateEnergyEntry enumValue)
+{
+    static constexpr gmx::EnumerationArray<StateEnergyEntry, const char*> stateEnergyEntryNames = {
+        "energy_n",
+        "energy_aver",
+        "energy_sum",
+        "energy_nsum",
+        "energy_sum_sim",
+        "energy_nsum_sim",
+        "energy_nsteps",
+        "energy_nsteps_sim",
+        "energy_delta_h_nn",
+        "energy_delta_h_list",
+        "energy_delta_h_start_time",
+        "energy_delta_h_start_lambda"
+    };
+    return stateEnergyEntryNames[enumValue];
+}
+
+static const char* enumValueToString(StatePullEntry enumValue)
+{
+    static constexpr gmx::EnumerationArray<StatePullEntry, const char*> statePullEntryNames = {
+        "pullhistory_numcoordinates",
+        "pullhistory_numgroups",
+        "pullhistory_numvaluesinxsum",
+        "pullhistory_numvaluesinfsum"
+    };
+    return statePullEntryNames[enumValue];
+}
 
 /* free energy history variables -- need to be preserved over checkpoint */
-enum
+enum class StateFepEntry : int
 {
-    edfhBEQUIL,
-    edfhNATLAMBDA,
-    edfhWLHISTO,
-    edfhWLDELTA,
-    edfhSUMWEIGHTS,
-    edfhSUMDG,
-    edfhSUMMINVAR,
-    edfhSUMVAR,
-    edfhACCUMP,
-    edfhACCUMM,
-    edfhACCUMP2,
-    edfhACCUMM2,
-    edfhTIJ,
-    edfhTIJEMP,
-    edfhNR
-};
-/* free energy history variable names  */
-static const char* edfh_names[edfhNR] = { "bEquilibrated",
-                                          "N_at_state",
-                                          "Wang-Landau Histogram",
-                                          "Wang-Landau Delta",
-                                          "Weights",
-                                          "Free Energies",
-                                          "minvar",
-                                          "variance",
-                                          "accumulated_plus",
-                                          "accumulated_minus",
-                                          "accumulated_plus_2",
-                                          "accumulated_minus_2",
-                                          "Tij",
-                                          "Tij_empirical" };
-
-/* AWH biasing history variables */
-enum
-{
-    eawhhIN_INITIAL,
-    eawhhEQUILIBRATEHISTOGRAM,
-    eawhhHISTSIZE,
-    eawhhNPOINTS,
-    eawhhCOORDPOINT,
-    eawhhUMBRELLAGRIDPOINT,
-    eawhhUPDATELIST,
-    eawhhLOGSCALEDSAMPLEWEIGHT,
-    eawhhNUMUPDATES,
-    eawhhFORCECORRELATIONGRID,
-    eawhhNR
+    IsEquilibrated,
+    NumAtLambda,
+    WangLandauHistogram,
+    WangLandauDelta,
+    SumWeights,
+    SumDG,
+    SumMinVar,
+    SumVar,
+    Accump,
+    Accumm,
+    Accump2,
+    Accumm2,
+    Tij,
+    TijEmp,
+    Count
 };
 
-static const char* eawhh_names[eawhhNR] = { "awh_in_initial", "awh_equilibrateHistogram",
-                                            "awh_histsize",   "awh_npoints",
-                                            "awh_coordpoint", "awh_umbrellaGridpoint",
-                                            "awh_updatelist", "awh_logScaledSampleWeight",
-                                            "awh_numupdates", "awh_forceCorrelationGrid" };
-
-enum
+//! free energy history names
+static const char* enumValueToString(StateFepEntry enumValue)
 {
-    epullsPREVSTEPCOM,
-    epullsNR
+    static constexpr gmx::EnumerationArray<StateFepEntry, const char*> stateFepEntryNames = {
+        "bEquilibrated",
+        "N_at_state",
+        "Wang-Landau Histogram",
+        "Wang-Landau Delta",
+        "Weights",
+        "Free Energies",
+        "minvar",
+        "variance",
+        "accumulated_plus",
+        "accumulated_minus",
+        "accumulated_plus_2",
+        "accumulated_minus_2",
+        "Tij",
+        "Tij_empirical"
+    };
+    return stateFepEntryNames[enumValue];
+}
+
+//! AWH biasing history variables
+enum class StateAwhEntry : int
+{
+    InInitial,
+    EquilibrateHistogram,
+    HistogramSize,
+    NumPoints,
+    CoordPoint,
+    UmbrellaGridPoint,
+    UpdateList,
+    LogScaledSampleWeight,
+    NumUpdates,
+    ForceCorrelationGrid,
+    Count
 };
 
-static const char* epull_prev_step_com_names[epullsNR] = { "Pull groups prev step COM" };
+static const char* enumValueToString(StateAwhEntry enumValue)
+{
+    static constexpr gmx::EnumerationArray<StateAwhEntry, const char*> stateAwhEntryNames = {
+        "awh_in_initial", "awh_equilibrateHistogram", "awh_histsize",   "awh_npoints",
+        "awh_coordpoint", "awh_umbrellaGridpoint",    "awh_updatelist", "awh_logScaledSampleWeight",
+        "awh_numupdates", "awh_forceCorrelationGrid"
+    };
+    return stateAwhEntryNames[enumValue];
+}
 
+enum class StatePullCommunicationEntry : int
+{
+    PreviousStepCom,
+    Count
+};
 
 //! Higher level vector element type, only used for formatting checkpoint dumps
 enum class CptElementType
@@ -364,35 +389,6 @@ enum class CptElementType
     real3,    //!< float[3] or double[3], not linked to precision of type real
     matrix3x3 //!< float[3][3] or double[3][3], not linked to precision of type real
 };
-
-//! \brief Parts of the checkpoint state, only used for reporting
-enum class StatePart
-{
-    microState,         //!< The microstate of the simulated system
-    kineticEnergy,      //!< Kinetic energy, needed for T/P-coupling state
-    energyHistory,      //!< Energy observable statistics
-    freeEnergyHistory,  //!< Free-energy state and observable statistics
-    accWeightHistogram, //!< Accelerated weight histogram method state
-    pullState,          //!< COM of previous step.
-    pullHistory         //!< Pull history statistics (sums since last written output)
-};
-
-//! \brief Return the name of a checkpoint entry based on part and part entry
-static const char* entryName(StatePart part, int ecpt)
-{
-    switch (part)
-    {
-        case StatePart::microState: return est_names[ecpt];
-        case StatePart::kineticEnergy: return eeks_names[ecpt];
-        case StatePart::energyHistory: return eenh_names[ecpt];
-        case StatePart::freeEnergyHistory: return edfh_names[ecpt];
-        case StatePart::accWeightHistogram: return eawhh_names[ecpt];
-        case StatePart::pullState: return epull_prev_step_com_names[ecpt];
-        case StatePart::pullHistory: return ePullhNames[ecpt];
-    }
-
-    return nullptr;
-}
 
 static void cp_warning(FILE* fp)
 {
@@ -448,6 +444,40 @@ static int do_cpt_u_chars(XDR* xd, const char* desc, int n, unsigned char* i, FI
     if (list)
     {
         fprintf(list, "\n");
+    }
+    if (res == 0)
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
+template<typename EnumType>
+static int do_cpt_enum_as_int(XDR* xd, const char* desc, EnumType* enumValue, FILE* list)
+{
+    static_assert(std::is_same<std::underlying_type_t<EnumType>, int>::value,
+                  "Only enums with underlying type int are supported.");
+    auto castedValue = static_cast<int>(*enumValue);
+    if (xdr_int(xd, &castedValue) == 0)
+    {
+        return -1;
+    }
+    *enumValue = static_cast<EnumType>(castedValue);
+    if (list)
+    {
+        fprintf(list, "%s = %d\n", desc, castedValue);
+    }
+    return 0;
+}
+
+template<typename EnumType>
+static int do_cpt_n_enum_as_int(XDR* xd, const char* desc, int n, EnumType* enumValue, FILE* list)
+{
+    bool_t res = 1;
+    for (int j = 0; j < n && res; j++)
+    {
+        res &= do_cpt_enum_as_int<EnumType>(xd, desc, &enumValue[j], list);
     }
     if (res == 0)
     {
@@ -540,29 +570,29 @@ struct xdr_type
 template<>
 struct xdr_type<int>
 {
-    static const int value = xdr_datatype_int;
+    static const XdrDataType value = XdrDataType::Int;
 };
 
 template<>
 struct xdr_type<float>
 {
-    static const int value = xdr_datatype_float;
+    static const XdrDataType value = XdrDataType::Float;
 };
 
 template<>
 struct xdr_type<double>
 {
-    static const int value = xdr_datatype_double;
+    static const XdrDataType value = XdrDataType::Double;
 };
 
-//! \brief Returns size in byte of an xdr_datatype
-static inline unsigned int sizeOfXdrType(int xdrType)
+//! \brief Returns size in byte of an XdrDataType
+static inline unsigned int sizeOfXdrType(XdrDataType xdrType)
 {
     switch (xdrType)
     {
-        case xdr_datatype_int: return sizeof(int);
-        case xdr_datatype_float: return sizeof(float);
-        case xdr_datatype_double: return sizeof(double);
+        case XdrDataType::Int: return sizeof(int);
+        case XdrDataType::Float: return sizeof(float);
+        case XdrDataType::Double: return sizeof(double);
         default: GMX_RELEASE_ASSERT(false, "XDR data type not implemented");
     }
 
@@ -570,13 +600,13 @@ static inline unsigned int sizeOfXdrType(int xdrType)
 }
 
 //! \brief Returns the XDR process function for i/o of an XDR type
-static inline xdrproc_t xdrProc(int xdrType)
+static inline xdrproc_t xdrProc(XdrDataType xdrType)
 {
     switch (xdrType)
     {
-        case xdr_datatype_int: return reinterpret_cast<xdrproc_t>(xdr_int);
-        case xdr_datatype_float: return reinterpret_cast<xdrproc_t>(xdr_float);
-        case xdr_datatype_double: return reinterpret_cast<xdrproc_t>(xdr_double);
+        case XdrDataType::Int: return reinterpret_cast<xdrproc_t>(xdr_int);
+        case XdrDataType::Float: return reinterpret_cast<xdrproc_t>(xdr_float);
+        case XdrDataType::Double: return reinterpret_cast<xdrproc_t>(xdr_double);
         default: GMX_RELEASE_ASSERT(false, "XDR data type not implemented");
     }
 
@@ -590,7 +620,8 @@ static inline xdrproc_t xdrProc(int xdrType)
  * The formatting of the printing is set by \p cptElementType.
  * When list==NULL only reads the elements.
  */
-static bool_t listXdrVector(XDR* xd, StatePart part, int ecpt, int nf, int xdrType, FILE* list, CptElementType cptElementType)
+template<typename Enum>
+static bool_t listXdrVector(XDR* xd, Enum ecpt, int nf, XdrDataType xdrType, FILE* list, CptElementType cptElementType)
 {
     bool_t res = 0;
 
@@ -602,37 +633,33 @@ static bool_t listXdrVector(XDR* xd, StatePart part, int ecpt, int nf, int xdrTy
     {
         switch (xdrType)
         {
-            case xdr_datatype_int:
-                pr_ivec(list, 0, entryName(part, ecpt), reinterpret_cast<const int*>(data.data()), nf, TRUE);
+            case XdrDataType::Int:
+                pr_ivec(list, 0, enumValueToString(ecpt), reinterpret_cast<const int*>(data.data()), nf, TRUE);
                 break;
-            case xdr_datatype_float:
+            case XdrDataType::Float:
 #if !GMX_DOUBLE
                 if (cptElementType == CptElementType::real3)
                 {
-                    pr_rvecs(list, 0, entryName(part, ecpt),
-                             reinterpret_cast<const rvec*>(data.data()), nf / 3);
+                    pr_rvecs(list, 0, enumValueToString(ecpt), reinterpret_cast<const rvec*>(data.data()), nf / 3);
                 }
                 else
 #endif
                 {
                     /* Note: With double precision code dumping a single precision rvec will produce float iso rvec print, but that's a minor annoyance */
-                    pr_fvec(list, 0, entryName(part, ecpt),
-                            reinterpret_cast<const float*>(data.data()), nf, TRUE);
+                    pr_fvec(list, 0, enumValueToString(ecpt), reinterpret_cast<const float*>(data.data()), nf, TRUE);
                 }
                 break;
-            case xdr_datatype_double:
+            case XdrDataType::Double:
 #if GMX_DOUBLE
                 if (cptElementType == CptElementType::real3)
                 {
-                    pr_rvecs(list, 0, entryName(part, ecpt),
-                             reinterpret_cast<const rvec*>(data.data()), nf / 3);
+                    pr_rvecs(list, 0, enumValueToString(ecpt), reinterpret_cast<const rvec*>(data.data()), nf / 3);
                 }
                 else
 #endif
                 {
                     /* Note: With single precision code dumping a double precision rvec will produce float iso rvec print, but that's a minor annoyance */
-                    pr_dvec(list, 0, entryName(part, ecpt),
-                            reinterpret_cast<const double*>(data.data()), nf, TRUE);
+                    pr_dvec(list, 0, enumValueToString(ecpt), reinterpret_cast<const double*>(data.data()), nf, TRUE);
                 }
                 break;
             default: GMX_RELEASE_ASSERT(false, "Data type not implemented for listing");
@@ -688,10 +715,9 @@ static void convertArrayRealPrecision(const char gmx_unused* c, int gmx_unused* 
  * If nval n<0, *nptr (with v) or vector->size() is used. On read using v,
  * the value is stored in nptr
  */
-template<typename T, typename AllocatorType>
+template<typename T, typename AllocatorType, typename Enum>
 static int doVectorLow(XDR*                           xd,
-                       StatePart                      part,
-                       int                            ecpt,
+                       Enum                           ecpt,
                        int                            sflags,
                        int                            nval,
                        int*                           nptr,
@@ -734,15 +760,17 @@ static int doVectorLow(XDR*                           xd,
         return -1;
     }
     /* Read/write the element data type */
-    constexpr int xdrTypeInTheCode = xdr_type<T>::value;
-    int           xdrTypeInTheFile = xdrTypeInTheCode;
-    res                            = xdr_int(xd, &xdrTypeInTheFile);
+    constexpr XdrDataType xdrTypeInTheCode      = xdr_type<T>::value;
+    XdrDataType           xdrTypeInTheFile      = xdrTypeInTheCode;
+    int                   xdrTypeInTheFileAsInt = static_cast<int>(xdrTypeInTheFile);
+    res                                         = xdr_int(xd, &xdrTypeInTheFileAsInt);
+    xdrTypeInTheFile                            = static_cast<XdrDataType>(xdrTypeInTheFileAsInt);
     if (res == 0)
     {
         return -1;
     }
 
-    if (list == nullptr && (sflags & (1 << ecpt)))
+    if (list == nullptr && (sflags & enumValueToBitMask(ecpt)))
     {
         if (nval >= 0)
         {
@@ -750,7 +778,9 @@ static int doVectorLow(XDR*                           xd,
             {
                 gmx_fatal(FARGS,
                           "Count mismatch for state entry %s, code count is %d, file count is %d\n",
-                          entryName(part, ecpt), nval, numElemInTheFile);
+                          enumValueToString(ecpt),
+                          nval,
+                          numElemInTheFile);
             }
         }
         else if (nptr != nullptr)
@@ -762,15 +792,18 @@ static int doVectorLow(XDR*                           xd,
         if (!typesMatch)
         {
             char buf[STRLEN];
-            sprintf(buf, "mismatch for state entry %s, code precision is %s, file precision is %s",
-                    entryName(part, ecpt), xdr_datatype_names[xdrTypeInTheCode],
-                    xdr_datatype_names[xdrTypeInTheFile]);
+            sprintf(buf,
+                    "mismatch for state entry %s, code precision is %s, file precision is %s",
+                    enumValueToString(ecpt),
+                    enumValueToString(xdrTypeInTheCode),
+                    enumValueToString(xdrTypeInTheFile));
 
             /* Matching int and real should never occur, but check anyhow */
-            if (xdrTypeInTheFile == xdr_datatype_int || xdrTypeInTheCode == xdr_datatype_int)
+            if (xdrTypeInTheFile == XdrDataType::Int || xdrTypeInTheCode == XdrDataType::Int)
             {
                 gmx_fatal(FARGS,
-                          "Type %s: incompatible checkpoint formats or corrupted checkpoint file.", buf);
+                          "Type %s: incompatible checkpoint formats or corrupted checkpoint file.",
+                          buf);
             }
         }
 
@@ -806,8 +839,8 @@ static int doVectorLow(XDR*                           xd,
         {
             snew(vChar, numElemInTheFile * sizeOfXdrType(xdrTypeInTheFile));
         }
-        res = xdr_vector(xd, vChar, numElemInTheFile, sizeOfXdrType(xdrTypeInTheFile),
-                         xdrProc(xdrTypeInTheFile));
+        res = xdr_vector(
+                xd, vChar, numElemInTheFile, sizeOfXdrType(xdrTypeInTheFile), xdrProc(xdrTypeInTheFile));
         if (res == 0)
         {
             return -1;
@@ -826,27 +859,27 @@ static int doVectorLow(XDR*                           xd,
     }
     else
     {
-        res = listXdrVector(xd, part, ecpt, numElemInTheFile, xdrTypeInTheFile, list, cptElementType);
+        res = listXdrVector(xd, ecpt, numElemInTheFile, xdrTypeInTheFile, list, cptElementType);
     }
 
     return 0;
 }
 
 //! \brief Read/Write a std::vector, on read checks the number of elements matches \p numElements, if specified.
-template<typename T>
-static int
-doVector(XDR* xd, StatePart part, int ecpt, int sflags, std::vector<T>* vector, FILE* list, int numElements = -1)
+template<typename T, typename Enum>
+static int doVector(XDR* xd, Enum ecpt, int sflags, std::vector<T>* vector, FILE* list, int numElements = -1)
 {
-    return doVectorLow<T>(xd, part, ecpt, sflags, numElements, nullptr, nullptr, vector, list,
-                          CptElementType::real);
+    return doVectorLow<T>(
+            xd, ecpt, sflags, numElements, nullptr, nullptr, vector, list, CptElementType::real);
 }
 
 //! \brief Read/Write an ArrayRef<real>.
-static int doRealArrayRef(XDR* xd, StatePart part, int ecpt, int sflags, gmx::ArrayRef<real> vector, FILE* list)
+template<typename Enum>
+static int doRealArrayRef(XDR* xd, Enum ecpt, int sflags, gmx::ArrayRef<real> vector, FILE* list)
 {
     real* v_real = vector.data();
-    return doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, vector.size(), nullptr,
-                                                   &v_real, nullptr, list, CptElementType::real);
+    return doVectorLow<real, std::allocator<real>>(
+            xd, ecpt, sflags, vector.size(), nullptr, &v_real, nullptr, list, CptElementType::real);
 }
 
 //! Convert from view of RVec to view of real.
@@ -856,20 +889,19 @@ static gmx::ArrayRef<real> realArrayRefFromRVecArrayRef(gmx::ArrayRef<gmx::RVec>
 }
 
 //! \brief Read/Write a PaddedVector whose value_type is RVec.
-template<typename PaddedVectorOfRVecType>
-static int
-doRvecVector(XDR* xd, StatePart part, int ecpt, int sflags, PaddedVectorOfRVecType* v, int numAtoms, FILE* list)
+template<typename PaddedVectorOfRVecType, typename Enum>
+static int doRvecVector(XDR* xd, Enum ecpt, int sflags, PaddedVectorOfRVecType* v, int numAtoms, FILE* list)
 {
     const int numReals = numAtoms * DIM;
 
     if (list == nullptr)
     {
         GMX_RELEASE_ASSERT(
-                sflags & (1 << ecpt),
+                sflags & enumValueToBitMask(ecpt),
                 "When not listing, the flag for the entry should be set when requesting i/o");
         GMX_RELEASE_ASSERT(v->size() == numAtoms, "v should have sufficient size for numAtoms");
 
-        return doRealArrayRef(xd, part, ecpt, sflags, realArrayRefFromRVecArrayRef(makeArrayRef(*v)), list);
+        return doRealArrayRef(xd, ecpt, sflags, realArrayRefFromRVecArrayRef(makeArrayRef(*v)), list);
     }
     else
     {
@@ -877,8 +909,8 @@ doRvecVector(XDR* xd, StatePart part, int ecpt, int sflags, PaddedVectorOfRVecTy
         // allocator from RVec to real.
         using realAllocator =
                 typename std::allocator_traits<typename PaddedVectorOfRVecType::allocator_type>::template rebind_alloc<real>;
-        return doVectorLow<real, realAllocator>(xd, part, ecpt, sflags, numReals, nullptr, nullptr,
-                                                nullptr, list, CptElementType::real);
+        return doVectorLow<real, realAllocator>(
+                xd, ecpt, sflags, numReals, nullptr, nullptr, nullptr, list, CptElementType::real);
     }
 }
 
@@ -886,77 +918,75 @@ doRvecVector(XDR* xd, StatePart part, int ecpt, int sflags, PaddedVectorOfRVecTy
  * but on reading it assumes that n matches the value in the checkpoint file,
  * a fatal error is generated when this is not the case.
  */
-static int do_cpte_reals(XDR* xd, StatePart part, int ecpt, int sflags, int n, real** v, FILE* list)
+template<typename Enum>
+static int do_cpte_reals(XDR* xd, Enum ecpt, int sflags, int n, real** v, FILE* list)
 {
-    return doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, n, nullptr, v, nullptr,
-                                                   list, CptElementType::real);
+    return doVectorLow<real, std::allocator<real>>(
+            xd, ecpt, sflags, n, nullptr, v, nullptr, list, CptElementType::real);
 }
 
-/* This function does the same as do_cpte_reals,
- * except that on reading it ignores the passed value of *n
- * and stores the value read from the checkpoint file in *n.
- */
-static int do_cpte_n_reals(XDR* xd, StatePart part, int ecpt, int sflags, int* n, real** v, FILE* list)
+template<typename Enum>
+static int do_cpte_real(XDR* xd, Enum ecpt, int sflags, real* r, FILE* list)
 {
-    return doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, -1, n, v, nullptr, list,
-                                                   CptElementType::real);
+    return doVectorLow<real, std::allocator<real>>(
+            xd, ecpt, sflags, 1, nullptr, &r, nullptr, list, CptElementType::real);
 }
 
-static int do_cpte_real(XDR* xd, StatePart part, int ecpt, int sflags, real* r, FILE* list)
+template<typename Enum>
+static int do_cpte_ints(XDR* xd, Enum ecpt, int sflags, int n, int** v, FILE* list)
 {
-    return doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, 1, nullptr, &r, nullptr,
-                                                   list, CptElementType::real);
+    return doVectorLow<int, std::allocator<int>>(
+            xd, ecpt, sflags, n, nullptr, v, nullptr, list, CptElementType::integer);
 }
 
-static int do_cpte_ints(XDR* xd, StatePart part, int ecpt, int sflags, int n, int** v, FILE* list)
+template<typename Enum>
+static int do_cpte_int(XDR* xd, Enum ecpt, int sflags, int* i, FILE* list)
 {
-    return doVectorLow<int, std::allocator<int>>(xd, part, ecpt, sflags, n, nullptr, v, nullptr,
-                                                 list, CptElementType::integer);
+    return do_cpte_ints(xd, ecpt, sflags, 1, &i, list);
 }
 
-static int do_cpte_int(XDR* xd, StatePart part, int ecpt, int sflags, int* i, FILE* list)
-{
-    return do_cpte_ints(xd, part, ecpt, sflags, 1, &i, list);
-}
-
-static int do_cpte_bool(XDR* xd, StatePart part, int ecpt, int sflags, bool* b, FILE* list)
+template<typename Enum>
+static int do_cpte_bool(XDR* xd, Enum ecpt, int sflags, bool* b, FILE* list)
 {
     int i   = static_cast<int>(*b);
-    int ret = do_cpte_int(xd, part, ecpt, sflags, &i, list);
+    int ret = do_cpte_int(xd, ecpt, sflags, &i, list);
     *b      = (i != 0);
     return ret;
 }
 
-static int do_cpte_doubles(XDR* xd, StatePart part, int ecpt, int sflags, int n, double** v, FILE* list)
+template<typename Enum>
+static int do_cpte_doubles(XDR* xd, Enum ecpt, int sflags, int n, double** v, FILE* list)
 {
-    return doVectorLow<double, std::allocator<double>>(xd, part, ecpt, sflags, n, nullptr, v,
-                                                       nullptr, list, CptElementType::real);
+    return doVectorLow<double, std::allocator<double>>(
+            xd, ecpt, sflags, n, nullptr, v, nullptr, list, CptElementType::real);
 }
 
-static int do_cpte_double(XDR* xd, StatePart part, int ecpt, int sflags, double* r, FILE* list)
+template<typename Enum>
+static int do_cpte_double(XDR* xd, Enum ecpt, int sflags, double* r, FILE* list)
 {
-    return do_cpte_doubles(xd, part, ecpt, sflags, 1, &r, list);
+    return do_cpte_doubles(xd, ecpt, sflags, 1, &r, list);
 }
 
-static int do_cpte_matrix(XDR* xd, StatePart part, int ecpt, int sflags, matrix v, FILE* list)
+template<typename Enum>
+static int do_cpte_matrix(XDR* xd, Enum ecpt, int sflags, matrix v, FILE* list)
 {
     real* vr;
     int   ret;
 
     vr  = &(v[0][0]);
-    ret = doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, DIM * DIM, nullptr, &vr,
-                                                  nullptr, nullptr, CptElementType::matrix3x3);
+    ret = doVectorLow<real, std::allocator<real>>(
+            xd, ecpt, sflags, DIM * DIM, nullptr, &vr, nullptr, nullptr, CptElementType::matrix3x3);
 
     if (list && ret == 0)
     {
-        pr_rvecs(list, 0, entryName(part, ecpt), v, DIM);
+        pr_rvecs(list, 0, enumValueToString(ecpt), v, DIM);
     }
 
     return ret;
 }
 
-
-static int do_cpte_nmatrix(XDR* xd, StatePart part, int ecpt, int sflags, int n, real** v, FILE* list)
+template<typename Enum>
+static int do_cpte_nmatrix(XDR* xd, Enum ecpt, int sflags, int n, real** v, FILE* list)
 {
     int  i;
     int  ret, reti;
@@ -969,11 +999,11 @@ static int do_cpte_nmatrix(XDR* xd, StatePart part, int ecpt, int sflags, int n,
     }
     for (i = 0; i < n; i++)
     {
-        reti = doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, n, nullptr, &(v[i]),
-                                                       nullptr, nullptr, CptElementType::matrix3x3);
+        reti = doVectorLow<real, std::allocator<real>>(
+                xd, ecpt, sflags, n, nullptr, &(v[i]), nullptr, nullptr, CptElementType::matrix3x3);
         if (list && reti == 0)
         {
-            sprintf(name, "%s[%d]", entryName(part, ecpt), i);
+            sprintf(name, "%s[%d]", enumValueToString(ecpt), i);
             pr_reals(list, 0, name, v[i], n);
         }
         if (reti != 0)
@@ -984,7 +1014,8 @@ static int do_cpte_nmatrix(XDR* xd, StatePart part, int ecpt, int sflags, int n,
     return ret;
 }
 
-static int do_cpte_matrices(XDR* xd, StatePart part, int ecpt, int sflags, int n, matrix** v, FILE* list)
+template<typename Enum>
+static int do_cpte_matrices(XDR* xd, Enum ecpt, int sflags, int n, matrix** v, FILE* list)
 {
     bool_t  res = 0;
     matrix *vp, *va = nullptr;
@@ -1000,10 +1031,13 @@ static int do_cpte_matrices(XDR* xd, StatePart part, int ecpt, int sflags, int n
     }
     if (list == nullptr && nf != n)
     {
-        gmx_fatal(FARGS, "Count mismatch for state entry %s, code count is %d, file count is %d\n",
-                  entryName(part, ecpt), n, nf);
+        gmx_fatal(FARGS,
+                  "Count mismatch for state entry %s, code count is %d, file count is %d\n",
+                  enumValueToString(ecpt),
+                  n,
+                  nf);
     }
-    if (list || !(sflags & (1 << ecpt)))
+    if (list || !(sflags & enumValueToBitMask(ecpt)))
     {
         snew(va, nf);
         vp = va;
@@ -1027,8 +1061,8 @@ static int do_cpte_matrices(XDR* xd, StatePart part, int ecpt, int sflags, int n
             }
         }
     }
-    ret = doVectorLow<real, std::allocator<real>>(xd, part, ecpt, sflags, nf * DIM * DIM, nullptr,
-                                                  &vr, nullptr, nullptr, CptElementType::matrix3x3);
+    ret = doVectorLow<real, std::allocator<real>>(
+            xd, ecpt, sflags, nf * DIM * DIM, nullptr, &vr, nullptr, nullptr, CptElementType::matrix3x3);
     for (i = 0; i < nf; i++)
     {
         for (j = 0; j < DIM; j++)
@@ -1045,7 +1079,7 @@ static int do_cpte_matrices(XDR* xd, StatePart part, int ecpt, int sflags, int n
     {
         for (i = 0; i < nf; i++)
         {
-            pr_rvecs(list, 0, entryName(part, ecpt), vp[i], DIM);
+            pr_rvecs(list, 0, enumValueToString(ecpt), vp[i], DIM);
         }
     }
     if (va)
@@ -1080,7 +1114,8 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
         gmx_fatal(FARGS,
                   "Start of file magic number mismatch, checkpoint file has %d, should be %d\n"
                   "The checkpoint file is corrupted or not a checkpoint file",
-                  magic, CPT_MAGIC1);
+                  magic,
+                  CPT_MAGIC1);
     }
     char fhost[255];
     if (!bRead)
@@ -1100,14 +1135,15 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     do_cpt_string_err(xd, "generating program", contents->fprog, list);
     do_cpt_string_err(xd, "generation time", contents->ftime, list);
     contents->file_version = cpt_version;
-    do_cpt_int_err(xd, "checkpoint file version", &contents->file_version, list);
+    do_cpt_enum_as_int<CheckPointVersion>(xd, "checkpoint file version", &contents->file_version, list);
     if (contents->file_version > cpt_version)
     {
         gmx_fatal(FARGS,
                   "Attempting to read a checkpoint file of version %d with code of version %d\n",
-                  contents->file_version, cpt_version);
+                  static_cast<int>(contents->file_version),
+                  static_cast<int>(cpt_version));
     }
-    if (contents->file_version >= 13)
+    if (contents->file_version >= CheckPointVersion::DoublePrecisionBuild)
     {
         do_cpt_int_err(xd, "GROMACS double precision", &contents->double_prec, list);
     }
@@ -1115,13 +1151,13 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     {
         contents->double_prec = -1;
     }
-    if (contents->file_version >= 12)
+    if (contents->file_version >= CheckPointVersion::HostInformation)
     {
         do_cpt_string_err(xd, "generating host", fhost, list);
     }
     do_cpt_int_err(xd, "#atoms", &contents->natoms, list);
     do_cpt_int_err(xd, "#T-coupling groups", &contents->ngtc, list);
-    if (contents->file_version >= 10)
+    if (contents->file_version >= CheckPointVersion::NoseHooverThermostat)
     {
         do_cpt_int_err(xd, "#Nose-Hoover T-chains", &contents->nhchainlength, list);
     }
@@ -1129,7 +1165,7 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     {
         contents->nhchainlength = 1;
     }
-    if (contents->file_version >= 11)
+    if (contents->file_version >= CheckPointVersion::NoseHooverBarostat)
     {
         do_cpt_int_err(xd, "#Nose-Hoover T-chains for barostat ", &contents->nnhpres, list);
     }
@@ -1137,7 +1173,7 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     {
         contents->nnhpres = 0;
     }
-    if (contents->file_version >= 14)
+    if (contents->file_version >= CheckPointVersion::LambdaStateAndHistory)
     {
         do_cpt_int_err(xd, "# of total lambda states ", &contents->nlambda, list);
     }
@@ -1145,8 +1181,15 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     {
         contents->nlambda = 0;
     }
-    do_cpt_int_err(xd, "integrator", &contents->eIntegrator, list);
-    if (contents->file_version >= 3)
+    {
+        int integrator = static_cast<int>(contents->eIntegrator);
+        do_cpt_int_err(xd, "integrator", &integrator, list);
+        if (bRead)
+        {
+            contents->eIntegrator = static_cast<IntegrationAlgorithm>(integrator);
+        }
+    }
+    if (contents->file_version >= CheckPointVersion::SafeSimulationPart)
     {
         do_cpt_int_err(xd, "simulation part #", &contents->simulation_part, list);
     }
@@ -1154,7 +1197,7 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     {
         contents->simulation_part = 1;
     }
-    if (contents->file_version >= 5)
+    if (contents->file_version >= CheckPointVersion::SafeSteps)
     {
         do_cpt_step_err(xd, "step", &contents->step, list);
     }
@@ -1171,20 +1214,21 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     do_cpt_int_err(xd, "dd_nc[z]", &contents->dd_nc[ZZ], list);
     do_cpt_int_err(xd, "#PME-only ranks", &contents->npme, list);
     do_cpt_int_err(xd, "state flags", &contents->flags_state, list);
-    if (contents->file_version >= 4)
+    if (contents->file_version >= CheckPointVersion::EkinDataAndFlags)
     {
         do_cpt_int_err(xd, "ekin data flags", &contents->flags_eks, list);
         do_cpt_int_err(xd, "energy history flags", &contents->flags_enh, list);
     }
     else
     {
-        contents->flags_eks   = 0;
-        contents->flags_enh   = (contents->flags_state >> (estORIRE_DTAV + 1));
+        contents->flags_eks = 0;
+        contents->flags_enh = (contents->flags_state >> (static_cast<int>(StateEntry::OrireDtav) + 1));
         contents->flags_state = (contents->flags_state
-                                 & ~((1 << (estORIRE_DTAV + 1)) | (1 << (estORIRE_DTAV + 2))
-                                     | (1 << (estORIRE_DTAV + 3))));
+                                 & ~((1 << (static_cast<int>(StateEntry::OrireDtav) + 1))
+                                     | (1 << (static_cast<int>(StateEntry::OrireDtav) + 2))
+                                     | (1 << (static_cast<int>(StateEntry::OrireDtav) + 3))));
     }
-    if (contents->file_version >= 14)
+    if (contents->file_version >= CheckPointVersion::LambdaStateAndHistory)
     {
         do_cpt_int_err(xd, "df history flags", &contents->flags_dfh, list);
     }
@@ -1193,7 +1237,7 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
         contents->flags_dfh = 0;
     }
 
-    if (contents->file_version >= 15)
+    if (contents->file_version >= CheckPointVersion::EssentialDynamics)
     {
         do_cpt_int_err(xd, "ED data sets", &contents->nED, list);
     }
@@ -1202,16 +1246,21 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
         contents->nED = 0;
     }
 
-    if (contents->file_version >= 16)
+    if (contents->file_version >= CheckPointVersion::SwapState)
     {
-        do_cpt_int_err(xd, "swap", &contents->eSwapCoords, list);
+        int swapState = static_cast<int>(contents->eSwapCoords);
+        do_cpt_int_err(xd, "swap", &swapState, list);
+        if (bRead)
+        {
+            contents->eSwapCoords = static_cast<SwapType>(swapState);
+        }
     }
     else
     {
-        contents->eSwapCoords = eswapNO;
+        contents->eSwapCoords = SwapType::No;
     }
 
-    if (contents->file_version >= 17)
+    if (contents->file_version >= CheckPointVersion::AwhHistoryFlags)
     {
         do_cpt_int_err(xd, "AWH history flags", &contents->flags_awhh, list);
     }
@@ -1220,7 +1269,7 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
         contents->flags_awhh = 0;
     }
 
-    if (contents->file_version >= 18)
+    if (contents->file_version >= CheckPointVersion::RemoveBuildMachineInformation)
     {
         do_cpt_int_err(xd, "pull history flags", &contents->flagsPullHistory, list);
     }
@@ -1229,10 +1278,10 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
         contents->flagsPullHistory = 0;
     }
 
-    if (contents->file_version >= cptv_ModularSimulator)
+    if (contents->file_version >= CheckPointVersion::ModularSimulator)
     {
-        do_cpt_bool_err(xd, "Is modular simulator checkpoint",
-                        &contents->isModularSimulatorCheckpoint, list);
+        do_cpt_bool_err(
+                xd, "Is modular simulator checkpoint", &contents->isModularSimulatorCheckpoint, list);
     }
     else
     {
@@ -1240,12 +1289,12 @@ static void do_cpt_header(XDR* xd, gmx_bool bRead, FILE* list, CheckpointHeaderC
     }
 }
 
-static int do_cpt_footer(XDR* xd, int file_version)
+static int do_cpt_footer(XDR* xd, CheckPointVersion file_version)
 {
     bool_t res = 0;
     int    magic;
 
-    if (file_version >= 2)
+    if (file_version >= CheckPointVersion::AddMagicNumber)
     {
         magic = CPT_MAGIC2;
         res   = xdr_int(xd, &magic);
@@ -1264,101 +1313,102 @@ static int do_cpt_footer(XDR* xd, int file_version)
 
 static int do_cpt_state(XDR* xd, int fflags, t_state* state, FILE* list)
 {
-    int             ret    = 0;
-    const StatePart part   = StatePart::microState;
-    const int       sflags = state->flags;
+    int       ret    = 0;
+    const int sflags = state->flags;
     // If reading, state->natoms was probably just read, so
     // allocations need to be managed. If writing, this won't change
     // anything that matters.
+    using StateFlags = gmx::EnumerationArray<StateEntry, bool>;
     state_change_natoms(state, state->natoms);
-    for (int i = 0; (i < estNR && ret == 0); i++)
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        if (fflags & (1 << i))
+        if (fflags & enumValueToBitMask(*i))
         {
-            switch (i)
+            switch (*i)
             {
-                case estLAMBDA:
-                    ret = doRealArrayRef(
-                            xd, part, i, sflags,
-                            gmx::arrayRefFromArray<real>(state->lambda.data(), state->lambda.size()),
-                            list);
+                case StateEntry::Lambda:
+                    ret = doRealArrayRef(xd, *i, sflags, state->lambda, list);
                     break;
-                case estFEPSTATE:
-                    ret = do_cpte_int(xd, part, i, sflags, &state->fep_state, list);
+                case StateEntry::FepState:
+                    ret = do_cpte_int(xd, *i, sflags, &state->fep_state, list);
                     break;
-                case estBOX: ret = do_cpte_matrix(xd, part, i, sflags, state->box, list); break;
-                case estBOX_REL:
-                    ret = do_cpte_matrix(xd, part, i, sflags, state->box_rel, list);
+                case StateEntry::Box: ret = do_cpte_matrix(xd, *i, sflags, state->box, list); break;
+                case StateEntry::BoxRel:
+                    ret = do_cpte_matrix(xd, *i, sflags, state->box_rel, list);
                     break;
-                case estBOXV: ret = do_cpte_matrix(xd, part, i, sflags, state->boxv, list); break;
-                case estPRES_PREV:
-                    ret = do_cpte_matrix(xd, part, i, sflags, state->pres_prev, list);
+                case StateEntry::BoxV:
+                    ret = do_cpte_matrix(xd, *i, sflags, state->boxv, list);
                     break;
-                case estSVIR_PREV:
-                    ret = do_cpte_matrix(xd, part, i, sflags, state->svir_prev, list);
+                case StateEntry::PressurePrevious:
+                    ret = do_cpte_matrix(xd, *i, sflags, state->pres_prev, list);
                     break;
-                case estFVIR_PREV:
-                    ret = do_cpte_matrix(xd, part, i, sflags, state->fvir_prev, list);
+                case StateEntry::SVirPrev:
+                    ret = do_cpte_matrix(xd, *i, sflags, state->svir_prev, list);
                     break;
-                case estNH_XI:
-                    ret = doVector<double>(xd, part, i, sflags, &state->nosehoover_xi, list);
+                case StateEntry::FVirPrev:
+                    ret = do_cpte_matrix(xd, *i, sflags, state->fvir_prev, list);
                     break;
-                case estNH_VXI:
-                    ret = doVector<double>(xd, part, i, sflags, &state->nosehoover_vxi, list);
+                case StateEntry::Nhxi:
+                    ret = doVector<double>(xd, *i, sflags, &state->nosehoover_xi, list);
                     break;
-                case estNHPRES_XI:
-                    ret = doVector<double>(xd, part, i, sflags, &state->nhpres_xi, list);
+                case StateEntry::Nhvxi:
+                    ret = doVector<double>(xd, *i, sflags, &state->nosehoover_vxi, list);
                     break;
-                case estNHPRES_VXI:
-                    ret = doVector<double>(xd, part, i, sflags, &state->nhpres_vxi, list);
+                case StateEntry::Nhpresxi:
+                    ret = doVector<double>(xd, *i, sflags, &state->nhpres_xi, list);
                     break;
-                case estTHERM_INT:
-                    ret = doVector<double>(xd, part, i, sflags, &state->therm_integral, list);
+                case StateEntry::Nhpresvxi:
+                    ret = doVector<double>(xd, *i, sflags, &state->nhpres_vxi, list);
                     break;
-                case estBAROS_INT:
-                    ret = do_cpte_double(xd, part, i, sflags, &state->baros_integral, list);
+                case StateEntry::ThermInt:
+                    ret = doVector<double>(xd, *i, sflags, &state->therm_integral, list);
                     break;
-                case estVETA: ret = do_cpte_real(xd, part, i, sflags, &state->veta, list); break;
-                case estVOL0: ret = do_cpte_real(xd, part, i, sflags, &state->vol0, list); break;
-                case estX:
-                    ret = doRvecVector(xd, part, i, sflags, &state->x, state->natoms, list);
+                case StateEntry::BarosInt:
+                    ret = do_cpte_double(xd, *i, sflags, &state->baros_integral, list);
                     break;
-                case estV:
-                    ret = doRvecVector(xd, part, i, sflags, &state->v, state->natoms, list);
+                case StateEntry::Veta:
+                    ret = do_cpte_real(xd, *i, sflags, &state->veta, list);
+                    break;
+                case StateEntry::Vol0:
+                    ret = do_cpte_real(xd, *i, sflags, &state->vol0, list);
+                    break;
+                case StateEntry::X:
+                    ret = doRvecVector(xd, *i, sflags, &state->x, state->natoms, list);
+                    break;
+                case StateEntry::V:
+                    ret = doRvecVector(xd, *i, sflags, &state->v, state->natoms, list);
                     break;
                 /* The RNG entries are no longer written,
                  * the next 4 lines are only for reading old files.
                  * It's OK that three case statements fall through.
                  */
-                case estLD_RNG_NOTSUPPORTED:
-                case estLD_RNGI_NOTSUPPORTED:
-                case estMC_RNG_NOTSUPPORTED:
-                case estMC_RNGI_NOTSUPPORTED:
-                    ret = do_cpte_ints(xd, part, i, sflags, 0, nullptr, list);
+                case StateEntry::LDRngNotSupported:
+                case StateEntry::LDRngINotSupported:
+                case StateEntry::MCRngNotSupported:
+                case StateEntry::MCRngINotSupported:
+                    ret = do_cpte_ints(xd, *i, sflags, 0, nullptr, list);
                     break;
-                case estDISRE_INITF:
-                    ret = do_cpte_real(xd, part, i, sflags, &state->hist.disre_initf, list);
+                case StateEntry::DisreInitF:
+                    ret = do_cpte_real(xd, *i, sflags, &state->hist.disre_initf, list);
                     break;
-                case estDISRE_RM3TAV:
-                    ret = do_cpte_n_reals(xd, part, i, sflags, &state->hist.ndisrepairs,
-                                          &state->hist.disre_rm3tav, list);
+                case StateEntry::DisreRm3Tav:
+                    ret = doVector<real>(xd, *i, sflags, &state->hist.disre_rm3tav, list);
                     break;
-                case estORIRE_INITF:
-                    ret = do_cpte_real(xd, part, i, sflags, &state->hist.orire_initf, list);
+                case StateEntry::OrireInitF:
+                    ret = do_cpte_real(xd, *i, sflags, &state->hist.orire_initf, list);
                     break;
-                case estORIRE_DTAV:
-                    ret = do_cpte_n_reals(xd, part, i, sflags, &state->hist.norire_Dtav,
-                                          &state->hist.orire_Dtav, list);
+                case StateEntry::OrireDtav:
+                    ret = doVector<real>(xd, *i, sflags, &state->hist.orire_Dtav, list);
                     break;
-                case estPULLCOMPREVSTEP:
-                    ret = doVector<double>(xd, part, i, sflags, &state->pull_com_prev_step, list);
+                case StateEntry::PullComPrevStep:
+                    ret = doVector<double>(xd, *i, sflags, &state->pull_com_prev_step, list);
                     break;
                 default:
                     gmx_fatal(FARGS,
                               "Unknown state entry %d\n"
                               "You are reading a checkpoint file written by different code, which "
                               "is not supported",
-                              i);
+                              enumValueToBitMask(*i));
             }
         }
     }
@@ -1369,47 +1419,49 @@ static int do_cpt_ekinstate(XDR* xd, int fflags, ekinstate_t* ekins, FILE* list)
 {
     int ret = 0;
 
-    const StatePart part = StatePart::kineticEnergy;
-    for (int i = 0; (i < eeksNR && ret == 0); i++)
+    using StateFlags = gmx::EnumerationArray<StateKineticEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        if (fflags & (1 << i))
+        if (fflags & enumValueToBitMask(*i))
         {
-            switch (i)
+            switch (*i)
             {
 
-                case eeksEKIN_N:
-                    ret = do_cpte_int(xd, part, i, fflags, &ekins->ekin_n, list);
+                case StateKineticEntry::EkinNumber:
+                    ret = do_cpte_int(xd, *i, fflags, &ekins->ekin_n, list);
                     break;
-                case eeksEKINH:
-                    ret = do_cpte_matrices(xd, part, i, fflags, ekins->ekin_n, &ekins->ekinh, list);
+                case StateKineticEntry::EkinHalfStep:
+                    ret = do_cpte_matrices(xd, *i, fflags, ekins->ekin_n, &ekins->ekinh, list);
                     break;
-                case eeksEKINF:
-                    ret = do_cpte_matrices(xd, part, i, fflags, ekins->ekin_n, &ekins->ekinf, list);
+                case StateKineticEntry::EkinFullStep:
+                    ret = do_cpte_matrices(xd, *i, fflags, ekins->ekin_n, &ekins->ekinf, list);
                     break;
-                case eeksEKINO:
-                    ret = do_cpte_matrices(xd, part, i, fflags, ekins->ekin_n, &ekins->ekinh_old, list);
+                case StateKineticEntry::EkinHalfStepOld:
+                    ret = do_cpte_matrices(xd, *i, fflags, ekins->ekin_n, &ekins->ekinh_old, list);
                     break;
-                case eeksEKINTOTAL:
-                    ret = do_cpte_matrix(xd, part, i, fflags, ekins->ekin_total, list);
+                case StateKineticEntry::EkinTotal:
+                    ret = do_cpte_matrix(xd, *i, fflags, ekins->ekin_total, list);
                     break;
-                case eeksEKINSCALEF:
-                    ret = doVector<double>(xd, part, i, fflags, &ekins->ekinscalef_nhc, list);
+                case StateKineticEntry::EkinNoseHooverScaleFullStep:
+                    ret = doVector<double>(xd, *i, fflags, &ekins->ekinscalef_nhc, list);
                     break;
-                case eeksVSCALE:
-                    ret = doVector<double>(xd, part, i, fflags, &ekins->vscale_nhc, list);
+                case StateKineticEntry::VelocityScale:
+                    ret = doVector<double>(xd, *i, fflags, &ekins->vscale_nhc, list);
                     break;
-                case eeksEKINSCALEH:
-                    ret = doVector<double>(xd, part, i, fflags, &ekins->ekinscaleh_nhc, list);
+                case StateKineticEntry::EkinNoseHooverScaleHalfStep:
+                    ret = doVector<double>(xd, *i, fflags, &ekins->ekinscaleh_nhc, list);
                     break;
-                case eeksDEKINDL:
-                    ret = do_cpte_real(xd, part, i, fflags, &ekins->dekindl, list);
+                case StateKineticEntry::DEkinDLambda:
+                    ret = do_cpte_real(xd, *i, fflags, &ekins->dekindl, list);
                     break;
-                case eeksMVCOS: ret = do_cpte_real(xd, part, i, fflags, &ekins->mvcos, list); break;
+                case StateKineticEntry::Mvcos:
+                    ret = do_cpte_real(xd, *i, fflags, &ekins->mvcos, list);
+                    break;
                 default:
                     gmx_fatal(FARGS,
                               "Unknown ekin data state entry %d\n"
                               "You are probably reading a new checkpoint file with old code",
-                              i);
+                              enumValueToBitMask(*i));
             }
         }
     }
@@ -1418,11 +1470,11 @@ static int do_cpt_ekinstate(XDR* xd, int fflags, ekinstate_t* ekins, FILE* list)
 }
 
 
-static int do_cpt_swapstate(XDR* xd, gmx_bool bRead, int eSwapCoords, swaphistory_t* swapstate, FILE* list)
+static int do_cpt_swapstate(XDR* xd, gmx_bool bRead, SwapType eSwapCoords, swaphistory_t* swapstate, FILE* list)
 {
     int swap_cpt_version = 2;
 
-    if (eSwapCoords == eswapNO)
+    if (eSwapCoords == SwapType::No)
     {
         return 0;
     }
@@ -1448,7 +1500,7 @@ static int do_cpt_swapstate(XDR* xd, gmx_bool bRead, int eSwapCoords, swaphistor
         snew(swapstate->ionType, swapstate->nIonTypes);
     }
 
-    for (int ic = 0; ic < eCompNR; ic++)
+    for (auto ic : gmx::EnumerationWrapper<Compartment>{})
     {
         for (int ii = 0; ii < swapstate->nIonTypes; ii++)
         {
@@ -1492,7 +1544,7 @@ static int do_cpt_swapstate(XDR* xd, gmx_bool bRead, int eSwapCoords, swaphistor
     }
 
     /* Ion flux per channel */
-    for (int ic = 0; ic < eChanNR; ic++)
+    for (auto ic : gmx::EnumerationWrapper<Channel>{})
     {
         for (int ii = 0; ii < swapstate->nIonTypes; ii++)
         {
@@ -1532,27 +1584,32 @@ static int do_cpt_swapstate(XDR* xd, gmx_bool bRead, int eSwapCoords, swaphistor
             snew(gs->comp_from, gs->nMol);
         }
 
-        do_cpt_u_chars(xd, "channel history", gs->nMol, gs->channel_label, list);
-        do_cpt_u_chars(xd, "domain history", gs->nMol, gs->comp_from, list);
+        do_cpt_n_enum_as_int<ChannelHistory>(xd, "channel history", gs->nMol, gs->channel_label, list);
+        do_cpt_n_enum_as_int<Domain>(xd, "domain history", gs->nMol, gs->comp_from, list);
     }
 
     /* Save the last known whole positions to checkpoint
      * file to be able to also make multimeric channels whole in PBC */
-    do_cpt_int_err(xd, "Ch0 atoms", &swapstate->nat[eChan0], list);
-    do_cpt_int_err(xd, "Ch1 atoms", &swapstate->nat[eChan1], list);
+    do_cpt_int_err(xd, "Ch0 atoms", &swapstate->nat[Channel::Zero], list);
+    do_cpt_int_err(xd, "Ch1 atoms", &swapstate->nat[Channel::One], list);
     if (bRead)
     {
-        snew(swapstate->xc_old_whole[eChan0], swapstate->nat[eChan0]);
-        snew(swapstate->xc_old_whole[eChan1], swapstate->nat[eChan1]);
-        do_cpt_n_rvecs_err(xd, "Ch0 whole x", swapstate->nat[eChan0], swapstate->xc_old_whole[eChan0], list);
-        do_cpt_n_rvecs_err(xd, "Ch1 whole x", swapstate->nat[eChan1], swapstate->xc_old_whole[eChan1], list);
+        snew(swapstate->xc_old_whole[Channel::Zero], swapstate->nat[Channel::Zero]);
+        snew(swapstate->xc_old_whole[Channel::One], swapstate->nat[Channel::One]);
+        do_cpt_n_rvecs_err(
+                xd, "Ch0 whole x", swapstate->nat[Channel::Zero], swapstate->xc_old_whole[Channel::Zero], list);
+        do_cpt_n_rvecs_err(
+                xd, "Ch1 whole x", swapstate->nat[Channel::One], swapstate->xc_old_whole[Channel::One], list);
     }
     else
     {
-        do_cpt_n_rvecs_err(xd, "Ch0 whole x", swapstate->nat[eChan0],
-                           *swapstate->xc_old_whole_p[eChan0], list);
-        do_cpt_n_rvecs_err(xd, "Ch1 whole x", swapstate->nat[eChan1],
-                           *swapstate->xc_old_whole_p[eChan1], list);
+        do_cpt_n_rvecs_err(xd,
+                           "Ch0 whole x",
+                           swapstate->nat[Channel::Zero],
+                           *swapstate->xc_old_whole_p[Channel::Zero],
+                           list);
+        do_cpt_n_rvecs_err(
+                xd, "Ch1 whole x", swapstate->nat[Channel::One], *swapstate->xc_old_whole_p[Channel::One], list);
     }
 
     return 0;
@@ -1568,8 +1625,7 @@ static int do_cpt_enerhist(XDR* xd, gmx_bool bRead, int fflags, energyhistory_t*
         return ret;
     }
 
-    GMX_RELEASE_ASSERT(enerhist != nullptr,
-                       "With energy history, we need a valid enerhist pointer");
+    GMX_RELEASE_ASSERT(enerhist != nullptr, "With energy history, we need a valid enerhist pointer");
 
     /* This is stored/read for backward compatibility */
     int energyHistoryNumEnergies = 0;
@@ -1586,45 +1642,45 @@ static int do_cpt_enerhist(XDR* xd, gmx_bool bRead, int fflags, energyhistory_t*
     }
 
     delta_h_history_t* deltaH = enerhist->deltaHForeignLambdas.get();
-    const StatePart    part   = StatePart::energyHistory;
-    for (int i = 0; (i < eenhNR && ret == 0); i++)
+    using StateFlags          = gmx::EnumerationArray<StateEnergyEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        if (fflags & (1 << i))
+        if (fflags & enumValueToBitMask(*i))
         {
-            switch (i)
+            switch (*i)
             {
-                case eenhENERGY_N:
-                    ret = do_cpte_int(xd, part, i, fflags, &energyHistoryNumEnergies, list);
+                case StateEnergyEntry::N:
+                    ret = do_cpte_int(xd, *i, fflags, &energyHistoryNumEnergies, list);
                     break;
-                case eenhENERGY_AVER:
-                    ret = doVector<double>(xd, part, i, fflags, &enerhist->ener_ave, list);
+                case StateEnergyEntry::Aver:
+                    ret = doVector<double>(xd, *i, fflags, &enerhist->ener_ave, list);
                     break;
-                case eenhENERGY_SUM:
-                    ret = doVector<double>(xd, part, i, fflags, &enerhist->ener_sum, list);
+                case StateEnergyEntry::Sum:
+                    ret = doVector<double>(xd, *i, fflags, &enerhist->ener_sum, list);
                     break;
-                case eenhENERGY_NSUM:
-                    do_cpt_step_err(xd, eenh_names[i], &enerhist->nsum, list);
+                case StateEnergyEntry::NumSum:
+                    do_cpt_step_err(xd, enumValueToString(*i), &enerhist->nsum, list);
                     break;
-                case eenhENERGY_SUM_SIM:
-                    ret = doVector<double>(xd, part, i, fflags, &enerhist->ener_sum_sim, list);
+                case StateEnergyEntry::SumSim:
+                    ret = doVector<double>(xd, *i, fflags, &enerhist->ener_sum_sim, list);
                     break;
-                case eenhENERGY_NSUM_SIM:
-                    do_cpt_step_err(xd, eenh_names[i], &enerhist->nsum_sim, list);
+                case StateEnergyEntry::NumSumSim:
+                    do_cpt_step_err(xd, enumValueToString(*i), &enerhist->nsum_sim, list);
                     break;
-                case eenhENERGY_NSTEPS:
-                    do_cpt_step_err(xd, eenh_names[i], &enerhist->nsteps, list);
+                case StateEnergyEntry::NumSteps:
+                    do_cpt_step_err(xd, enumValueToString(*i), &enerhist->nsteps, list);
                     break;
-                case eenhENERGY_NSTEPS_SIM:
-                    do_cpt_step_err(xd, eenh_names[i], &enerhist->nsteps_sim, list);
+                case StateEnergyEntry::NumStepsSim:
+                    do_cpt_step_err(xd, enumValueToString(*i), &enerhist->nsteps_sim, list);
                     break;
-                case eenhENERGY_DELTA_H_NN:
+                case StateEnergyEntry::DeltaHNN:
                 {
                     int numDeltaH = 0;
                     if (!bRead && deltaH != nullptr)
                     {
                         numDeltaH = deltaH->dh.size();
                     }
-                    do_cpt_int_err(xd, eenh_names[i], &numDeltaH, list);
+                    do_cpt_int_err(xd, enumValueToString(*i), &numDeltaH, list);
                     if (bRead)
                     {
                         if (deltaH == nullptr)
@@ -1637,39 +1693,42 @@ static int do_cpt_enerhist(XDR* xd, gmx_bool bRead, int fflags, energyhistory_t*
                     }
                     break;
                 }
-                case eenhENERGY_DELTA_H_LIST:
+                case StateEnergyEntry::DeltaHList:
                     for (auto dh : deltaH->dh)
                     {
-                        ret = doVector<real>(xd, part, i, fflags, &dh, list);
+                        ret = doVector<real>(xd, *i, fflags, &dh, list);
                     }
                     break;
-                case eenhENERGY_DELTA_H_STARTTIME:
-                    ret = do_cpte_double(xd, part, i, fflags, &(deltaH->start_time), list);
+                case StateEnergyEntry::DeltaHStartTime:
+                    ret = do_cpte_double(xd, *i, fflags, &(deltaH->start_time), list);
                     break;
-                case eenhENERGY_DELTA_H_STARTLAMBDA:
-                    ret = do_cpte_double(xd, part, i, fflags, &(deltaH->start_lambda), list);
+                case StateEnergyEntry::DeltaHStartLambda:
+                    ret = do_cpte_double(xd, *i, fflags, &(deltaH->start_lambda), list);
                     break;
                 default:
                     gmx_fatal(FARGS,
                               "Unknown energy history entry %d\n"
                               "You are probably reading a new checkpoint file with old code",
-                              i);
+                              enumValueToBitMask(*i));
             }
         }
     }
 
-    if ((fflags & (1 << eenhENERGY_SUM)) && !(fflags & (1 << eenhENERGY_SUM_SIM)))
+    if ((fflags & enumValueToBitMask(StateEnergyEntry::Sum))
+        && !(fflags & enumValueToBitMask(StateEnergyEntry::SumSim)))
     {
         /* Assume we have an old file format and copy sum to sum_sim */
         enerhist->ener_sum_sim = enerhist->ener_sum;
     }
 
-    if ((fflags & (1 << eenhENERGY_NSUM)) && !(fflags & (1 << eenhENERGY_NSTEPS)))
+    if ((fflags & enumValueToBitMask(StateEnergyEntry::NumSum))
+        && !(fflags & enumValueToBitMask(StateEnergyEntry::NumSteps)))
     {
         /* Assume we have an old file format and copy nsum to nsteps */
         enerhist->nsteps = enerhist->nsum;
     }
-    if ((fflags & (1 << eenhENERGY_NSUM_SIM)) && !(fflags & (1 << eenhENERGY_NSTEPS_SIM)))
+    if ((fflags & enumValueToBitMask(StateEnergyEntry::NumSumSim))
+        && !(fflags & enumValueToBitMask(StateEnergyEntry::NumStepsSim)))
     {
         /* Assume we have an old file format and copy nsum to nsteps */
         enerhist->nsteps_sim = enerhist->nsum_sim;
@@ -1678,75 +1737,83 @@ static int do_cpt_enerhist(XDR* xd, gmx_bool bRead, int fflags, energyhistory_t*
     return ret;
 }
 
-static int doCptPullCoordHist(XDR* xd, PullCoordinateHistory* pullCoordHist, const StatePart part, FILE* list)
+static int doCptPullCoordHist(XDR* xd, PullCoordinateHistory* pullCoordHist, FILE* list)
 {
     int ret   = 0;
     int flags = 0;
 
-    flags |= ((1 << epullcoordh_VALUE_REF_SUM) | (1 << epullcoordh_VALUE_SUM)
-              | (1 << epullcoordh_DR01_SUM) | (1 << epullcoordh_DR23_SUM)
-              | (1 << epullcoordh_DR45_SUM) | (1 << epullcoordh_FSCAL_SUM));
+    flags |= (enumValueToBitMask(StatePullCoordEntry::ValueReferenceSum)
+              | enumValueToBitMask(StatePullCoordEntry::ValueSum)
+              | enumValueToBitMask(StatePullCoordEntry::DR01Sum)
+              | enumValueToBitMask(StatePullCoordEntry::DR23Sum)
+              | enumValueToBitMask(StatePullCoordEntry::DR45Sum)
+              | enumValueToBitMask(StatePullCoordEntry::FScalarSum));
 
-    for (int i = 0; i < epullcoordh_NR && ret == 0; i++)
+    using StateFlags = gmx::EnumerationArray<StatePullCoordEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        switch (i)
+        switch (*i)
         {
-            case epullcoordh_VALUE_REF_SUM:
-                ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->valueRef), list);
+            case StatePullCoordEntry::ValueReferenceSum:
+                ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->valueRef), list);
                 break;
-            case epullcoordh_VALUE_SUM:
-                ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->value), list);
+            case StatePullCoordEntry::ValueSum:
+                ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->value), list);
                 break;
-            case epullcoordh_DR01_SUM:
+            case StatePullCoordEntry::DR01Sum:
                 for (int j = 0; j < DIM && ret == 0; j++)
                 {
-                    ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->dr01[j]), list);
+                    ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->dr01[j]), list);
                 }
                 break;
-            case epullcoordh_DR23_SUM:
+            case StatePullCoordEntry::DR23Sum:
                 for (int j = 0; j < DIM && ret == 0; j++)
                 {
-                    ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->dr23[j]), list);
+                    ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->dr23[j]), list);
                 }
                 break;
-            case epullcoordh_DR45_SUM:
+            case StatePullCoordEntry::DR45Sum:
                 for (int j = 0; j < DIM && ret == 0; j++)
                 {
-                    ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->dr45[j]), list);
+                    ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->dr45[j]), list);
                 }
                 break;
-            case epullcoordh_FSCAL_SUM:
-                ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->scalarForce), list);
+            case StatePullCoordEntry::FScalarSum:
+                ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->scalarForce), list);
                 break;
-            case epullcoordh_DYNAX_SUM:
+            case StatePullCoordEntry::DynaxSum:
                 for (int j = 0; j < DIM && ret == 0; j++)
                 {
-                    ret = do_cpte_double(xd, part, i, flags, &(pullCoordHist->dynaX[j]), list);
+                    ret = do_cpte_double(xd, *i, flags, &(pullCoordHist->dynaX[j]), list);
                 }
                 break;
+            default:
+                gmx_fatal(FARGS, "Unhandled StatePullCoordEntry enum value: %d", enumValueToBitMask(*i));
         }
     }
 
     return ret;
 }
 
-static int doCptPullGroupHist(XDR* xd, PullGroupHistory* pullGroupHist, const StatePart part, FILE* list)
+static int doCptPullGroupHist(XDR* xd, PullGroupHistory* pullGroupHist, FILE* list)
 {
     int ret   = 0;
     int flags = 0;
 
-    flags |= ((1 << epullgrouph_X_SUM));
+    flags |= (enumValueToBitMask(StatePullGroupEntry::XSum));
 
-    for (int i = 0; i < epullgrouph_NR; i++)
+    using StateFlags = gmx::EnumerationArray<StatePullGroupEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        switch (i)
+        switch (*i)
         {
-            case epullgrouph_X_SUM:
+            case StatePullGroupEntry::XSum:
                 for (int j = 0; j < DIM && ret == 0; j++)
                 {
-                    ret = do_cpte_double(xd, part, i, flags, &(pullGroupHist->x[j]), list);
+                    ret = do_cpte_double(xd, *i, flags, &(pullGroupHist->x[j]), list);
                 }
                 break;
+            default: gmx_fatal(FARGS, "Unhandled pull group state entry");
         }
     }
 
@@ -1754,7 +1821,7 @@ static int doCptPullGroupHist(XDR* xd, PullGroupHistory* pullGroupHist, const St
 }
 
 
-static int doCptPullHist(XDR* xd, gmx_bool bRead, int fflags, PullHistory* pullHist, const StatePart part, FILE* list)
+static int doCptPullHist(XDR* xd, gmx_bool bRead, int fflags, PullHistory* pullHist, FILE* list)
 {
     int ret                       = 0;
     int pullHistoryNumCoordinates = 0;
@@ -1778,29 +1845,30 @@ static int doCptPullHist(XDR* xd, gmx_bool bRead, int fflags, PullHistory* pullH
         GMX_RELEASE_ASSERT(fflags == 0, "Without pull history, all flags should be off");
     }
 
-    for (int i = 0; (i < epullhNR && ret == 0); i++)
+    using StateFlags = gmx::EnumerationArray<StatePullEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        if (fflags & (1 << i))
+        if (fflags & (1 << enumValueToBitMask(*i)))
         {
-            switch (i)
+            switch (*i)
             {
-                case epullhPULL_NUMCOORDINATES:
-                    ret = do_cpte_int(xd, part, i, fflags, &pullHistoryNumCoordinates, list);
+                case StatePullEntry::NumCoordinates:
+                    ret = do_cpte_int(xd, *i, fflags, &pullHistoryNumCoordinates, list);
                     break;
-                case epullhPULL_NUMGROUPS:
-                    do_cpt_int_err(xd, eenh_names[i], &pullHistoryNumGroups, list);
+                case StatePullEntry::NumGroups:
+                    do_cpt_int_err(xd, enumValueToString(*i), &pullHistoryNumGroups, list);
                     break;
-                case epullhPULL_NUMVALUESINXSUM:
-                    do_cpt_int_err(xd, eenh_names[i], &pullHist->numValuesInXSum, list);
+                case StatePullEntry::NumValuesInXSum:
+                    do_cpt_int_err(xd, enumValueToString(*i), &pullHist->numValuesInXSum, list);
                     break;
-                case epullhPULL_NUMVALUESINFSUM:
-                    do_cpt_int_err(xd, eenh_names[i], &pullHist->numValuesInFSum, list);
+                case StatePullEntry::NumValuesInFSum:
+                    do_cpt_int_err(xd, enumValueToString(*i), &pullHist->numValuesInFSum, list);
                     break;
                 default:
                     gmx_fatal(FARGS,
                               "Unknown pull history entry %d\n"
                               "You are probably reading a new checkpoint file with old code",
-                              i);
+                              enumValueToBitMask(*i));
             }
         }
     }
@@ -1813,11 +1881,11 @@ static int doCptPullHist(XDR* xd, gmx_bool bRead, int fflags, PullHistory* pullH
     {
         for (size_t i = 0; i < pullHist->pullCoordinateSums.size() && ret == 0; i++)
         {
-            ret = doCptPullCoordHist(xd, &(pullHist->pullCoordinateSums[i]), part, list);
+            ret = doCptPullCoordHist(xd, &(pullHist->pullCoordinateSums[i]), list);
         }
         for (size_t i = 0; i < pullHist->pullGroupSums.size() && ret == 0; i++)
         {
-            ret = doCptPullGroupHist(xd, &(pullHist->pullGroupSums[i]), part, list);
+            ret = doCptPullGroupHist(xd, &(pullHist->pullGroupSums[i]), list);
         }
     }
 
@@ -1833,69 +1901,71 @@ static int do_cpt_df_hist(XDR* xd, int fflags, int nlambda, df_history_t** dfhis
         return 0;
     }
 
+    std::unique_ptr<df_history_t> localDFHistory = nullptr;
     if (*dfhistPtr == nullptr)
     {
-        snew(*dfhistPtr, 1);
+        localDFHistory        = std::make_unique<df_history_t>();
+        *dfhistPtr            = localDFHistory.get();
         (*dfhistPtr)->nlambda = nlambda;
         init_df_history(*dfhistPtr, nlambda);
     }
     df_history_t* dfhist = *dfhistPtr;
 
-    const StatePart part = StatePart::freeEnergyHistory;
-    for (int i = 0; (i < edfhNR && ret == 0); i++)
+    using StateFlags = gmx::EnumerationArray<StateFepEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        if (fflags & (1 << i))
+        if (fflags & enumValueToBitMask(*i))
         {
-            switch (i)
+            switch (*i)
             {
-                case edfhBEQUIL:
-                    ret = do_cpte_bool(xd, part, i, fflags, &dfhist->bEquil, list);
+                case StateFepEntry::IsEquilibrated:
+                    ret = do_cpte_bool(xd, *i, fflags, &dfhist->bEquil, list);
                     break;
-                case edfhNATLAMBDA:
-                    ret = do_cpte_ints(xd, part, i, fflags, nlambda, &dfhist->n_at_lam, list);
+                case StateFepEntry::NumAtLambda:
+                    ret = do_cpte_ints(xd, *i, fflags, nlambda, &dfhist->n_at_lam, list);
                     break;
-                case edfhWLHISTO:
-                    ret = do_cpte_reals(xd, part, i, fflags, nlambda, &dfhist->wl_histo, list);
+                case StateFepEntry::WangLandauHistogram:
+                    ret = do_cpte_reals(xd, *i, fflags, nlambda, &dfhist->wl_histo, list);
                     break;
-                case edfhWLDELTA:
-                    ret = do_cpte_real(xd, part, i, fflags, &dfhist->wl_delta, list);
+                case StateFepEntry::WangLandauDelta:
+                    ret = do_cpte_real(xd, *i, fflags, &dfhist->wl_delta, list);
                     break;
-                case edfhSUMWEIGHTS:
-                    ret = do_cpte_reals(xd, part, i, fflags, nlambda, &dfhist->sum_weights, list);
+                case StateFepEntry::SumWeights:
+                    ret = do_cpte_reals(xd, *i, fflags, nlambda, &dfhist->sum_weights, list);
                     break;
-                case edfhSUMDG:
-                    ret = do_cpte_reals(xd, part, i, fflags, nlambda, &dfhist->sum_dg, list);
+                case StateFepEntry::SumDG:
+                    ret = do_cpte_reals(xd, *i, fflags, nlambda, &dfhist->sum_dg, list);
                     break;
-                case edfhSUMMINVAR:
-                    ret = do_cpte_reals(xd, part, i, fflags, nlambda, &dfhist->sum_minvar, list);
+                case StateFepEntry::SumMinVar:
+                    ret = do_cpte_reals(xd, *i, fflags, nlambda, &dfhist->sum_minvar, list);
                     break;
-                case edfhSUMVAR:
-                    ret = do_cpte_reals(xd, part, i, fflags, nlambda, &dfhist->sum_variance, list);
+                case StateFepEntry::SumVar:
+                    ret = do_cpte_reals(xd, *i, fflags, nlambda, &dfhist->sum_variance, list);
                     break;
-                case edfhACCUMP:
-                    ret = do_cpte_nmatrix(xd, part, i, fflags, nlambda, dfhist->accum_p, list);
+                case StateFepEntry::Accump:
+                    ret = do_cpte_nmatrix(xd, *i, fflags, nlambda, dfhist->accum_p, list);
                     break;
-                case edfhACCUMM:
-                    ret = do_cpte_nmatrix(xd, part, i, fflags, nlambda, dfhist->accum_m, list);
+                case StateFepEntry::Accumm:
+                    ret = do_cpte_nmatrix(xd, *i, fflags, nlambda, dfhist->accum_m, list);
                     break;
-                case edfhACCUMP2:
-                    ret = do_cpte_nmatrix(xd, part, i, fflags, nlambda, dfhist->accum_p2, list);
+                case StateFepEntry::Accump2:
+                    ret = do_cpte_nmatrix(xd, *i, fflags, nlambda, dfhist->accum_p2, list);
                     break;
-                case edfhACCUMM2:
-                    ret = do_cpte_nmatrix(xd, part, i, fflags, nlambda, dfhist->accum_m2, list);
+                case StateFepEntry::Accumm2:
+                    ret = do_cpte_nmatrix(xd, *i, fflags, nlambda, dfhist->accum_m2, list);
                     break;
-                case edfhTIJ:
-                    ret = do_cpte_nmatrix(xd, part, i, fflags, nlambda, dfhist->Tij, list);
+                case StateFepEntry::Tij:
+                    ret = do_cpte_nmatrix(xd, *i, fflags, nlambda, dfhist->Tij, list);
                     break;
-                case edfhTIJEMP:
-                    ret = do_cpte_nmatrix(xd, part, i, fflags, nlambda, dfhist->Tij_empirical, list);
+                case StateFepEntry::TijEmp:
+                    ret = do_cpte_nmatrix(xd, *i, fflags, nlambda, dfhist->Tij_empirical, list);
                     break;
 
                 default:
                     gmx_fatal(FARGS,
                               "Unknown df history entry %d\n"
                               "You are probably reading a new checkpoint file with old code",
-                              i);
+                              enumValueToBitMask(*i));
             }
         }
     }
@@ -1969,33 +2039,35 @@ static int do_cpt_correlation_grid(XDR*                         xd,
                                    gmx_unused int               fflags,
                                    gmx::CorrelationGridHistory* corrGrid,
                                    FILE*                        list,
-                                   int                          eawhh)
+                                   StateAwhEntry                eawhh)
 {
     int ret = 0;
 
-    do_cpt_int_err(xd, eawhh_names[eawhh], &(corrGrid->numCorrelationTensors), list);
-    do_cpt_int_err(xd, eawhh_names[eawhh], &(corrGrid->tensorSize), list);
-    do_cpt_int_err(xd, eawhh_names[eawhh], &(corrGrid->blockDataListSize), list);
+    do_cpt_int_err(xd, enumValueToString(eawhh), &(corrGrid->numCorrelationTensors), list);
+    do_cpt_int_err(xd, enumValueToString(eawhh), &(corrGrid->tensorSize), list);
+    do_cpt_int_err(xd, enumValueToString(eawhh), &(corrGrid->blockDataListSize), list);
 
     if (bRead)
     {
-        initCorrelationGridHistory(corrGrid, corrGrid->numCorrelationTensors, corrGrid->tensorSize,
-                                   corrGrid->blockDataListSize);
+        initCorrelationGridHistory(
+                corrGrid, corrGrid->numCorrelationTensors, corrGrid->tensorSize, corrGrid->blockDataListSize);
     }
 
     for (gmx::CorrelationBlockDataHistory& blockData : corrGrid->blockDataBuffer)
     {
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.blockSumWeight), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.blockSumSquareWeight), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.blockSumWeightX), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.blockSumWeightY), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.sumOverBlocksSquareBlockWeight), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.sumOverBlocksBlockSquareWeight), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.sumOverBlocksBlockWeightBlockWeightX), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.sumOverBlocksBlockWeightBlockWeightY), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.blockLength), list);
-        do_cpt_int_err(xd, eawhh_names[eawhh], &(blockData.previousBlockIndex), list);
-        do_cpt_double_err(xd, eawhh_names[eawhh], &(blockData.correlationIntegral), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.blockSumWeight), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.blockSumSquareWeight), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.blockSumWeightX), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.blockSumWeightY), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.sumOverBlocksSquareBlockWeight), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.sumOverBlocksBlockSquareWeight), list);
+        do_cpt_double_err(
+                xd, enumValueToString(eawhh), &(blockData.sumOverBlocksBlockWeightBlockWeightX), list);
+        do_cpt_double_err(
+                xd, enumValueToString(eawhh), &(blockData.sumOverBlocksBlockWeightBlockWeightY), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.blockLength), list);
+        do_cpt_int_err(xd, enumValueToString(eawhh), &(blockData.previousBlockIndex), list);
+        do_cpt_double_err(xd, enumValueToString(eawhh), &(blockData.correlationIntegral), list);
     }
 
     return ret;
@@ -2006,70 +2078,71 @@ static int do_cpt_awh_bias(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhBiasHist
     int ret = 0;
 
     gmx::AwhBiasStateHistory* state = &biasHistory->state;
-    for (int i = 0; (i < eawhhNR && ret == 0); i++)
+    using StateFlags                = gmx::EnumerationArray<StateAwhEntry, bool>;
+    for (auto i = StateFlags::keys().begin(); (i != StateFlags::keys().end() && ret == 0); i++)
     {
-        if (fflags & (1 << i))
+        if (fflags & enumValueToBitMask(*i))
         {
-            switch (i)
+            switch (*i)
             {
-                case eawhhIN_INITIAL:
-                    do_cpt_bool_err(xd, eawhh_names[i], &state->in_initial, list);
+                case StateAwhEntry::InInitial:
+                    do_cpt_bool_err(xd, enumValueToString(*i), &state->in_initial, list);
                     break;
-                case eawhhEQUILIBRATEHISTOGRAM:
-                    do_cpt_bool_err(xd, eawhh_names[i], &state->equilibrateHistogram, list);
+                case StateAwhEntry::EquilibrateHistogram:
+                    do_cpt_bool_err(xd, enumValueToString(*i), &state->equilibrateHistogram, list);
                     break;
-                case eawhhHISTSIZE:
-                    do_cpt_double_err(xd, eawhh_names[i], &state->histSize, list);
+                case StateAwhEntry::HistogramSize:
+                    do_cpt_double_err(xd, enumValueToString(*i), &state->histSize, list);
                     break;
-                case eawhhNPOINTS:
+                case StateAwhEntry::NumPoints:
                 {
                     int numPoints;
                     if (!bRead)
                     {
                         numPoints = biasHistory->pointState.size();
                     }
-                    do_cpt_int_err(xd, eawhh_names[i], &numPoints, list);
+                    do_cpt_int_err(xd, enumValueToString(*i), &numPoints, list);
                     if (bRead)
                     {
                         biasHistory->pointState.resize(numPoints);
                     }
                 }
                 break;
-                case eawhhCOORDPOINT:
+                case StateAwhEntry::CoordPoint:
                     for (auto& psh : biasHistory->pointState)
                     {
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.target, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.free_energy, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.bias, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.weightsum_iteration, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.weightsum_covering, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.weightsum_tot, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.weightsum_ref, list);
-                        do_cpt_step_err(xd, eawhh_names[i], &psh.last_update_index, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.log_pmfsum, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.visits_iteration, list);
-                        do_cpt_double_err(xd, eawhh_names[i], &psh.visits_tot, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.target, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.free_energy, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.bias, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.weightsum_iteration, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.weightsum_covering, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.weightsum_tot, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.weightsum_ref, list);
+                        do_cpt_step_err(xd, enumValueToString(*i), &psh.last_update_index, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.log_pmfsum, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.visits_iteration, list);
+                        do_cpt_double_err(xd, enumValueToString(*i), &psh.visits_tot, list);
                     }
                     break;
-                case eawhhUMBRELLAGRIDPOINT:
-                    do_cpt_int_err(xd, eawhh_names[i], &(state->umbrellaGridpoint), list);
+                case StateAwhEntry::UmbrellaGridPoint:
+                    do_cpt_int_err(xd, enumValueToString(*i), &(state->umbrellaGridpoint), list);
                     break;
-                case eawhhUPDATELIST:
-                    do_cpt_int_err(xd, eawhh_names[i], &(state->origin_index_updatelist), list);
-                    do_cpt_int_err(xd, eawhh_names[i], &(state->end_index_updatelist), list);
+                case StateAwhEntry::UpdateList:
+                    do_cpt_int_err(xd, enumValueToString(*i), &(state->origin_index_updatelist), list);
+                    do_cpt_int_err(xd, enumValueToString(*i), &(state->end_index_updatelist), list);
                     break;
-                case eawhhLOGSCALEDSAMPLEWEIGHT:
-                    do_cpt_double_err(xd, eawhh_names[i], &(state->logScaledSampleWeight), list);
-                    do_cpt_double_err(xd, eawhh_names[i], &(state->maxLogScaledSampleWeight), list);
+                case StateAwhEntry::LogScaledSampleWeight:
+                    do_cpt_double_err(xd, enumValueToString(*i), &(state->logScaledSampleWeight), list);
+                    do_cpt_double_err(xd, enumValueToString(*i), &(state->maxLogScaledSampleWeight), list);
                     break;
-                case eawhhNUMUPDATES:
-                    do_cpt_step_err(xd, eawhh_names[i], &(state->numUpdates), list);
+                case StateAwhEntry::NumUpdates:
+                    do_cpt_step_err(xd, enumValueToString(*i), &(state->numUpdates), list);
                     break;
-                case eawhhFORCECORRELATIONGRID:
-                    ret = do_cpt_correlation_grid(xd, bRead, fflags,
-                                                  &biasHistory->forceCorrelationGrid, list, i);
+                case StateAwhEntry::ForceCorrelationGrid:
+                    ret = do_cpt_correlation_grid(
+                            xd, bRead, fflags, &biasHistory->forceCorrelationGrid, list, *i);
                     break;
-                default: gmx_fatal(FARGS, "Unknown awh history entry %d\n", i);
+                default: gmx_fatal(FARGS, "Unknown awh history entry %d\n", enumValueToBitMask(*i));
             }
         }
     }
@@ -2128,12 +2201,12 @@ static int do_cpt_awh(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhHistory* awhH
     return ret;
 }
 
-static void do_cpt_mdmodules(int                           fileVersion,
-                             t_fileio*                     checkpointFileHandle,
-                             const gmx::MdModulesNotifier& mdModulesNotifier,
-                             FILE*                         outputFile)
+static void do_cpt_mdmodules(CheckPointVersion              fileVersion,
+                             t_fileio*                      checkpointFileHandle,
+                             const gmx::MDModulesNotifiers& mdModulesNotifiers,
+                             FILE*                          outputFile)
 {
-    if (fileVersion >= cptv_MdModules)
+    if (fileVersion >= CheckPointVersion::MDModules)
     {
         gmx::FileIOXdrSerializer serializer(checkpointFileHandle);
         gmx::KeyValueTreeObject  mdModuleCheckpointParameterTree =
@@ -2143,14 +2216,18 @@ static void do_cpt_mdmodules(int                           fileVersion,
             gmx::TextWriter textWriter(outputFile);
             gmx::dumpKeyValueTree(&textWriter, mdModuleCheckpointParameterTree);
         }
-        gmx::MdModulesCheckpointReadingDataOnMaster mdModuleCheckpointReadingDataOnMaster = {
+        gmx::MDModulesCheckpointReadingDataOnMaster mdModuleCheckpointReadingDataOnMaster = {
             mdModuleCheckpointParameterTree, fileVersion
         };
-        mdModulesNotifier.checkpointingNotifications_.notify(mdModuleCheckpointReadingDataOnMaster);
+        mdModulesNotifiers.checkpointingNotifier_.notify(mdModuleCheckpointReadingDataOnMaster);
     }
 }
 
-static int do_cpt_files(XDR* xd, gmx_bool bRead, std::vector<gmx_file_position_t>* outputfiles, FILE* list, int file_version)
+static int do_cpt_files(XDR*                              xd,
+                        gmx_bool                          bRead,
+                        std::vector<gmx_file_position_t>* outputfiles,
+                        FILE*                             list,
+                        CheckPointVersion                 file_version)
 {
     gmx_off_t                   offset;
     gmx_off_t                   mask = 0xFFFFFFFFL;
@@ -2213,14 +2290,13 @@ static int do_cpt_files(XDR* xd, gmx_bool bRead, std::vector<gmx_file_position_t
                 return -1;
             }
         }
-        if (file_version >= 8)
+        if (file_version >= CheckPointVersion::FileChecksumAndSize)
         {
             if (do_cpt_int(xd, "file_checksum_size", &outputfile.checksumSize, list) != 0)
             {
                 return -1;
             }
-            if (do_cpt_u_chars(xd, "file_checksum", outputfile.checksum.size(),
-                               outputfile.checksum.data(), list)
+            if (do_cpt_u_chars(xd, "file_checksum", outputfile.checksum.size(), outputfile.checksum.data(), list)
                 != 0)
             {
                 return -1;
@@ -2237,19 +2313,25 @@ static int do_cpt_files(XDR* xd, gmx_bool bRead, std::vector<gmx_file_position_t
 void write_checkpoint_data(t_fileio*                         fp,
                            CheckpointHeaderContents          headerContents,
                            gmx_bool                          bExpanded,
-                           int                               elamstats,
+                           LambdaWeightCalculation           elamstats,
                            t_state*                          state,
                            ObservablesHistory*               observablesHistory,
-                           const gmx::MdModulesNotifier&     mdModulesNotifier,
+                           const gmx::MDModulesNotifiers&    mdModulesNotifiers,
                            std::vector<gmx_file_position_t>* outputfiles,
                            gmx::WriteCheckpointDataHolder*   modularSimulatorCheckpointData)
 {
     headerContents.flags_eks = 0;
     if (state->ekinstate.bUpToDate)
     {
-        headerContents.flags_eks = ((1 << eeksEKIN_N) | (1 << eeksEKINH) | (1 << eeksEKINF)
-                                    | (1 << eeksEKINO) | (1 << eeksEKINSCALEF) | (1 << eeksEKINSCALEH)
-                                    | (1 << eeksVSCALE) | (1 << eeksDEKINDL) | (1 << eeksMVCOS));
+        headerContents.flags_eks = (enumValueToBitMask(StateKineticEntry::EkinNumber)
+                                    | enumValueToBitMask(StateKineticEntry::EkinHalfStep)
+                                    | enumValueToBitMask(StateKineticEntry::EkinFullStep)
+                                    | enumValueToBitMask(StateKineticEntry::EkinHalfStepOld)
+                                    | enumValueToBitMask(StateKineticEntry::EkinNoseHooverScaleFullStep)
+                                    | enumValueToBitMask(StateKineticEntry::EkinNoseHooverScaleHalfStep)
+                                    | enumValueToBitMask(StateKineticEntry::VelocityScale)
+                                    | enumValueToBitMask(StateKineticEntry::DEkinDLambda)
+                                    | enumValueToBitMask(StateKineticEntry::Mvcos));
     }
     headerContents.isModularSimulatorCheckpoint = !modularSimulatorCheckpointData->empty();
 
@@ -2257,22 +2339,26 @@ void write_checkpoint_data(t_fileio*                         fp,
     headerContents.flags_enh  = 0;
     if (enerhist != nullptr && (enerhist->nsum > 0 || enerhist->nsum_sim > 0))
     {
-        headerContents.flags_enh |=
-                (1 << eenhENERGY_N) | (1 << eenhENERGY_NSTEPS) | (1 << eenhENERGY_NSTEPS_SIM);
+        headerContents.flags_enh |= enumValueToBitMask(StateEnergyEntry::N)
+                                    | enumValueToBitMask(StateEnergyEntry::NumSteps)
+                                    | enumValueToBitMask(StateEnergyEntry::NumStepsSim);
         if (enerhist->nsum > 0)
         {
-            headerContents.flags_enh |=
-                    ((1 << eenhENERGY_AVER) | (1 << eenhENERGY_SUM) | (1 << eenhENERGY_NSUM));
+            headerContents.flags_enh |= (enumValueToBitMask(StateEnergyEntry::Aver)
+                                         | enumValueToBitMask(StateEnergyEntry::Sum)
+                                         | enumValueToBitMask(StateEnergyEntry::NumSum));
         }
         if (enerhist->nsum_sim > 0)
         {
-            headerContents.flags_enh |= ((1 << eenhENERGY_SUM_SIM) | (1 << eenhENERGY_NSUM_SIM));
+            headerContents.flags_enh |= (enumValueToBitMask(StateEnergyEntry::SumSim)
+                                         | enumValueToBitMask(StateEnergyEntry::NumSumSim));
         }
         if (enerhist->deltaHForeignLambdas != nullptr)
         {
-            headerContents.flags_enh |=
-                    ((1 << eenhENERGY_DELTA_H_NN) | (1 << eenhENERGY_DELTA_H_LIST)
-                     | (1 << eenhENERGY_DELTA_H_STARTTIME) | (1 << eenhENERGY_DELTA_H_STARTLAMBDA));
+            headerContents.flags_enh |= (enumValueToBitMask(StateEnergyEntry::DeltaHNN)
+                                         | enumValueToBitMask(StateEnergyEntry::DeltaHList)
+                                         | enumValueToBitMask(StateEnergyEntry::DeltaHStartTime)
+                                         | enumValueToBitMask(StateEnergyEntry::DeltaHStartLambda));
         }
     }
 
@@ -2280,36 +2366,50 @@ void write_checkpoint_data(t_fileio*                         fp,
     headerContents.flagsPullHistory = 0;
     if (pullHist != nullptr && (pullHist->numValuesInXSum > 0 || pullHist->numValuesInFSum > 0))
     {
-        headerContents.flagsPullHistory |= (1 << epullhPULL_NUMCOORDINATES);
-        headerContents.flagsPullHistory |= ((1 << epullhPULL_NUMGROUPS) | (1 << epullhPULL_NUMVALUESINXSUM)
-                                            | (1 << epullhPULL_NUMVALUESINFSUM));
+        headerContents.flagsPullHistory |= enumValueToBitMask(StatePullEntry::NumCoordinates);
+        headerContents.flagsPullHistory |= (enumValueToBitMask(StatePullEntry::NumGroups)
+                                            | enumValueToBitMask(StatePullEntry::NumValuesInXSum)
+                                            | enumValueToBitMask(StatePullEntry::NumValuesInFSum));
     }
 
     headerContents.flags_dfh = 0;
     if (bExpanded)
     {
-        headerContents.flags_dfh = ((1 << edfhBEQUIL) | (1 << edfhNATLAMBDA) | (1 << edfhSUMWEIGHTS)
-                                    | (1 << edfhSUMDG) | (1 << edfhTIJ) | (1 << edfhTIJEMP));
+        headerContents.flags_dfh =
+                (enumValueToBitMask(StateFepEntry::IsEquilibrated)
+                 | enumValueToBitMask(StateFepEntry::NumAtLambda)
+                 | enumValueToBitMask(StateFepEntry::SumWeights) | enumValueToBitMask(StateFepEntry::SumDG)
+                 | enumValueToBitMask(StateFepEntry::Tij) | enumValueToBitMask(StateFepEntry::TijEmp));
         if (EWL(elamstats))
         {
-            headerContents.flags_dfh |= ((1 << edfhWLDELTA) | (1 << edfhWLHISTO));
+            headerContents.flags_dfh |= (enumValueToBitMask(StateFepEntry::WangLandauDelta)
+                                         | enumValueToBitMask(StateFepEntry::WangLandauHistogram));
         }
-        if ((elamstats == elamstatsMINVAR) || (elamstats == elamstatsBARKER)
-            || (elamstats == elamstatsMETROPOLIS))
+        if ((elamstats == LambdaWeightCalculation::Minvar) || (elamstats == LambdaWeightCalculation::Barker)
+            || (elamstats == LambdaWeightCalculation::Metropolis))
         {
-            headerContents.flags_dfh |= ((1 << edfhACCUMP) | (1 << edfhACCUMM) | (1 << edfhACCUMP2)
-                                         | (1 << edfhACCUMM2) | (1 << edfhSUMMINVAR) | (1 << edfhSUMVAR));
+            headerContents.flags_dfh |= (enumValueToBitMask(StateFepEntry::Accump)
+                                         | enumValueToBitMask(StateFepEntry::Accumm)
+                                         | enumValueToBitMask(StateFepEntry::Accump2)
+                                         | enumValueToBitMask(StateFepEntry::Accumm2)
+                                         | enumValueToBitMask(StateFepEntry::SumMinVar)
+                                         | enumValueToBitMask(StateFepEntry::SumVar));
         }
     }
 
     headerContents.flags_awhh = 0;
     if (state->awhHistory != nullptr && !state->awhHistory->bias.empty())
     {
-        headerContents.flags_awhh |=
-                ((1 << eawhhIN_INITIAL) | (1 << eawhhEQUILIBRATEHISTOGRAM) | (1 << eawhhHISTSIZE)
-                 | (1 << eawhhNPOINTS) | (1 << eawhhCOORDPOINT) | (1 << eawhhUMBRELLAGRIDPOINT)
-                 | (1 << eawhhUPDATELIST) | (1 << eawhhLOGSCALEDSAMPLEWEIGHT)
-                 | (1 << eawhhNUMUPDATES) | (1 << eawhhFORCECORRELATIONGRID));
+        headerContents.flags_awhh |= (enumValueToBitMask(StateAwhEntry::InInitial)
+                                      | enumValueToBitMask(StateAwhEntry::EquilibrateHistogram)
+                                      | enumValueToBitMask(StateAwhEntry::HistogramSize)
+                                      | enumValueToBitMask(StateAwhEntry::NumPoints)
+                                      | enumValueToBitMask(StateAwhEntry::CoordPoint)
+                                      | enumValueToBitMask(StateAwhEntry::UmbrellaGridPoint)
+                                      | enumValueToBitMask(StateAwhEntry::UpdateList)
+                                      | enumValueToBitMask(StateAwhEntry::LogScaledSampleWeight)
+                                      | enumValueToBitMask(StateAwhEntry::NumUpdates)
+                                      | enumValueToBitMask(StateAwhEntry::ForceCorrelationGrid));
     }
 
     do_cpt_header(gmx_fio_getxdr(fp), FALSE, nullptr, &headerContents);
@@ -2317,30 +2417,30 @@ void write_checkpoint_data(t_fileio*                         fp,
     if ((do_cpt_state(gmx_fio_getxdr(fp), state->flags, state, nullptr) < 0)
         || (do_cpt_ekinstate(gmx_fio_getxdr(fp), headerContents.flags_eks, &state->ekinstate, nullptr) < 0)
         || (do_cpt_enerhist(gmx_fio_getxdr(fp), FALSE, headerContents.flags_enh, enerhist, nullptr) < 0)
-        || (doCptPullHist(gmx_fio_getxdr(fp), FALSE, headerContents.flagsPullHistory, pullHist,
-                          StatePart::pullHistory, nullptr)
+        || (doCptPullHist(gmx_fio_getxdr(fp), FALSE, headerContents.flagsPullHistory, pullHist, nullptr) < 0)
+        || (do_cpt_df_hist(gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda, &state->dfhist, nullptr)
             < 0)
-        || (do_cpt_df_hist(gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda,
-                           &state->dfhist, nullptr)
-            < 0)
-        || (do_cpt_EDstate(gmx_fio_getxdr(fp), FALSE, headerContents.nED,
-                           observablesHistory->edsamHistory.get(), nullptr)
+        || (do_cpt_EDstate(
+                    gmx_fio_getxdr(fp), FALSE, headerContents.nED, observablesHistory->edsamHistory.get(), nullptr)
             < 0)
         || (do_cpt_awh(gmx_fio_getxdr(fp), FALSE, headerContents.flags_awhh, state->awhHistory.get(), nullptr) < 0)
-        || (do_cpt_swapstate(gmx_fio_getxdr(fp), FALSE, headerContents.eSwapCoords,
-                             observablesHistory->swapHistory.get(), nullptr)
+        || (do_cpt_swapstate(gmx_fio_getxdr(fp),
+                             FALSE,
+                             headerContents.eSwapCoords,
+                             observablesHistory->swapHistory.get(),
+                             nullptr)
             < 0)
         || (do_cpt_files(gmx_fio_getxdr(fp), FALSE, outputfiles, nullptr, headerContents.file_version) < 0))
     {
         gmx_file("Cannot read/write checkpoint; corrupt file, or maybe you are out of disk space?");
     }
 
-    // Checkpointing MdModules
+    // Checkpointing MDModules
     {
         gmx::KeyValueTreeBuilder          builder;
-        gmx::MdModulesWriteCheckpointData mdModulesWriteCheckpoint = { builder.rootObject(),
+        gmx::MDModulesWriteCheckpointData mdModulesWriteCheckpoint = { builder.rootObject(),
                                                                        headerContents.file_version };
-        mdModulesNotifier.checkpointingNotifications_.notify(mdModulesWriteCheckpoint);
+        mdModulesNotifiers.checkpointingNotifier_.notify(mdModulesWriteCheckpoint);
         auto                     tree = builder.build();
         gmx::FileIOXdrSerializer serializer(fp);
         gmx::serializeKeyValueTree(tree, &serializer);
@@ -2435,8 +2535,8 @@ static void check_match(FILE*                           fplog,
 
     if (reproducibilityRequested)
     {
-        check_string(fplog, "Program name", gmx::getProgramContext().fullBinaryPath(),
-                     headerContents.fprog, &mm);
+        check_string(
+                fplog, "Program name", gmx::getProgramContext().fullBinaryPath(), headerContents.fprog, &mm);
 
         check_int(fplog, "#ranks", cr->nnodes, headerContents.nnodes, &mm);
     }
@@ -2511,13 +2611,13 @@ static void read_checkpoint(const char*                    fn,
                             t_fileio*                      logfio,
                             const t_commrec*               cr,
                             const ivec                     dd_nc,
-                            int                            eIntegrator,
+                            IntegrationAlgorithm           eIntegrator,
                             int*                           init_fep_state,
                             CheckpointHeaderContents*      headerContents,
                             t_state*                       state,
                             ObservablesHistory*            observablesHistory,
                             gmx_bool                       reproducibilityRequested,
-                            const gmx::MdModulesNotifier&  mdModulesNotifier,
+                            const gmx::MDModulesNotifiers& mdModulesNotifiers,
                             gmx::ReadCheckpointDataHolder* modularSimulatorCheckpointData,
                             bool                           useModularSimulator)
 {
@@ -2552,21 +2652,24 @@ static void read_checkpoint(const char*                    fn,
         gmx_fatal(FARGS,
                   "Checkpoint file is for a system of %d atoms, while the current system consists "
                   "of %d atoms",
-                  headerContents->natoms, state->natoms);
+                  headerContents->natoms,
+                  state->natoms);
     }
     if (headerContents->ngtc != state->ngtc)
     {
         gmx_fatal(FARGS,
                   "Checkpoint file is for a system of %d T-coupling groups, while the current "
                   "system consists of %d T-coupling groups",
-                  headerContents->ngtc, state->ngtc);
+                  headerContents->ngtc,
+                  state->ngtc);
     }
     if (headerContents->nnhpres != state->nnhpres)
     {
         gmx_fatal(FARGS,
                   "Checkpoint file is for a system of %d NH-pressure-coupling variables, while the "
                   "current system consists of %d NH-pressure-coupling variables",
-                  headerContents->nnhpres, state->nnhpres);
+                  headerContents->nnhpres,
+                  state->nnhpres);
     }
 
     int nlambdaHistory = (state->dfhist ? state->dfhist->nlambda : 0);
@@ -2575,10 +2678,13 @@ static void read_checkpoint(const char*                    fn,
         gmx_fatal(FARGS,
                   "Checkpoint file is for a system with %d lambda states, while the current system "
                   "consists of %d lambda states",
-                  headerContents->nlambda, nlambdaHistory);
+                  headerContents->nlambda,
+                  nlambdaHistory);
     }
 
-    init_gtc_state(state, state->ngtc, state->nnhpres,
+    init_gtc_state(state,
+                   state->ngtc,
+                   state->nnhpres,
                    headerContents->nhchainlength); /* need to keep this here to keep the tpr format working */
     /* write over whatever was read; we use the number of Nose-Hoover chains from the checkpoint */
 
@@ -2635,20 +2741,21 @@ static void read_checkpoint(const char*                    fn,
     {
         cp_error();
     }
-    state->ekinstate.hasReadEkinState = (((headerContents->flags_eks & (1 << eeksEKINH)) != 0)
-                                         || ((headerContents->flags_eks & (1 << eeksEKINF)) != 0)
-                                         || ((headerContents->flags_eks & (1 << eeksEKINO)) != 0)
-                                         || (((headerContents->flags_eks & (1 << eeksEKINSCALEF))
-                                              | (headerContents->flags_eks & (1 << eeksEKINSCALEH))
-                                              | (headerContents->flags_eks & (1 << eeksVSCALE)))
-                                             != 0));
+    state->ekinstate.hasReadEkinState =
+            (((headerContents->flags_eks & enumValueToBitMask(StateKineticEntry::EkinHalfStep)) != 0)
+             || ((headerContents->flags_eks & enumValueToBitMask(StateKineticEntry::EkinFullStep)) != 0)
+             || ((headerContents->flags_eks & enumValueToBitMask(StateKineticEntry::EkinHalfStepOld)) != 0)
+             || (((headerContents->flags_eks & enumValueToBitMask(StateKineticEntry::EkinNoseHooverScaleFullStep))
+                  | (headerContents->flags_eks & enumValueToBitMask(StateKineticEntry::EkinNoseHooverScaleHalfStep))
+                  | (headerContents->flags_eks & enumValueToBitMask(StateKineticEntry::VelocityScale)))
+                 != 0));
 
     if (headerContents->flags_enh && observablesHistory->energyHistory == nullptr)
     {
         observablesHistory->energyHistory = std::make_unique<energyhistory_t>();
     }
-    ret = do_cpt_enerhist(gmx_fio_getxdr(fp), TRUE, headerContents->flags_enh,
-                          observablesHistory->energyHistory.get(), nullptr);
+    ret = do_cpt_enerhist(
+            gmx_fio_getxdr(fp), TRUE, headerContents->flags_enh, observablesHistory->energyHistory.get(), nullptr);
     if (ret)
     {
         cp_error();
@@ -2660,22 +2767,25 @@ static void read_checkpoint(const char*                    fn,
         {
             observablesHistory->pullHistory = std::make_unique<PullHistory>();
         }
-        ret = doCptPullHist(gmx_fio_getxdr(fp), TRUE, headerContents->flagsPullHistory,
-                            observablesHistory->pullHistory.get(), StatePart::pullHistory, nullptr);
+        ret = doCptPullHist(gmx_fio_getxdr(fp),
+                            TRUE,
+                            headerContents->flagsPullHistory,
+                            observablesHistory->pullHistory.get(),
+                            nullptr);
         if (ret)
         {
             cp_error();
         }
     }
 
-    if (headerContents->file_version < 6)
+    if (headerContents->file_version < CheckPointVersion::Version45)
     {
         gmx_fatal(FARGS,
                   "Continuing from checkpoint files written before GROMACS 4.5 is not supported");
     }
 
-    ret = do_cpt_df_hist(gmx_fio_getxdr(fp), headerContents->flags_dfh, headerContents->nlambda,
-                         &state->dfhist, nullptr);
+    ret = do_cpt_df_hist(
+            gmx_fio_getxdr(fp), headerContents->flags_dfh, headerContents->nlambda, &state->dfhist, nullptr);
     if (ret)
     {
         cp_error();
@@ -2685,8 +2795,8 @@ static void read_checkpoint(const char*                    fn,
     {
         observablesHistory->edsamHistory = std::make_unique<edsamhistory_t>(edsamhistory_t{});
     }
-    ret = do_cpt_EDstate(gmx_fio_getxdr(fp), TRUE, headerContents->nED,
-                         observablesHistory->edsamHistory.get(), nullptr);
+    ret = do_cpt_EDstate(
+            gmx_fio_getxdr(fp), TRUE, headerContents->nED, observablesHistory->edsamHistory.get(), nullptr);
     if (ret)
     {
         cp_error();
@@ -2702,12 +2812,12 @@ static void read_checkpoint(const char*                    fn,
         cp_error();
     }
 
-    if (headerContents->eSwapCoords != eswapNO && observablesHistory->swapHistory == nullptr)
+    if (headerContents->eSwapCoords != SwapType::No && observablesHistory->swapHistory == nullptr)
     {
         observablesHistory->swapHistory = std::make_unique<swaphistory_t>(swaphistory_t{});
     }
-    ret = do_cpt_swapstate(gmx_fio_getxdr(fp), TRUE, headerContents->eSwapCoords,
-                           observablesHistory->swapHistory.get(), nullptr);
+    ret = do_cpt_swapstate(
+            gmx_fio_getxdr(fp), TRUE, headerContents->eSwapCoords, observablesHistory->swapHistory.get(), nullptr);
     if (ret)
     {
         cp_error();
@@ -2719,8 +2829,8 @@ static void read_checkpoint(const char*                    fn,
     {
         cp_error();
     }
-    do_cpt_mdmodules(headerContents->file_version, fp, mdModulesNotifier, nullptr);
-    if (headerContents->file_version >= cptv_ModularSimulator)
+    do_cpt_mdmodules(headerContents->file_version, fp, mdModulesNotifiers, nullptr);
+    if (headerContents->file_version >= CheckPointVersion::ModularSimulator)
     {
         gmx::FileIOXdrSerializer serializer(fp);
         modularSimulatorCheckpointData->deserialize(&serializer);
@@ -2745,7 +2855,7 @@ void load_checkpoint(const char*                    fn,
                      t_state*                       state,
                      ObservablesHistory*            observablesHistory,
                      gmx_bool                       reproducibilityRequested,
-                     const gmx::MdModulesNotifier&  mdModulesNotifier,
+                     const gmx::MDModulesNotifiers& mdModulesNotifiers,
                      gmx::ReadCheckpointDataHolder* modularSimulatorCheckpointData,
                      bool                           useModularSimulator)
 {
@@ -2753,17 +2863,27 @@ void load_checkpoint(const char*                    fn,
     if (SIMMASTER(cr))
     {
         /* Read the state from the checkpoint file */
-        read_checkpoint(fn, logfio, cr, dd_nc, ir->eI, &(ir->fepvals->init_fep_state),
-                        &headerContents, state, observablesHistory, reproducibilityRequested,
-                        mdModulesNotifier, modularSimulatorCheckpointData, useModularSimulator);
+        read_checkpoint(fn,
+                        logfio,
+                        cr,
+                        dd_nc,
+                        ir->eI,
+                        &(ir->fepvals->init_fep_state),
+                        &headerContents,
+                        state,
+                        observablesHistory,
+                        reproducibilityRequested,
+                        mdModulesNotifiers,
+                        modularSimulatorCheckpointData,
+                        useModularSimulator);
     }
     if (PAR(cr))
     {
         gmx_bcast(sizeof(headerContents.step), &headerContents.step, cr->mpiDefaultCommunicator);
-        gmx::MdModulesCheckpointReadingBroadcast broadcastCheckPointData = {
+        gmx::MDModulesCheckpointReadingBroadcast broadcastCheckPointData = {
             cr->mpiDefaultCommunicator, PAR(cr), headerContents.file_version
         };
-        mdModulesNotifier.checkpointingNotifications_.notify(broadcastCheckPointData);
+        mdModulesNotifiers.checkpointingNotifier_.notify(broadcastCheckPointData);
     }
     ir->bContinuation = TRUE;
     if (ir->nsteps >= 0)
@@ -2845,15 +2965,14 @@ static CheckpointHeaderContents read_checkpoint_data(t_fileio*                  
         cp_error();
     }
     PullHistory pullHist = {};
-    ret = doCptPullHist(gmx_fio_getxdr(fp), TRUE, headerContents.flagsPullHistory, &pullHist,
-                        StatePart::pullHistory, nullptr);
+    ret = doCptPullHist(gmx_fio_getxdr(fp), TRUE, headerContents.flagsPullHistory, &pullHist, nullptr);
     if (ret)
     {
         cp_error();
     }
 
-    ret = do_cpt_df_hist(gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda,
-                         &state->dfhist, nullptr);
+    ret = do_cpt_df_hist(
+            gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda, &state->dfhist, nullptr);
     if (ret)
     {
         cp_error();
@@ -2885,9 +3004,9 @@ static CheckpointHeaderContents read_checkpoint_data(t_fileio*                  
     {
         cp_error();
     }
-    gmx::MdModulesNotifier mdModuleNotifier;
-    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifier, nullptr);
-    if (headerContents.file_version >= cptv_ModularSimulator)
+    gmx::MDModulesNotifiers mdModuleNotifiers;
+    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifiers, nullptr);
+    if (headerContents.file_version >= CheckPointVersion::ModularSimulator)
     {
         // Store modular checkpoint data into modularSimulatorCheckpointData
         gmx::FileIOXdrSerializer serializer(fp);
@@ -2920,21 +3039,21 @@ void read_checkpoint_trxframe(t_fileio* fp, t_trxframe* fr)
     fr->bTime     = TRUE;
     fr->time      = headerContents.t;
     fr->bLambda   = TRUE;
-    fr->lambda    = state.lambda[efptFEP];
+    fr->lambda    = state.lambda[FreeEnergyPerturbationCouplingType::Fep];
     fr->fep_state = state.fep_state;
     fr->bAtoms    = FALSE;
-    fr->bX        = ((state.flags & (1 << estX)) != 0);
+    fr->bX        = ((state.flags & enumValueToBitMask(StateEntry::X)) != 0);
     if (fr->bX)
     {
         fr->x = makeRvecArray(state.x, state.natoms);
     }
-    fr->bV = ((state.flags & (1 << estV)) != 0);
+    fr->bV = ((state.flags & enumValueToBitMask(StateEntry::V)) != 0);
     if (fr->bV)
     {
         fr->v = makeRvecArray(state.v, state.natoms);
     }
     fr->bF   = FALSE;
-    fr->bBox = ((state.flags & (1 << estBOX)) != 0);
+    fr->bBox = ((state.flags & enumValueToBitMask(StateEntry::Box)) != 0);
     if (fr->bBox)
     {
         copy_mat(state.box, fr->box);
@@ -2973,14 +3092,13 @@ void list_checkpoint(const char* fn, FILE* out)
     if (ret == 0)
     {
         PullHistory pullHist = {};
-        ret = doCptPullHist(gmx_fio_getxdr(fp), TRUE, headerContents.flagsPullHistory, &pullHist,
-                            StatePart::pullHistory, out);
+        ret = doCptPullHist(gmx_fio_getxdr(fp), TRUE, headerContents.flagsPullHistory, &pullHist, out);
     }
 
     if (ret == 0)
     {
-        ret = do_cpt_df_hist(gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda,
-                             &state.dfhist, out);
+        ret = do_cpt_df_hist(
+                gmx_fio_getxdr(fp), headerContents.flags_dfh, headerContents.nlambda, &state.dfhist, out);
     }
 
     if (ret == 0)
@@ -3005,9 +3123,9 @@ void list_checkpoint(const char* fn, FILE* out)
         std::vector<gmx_file_position_t> outputfiles;
         ret = do_cpt_files(gmx_fio_getxdr(fp), TRUE, &outputfiles, out, headerContents.file_version);
     }
-    gmx::MdModulesNotifier mdModuleNotifier;
-    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifier, out);
-    if (headerContents.file_version >= cptv_ModularSimulator)
+    gmx::MDModulesNotifiers mdModuleNotifiers;
+    do_cpt_mdmodules(headerContents.file_version, fp, mdModuleNotifiers, out);
+    if (headerContents.file_version >= CheckPointVersion::ModularSimulator)
     {
         gmx::FileIOXdrSerializer      serializer(fp);
         gmx::ReadCheckpointDataHolder modularSimulatorCheckpointData;

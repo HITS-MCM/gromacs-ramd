@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Provides the modular simulator algorithm.
@@ -55,6 +54,7 @@
 #include <typeinfo>
 
 #include "gromacs/mdrun/isimulator.h"
+#include "gromacs/mdtypes/observablesreducer.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/utility/exceptions.h"
 
@@ -69,11 +69,11 @@
 
 namespace gmx
 {
-enum class IntegrationStep;
+enum class IntegrationStage;
 class EnergyData;
 class ModularSimulator;
 class ResetHandler;
-template<IntegrationStep algorithm>
+template<IntegrationStage integrationStage>
 class Propagator;
 class TopologyHolder;
 
@@ -108,7 +108,7 @@ private:
                               t_commrec*               cr,
                               const MDLogger&          mdlog,
                               const MdrunOptions&      mdrunOptions,
-                              t_inputrec*              inputrec,
+                              const t_inputrec*        inputrec,
                               t_nrnb*                  nrnb,
                               gmx_wallcycle*           wcycle,
                               t_forcerec*              fr,
@@ -189,8 +189,14 @@ private:
     std::vector<std::unique_ptr<ISignaller>> signallerList_;
     //! List of schedulerElements (ownership)
     std::vector<std::unique_ptr<ISimulatorElement>> elementsOwnershipList_;
-    //! List of schedulerElements (calling sequence)
+    //! List of schedulerElements (run calling sequence)
     std::vector<ISimulatorElement*> elementCallList_;
+    //! List of schedulerElements (setup / teardown calling sequence)
+    std::vector<ISimulatorElement*> elementSetupTeardownList_;
+    //! List of pre-step scheduling functions
+    std::vector<SchedulingFunction> preStepScheduling_;
+    //! List of post-step scheduling functions
+    std::vector<SchedulingFunction> postStepScheduling_;
 
     // Infrastructure elements
     //! The domain decomposition element
@@ -215,6 +221,8 @@ private:
     std::unique_ptr<EnergyData> energyData_;
     //! The free energy data
     std::unique_ptr<FreeEnergyPerturbationData> freeEnergyPerturbationData_;
+    //! Arbitrary data with lifetime equal to the simulation (used to share data between elements)
+    std::map<std::string, std::unique_ptr<std::any>> simulationData_;
 
     //! The current step
     Step step_;
@@ -263,7 +271,7 @@ private:
     //! Contains command-line options to mdrun.
     const MdrunOptions& mdrunOptions;
     //! Contains user input mdp options.
-    t_inputrec* inputrec;
+    const t_inputrec* inputrec;
     //! Manages flop accounting.
     t_nrnb* nrnb;
     //! Manages wall cycle accounting.
@@ -279,7 +287,7 @@ private:
  *
  * This includes data that needs to be shared between elements involved in
  * global communication. This will become obsolete as soon as global
- * communication is moved to a client system (#3421).
+ * communication is moved to a client system (#3421 and #3887).
  */
 class GlobalCommunicationHelper
 {
@@ -292,18 +300,11 @@ public:
     //! Get a pointer to the signals vector
     [[nodiscard]] SimulationSignals* simulationSignals();
 
-    //! Set the callback to check the number of bonded interactions
-    void setCheckBondedInteractionsCallback(CheckBondedInteractionsCallback callback);
-    //! Move the callback to check the number of bonded interactions
-    [[nodiscard]] CheckBondedInteractionsCallback moveCheckBondedInteractionsCallback();
-
 private:
     //! Compute globals communication period
     const int nstglobalcomm_;
     //! Signal vector (used by stop / reset / checkpointing signaller)
     SimulationSignals* simulationSignals_;
-    //! Callback to check the number of bonded interactions
-    std::optional<CheckBondedInteractionsCallback> checkBondedInteractionsCallback_;
 };
 
 class ModularSimulatorAlgorithmBuilder;
@@ -323,27 +324,53 @@ public:
     //! Constructor
     ModularSimulatorAlgorithmBuilderHelper(ModularSimulatorAlgorithmBuilder* builder);
     //! Store an element to the ModularSimulatorAlgorithmBuilder
-    ISimulatorElement* storeElement(std::unique_ptr<ISimulatorElement> element);
+    template<typename Element>
+    Element* storeElement(std::unique_ptr<Element> element);
     //! Check if an element is stored in the ModularSimulatorAlgorithmBuilder
     bool elementIsStored(const ISimulatorElement* element) const;
-    //! Set arbitrary data in the ModularSimulatorAlgorithmBuilder. Helpful for stateful elements.
+    /*! \brief Register callback to schedule a pre-step run
+     *
+     * This allows elements to schedule a function call before the integration step.
+     * The function call is guaranteed to happen before any functions scheduled for
+     * the integration step. It is not guaranteed to happen in any specific order
+     * compared to other elements registering a pre-step scheduling function.
+     */
+    void registerPreStepScheduling(SchedulingFunction schedulingFunction);
+    /*! \brief Register callback to schedule a post-step run
+     *
+     * This allows elements to schedule a function call after the integration step.
+     * The function call is guaranteed to happen after all functions scheduled for
+     * the integration step. It is not guaranteed to happen in any specific order
+     * compared to other elements registering a post-step scheduling function.
+     */
+    void registerPostStepScheduling(SchedulingFunction schedulingFunction);
+    /*! \brief Set arbitrary data in the ModularSimulatorAlgorithmBuilder
+     *
+     * Allows to store arbitrary data with lifetime equal to the builder. Functionality is used
+     * by stateful static builder functions.
+     */
     template<typename ValueType>
-    void storeValue(const std::string& key, const ValueType& value);
-    //! Get previously stored data. Returns std::nullopt if key is not found.
-    std::optional<std::any> getStoredValue(const std::string& key) const;
-    //! Register a thermostat that accepts propagator registrations
-    void registerThermostat(std::function<void(const PropagatorThermostatConnection&)> registrationFunction);
-    //! Register a barostat that accepts propagator registrations
-    void registerBarostat(std::function<void(const PropagatorBarostatConnection&)> registrationFunction);
-    //! Register a propagator to the thermostat used
-    void registerWithThermostat(PropagatorThermostatConnection connectionData);
-    //! Register a propagator to the barostat used
-    void registerWithBarostat(PropagatorBarostatConnection connectionData);
+    void storeBuilderData(const std::string& key, const ValueType& value);
+    //! Get previously stored builder data. Returns std::nullopt if key is not found.
+    std::optional<std::any> builderData(const std::string& key) const;
+    //! \copydoc ModularSimulatorAlgorithmBuilder::storeSimulationData()
+    template<typename ValueType>
+    void storeSimulationData(const std::string& key, ValueType&& value);
+    //! \copydoc ModularSimulatorAlgorithmBuilder::simulationData()
+    template<typename ValueType>
+    std::optional<ValueType*> simulationData(const std::string& key);
+    //! Register temperature / pressure control algorithm to be matched with a propagator
+    void registerTemperaturePressureControl(std::function<void(const PropagatorConnection&)> registrationFunction);
+    //! Register a propagator to be used with a temperature / pressure control algorithm
+    void registerPropagator(PropagatorConnection connectionData);
+    //! Register for callback after an update to the reference temperature
+    void registerReferenceTemperatureUpdate(ReferenceTemperatureCallback referenceTemperatureCallback);
+    //! Get a callback to change reference temperature
+    ReferenceTemperatureCallback changeReferenceTemperatureCallback();
 
 private:
     //! Pointer to the associated ModularSimulatorAlgorithmBuilder
     ModularSimulatorAlgorithmBuilder* builder_;
-    std::map<std::string, std::any>   values_;
 };
 
 /*!\internal
@@ -398,6 +425,10 @@ private:
     std::unique_ptr<EnergyData> energyData_;
     //! The free energy data
     std::unique_ptr<FreeEnergyPerturbationData> freeEnergyPerturbationData_;
+    //! Arbitrary data with lifetime equal to the builder (used by stateful static builder functions)
+    std::map<std::string, std::any> builderData_;
+    //! Arbitrary data with lifetime equal to the simulation (used to share data between elements)
+    std::map<std::string, std::unique_ptr<std::any>> simulationData_;
 
     //! Pointer to the LegacySimulatorData object
     compat::not_null<LegacySimulatorData*> legacySimulatorData_;
@@ -407,8 +438,25 @@ private:
     std::unique_ptr<SimulationSignals> signals_;
     //! Helper object passed to element factory functions
     ModularSimulatorAlgorithmBuilderHelper elementAdditionHelper_;
-    //! Container for global computation data
+    //! Container for minor aspects of global computation data
     GlobalCommunicationHelper globalCommunicationHelper_;
+    //! Coordinates reduction for observables
+    ObservablesReducer observablesReducer_;
+
+    /*! \brief Set arbitrary data in the ModularSimulatorAlgorithm
+     *
+     * Allows to store arbitrary data with lifetime equal to the simulator algorithm.
+     * Functionality allows elements to share arbitrary data.
+     */
+    template<typename ValueType>
+    void storeSimulationData(const std::string& key, ValueType&& value);
+
+    /*! \brief Get previously stored simulation data.
+     *
+     * Returns std::nullopt if key is not found.
+     */
+    template<typename ValueType>
+    std::optional<ValueType*> simulationData(const std::string& key);
 
     /*! \brief  Register an element to all applicable signallers and infrastructure elements
      *
@@ -422,15 +470,33 @@ private:
      *
      * This function returns a non-owning pointer to the new location of that
      * element, allowing further usage (e.g. adding the element to the call list).
-     * Note that simply addin an element using this function will not call it
+     * This will also add the element to the setup / teardown list, and register
+     * it with all applicable signallers and infrastructure objects.
+     * Note that simply adding an element using this function will not call it
      * during the simulation - it needs to be added to the call list separately.
-     * Note that generally, users will want to add elements to the call list, but
-     * it might not be practical to do this in the same order.
+     * Also note that generally, users will want to add elements to the call list,
+     * but it might not be practical to do this in the same order.
      *
+     * \tparam Element  Type of the Element
      * \param element  A unique pointer to the element
      * \return  A non-owning (raw) pointer to the element for further usage
      */
-    ISimulatorElement* addElementToSimulatorAlgorithm(std::unique_ptr<ISimulatorElement> element);
+    template<typename Element>
+    Element* addElementToSimulatorAlgorithm(std::unique_ptr<Element> element);
+
+    /*! \brief Register existing element to infrastructure
+     *
+     * This function adds existing elements to the setup / teardown list, and
+     * registers them with all applicable signallers and infrastructure objects.
+     * This is only permissible for elements owned directly by the builder or
+     * indirectly through data objects. Before registering the element, the function
+     * checks that the element is owned by the builder or a known object.
+     *
+     * \tparam Element  Type of the Element
+     * \param element   A non-owning (raw) pointer to the element
+     */
+    template<typename Element>
+    void registerExistingElement(Element* element);
 
     /*! \brief Check if element is owned by *this
      *
@@ -438,12 +504,6 @@ private:
      * \return  Bool indicating whether element is owned by *this
      */
     [[nodiscard]] bool elementExists(const ISimulatorElement* element) const;
-
-    /*! \brief Add element to setupAndTeardownList_ if it's not already there
-     *
-     * \param element  Element pointer to be added
-     */
-    void addElementToSetupTeardownList(ISimulatorElement* element);
 
     //! Vector to store elements, allowing the SimulatorAlgorithm to control their lifetime
     std::vector<std::unique_ptr<ISimulatorElement>> elements_;
@@ -457,6 +517,10 @@ private:
      * Elements should only appear once in this list
      */
     std::vector<ISimulatorElement*> setupAndTeardownList_;
+    //! List of pre-step scheduling functions
+    std::vector<SchedulingFunction> preStepScheduling_;
+    //! List of post-step scheduling functions
+    std::vector<SchedulingFunction> postStepScheduling_;
 
     //! Builder for the NeighborSearchSignaller
     SignallerBuilder<NeighborSearchSignaller> neighborSearchSignallerBuilder_;
@@ -474,6 +538,8 @@ private:
     TopologyHolder::Builder topologyHolderBuilder_;
     //! Builder for the CheckpointHelper
     CheckpointHelperBuilder checkpointHelperBuilder_;
+    //! Builder for the DomDecHelper
+    DomDecHelperBuilder domDecHelperBuilder_;
 
     /*! \brief List of clients for the CheckpointHelper
      *
@@ -481,14 +547,10 @@ private:
      */
     std::vector<ICheckpointHelperClient*> checkpointClients_;
 
-    //! List of thermostat registration functions
-    std::vector<std::function<void(const PropagatorThermostatConnection&)>> thermostatRegistrationFunctions_;
-    //! List of barostat registration functions
-    std::vector<std::function<void(const PropagatorBarostatConnection&)>> barostatRegistrationFunctions_;
-    //! List of data to connect propagators to thermostats
-    std::vector<PropagatorThermostatConnection> propagatorThermostatConnections_;
-    //! List of data to connect propagators to barostats
-    std::vector<PropagatorBarostatConnection> propagatorBarostatConnections_;
+    //! List of data to connect propagators to thermostats / barostats
+    std::vector<PropagatorConnection> propagatorConnections_;
+    //! List of temperature / pressure control registration functions
+    std::vector<std::function<void(const PropagatorConnection&)>> pressureTemperatureControlRegistrationFunctions_;
 };
 
 /*! \internal
@@ -505,7 +567,8 @@ private:
  *             StatePropagatorData*                    statePropagatorData,
  *             EnergyData*                             energyData,
  *             FreeEnergyPerturbationData*             freeEnergyPerturbationData,
- *             GlobalCommunicationHelper*              globalCommunicationHelper)
+ *             GlobalCommunicationHelper*              globalCommunicationHelper,
+ *             ObservablesReducer*                     observablesReducer)
  *
  * This function may also accept additional parameters which are passed using the variadic
  * template parameter pack forwarded in getElementPointer.
@@ -535,7 +598,8 @@ private:
  * \param statePropagatorData  Pointer to the \c StatePropagatorData object
  * \param energyData  Pointer to the \c EnergyData object
  * \param freeEnergyPerturbationData  Pointer to the \c FreeEnergyPerturbationData object
- * \param globalCommunicationHelper  Pointer to the \c GlobalCommunicationHelper object
+ * \param globalCommunicationHelper   Pointer to the \c GlobalCommunicationHelper object
+ * \param observablesReducer          Pointer to the \c ObservablesReducer object
  * \param args  Variable number of additional parameters to be forwarded
  *
  * \return  Pointer to the element to be added. Element needs to have been stored using \c storeElement
@@ -547,11 +611,17 @@ ISimulatorElement* getElementPointer(LegacySimulatorData*                    leg
                                      EnergyData*                             energyData,
                                      FreeEnergyPerturbationData* freeEnergyPerturbationData,
                                      GlobalCommunicationHelper*  globalCommunicationHelper,
+                                     ObservablesReducer*         observablesReducer,
                                      Args&&... args)
 {
-    return Element::getElementPointerImpl(legacySimulatorData, builderHelper, statePropagatorData,
-                                          energyData, freeEnergyPerturbationData,
-                                          globalCommunicationHelper, std::forward<Args>(args)...);
+    return Element::getElementPointerImpl(legacySimulatorData,
+                                          builderHelper,
+                                          statePropagatorData,
+                                          energyData,
+                                          freeEnergyPerturbationData,
+                                          globalCommunicationHelper,
+                                          observablesReducer,
+                                          std::forward<Args>(args)...);
 }
 
 template<typename Element, typename... Args>
@@ -559,28 +629,28 @@ void ModularSimulatorAlgorithmBuilder::add(Args&&... args)
 {
     if (algorithmHasBeenBuilt_)
     {
-        throw SimulationAlgorithmSetupError(
-                "Tried to add an element after ModularSimulationAlgorithm was built.");
+        GMX_THROW(SimulationAlgorithmSetupError(
+                "Tried to add an element after ModularSimulationAlgorithm was built."));
     }
 
     // Get element from factory method
-    auto* element = static_cast<Element*>(getElementPointer<Element>(
-            legacySimulatorData_, &elementAdditionHelper_, statePropagatorData_.get(),
-            energyData_.get(), freeEnergyPerturbationData_.get(), &globalCommunicationHelper_,
-            std::forward<Args>(args)...));
+    auto* element = static_cast<Element*>(getElementPointer<Element>(legacySimulatorData_,
+                                                                     &elementAdditionHelper_,
+                                                                     statePropagatorData_.get(),
+                                                                     energyData_.get(),
+                                                                     freeEnergyPerturbationData_.get(),
+                                                                     &globalCommunicationHelper_,
+                                                                     &observablesReducer_,
+                                                                     std::forward<Args>(args)...));
 
     // Make sure returned element pointer is owned by *this
     // Ensuring this makes sure we can control the life time
     if (!elementExists(element))
     {
-        throw ElementNotFoundError("Tried to append non-existing element to call list.");
+        GMX_THROW(ElementNotFoundError("Tried to append non-existing element to call list."));
     }
     // Add to call list
     callList_.emplace_back(element);
-    // Add to setup / teardown list if element hasn't been added yet
-    addElementToSetupTeardownList(element);
-    // Register element to all applicable signallers
-    registerWithInfrastructureAndSignallers(element);
 }
 
 //! Returns a pointer casted to type Base if the Element is derived from Base
@@ -614,13 +684,89 @@ void ModularSimulatorAlgorithmBuilder::registerWithInfrastructureAndSignallers(E
     topologyHolderBuilder_.registerClient(castOrNull<ITopologyHolderClient, Element>(element));
     // Register element to checkpoint client (if applicable)
     checkpointHelperBuilder_.registerClient(castOrNull<ICheckpointHelperClient, Element>(element));
+    // Register element to DomDecHelper builder (if applicable)
+    domDecHelperBuilder_.registerClient(castOrNull<IDomDecHelperClient, Element>(element));
 }
 
+template<typename Element>
+Element* ModularSimulatorAlgorithmBuilder::addElementToSimulatorAlgorithm(std::unique_ptr<Element> element)
+{
+    // Store element
+    elements_.emplace_back(std::move(element));
+    // Get non-owning pointer for further use
+    Element* elementPtr = static_cast<Element*>(elements_.back().get());
+    // Register element to infrastructure
+    registerExistingElement(elementPtr);
+
+    return elementPtr;
+}
+
+template<typename Element>
+void ModularSimulatorAlgorithmBuilder::registerExistingElement(Element* element)
+{
+    // Make sure the element pointer is owned by *this
+    // Ensuring this makes sure we can control the life time
+    if (!elementExists(element))
+    {
+        GMX_THROW(
+                ElementNotFoundError("Tried to register non-existing element to infrastructure."));
+    }
+
+    // Add to setup / teardown list
+    setupAndTeardownList_.emplace_back(element);
+    // Register element to all applicable signallers
+    registerWithInfrastructureAndSignallers(element);
+}
+
+template<typename Element>
+Element* ModularSimulatorAlgorithmBuilderHelper::storeElement(std::unique_ptr<Element> element)
+{
+    return builder_->addElementToSimulatorAlgorithm(std::move(element));
+}
 
 template<typename ValueType>
-void ModularSimulatorAlgorithmBuilderHelper::storeValue(const std::string& key, const ValueType& value)
+void ModularSimulatorAlgorithmBuilderHelper::storeBuilderData(const std::string& key, const ValueType& value)
 {
-    values_[key] = std::any(value);
+    builder_->builderData_[key] = std::any(value);
+}
+
+template<typename ValueType>
+void ModularSimulatorAlgorithmBuilderHelper::storeSimulationData(const std::string& key, ValueType&& value)
+{
+    builder_->storeSimulationData(key, std::forward<ValueType>(value));
+}
+
+template<typename ValueType>
+std::optional<ValueType*> ModularSimulatorAlgorithmBuilderHelper::simulationData(const std::string& key)
+{
+    return builder_->simulationData<ValueType>(key);
+}
+
+template<typename ValueType>
+void ModularSimulatorAlgorithmBuilder::storeSimulationData(const std::string& key, ValueType&& value)
+{
+    GMX_RELEASE_ASSERT(simulationData_.count(key) == 0,
+                       formatString("Key %s was already stored in simulation data.", key.c_str()).c_str());
+    simulationData_[key] = std::make_unique<std::any>(std::forward<ValueType>(value));
+    auto* ptrToData      = simulationData<ValueType>(key).value();
+    registerWithInfrastructureAndSignallers(ptrToData);
+}
+
+template<typename ValueType>
+std::optional<ValueType*> ModularSimulatorAlgorithmBuilder::simulationData(const std::string& key)
+{
+    const auto iter = simulationData_.find(key);
+    if (iter == simulationData_.end())
+    {
+        return std::nullopt;
+    }
+    ValueType* data = std::any_cast<ValueType>(iter->second.get());
+    GMX_RELEASE_ASSERT(data != nullptr,
+                       formatString("Object stored in simulation data under key %s does not have "
+                                    "the expected type.",
+                                    key.c_str())
+                               .c_str());
+    return data;
 }
 
 

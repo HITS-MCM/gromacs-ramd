@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief Declares step, domain-lifetime, and run workload managers.
@@ -47,17 +46,18 @@ namespace gmx
 {
 
 /*! \libinternal
- * \brief Describes work done on this domain that may change per-step.
+ * \brief Describes work done on this domain by the current rank that may change per-step.
  *
  * This work description is based on the SimulationWorkload in the context of the
  * current particle interactions assigned to this domain as well as other
  * factors that may change during the lifetime of a domain.
  *
+ * Note that unlike the other workload descriptors, these flags are also used on
+ * dedicated PME ranks, hence the content is rank-specific (at least when it
+ * comes to flags related to PME).
+ *
  * Note that the contents of an object of this type is valid for
  * a single step and it is expected to be set at the beginning each step.
- *
- * The initial set of flags map the legacy force flags to boolean flags;
- * these have the role of directing per-step compute tasks undertaken by a PP rank.
  *
  */
 class StepWorkload
@@ -77,6 +77,8 @@ public:
     bool computeEnergy = false;
     //! Whether (any) forces need to be computed this step, not only energies
     bool computeForces = false;
+    //! Whether only the MTS combined force buffers are needed and not the separate normal force buffer.
+    bool useOnlyMtsCombinedForceBuffer = false;
     //! Whether nonbonded forces need to be computed this step
     bool computeNonbondedForces = false;
     //! Whether listed forces need to be computed this step
@@ -97,6 +99,12 @@ public:
     bool useGpuXHalo = false;
     //! Whether GPU forces halo exchange is active this step
     bool useGpuFHalo = false;
+    //! Whether GPU PME work is computed on the current rank this step (can be false on PP-only ranks or on fast steps with MTS)
+    bool haveGpuPmeOnThisRank = false;
+    //! Whether a separate PME rank has any work this step
+    bool computePmeOnSeparateRank = false;
+    //! Whether to combine the forces for multiple time stepping before the halo exchange
+    bool combineMtsForcesBeforeHaloExchange = false;
 };
 
 /*! \libinternal
@@ -128,6 +136,13 @@ public:
 
     //! Whether the current nstlist step-range Free energy work on the CPU.
     bool haveFreeEnergyWork = false;
+    //! Whether the CPU force buffer has contributions to local atoms that need to be reduced on the GPU (with DD).
+    // This depends on whether there are CPU-based force tasks
+    // or when DD is active the halo exchange has resulted in contributions
+    // from the non-local part.
+    bool haveLocalForceContribInCpuBuffer = false;
+    //! Whether the CPU force buffer has contributions to nonlocal atoms that need to be reduced on the GPU (with DD).
+    bool haveNonLocalForceContribInCpuBuffer = false;
 };
 
 /*! \libinternal
@@ -147,7 +162,7 @@ class SimulationWorkload
 public:
     //! Whether to compute nonbonded pair interactions
     bool computeNonbonded = false;
-    //! Wether nonbonded pair forces are to be computed at slow MTS steps only
+    //! Whether nonbonded pair forces are to be computed at slow MTS steps only
     bool computeNonbondedAtMtsLevel1 = false;
     //! Whether total dipole needs to be computed
     bool computeMuTot = false;
@@ -165,16 +180,30 @@ public:
     bool useGpuBonded = false;
     //! If update and constraint solving is performed on GPU.
     bool useGpuUpdate = false;
-    //! If buffer operations are performed on GPU.
-    bool useGpuBufferOps = false;
+    //! If X buffer operations are performed on GPU.
+    bool useGpuXBufferOps = false;
+    //! If F buffer operations are performed on GPU.
+    bool useGpuFBufferOps = false;
+    //! If PP domain decomposition is active.
+    bool havePpDomainDecomposition = false;
+    //! If domain decomposition halo exchange is performed on CPU (in CPU-only runs or with staged GPU communication).
+    bool useCpuHaloExchange = false;
     //! If domain decomposition halo exchange is performed on GPU.
     bool useGpuHaloExchange = false;
+    //! If separate PME rank(s) are used.
+    bool haveSeparatePmeRank = false;
+    //! If PP-PME communication is done purely on CPU (in CPU-only runs or with staged GPU communication).
+    bool useCpuPmePpCommunication = false;
     //! If direct PP-PME communication between GPU is used.
     bool useGpuPmePpCommunication = false;
     //! If direct GPU-GPU communication is enabled.
     bool useGpuDirectCommunication = false;
+    //! If GPU PME decomposition is enabled.
+    bool useGpuPmeDecomposition = false;
     //! If there is an Ewald surface (dipole) term to compute
     bool haveEwaldSurfaceContribution = false;
+    //! Whether to use multiple time stepping
+    bool useMts = false;
 };
 
 class MdrunScheduleWorkload

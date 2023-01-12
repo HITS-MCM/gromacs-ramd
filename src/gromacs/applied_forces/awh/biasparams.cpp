@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -82,26 +81,26 @@ int64_t calcTargetUpdateInterval(const AwhParams& awhParams, const AwhBiasParams
      * (this could be made a user-option but there is most likely no big need
      * for tweaking this for most users).
      */
-    switch (awhBiasParams.eTarget)
+    switch (awhBiasParams.targetDistribution())
     {
-        case eawhtargetCONSTANT: numStepsUpdateTarget = 0; break;
-        case eawhtargetCUTOFF:
-        case eawhtargetBOLTZMANN:
+        case AwhTargetType::Constant: numStepsUpdateTarget = 0; break;
+        case AwhTargetType::Cutoff:
+        case AwhTargetType::Boltzmann:
             /* Updating the target generally requires updating the whole grid so to keep the cost
                down we generally update the target less often than the free energy (unless the free
                energy update step is set to > 100 samples). */
-            numStepsUpdateTarget = std::max(100 % awhParams.numSamplesUpdateFreeEnergy,
-                                            awhParams.numSamplesUpdateFreeEnergy)
-                                   * awhParams.nstSampleCoord;
+            numStepsUpdateTarget = std::max(100 % awhParams.numSamplesUpdateFreeEnergy(),
+                                            awhParams.numSamplesUpdateFreeEnergy())
+                                   * awhParams.nstSampleCoord();
             break;
-        case eawhtargetLOCALBOLTZMANN:
+        case AwhTargetType::LocalBoltzmann:
             /* The target distribution is set equal to the reference histogram which is updated every free energy update.
                So the target has to be updated at the same time. This leads to a global update each time because it is
                assumed that a target distribution update can take any form. This is a bit unfortunate for a "local"
                target distribution. One could avoid the global update by making a local target update function (and
                postponing target updates for non-local points as for the free energy update). We avoid such additions
                for now and accept that this target type always does global updates. */
-            numStepsUpdateTarget = awhParams.numSamplesUpdateFreeEnergy * awhParams.nstSampleCoord;
+            numStepsUpdateTarget = awhParams.numSamplesUpdateFreeEnergy() * awhParams.nstSampleCoord();
             break;
         default: GMX_RELEASE_ASSERT(false, "Unknown AWH target type"); break;
     }
@@ -116,9 +115,9 @@ int64_t calcTargetUpdateInterval(const AwhParams& awhParams, const AwhBiasParams
  * \param[in] gridAxis          The BiasGrid axes.
  * \returns the check interval in steps.
  */
-int64_t calcCheckCoveringInterval(const AwhParams&              awhParams,
-                                  const std::vector<DimParams>& dimParams,
-                                  const std::vector<GridAxis>&  gridAxis)
+int64_t calcCheckCoveringInterval(const AwhParams&          awhParams,
+                                  ArrayRef<const DimParams> dimParams,
+                                  ArrayRef<const GridAxis>  gridAxis)
 {
     /* Each sample will have a width of sigma. To cover the axis a
        minimum number of samples of width sigma is required. */
@@ -153,11 +152,11 @@ int64_t calcCheckCoveringInterval(const AwhParams&              awhParams,
     /* Convert to number of steps using the sampling frequency. The
        check interval should be a multiple of the update step
        interval. */
-    int numStepsUpdate = awhParams.numSamplesUpdateFreeEnergy * awhParams.nstSampleCoord;
-    GMX_RELEASE_ASSERT(awhParams.numSamplesUpdateFreeEnergy > 0,
+    int numStepsUpdate = awhParams.numSamplesUpdateFreeEnergy() * awhParams.nstSampleCoord();
+    GMX_RELEASE_ASSERT(awhParams.numSamplesUpdateFreeEnergy() > 0,
                        "When checking for AWH coverings, the number of samples per AWH update need "
                        "to be > 0.");
-    int numUpdatesCheck = std::max(1, minNumSamplesCover / awhParams.numSamplesUpdateFreeEnergy);
+    int numUpdatesCheck = std::max(1, minNumSamplesCover / awhParams.numSamplesUpdateFreeEnergy());
     int numStepsCheck   = numUpdatesCheck * numStepsUpdate;
 
     GMX_RELEASE_ASSERT(numStepsCheck % numStepsUpdate == 0,
@@ -175,24 +174,25 @@ int64_t calcCheckCoveringInterval(const AwhParams&              awhParams,
  * \param[in] samplingTimestep  Sampling frequency of probability weights.
  * \returns estimate of initial histogram size.
  */
-double getInitialHistogramSizeEstimate(const AwhBiasParams&         awhBiasParams,
-                                       const std::vector<GridAxis>& gridAxis,
-                                       double                       beta,
-                                       double                       samplingTimestep)
+double getInitialHistogramSizeEstimate(const AwhBiasParams&     awhBiasParams,
+                                       ArrayRef<const GridAxis> gridAxis,
+                                       double                   beta,
+                                       double                   samplingTimestep)
 {
     /* Get diffusion factor */
     double              maxCrossingTime = 0.;
     std::vector<double> x;
+    const auto          awhDimParams = awhBiasParams.dimParams();
     for (size_t d = 0; d < gridAxis.size(); d++)
     {
-        GMX_RELEASE_ASSERT(awhBiasParams.dimParams[d].diffusion > 0, "We need positive diffusion");
+        GMX_RELEASE_ASSERT(awhDimParams[d].diffusion() > 0, "We need positive diffusion");
         // With diffusion it takes on average T = L^2/2D time to cross length L
         double axisLength   = gridAxis[d].isFepLambdaAxis() ? 1.0 : gridAxis[d].length();
-        double crossingTime = (axisLength * axisLength) / (2 * awhBiasParams.dimParams[d].diffusion);
+        double crossingTime = (axisLength * axisLength) / (2 * awhDimParams[d].diffusion());
         maxCrossingTime     = std::max(maxCrossingTime, crossingTime);
     }
     GMX_RELEASE_ASSERT(maxCrossingTime > 0, "We need at least one dimension with non-zero length");
-    double errorInitialInKT = beta * awhBiasParams.errorInitial;
+    double errorInitialInKT = beta * awhBiasParams.initialErrorEstimate();
     double histogramSize    = maxCrossingTime / (gmx::square(errorInitialInKT) * samplingTimestep);
 
     return histogramSize;
@@ -210,7 +210,7 @@ int getNumSharedUpdate(const AwhBiasParams& awhBiasParams, int numSharingSimulat
 
     int numShared = 1;
 
-    if (awhBiasParams.shareGroup > 0)
+    if (awhBiasParams.shareGroup() > 0)
     {
         /* We do not yet support sharing within a simulation */
         int numSharedWithinThisSimulation = 1;
@@ -222,31 +222,31 @@ int getNumSharedUpdate(const AwhBiasParams& awhBiasParams, int numSharingSimulat
 
 } // namespace
 
-BiasParams::BiasParams(const AwhParams&              awhParams,
-                       const AwhBiasParams&          awhBiasParams,
-                       const std::vector<DimParams>& dimParams,
-                       double                        beta,
-                       double                        mdTimeStep,
-                       DisableUpdateSkips            disableUpdateSkips,
-                       int                           numSharingSimulations,
-                       const std::vector<GridAxis>&  gridAxis,
-                       int                           biasIndex) :
+BiasParams::BiasParams(const AwhParams&          awhParams,
+                       const AwhBiasParams&      awhBiasParams,
+                       ArrayRef<const DimParams> dimParams,
+                       double                    beta,
+                       double                    mdTimeStep,
+                       DisableUpdateSkips        disableUpdateSkips,
+                       int                       numSharingSimulations,
+                       ArrayRef<const GridAxis>  gridAxis,
+                       int                       biasIndex) :
     invBeta(beta > 0 ? 1 / beta : 0),
-    numStepsSampleCoord_(awhParams.nstSampleCoord),
-    numSamplesUpdateFreeEnergy_(awhParams.numSamplesUpdateFreeEnergy),
+    numStepsSampleCoord_(awhParams.nstSampleCoord()),
+    numSamplesUpdateFreeEnergy_(awhParams.numSamplesUpdateFreeEnergy()),
     numStepsUpdateTarget_(calcTargetUpdateInterval(awhParams, awhBiasParams)),
     numStepsCheckCovering_(calcCheckCoveringInterval(awhParams, dimParams, gridAxis)),
-    eTarget(awhBiasParams.eTarget),
-    freeEnergyCutoffInKT(beta * awhBiasParams.targetCutoff),
-    temperatureScaleFactor(awhBiasParams.targetBetaScaling),
-    idealWeighthistUpdate(eTarget != eawhtargetLOCALBOLTZMANN),
+    eTarget(awhBiasParams.targetDistribution()),
+    freeEnergyCutoffInKT(beta * awhBiasParams.targetCutoff()),
+    temperatureScaleFactor(awhBiasParams.targetBetaScaling()),
+    idealWeighthistUpdate(eTarget != AwhTargetType::LocalBoltzmann),
     numSharedUpdate(getNumSharedUpdate(awhBiasParams, numSharingSimulations)),
     updateWeight(numSamplesUpdateFreeEnergy_ * numSharedUpdate),
-    localWeightScaling(eTarget == eawhtargetLOCALBOLTZMANN ? temperatureScaleFactor : 1),
-    initialErrorInKT(beta * awhBiasParams.errorInitial),
+    localWeightScaling(eTarget == AwhTargetType::LocalBoltzmann ? temperatureScaleFactor : 1),
+    initialErrorInKT(beta * awhBiasParams.initialErrorEstimate()),
     initialHistogramSize(
             getInitialHistogramSizeEstimate(awhBiasParams, gridAxis, beta, numStepsSampleCoord_ * mdTimeStep)),
-    convolveForce(awhParams.ePotential == eawhpotentialCONVOLVED),
+    convolveForce(awhParams.potential() == AwhPotentialType::Convolved),
     biasIndex(biasIndex),
     disableUpdateSkips_(disableUpdateSkips == DisableUpdateSkips::yes)
 {
@@ -255,12 +255,14 @@ BiasParams::BiasParams(const AwhParams&              awhParams,
         GMX_THROW(InvalidInputError("To use AWH, the beta=1/(k_B T) should be > 0"));
     }
 
-    for (int d = 0; d < awhBiasParams.ndim; d++)
+    const auto& awhDimParams = awhBiasParams.dimParams();
+    for (int d = 0; d < gmx::ssize(awhDimParams); d++)
     {
         /* The spacing in FEP dimensions is 1. The calculated coverRadius will be in lambda states
          * (cf points in other dimensions). */
-        double coverRadiusInNm = 0.5 * awhBiasParams.dimParams[d].coverDiameter;
-        double spacing         = gridAxis[d].spacing();
+        double coverRadiusInNm =
+                0.5 * dimParams[d].scaleUserInputToInternal(awhDimParams[d].coverDiameter());
+        double spacing  = gridAxis[d].spacing();
         coverRadius_[d] = spacing > 0 ? static_cast<int>(std::round(coverRadiusInNm / spacing)) : 0;
     }
 }

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Implements the VirtualSitesHandler class and vsite standalone functions
@@ -60,7 +56,6 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdtypes/commrec.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/timing/wallcycle.h"
@@ -165,7 +160,7 @@ struct VsiteThread
     //! The interaction lists, only vsite entries are used
     std::array<InteractionList, F_NRE> ilist;
     //! Local fshift accumulation buffer
-    std::array<RVec, SHIFTS> fshift;
+    std::array<RVec, c_numShiftVectors> fshift;
     //! Local virial dx*df accumulation buffer
     matrix dxdf;
     //! Tells if interdependent task idTask should be used (in addition to the rest of this task), this bool has the same value on all threads
@@ -214,7 +209,9 @@ public:
     //! Set VSites and distribute VSite work over threads, should be called after DD partitioning
     void setVirtualSites(ArrayRef<const InteractionList> ilist,
                          ArrayRef<const t_iparams>       iparams,
-                         const t_mdatoms&                mdatoms,
+                         int                             numAtoms,
+                         int                             homenr,
+                         ArrayRef<const ParticleType>    ptype,
                          bool                            useDomdec);
 
 private:
@@ -232,22 +229,28 @@ class VirtualSitesHandler::Impl
 {
 public:
     //! Constructor, domdec should be nullptr without DD
-    Impl(const gmx_mtop_t& mtop, gmx_domdec_t* domdec, PbcType pbcType);
+    Impl(const gmx_mtop_t&                 mtop,
+         gmx_domdec_t*                     domdec,
+         PbcType                           pbcType,
+         ArrayRef<const RangePartitioning> updateGroupingPerMoleculeType);
 
     //! Returns the number of virtual sites acting over multiple update groups
     int numInterUpdategroupVirtualSites() const { return numInterUpdategroupVirtualSites_; }
 
     //! Set VSites and distribute VSite work over threads, should be called after DD partitioning
-    void setVirtualSites(ArrayRef<const InteractionList> ilist, const t_mdatoms& mdatoms);
+    void setVirtualSites(ArrayRef<const InteractionList> ilist,
+                         int                             numAtoms,
+                         int                             homenr,
+                         ArrayRef<const ParticleType>    ptype);
 
     /*! \brief Create positions of vsite atoms based for the local system
      *
-     * \param[in,out] x        The coordinates
-     * \param[in]     dt       The time step
-     * \param[in,out] v        When != nullptr, velocities for vsites are set as displacement/dt
-     * \param[in]     box      The box
+     * \param[in,out] x          The coordinates
+     * \param[in,out] v          The velocities, needed if operation requires it
+     * \param[in]     box        The box
+     * \param[in]     operation  Whether we calculate positions, velocities, or both
      */
-    void construct(ArrayRef<RVec> x, real dt, ArrayRef<RVec> v, const matrix box) const;
+    void construct(ArrayRef<RVec> x, ArrayRef<RVec> v, const matrix box, VSiteOperation operation) const;
 
     /*! \brief Spread the force operating on the vsite atoms on the surrounding atoms.
      *
@@ -313,7 +316,7 @@ static int pbc_rvec_sub(const t_pbc* pbc, const rvec xi, const rvec xj, rvec dx)
     else
     {
         rvec_sub(xi, xj, dx);
-        return CENTRAL;
+        return c_centralShiftIndex;
     }
 }
 
@@ -323,87 +326,167 @@ static inline real inverseNorm(const rvec x)
     return gmx::invsqrt(iprod(x, x));
 }
 
+//! Whether we're calculating the virtual site position
+enum class VSiteCalculatePosition
+{
+    Yes,
+    No
+};
+//! Whether we're calculating the virtual site velocity
+enum class VSiteCalculateVelocity
+{
+    Yes,
+    No
+};
+
 #ifndef DOXYGEN
 /* Vsite construction routines */
 
-static void constr_vsite1(const rvec xi, rvec x)
-{
-    copy_rvec(xi, x);
+// GCC 8 falsely flags unused variables if constexpr prunes a code path, fixed in GCC 9
+// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85827
+// clang-format off
+GCC_DIAGNOSTIC_IGNORE(-Wunused-but-set-parameter)
+// clang-format on
 
-    /* TOTAL: 0 flops */
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void constr_vsite1(const rvec xi, rvec x, const rvec vi, rvec v)
+{
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        copy_rvec(xi, x);
+        /* TOTAL: 0 flops */
+    }
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        copy_rvec(vi, v);
+    }
 }
 
-static void constr_vsite2(const rvec xi, const rvec xj, rvec x, real a, const t_pbc* pbc)
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void
+constr_vsite2(const rvec xi, const rvec xj, rvec x, real a, const t_pbc* pbc, const rvec vi, const rvec vj, rvec v)
 {
-    real b = 1 - a;
+    const real b = 1 - a;
     /* 1 flop */
 
-    if (pbc)
+    if (calculatePosition == VSiteCalculatePosition::Yes)
     {
-        rvec dx;
-        pbc_dx_aiuc(pbc, xj, xi, dx);
-        x[XX] = xi[XX] + a * dx[XX];
-        x[YY] = xi[YY] + a * dx[YY];
-        x[ZZ] = xi[ZZ] + a * dx[ZZ];
+        if (pbc)
+        {
+            rvec dx;
+            pbc_dx_aiuc(pbc, xj, xi, dx);
+            x[XX] = xi[XX] + a * dx[XX];
+            x[YY] = xi[YY] + a * dx[YY];
+            x[ZZ] = xi[ZZ] + a * dx[ZZ];
+        }
+        else
+        {
+            x[XX] = b * xi[XX] + a * xj[XX];
+            x[YY] = b * xi[YY] + a * xj[YY];
+            x[ZZ] = b * xi[ZZ] + a * xj[ZZ];
+            /* 9 Flops */
+        }
+        /* TOTAL: 10 flops */
     }
-    else
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
     {
-        x[XX] = b * xi[XX] + a * xj[XX];
-        x[YY] = b * xi[YY] + a * xj[YY];
-        x[ZZ] = b * xi[ZZ] + a * xj[ZZ];
-        /* 9 Flops */
+        v[XX] = b * vi[XX] + a * vj[XX];
+        v[YY] = b * vi[YY] + a * vj[YY];
+        v[ZZ] = b * vi[ZZ] + a * vj[ZZ];
     }
-
-    /* TOTAL: 10 flops */
 }
 
-static void constr_vsite2FD(const rvec xi, const rvec xj, rvec x, real a, const t_pbc* pbc)
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void
+constr_vsite2FD(const rvec xi, const rvec xj, rvec x, real a, const t_pbc* pbc, const rvec vi, const rvec vj, rvec v)
 {
-    rvec xij;
+    rvec xij = { 0 };
     pbc_rvec_sub(pbc, xj, xi, xij);
     /* 3 flops */
 
-    const real b = a * inverseNorm(xij);
+    const real invNormXij = inverseNorm(xij);
+    const real b          = a * invNormXij;
     /* 6 + 10 flops */
 
-    x[XX] = xi[XX] + b * xij[XX];
-    x[YY] = xi[YY] + b * xij[YY];
-    x[ZZ] = xi[ZZ] + b * xij[ZZ];
-    /* 6 Flops */
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[XX] = xi[XX] + b * xij[XX];
+        x[YY] = xi[YY] + b * xij[YY];
+        x[ZZ] = xi[ZZ] + b * xij[ZZ];
+        /* 6 Flops */
+        /* TOTAL: 25 flops */
+    }
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        rvec vij = { 0 };
+        rvec_sub(vj, vi, vij);
+        const real vijDotXij = iprod(vij, xij);
 
-    /* TOTAL: 25 flops */
+        v[XX] = vi[XX] + b * (vij[XX] - xij[XX] * vijDotXij * invNormXij * invNormXij);
+        v[YY] = vi[YY] + b * (vij[YY] - xij[YY] * vijDotXij * invNormXij * invNormXij);
+        v[ZZ] = vi[ZZ] + b * (vij[ZZ] - xij[ZZ] * vijDotXij * invNormXij * invNormXij);
+    }
 }
 
-static void constr_vsite3(const rvec xi, const rvec xj, const rvec xk, rvec x, real a, real b, const t_pbc* pbc)
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void constr_vsite3(const rvec   xi,
+                          const rvec   xj,
+                          const rvec   xk,
+                          rvec         x,
+                          real         a,
+                          real         b,
+                          const t_pbc* pbc,
+                          const rvec   vi,
+                          const rvec   vj,
+                          const rvec   vk,
+                          rvec         v)
 {
-    real c = 1 - a - b;
+    const real c = 1 - a - b;
     /* 2 flops */
 
-    if (pbc)
+    if (calculatePosition == VSiteCalculatePosition::Yes)
     {
-        rvec dxj, dxk;
+        if (pbc)
+        {
+            rvec dxj, dxk;
 
-        pbc_dx_aiuc(pbc, xj, xi, dxj);
-        pbc_dx_aiuc(pbc, xk, xi, dxk);
-        x[XX] = xi[XX] + a * dxj[XX] + b * dxk[XX];
-        x[YY] = xi[YY] + a * dxj[YY] + b * dxk[YY];
-        x[ZZ] = xi[ZZ] + a * dxj[ZZ] + b * dxk[ZZ];
+            pbc_dx_aiuc(pbc, xj, xi, dxj);
+            pbc_dx_aiuc(pbc, xk, xi, dxk);
+            x[XX] = xi[XX] + a * dxj[XX] + b * dxk[XX];
+            x[YY] = xi[YY] + a * dxj[YY] + b * dxk[YY];
+            x[ZZ] = xi[ZZ] + a * dxj[ZZ] + b * dxk[ZZ];
+        }
+        else
+        {
+            x[XX] = c * xi[XX] + a * xj[XX] + b * xk[XX];
+            x[YY] = c * xi[YY] + a * xj[YY] + b * xk[YY];
+            x[ZZ] = c * xi[ZZ] + a * xj[ZZ] + b * xk[ZZ];
+            /* 15 Flops */
+        }
+        /* TOTAL: 17 flops */
     }
-    else
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
     {
-        x[XX] = c * xi[XX] + a * xj[XX] + b * xk[XX];
-        x[YY] = c * xi[YY] + a * xj[YY] + b * xk[YY];
-        x[ZZ] = c * xi[ZZ] + a * xj[ZZ] + b * xk[ZZ];
-        /* 15 Flops */
+        v[XX] = c * vi[XX] + a * vj[XX] + b * vk[XX];
+        v[YY] = c * vi[YY] + a * vj[YY] + b * vk[YY];
+        v[ZZ] = c * vi[ZZ] + a * vj[ZZ] + b * vk[ZZ];
     }
-
-    /* TOTAL: 17 flops */
 }
 
-static void constr_vsite3FD(const rvec xi, const rvec xj, const rvec xk, rvec x, real a, real b, const t_pbc* pbc)
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void constr_vsite3FD(const rvec   xi,
+                            const rvec   xj,
+                            const rvec   xk,
+                            rvec         x,
+                            real         a,
+                            real         b,
+                            const t_pbc* pbc,
+                            const rvec   vi,
+                            const rvec   vj,
+                            const rvec   vk,
+                            rvec         v)
 {
     rvec xij, xjk, temp;
-    real c;
 
     pbc_rvec_sub(pbc, xj, xi, xij);
     pbc_rvec_sub(pbc, xk, xj, xjk);
@@ -415,45 +498,122 @@ static void constr_vsite3FD(const rvec xi, const rvec xj, const rvec xk, rvec x,
     temp[ZZ] = xij[ZZ] + a * xjk[ZZ];
     /* 6 flops */
 
-    c = b * inverseNorm(temp);
+    const real invNormTemp = inverseNorm(temp);
+    const real c           = b * invNormTemp;
     /* 6 + 10 flops */
 
-    x[XX] = xi[XX] + c * temp[XX];
-    x[YY] = xi[YY] + c * temp[YY];
-    x[ZZ] = xi[ZZ] + c * temp[ZZ];
-    /* 6 Flops */
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[XX] = xi[XX] + c * temp[XX];
+        x[YY] = xi[YY] + c * temp[YY];
+        x[ZZ] = xi[ZZ] + c * temp[ZZ];
+        /* 6 Flops */
+        /* TOTAL: 34 flops */
+    }
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        rvec vij = { 0 };
+        rvec vjk = { 0 };
+        rvec_sub(vj, vi, vij);
+        rvec_sub(vk, vj, vjk);
+        const rvec tempV = { vij[XX] + a * vjk[XX], vij[YY] + a * vjk[YY], vij[ZZ] + a * vjk[ZZ] };
+        const real tempDotTempV = iprod(temp, tempV);
 
-    /* TOTAL: 34 flops */
+        v[XX] = vi[XX] + c * (tempV[XX] - temp[XX] * tempDotTempV * invNormTemp * invNormTemp);
+        v[YY] = vi[YY] + c * (tempV[YY] - temp[YY] * tempDotTempV * invNormTemp * invNormTemp);
+        v[ZZ] = vi[ZZ] + c * (tempV[ZZ] - temp[ZZ] * tempDotTempV * invNormTemp * invNormTemp);
+    }
 }
 
-static void constr_vsite3FAD(const rvec xi, const rvec xj, const rvec xk, rvec x, real a, real b, const t_pbc* pbc)
-{
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void constr_vsite3FAD(const rvec   xi,
+                             const rvec   xj,
+                             const rvec   xk,
+                             rvec         x,
+                             real         a,
+                             real         b,
+                             const t_pbc* pbc,
+                             const rvec   vi,
+                             const rvec   vj,
+                             const rvec   vk,
+                             rvec         v)
+{ // Note: a = d * cos(theta)
+    //       b = d * sin(theta)
     rvec xij, xjk, xp;
-    real a1, b1, c1, invdij;
 
     pbc_rvec_sub(pbc, xj, xi, xij);
     pbc_rvec_sub(pbc, xk, xj, xjk);
     /* 6 flops */
 
-    invdij = inverseNorm(xij);
-    c1     = invdij * invdij * iprod(xij, xjk);
-    xp[XX] = xjk[XX] - c1 * xij[XX];
-    xp[YY] = xjk[YY] - c1 * xij[YY];
-    xp[ZZ] = xjk[ZZ] - c1 * xij[ZZ];
-    a1     = a * invdij;
-    b1     = b * inverseNorm(xp);
+    const real invdij    = inverseNorm(xij);
+    const real xijDotXjk = iprod(xij, xjk);
+    const real c1        = invdij * invdij * xijDotXjk;
+    xp[XX]               = xjk[XX] - c1 * xij[XX];
+    xp[YY]               = xjk[YY] - c1 * xij[YY];
+    xp[ZZ]               = xjk[ZZ] - c1 * xij[ZZ];
+    const real a1        = a * invdij;
+    const real invNormXp = inverseNorm(xp);
+    const real b1        = b * invNormXp;
     /* 45 */
 
-    x[XX] = xi[XX] + a1 * xij[XX] + b1 * xp[XX];
-    x[YY] = xi[YY] + a1 * xij[YY] + b1 * xp[YY];
-    x[ZZ] = xi[ZZ] + a1 * xij[ZZ] + b1 * xp[ZZ];
-    /* 12 Flops */
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[XX] = xi[XX] + a1 * xij[XX] + b1 * xp[XX];
+        x[YY] = xi[YY] + a1 * xij[YY] + b1 * xp[YY];
+        x[ZZ] = xi[ZZ] + a1 * xij[ZZ] + b1 * xp[ZZ];
+        /* 12 Flops */
+        /* TOTAL: 63 flops */
+    }
 
-    /* TOTAL: 63 flops */
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        rvec vij = { 0 };
+        rvec vjk = { 0 };
+        rvec_sub(vj, vi, vij);
+        rvec_sub(vk, vj, vjk);
+
+        const real vijDotXjkPlusXijDotVjk = iprod(vij, xjk) + iprod(xij, vjk);
+        const real xijDotVij              = iprod(xij, vij);
+        const real invNormXij2            = invdij * invdij;
+
+        rvec vp = { 0 };
+        vp[XX]  = vjk[XX]
+                 - xij[XX] * invNormXij2
+                           * (vijDotXjkPlusXijDotVjk - invNormXij2 * xijDotXjk * xijDotVij * 2)
+                 - vij[XX] * xijDotXjk * invNormXij2;
+        vp[YY] = vjk[YY]
+                 - xij[YY] * invNormXij2
+                           * (vijDotXjkPlusXijDotVjk - invNormXij2 * xijDotXjk * xijDotVij * 2)
+                 - vij[YY] * xijDotXjk * invNormXij2;
+        vp[ZZ] = vjk[ZZ]
+                 - xij[ZZ] * invNormXij2
+                           * (vijDotXjkPlusXijDotVjk - invNormXij2 * xijDotXjk * xijDotVij * 2)
+                 - vij[ZZ] * xijDotXjk * invNormXij2;
+
+        const real xpDotVp = iprod(xp, vp);
+
+        v[XX] = vi[XX] + a1 * (vij[XX] - xij[XX] * xijDotVij * invdij * invdij)
+                + b1 * (vp[XX] - xp[XX] * xpDotVp * invNormXp * invNormXp);
+        v[YY] = vi[YY] + a1 * (vij[YY] - xij[YY] * xijDotVij * invdij * invdij)
+                + b1 * (vp[YY] - xp[YY] * xpDotVp * invNormXp * invNormXp);
+        v[ZZ] = vi[ZZ] + a1 * (vij[ZZ] - xij[ZZ] * xijDotVij * invdij * invdij)
+                + b1 * (vp[ZZ] - xp[ZZ] * xpDotVp * invNormXp * invNormXp);
+    }
 }
 
-static void
-constr_vsite3OUT(const rvec xi, const rvec xj, const rvec xk, rvec x, real a, real b, real c, const t_pbc* pbc)
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static void constr_vsite3OUT(const rvec   xi,
+                             const rvec   xj,
+                             const rvec   xk,
+                             rvec         x,
+                             real         a,
+                             real         b,
+                             real         c,
+                             const t_pbc* pbc,
+                             const rvec   vi,
+                             const rvec   vj,
+                             const rvec   vk,
+                             rvec         v)
 {
     rvec xij, xik, temp;
 
@@ -462,14 +622,34 @@ constr_vsite3OUT(const rvec xi, const rvec xj, const rvec xk, rvec x, real a, re
     cprod(xij, xik, temp);
     /* 15 Flops */
 
-    x[XX] = xi[XX] + a * xij[XX] + b * xik[XX] + c * temp[XX];
-    x[YY] = xi[YY] + a * xij[YY] + b * xik[YY] + c * temp[YY];
-    x[ZZ] = xi[ZZ] + a * xij[ZZ] + b * xik[ZZ] + c * temp[ZZ];
-    /* 18 Flops */
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[XX] = xi[XX] + a * xij[XX] + b * xik[XX] + c * temp[XX];
+        x[YY] = xi[YY] + a * xij[YY] + b * xik[YY] + c * temp[YY];
+        x[ZZ] = xi[ZZ] + a * xij[ZZ] + b * xik[ZZ] + c * temp[ZZ];
+        /* 18 Flops */
+        /* TOTAL: 33 flops */
+    }
 
-    /* TOTAL: 33 flops */
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        rvec vij = { 0 };
+        rvec vik = { 0 };
+        rvec_sub(vj, vi, vij);
+        rvec_sub(vk, vi, vik);
+
+        rvec temp1 = { 0 };
+        rvec temp2 = { 0 };
+        cprod(vij, xik, temp1);
+        cprod(xij, vik, temp2);
+
+        v[XX] = vi[XX] + a * vij[XX] + b * vik[XX] + c * (temp1[XX] + temp2[XX]);
+        v[YY] = vi[YY] + a * vij[YY] + b * vik[YY] + c * (temp1[YY] + temp2[YY]);
+        v[ZZ] = vi[ZZ] + a * vij[ZZ] + b * vik[ZZ] + c * (temp1[ZZ] + temp2[ZZ]);
+    }
 }
 
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
 static void constr_vsite4FD(const rvec   xi,
                             const rvec   xj,
                             const rvec   xk,
@@ -478,7 +658,12 @@ static void constr_vsite4FD(const rvec   xi,
                             real         a,
                             real         b,
                             real         c,
-                            const t_pbc* pbc)
+                            const t_pbc* pbc,
+                            const rvec   vi,
+                            const rvec   vj,
+                            const rvec   vk,
+                            const rvec   vl,
+                            rvec         v)
 {
     rvec xij, xjk, xjl, temp;
     real d;
@@ -494,17 +679,41 @@ static void constr_vsite4FD(const rvec   xi,
     temp[ZZ] = xij[ZZ] + a * xjk[ZZ] + b * xjl[ZZ];
     /* 12 flops */
 
-    d = c * inverseNorm(temp);
+    const real invRm = inverseNorm(temp);
+    d                = c * invRm;
     /* 6 + 10 flops */
 
-    x[XX] = xi[XX] + d * temp[XX];
-    x[YY] = xi[YY] + d * temp[YY];
-    x[ZZ] = xi[ZZ] + d * temp[ZZ];
-    /* 6 Flops */
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[XX] = xi[XX] + d * temp[XX];
+        x[YY] = xi[YY] + d * temp[YY];
+        x[ZZ] = xi[ZZ] + d * temp[ZZ];
+        /* 6 Flops */
+        /* TOTAL: 43 flops */
+    }
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        rvec vij = { 0 };
+        rvec vjk = { 0 };
+        rvec vjl = { 0 };
 
-    /* TOTAL: 43 flops */
+        rvec_sub(vj, vi, vij);
+        rvec_sub(vk, vj, vjk);
+        rvec_sub(vl, vj, vjl);
+
+        rvec vm = { 0 };
+        vm[XX]  = vij[XX] + a * vjk[XX] + b * vjl[XX];
+        vm[YY]  = vij[YY] + a * vjk[YY] + b * vjl[YY];
+        vm[ZZ]  = vij[ZZ] + a * vjk[ZZ] + b * vjl[ZZ];
+
+        const real vmDotRm = iprod(vm, temp);
+        v[XX]              = vi[XX] + d * (vm[XX] - temp[XX] * vmDotRm * invRm * invRm);
+        v[YY]              = vi[YY] + d * (vm[YY] - temp[YY] * vmDotRm * invRm * invRm);
+        v[ZZ]              = vi[ZZ] + d * (vm[ZZ] - temp[ZZ] * vmDotRm * invRm * invRm);
+    }
 }
 
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
 static void constr_vsite4FDN(const rvec   xi,
                              const rvec   xj,
                              const rvec   xk,
@@ -513,7 +722,12 @@ static void constr_vsite4FDN(const rvec   xi,
                              real         a,
                              real         b,
                              real         c,
-                             const t_pbc* pbc)
+                             const t_pbc* pbc,
+                             const rvec   vi,
+                             const rvec   vj,
+                             const rvec   vk,
+                             const rvec   vl,
+                             rvec         v)
 {
     rvec xij, xik, xil, ra, rb, rja, rjb, rm;
     real d;
@@ -540,53 +754,121 @@ static void constr_vsite4FDN(const rvec   xi,
     cprod(rja, rjb, rm);
     /* 9 flops */
 
-    d = c * inverseNorm(rm);
+    const real invNormRm = inverseNorm(rm);
+    d                    = c * invNormRm;
     /* 5+5+1 flops */
 
-    x[XX] = xi[XX] + d * rm[XX];
-    x[YY] = xi[YY] + d * rm[YY];
-    x[ZZ] = xi[ZZ] + d * rm[ZZ];
-    /* 6 Flops */
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[XX] = xi[XX] + d * rm[XX];
+        x[YY] = xi[YY] + d * rm[YY];
+        x[ZZ] = xi[ZZ] + d * rm[ZZ];
+        /* 6 Flops */
+        /* TOTAL: 47 flops */
+    }
 
-    /* TOTAL: 47 flops */
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        rvec vij = { 0 };
+        rvec vik = { 0 };
+        rvec vil = { 0 };
+        rvec_sub(vj, vi, vij);
+        rvec_sub(vk, vi, vik);
+        rvec_sub(vl, vi, vil);
+
+        rvec vja = { 0 };
+        rvec vjb = { 0 };
+
+        vja[XX] = a * vik[XX] - vij[XX];
+        vja[YY] = a * vik[YY] - vij[YY];
+        vja[ZZ] = a * vik[ZZ] - vij[ZZ];
+        vjb[XX] = b * vil[XX] - vij[XX];
+        vjb[YY] = b * vil[YY] - vij[YY];
+        vjb[ZZ] = b * vil[ZZ] - vij[ZZ];
+
+        rvec temp1 = { 0 };
+        rvec temp2 = { 0 };
+        cprod(vja, rjb, temp1);
+        cprod(rja, vjb, temp2);
+
+        rvec vm = { 0 };
+        vm[XX]  = temp1[XX] + temp2[XX];
+        vm[YY]  = temp1[YY] + temp2[YY];
+        vm[ZZ]  = temp1[ZZ] + temp2[ZZ];
+
+        const real rmDotVm = iprod(rm, vm);
+        v[XX]              = vi[XX] + d * (vm[XX] - rm[XX] * rmDotVm * invNormRm * invNormRm);
+        v[YY]              = vi[YY] + d * (vm[YY] - rm[YY] * rmDotVm * invNormRm * invNormRm);
+        v[ZZ]              = vi[ZZ] + d * (vm[ZZ] - rm[ZZ] * rmDotVm * invNormRm * invNormRm);
+    }
 }
 
-static int constr_vsiten(const t_iatom* ia, ArrayRef<const t_iparams> ip, ArrayRef<RVec> x, const t_pbc* pbc)
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
+static int constr_vsiten(const t_iatom*            ia,
+                         ArrayRef<const t_iparams> ip,
+                         ArrayRef<RVec>            x,
+                         const t_pbc*              pbc,
+                         ArrayRef<RVec>            v)
 {
     rvec x1, dx;
     dvec dsum;
-    int  n3, av, ai;
     real a;
+    dvec dvsum = { 0 };
+    rvec v1    = { 0 };
 
-    n3 = 3 * ip[ia[0]].vsiten.n;
-    av = ia[1];
-    ai = ia[2];
+    const int n3 = 3 * ip[ia[0]].vsiten.n;
+    const int av = ia[1];
+    int       ai = ia[2];
     copy_rvec(x[ai], x1);
+    copy_rvec(v[ai], v1);
     clear_dvec(dsum);
     for (int i = 3; i < n3; i += 3)
     {
         ai = ia[i + 2];
         a  = ip[ia[i]].vsiten.a;
-        if (pbc)
+        if (calculatePosition == VSiteCalculatePosition::Yes)
         {
-            pbc_dx_aiuc(pbc, x[ai], x1, dx);
+            if (pbc)
+            {
+                pbc_dx_aiuc(pbc, x[ai], x1, dx);
+            }
+            else
+            {
+                rvec_sub(x[ai], x1, dx);
+            }
+            dsum[XX] += a * dx[XX];
+            dsum[YY] += a * dx[YY];
+            dsum[ZZ] += a * dx[ZZ];
+            /* 9 Flops */
         }
-        else
+        if (calculateVelocity == VSiteCalculateVelocity::Yes)
         {
-            rvec_sub(x[ai], x1, dx);
+            rvec_sub(v[ai], v1, dx);
+            dvsum[XX] += a * dx[XX];
+            dvsum[YY] += a * dx[YY];
+            dvsum[ZZ] += a * dx[ZZ];
+            /* 9 Flops */
         }
-        dsum[XX] += a * dx[XX];
-        dsum[YY] += a * dx[YY];
-        dsum[ZZ] += a * dx[ZZ];
-        /* 9 Flops */
     }
 
-    x[av][XX] = x1[XX] + dsum[XX];
-    x[av][YY] = x1[YY] + dsum[YY];
-    x[av][ZZ] = x1[ZZ] + dsum[ZZ];
+    if (calculatePosition == VSiteCalculatePosition::Yes)
+    {
+        x[av][XX] = x1[XX] + dsum[XX];
+        x[av][YY] = x1[YY] + dsum[YY];
+        x[av][ZZ] = x1[ZZ] + dsum[ZZ];
+    }
+
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
+    {
+        v[av][XX] = v1[XX] + dvsum[XX];
+        v[av][YY] = v1[YY] + dvsum[YY];
+        v[av][ZZ] = v1[ZZ] + dvsum[ZZ];
+    }
 
     return n3;
 }
+// End GCC 8 bug
+GCC_DIAGNOSTIC_RESET
 
 #endif // DOXYGEN
 
@@ -615,29 +897,49 @@ static PbcMode getPbcMode(const t_pbc* pbcPtr)
 
 /*! \brief Executes the vsite construction task for a single thread
  *
+ * \tparam        operation  Whether we are calculating positions, velocities, or both
  * \param[in,out] x   Coordinates to construct vsites for
- * \param[in]     dt  Time step, needed when v is not empty
- * \param[in,out] v   When not empty, velocities are generated for virtual sites
+ * \param[in,out] v   Velocities are generated for virtual sites if `operation` requires it
  * \param[in]     ip  Interaction parameters for all interaction, only vsite parameters are used
  * \param[in]     ilist  The interaction lists, only vsites are usesd
  * \param[in]     pbc_null  PBC struct, used for PBC distance calculations when !=nullptr
  */
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
 static void construct_vsites_thread(ArrayRef<RVec>                  x,
-                                    const real                      dt,
                                     ArrayRef<RVec>                  v,
                                     ArrayRef<const t_iparams>       ip,
                                     ArrayRef<const InteractionList> ilist,
                                     const t_pbc*                    pbc_null)
 {
-    real inv_dt;
-    if (!v.empty())
+    if (calculateVelocity == VSiteCalculateVelocity::Yes)
     {
-        inv_dt = 1.0 / dt;
+        GMX_RELEASE_ASSERT(x.empty() || !v.empty(),
+                           "Can't calculate velocities without access to velocity vector.");
     }
-    else
-    {
-        inv_dt = 1.0;
-    }
+
+    // Work around clang bug (unfixed as of Feb 2021)
+    // https://bugs.llvm.org/show_bug.cgi?id=35450
+    // clang-format off
+    CLANG_DIAGNOSTIC_IGNORE(-Wunused-lambda-capture)
+    // clang-format on
+    // GCC 8 falsely flags unused variables if constexpr prunes a code path, fixed in GCC 9
+    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85827
+    // clang-format off
+    GCC_DIAGNOSTIC_IGNORE(-Wunused-but-set-parameter)
+    // clang-format on
+    // getVOrNull returns a velocity rvec if we need it, nullptr otherwise.
+    auto getVOrNull = [v](int idx) -> real* {
+        if (calculateVelocity == VSiteCalculateVelocity::Yes)
+        {
+            return v[idx].as_vec();
+        }
+        else
+        {
+            return nullptr;
+        }
+    };
+    GCC_DIAGNOSTIC_RESET
+    CLANG_DIAGNOSTIC_RESET
 
     const PbcMode pbcMode = getPbcMode(pbc_null);
     /* We need another pbc pointer, as with charge groups we switch per vsite */
@@ -674,39 +976,97 @@ static void construct_vsites_thread(ArrayRef<RVec>                  x,
                 real b1, c1;
                 switch (ftype)
                 {
-                    case F_VSITE1: constr_vsite1(x[ai], x[avsite]); break;
+                    case F_VSITE1:
+                        constr_vsite1<calculatePosition, calculateVelocity>(
+                                x[ai], x[avsite], getVOrNull(ai), getVOrNull(avsite));
+                        break;
                     case F_VSITE2:
                         aj = ia[3];
-                        constr_vsite2(x[ai], x[aj], x[avsite], a1, pbc_null2);
+                        constr_vsite2<calculatePosition, calculateVelocity>(x[ai],
+                                                                            x[aj],
+                                                                            x[avsite],
+                                                                            a1,
+                                                                            pbc_null2,
+                                                                            getVOrNull(ai),
+                                                                            getVOrNull(aj),
+                                                                            getVOrNull(avsite));
                         break;
                     case F_VSITE2FD:
                         aj = ia[3];
-                        constr_vsite2FD(x[ai], x[aj], x[avsite], a1, pbc_null2);
+                        constr_vsite2FD<calculatePosition, calculateVelocity>(x[ai],
+                                                                              x[aj],
+                                                                              x[avsite],
+                                                                              a1,
+                                                                              pbc_null2,
+                                                                              getVOrNull(ai),
+                                                                              getVOrNull(aj),
+                                                                              getVOrNull(avsite));
                         break;
                     case F_VSITE3:
                         aj = ia[3];
                         ak = ia[4];
                         b1 = ip[tp].vsite.b;
-                        constr_vsite3(x[ai], x[aj], x[ak], x[avsite], a1, b1, pbc_null2);
+                        constr_vsite3<calculatePosition, calculateVelocity>(x[ai],
+                                                                            x[aj],
+                                                                            x[ak],
+                                                                            x[avsite],
+                                                                            a1,
+                                                                            b1,
+                                                                            pbc_null2,
+                                                                            getVOrNull(ai),
+                                                                            getVOrNull(aj),
+                                                                            getVOrNull(ak),
+                                                                            getVOrNull(avsite));
                         break;
                     case F_VSITE3FD:
                         aj = ia[3];
                         ak = ia[4];
                         b1 = ip[tp].vsite.b;
-                        constr_vsite3FD(x[ai], x[aj], x[ak], x[avsite], a1, b1, pbc_null2);
+                        constr_vsite3FD<calculatePosition, calculateVelocity>(x[ai],
+                                                                              x[aj],
+                                                                              x[ak],
+                                                                              x[avsite],
+                                                                              a1,
+                                                                              b1,
+                                                                              pbc_null2,
+                                                                              getVOrNull(ai),
+                                                                              getVOrNull(aj),
+                                                                              getVOrNull(ak),
+                                                                              getVOrNull(avsite));
                         break;
                     case F_VSITE3FAD:
                         aj = ia[3];
                         ak = ia[4];
                         b1 = ip[tp].vsite.b;
-                        constr_vsite3FAD(x[ai], x[aj], x[ak], x[avsite], a1, b1, pbc_null2);
+                        constr_vsite3FAD<calculatePosition, calculateVelocity>(x[ai],
+                                                                               x[aj],
+                                                                               x[ak],
+                                                                               x[avsite],
+                                                                               a1,
+                                                                               b1,
+                                                                               pbc_null2,
+                                                                               getVOrNull(ai),
+                                                                               getVOrNull(aj),
+                                                                               getVOrNull(ak),
+                                                                               getVOrNull(avsite));
                         break;
                     case F_VSITE3OUT:
                         aj = ia[3];
                         ak = ia[4];
                         b1 = ip[tp].vsite.b;
                         c1 = ip[tp].vsite.c;
-                        constr_vsite3OUT(x[ai], x[aj], x[ak], x[avsite], a1, b1, c1, pbc_null2);
+                        constr_vsite3OUT<calculatePosition, calculateVelocity>(x[ai],
+                                                                               x[aj],
+                                                                               x[ak],
+                                                                               x[avsite],
+                                                                               a1,
+                                                                               b1,
+                                                                               c1,
+                                                                               pbc_null2,
+                                                                               getVOrNull(ai),
+                                                                               getVOrNull(aj),
+                                                                               getVOrNull(ak),
+                                                                               getVOrNull(avsite));
                         break;
                     case F_VSITE4FD:
                         aj = ia[3];
@@ -714,7 +1074,20 @@ static void construct_vsites_thread(ArrayRef<RVec>                  x,
                         al = ia[5];
                         b1 = ip[tp].vsite.b;
                         c1 = ip[tp].vsite.c;
-                        constr_vsite4FD(x[ai], x[aj], x[ak], x[al], x[avsite], a1, b1, c1, pbc_null2);
+                        constr_vsite4FD<calculatePosition, calculateVelocity>(x[ai],
+                                                                              x[aj],
+                                                                              x[ak],
+                                                                              x[al],
+                                                                              x[avsite],
+                                                                              a1,
+                                                                              b1,
+                                                                              c1,
+                                                                              pbc_null2,
+                                                                              getVOrNull(ai),
+                                                                              getVOrNull(aj),
+                                                                              getVOrNull(ak),
+                                                                              getVOrNull(al),
+                                                                              getVOrNull(avsite));
                         break;
                     case F_VSITE4FDN:
                         aj = ia[3];
@@ -722,9 +1095,24 @@ static void construct_vsites_thread(ArrayRef<RVec>                  x,
                         al = ia[5];
                         b1 = ip[tp].vsite.b;
                         c1 = ip[tp].vsite.c;
-                        constr_vsite4FDN(x[ai], x[aj], x[ak], x[al], x[avsite], a1, b1, c1, pbc_null2);
+                        constr_vsite4FDN<calculatePosition, calculateVelocity>(x[ai],
+                                                                               x[aj],
+                                                                               x[ak],
+                                                                               x[al],
+                                                                               x[avsite],
+                                                                               a1,
+                                                                               b1,
+                                                                               c1,
+                                                                               pbc_null2,
+                                                                               getVOrNull(ai),
+                                                                               getVOrNull(aj),
+                                                                               getVOrNull(ak),
+                                                                               getVOrNull(al),
+                                                                               getVOrNull(avsite));
                         break;
-                    case F_VSITEN: inc = constr_vsiten(ia, ip, x, pbc_null2); break;
+                    case F_VSITEN:
+                        inc = constr_vsiten<calculatePosition, calculateVelocity>(ia, ip, x, pbc_null2, v);
+                        break;
                     default:
                         gmx_fatal(FARGS, "No such vsite type %d in %s, line %d", ftype, __FILE__, __LINE__);
                 }
@@ -734,17 +1122,10 @@ static void construct_vsites_thread(ArrayRef<RVec>                  x,
                     /* Keep the vsite in the same periodic image as before */
                     rvec dx;
                     int  ishift = pbc_dx_aiuc(pbc_null, x[avsite], xv, dx);
-                    if (ishift != CENTRAL)
+                    if (ishift != c_centralShiftIndex)
                     {
                         rvec_add(xv, dx, x[avsite]);
                     }
-                }
-                if (!v.empty())
-                {
-                    /* Calculate velocity of vsite... */
-                    rvec vv;
-                    rvec_sub(x[avsite], xv, vv);
-                    svmul(inv_dt, vv, v[avsite]);
                 }
 
                 /* Increment loop variables */
@@ -759,16 +1140,15 @@ static void construct_vsites_thread(ArrayRef<RVec>                  x,
  *
  * \param[in]     threadingInfo  Used to divide work over threads when != nullptr
  * \param[in,out] x   Coordinates to construct vsites for
- * \param[in]     dt  Time step, needed when v is not empty
  * \param[in,out] v   When not empty, velocities are generated for virtual sites
  * \param[in]     ip  Interaction parameters for all interaction, only vsite parameters are used
  * \param[in]     ilist  The interaction lists, only vsites are usesd
  * \param[in]     domainInfo  Information about PBC and DD
  * \param[in]     box  Used for PBC when PBC is set in domainInfo
  */
+template<VSiteCalculatePosition calculatePosition, VSiteCalculateVelocity calculateVelocity>
 static void construct_vsites(const ThreadingInfo*            threadingInfo,
                              ArrayRef<RVec>                  x,
-                             real                            dt,
                              ArrayRef<RVec>                  v,
                              ArrayRef<const t_iparams>       ip,
                              ArrayRef<const InteractionList> ilist,
@@ -791,8 +1171,8 @@ static void construct_vsites(const ThreadingInfo*            threadingInfo,
          */
         ivec null_ivec;
         clear_ivec(null_ivec);
-        pbc_null = set_pbc_dd(&pbc, domainInfo.pbcType_,
-                              useDomdec ? domainInfo.domdec_->numCells : null_ivec, FALSE, box);
+        pbc_null = set_pbc_dd(
+                &pbc, domainInfo.pbcType_, useDomdec ? domainInfo.domdec_->numCells : null_ivec, FALSE, box);
     }
     else
     {
@@ -801,12 +1181,20 @@ static void construct_vsites(const ThreadingInfo*            threadingInfo,
 
     if (useDomdec)
     {
-        dd_move_x_vsites(*domainInfo.domdec_, box, as_rvec_array(x.data()));
+        if (calculateVelocity == VSiteCalculateVelocity::Yes)
+        {
+            dd_move_x_and_v_vsites(
+                    *domainInfo.domdec_, box, as_rvec_array(x.data()), as_rvec_array(v.data()));
+        }
+        else
+        {
+            dd_move_x_vsites(*domainInfo.domdec_, box, as_rvec_array(x.data()));
+        }
     }
 
     if (threadingInfo == nullptr || threadingInfo->numThreads() == 1)
     {
-        construct_vsites_thread(x, dt, v, ip, ilist, pbc_null);
+        construct_vsites_thread<calculatePosition, calculateVelocity>(x, v, ip, ilist, pbc_null);
     }
     else
     {
@@ -819,31 +1207,52 @@ static void construct_vsites(const ThreadingInfo*            threadingInfo,
                 GMX_ASSERT(tData.rangeStart >= 0,
                            "The thread data should be initialized before calling construct_vsites");
 
-                construct_vsites_thread(x, dt, v, ip, tData.ilist, pbc_null);
+                construct_vsites_thread<calculatePosition, calculateVelocity>(
+                        x, v, ip, tData.ilist, pbc_null);
                 if (tData.useInterdependentTask)
                 {
                     /* Here we don't need a barrier (unlike the spreading),
                      * since both tasks only construct vsites from particles,
                      * or local vsites, not from non-local vsites.
                      */
-                    construct_vsites_thread(x, dt, v, ip, tData.idTask.ilist, pbc_null);
+                    construct_vsites_thread<calculatePosition, calculateVelocity>(
+                            x, v, ip, tData.idTask.ilist, pbc_null);
                 }
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }
         /* Now we can construct the vsites that might depend on other vsites */
-        construct_vsites_thread(x, dt, v, ip, threadingInfo->threadDataNonLocalDependent().ilist, pbc_null);
+        construct_vsites_thread<calculatePosition, calculateVelocity>(
+                x, v, ip, threadingInfo->threadDataNonLocalDependent().ilist, pbc_null);
     }
 }
 
-void VirtualSitesHandler::Impl::construct(ArrayRef<RVec> x, real dt, ArrayRef<RVec> v, const matrix box) const
+void VirtualSitesHandler::Impl::construct(ArrayRef<RVec> x,
+                                          ArrayRef<RVec> v,
+                                          const matrix   box,
+                                          VSiteOperation operation) const
 {
-    construct_vsites(&threadingInfo_, x, dt, v, iparams_, ilists_, domainInfo_, box);
+    switch (operation)
+    {
+        case VSiteOperation::Positions:
+            construct_vsites<VSiteCalculatePosition::Yes, VSiteCalculateVelocity::No>(
+                    &threadingInfo_, x, v, iparams_, ilists_, domainInfo_, box);
+            break;
+        case VSiteOperation::Velocities:
+            construct_vsites<VSiteCalculatePosition::No, VSiteCalculateVelocity::Yes>(
+                    &threadingInfo_, x, v, iparams_, ilists_, domainInfo_, box);
+            break;
+        case VSiteOperation::PositionsAndVelocities:
+            construct_vsites<VSiteCalculatePosition::Yes, VSiteCalculateVelocity::Yes>(
+                    &threadingInfo_, x, v, iparams_, ilists_, domainInfo_, box);
+            break;
+        default: gmx_fatal(FARGS, "Unknown virtual site operation");
+    }
 }
 
-void VirtualSitesHandler::construct(ArrayRef<RVec> x, real dt, ArrayRef<RVec> v, const matrix box) const
+void VirtualSitesHandler::construct(ArrayRef<RVec> x, ArrayRef<RVec> v, const matrix box, VSiteOperation operation) const
 {
-    impl_->construct(x, dt, v, box);
+    impl_->construct(x, v, box, operation);
 }
 
 void constructVirtualSites(ArrayRef<RVec> x, ArrayRef<const t_iparams> ip, ArrayRef<const InteractionList> ilist)
@@ -851,7 +1260,8 @@ void constructVirtualSites(ArrayRef<RVec> x, ArrayRef<const t_iparams> ip, Array
 {
     // No PBC, no DD
     const DomainInfo domainInfo;
-    construct_vsites(nullptr, x, 0, {}, ip, ilist, domainInfo, nullptr);
+    construct_vsites<VSiteCalculatePosition::Yes, VSiteCalculateVelocity::No>(
+            nullptr, x, {}, ip, ilist, domainInfo, nullptr);
 }
 
 #ifndef DOXYGEN
@@ -899,14 +1309,14 @@ static void spread_vsite2(const t_iatom        ia[],
         }
         else
         {
-            siv = CENTRAL;
-            sij = CENTRAL;
+            siv = c_centralShiftIndex;
+            sij = c_centralShiftIndex;
         }
 
-        if (siv != CENTRAL || sij != CENTRAL)
+        if (siv != c_centralShiftIndex || sij != c_centralShiftIndex)
         {
             rvec_inc(fshift[siv], f[av]);
-            rvec_dec(fshift[CENTRAL], fi);
+            rvec_dec(fshift[c_centralShiftIndex], fi);
             rvec_dec(fshift[sij], fj);
         }
     }
@@ -929,8 +1339,8 @@ void constructVirtualSitesGlobal(const gmx_mtop_t& mtop, gmx::ArrayRef<gmx::RVec
             int atomOffset = mtop.moleculeBlockIndices[mb].globalAtomStart;
             for (int mol = 0; mol < molb.nmol; mol++)
             {
-                constructVirtualSites(x.subArray(atomOffset, molt.atoms.nr), mtop.ffparams.iparams,
-                                      molt.ilist);
+                constructVirtualSites(
+                        x.subArray(atomOffset, molt.atoms.nr), mtop.ffparams.iparams, molt.ilist);
                 atomOffset += molt.atoms.nr;
             }
         }
@@ -989,15 +1399,15 @@ static void spread_vsite2FD(const t_iatom        ia[],
         }
         else
         {
-            svi = CENTRAL;
+            svi = c_centralShiftIndex;
         }
 
-        if (svi != CENTRAL || sji != CENTRAL)
+        if (svi != c_centralShiftIndex || sji != c_centralShiftIndex)
         {
             rvec_dec(fshift[svi], fv);
-            fshift[CENTRAL][XX] += fv[XX] - fj[XX];
-            fshift[CENTRAL][YY] += fv[YY] - fj[YY];
-            fshift[CENTRAL][ZZ] += fv[ZZ] - fj[ZZ];
+            fshift[c_centralShiftIndex][XX] += fv[XX] - fj[XX];
+            fshift[c_centralShiftIndex][YY] += fv[YY] - fj[YY];
+            fshift[c_centralShiftIndex][ZZ] += fv[ZZ] - fj[ZZ];
             fshift[sji][XX] += fj[XX];
             fshift[sji][YY] += fj[YY];
             fshift[sji][ZZ] += fj[ZZ];
@@ -1071,15 +1481,15 @@ static void spread_vsite3(const t_iatom        ia[],
         }
         else
         {
-            siv = CENTRAL;
-            sij = CENTRAL;
-            sik = CENTRAL;
+            siv = c_centralShiftIndex;
+            sij = c_centralShiftIndex;
+            sik = c_centralShiftIndex;
         }
 
-        if (siv != CENTRAL || sij != CENTRAL || sik != CENTRAL)
+        if (siv != c_centralShiftIndex || sij != c_centralShiftIndex || sik != c_centralShiftIndex)
         {
             rvec_inc(fshift[siv], f[av]);
-            rvec_dec(fshift[CENTRAL], fi);
+            rvec_dec(fshift[c_centralShiftIndex], fi);
             rvec_dec(fshift[sij], fj);
             rvec_dec(fshift[sik], fk);
         }
@@ -1154,15 +1564,15 @@ static void spread_vsite3FD(const t_iatom        ia[],
         }
         else
         {
-            svi = CENTRAL;
+            svi = c_centralShiftIndex;
         }
 
-        if (svi != CENTRAL || sji != CENTRAL || skj != CENTRAL)
+        if (svi != c_centralShiftIndex || sji != c_centralShiftIndex || skj != c_centralShiftIndex)
         {
             rvec_dec(fshift[svi], fv);
-            fshift[CENTRAL][XX] += fv[XX] - (1 + a) * temp[XX];
-            fshift[CENTRAL][YY] += fv[YY] - (1 + a) * temp[YY];
-            fshift[CENTRAL][ZZ] += fv[ZZ] - (1 + a) * temp[ZZ];
+            fshift[c_centralShiftIndex][XX] += fv[XX] - (1 + a) * temp[XX];
+            fshift[c_centralShiftIndex][YY] += fv[YY] - (1 + a) * temp[YY];
+            fshift[c_centralShiftIndex][ZZ] += fv[ZZ] - (1 + a) * temp[ZZ];
             fshift[sji][XX] += temp[XX];
             fshift[sji][YY] += temp[YY];
             fshift[sji][ZZ] += temp[ZZ];
@@ -1276,15 +1686,15 @@ static void spread_vsite3FAD(const t_iatom        ia[],
         }
         else
         {
-            svi = CENTRAL;
+            svi = c_centralShiftIndex;
         }
 
-        if (svi != CENTRAL || sji != CENTRAL || skj != CENTRAL)
+        if (svi != c_centralShiftIndex || sji != c_centralShiftIndex || skj != c_centralShiftIndex)
         {
             rvec_dec(fshift[svi], fv);
-            fshift[CENTRAL][XX] += fv[XX] - f1[XX] - (1 - c1) * f2[XX] + f3[XX];
-            fshift[CENTRAL][YY] += fv[YY] - f1[YY] - (1 - c1) * f2[YY] + f3[YY];
-            fshift[CENTRAL][ZZ] += fv[ZZ] - f1[ZZ] - (1 - c1) * f2[ZZ] + f3[ZZ];
+            fshift[c_centralShiftIndex][XX] += fv[XX] - f1[XX] - (1 - c1) * f2[XX] + f3[XX];
+            fshift[c_centralShiftIndex][YY] += fv[YY] - f1[YY] - (1 - c1) * f2[YY] + f3[YY];
+            fshift[c_centralShiftIndex][ZZ] += fv[ZZ] - f1[ZZ] - (1 - c1) * f2[ZZ] + f3[ZZ];
             fshift[sji][XX] += f1[XX] - c1 * f2[XX] - f3[XX];
             fshift[sji][YY] += f1[YY] - c1 * f2[YY] - f3[YY];
             fshift[sji][ZZ] += f1[ZZ] - c1 * f2[ZZ] - f3[ZZ];
@@ -1370,15 +1780,15 @@ static void spread_vsite3OUT(const t_iatom        ia[],
         }
         else
         {
-            svi = CENTRAL;
+            svi = c_centralShiftIndex;
         }
 
-        if (svi != CENTRAL || sji != CENTRAL || ski != CENTRAL)
+        if (svi != c_centralShiftIndex || sji != c_centralShiftIndex || ski != c_centralShiftIndex)
         {
             rvec_dec(fshift[svi], fv);
-            fshift[CENTRAL][XX] += fv[XX] - fj[XX] - fk[XX];
-            fshift[CENTRAL][YY] += fv[YY] - fj[YY] - fk[YY];
-            fshift[CENTRAL][ZZ] += fv[ZZ] - fj[ZZ] - fk[ZZ];
+            fshift[c_centralShiftIndex][XX] += fv[XX] - fj[XX] - fk[XX];
+            fshift[c_centralShiftIndex][YY] += fv[YY] - fj[YY] - fk[YY];
+            fshift[c_centralShiftIndex][ZZ] += fv[ZZ] - fj[ZZ] - fk[ZZ];
             rvec_inc(fshift[sji], fj);
             rvec_inc(fshift[ski], fk);
         }
@@ -1472,15 +1882,16 @@ static void spread_vsite4FD(const t_iatom        ia[],
         }
         else
         {
-            svi = CENTRAL;
+            svi = c_centralShiftIndex;
         }
 
-        if (svi != CENTRAL || sji != CENTRAL || skj != CENTRAL || slj != CENTRAL)
+        if (svi != c_centralShiftIndex || sji != c_centralShiftIndex || skj != c_centralShiftIndex
+            || slj != c_centralShiftIndex)
         {
             rvec_dec(fshift[svi], fv);
             for (m = 0; m < DIM; m++)
             {
-                fshift[CENTRAL][m] += fv[m] - (1 + a + b) * temp[m];
+                fshift[c_centralShiftIndex][m] += fv[m] - (1 + a + b) * temp[m];
                 fshift[sji][m] += temp[m];
                 fshift[skj][m] += a * temp[m];
                 fshift[slj][m] += b * temp[m];
@@ -1631,15 +2042,16 @@ static void spread_vsite4FDN(const t_iatom        ia[],
         }
         else
         {
-            svi = CENTRAL;
+            svi = c_centralShiftIndex;
         }
 
-        if (svi != CENTRAL || sij != CENTRAL || sik != CENTRAL || sil != CENTRAL)
+        if (svi != c_centralShiftIndex || sij != c_centralShiftIndex || sik != c_centralShiftIndex
+            || sil != c_centralShiftIndex)
         {
             rvec_dec(fshift[svi], fv);
-            fshift[CENTRAL][XX] += fv[XX] - fj[XX] - fk[XX] - fl[XX];
-            fshift[CENTRAL][YY] += fv[YY] - fj[YY] - fk[YY] - fl[YY];
-            fshift[CENTRAL][ZZ] += fv[ZZ] - fj[ZZ] - fk[ZZ] - fl[ZZ];
+            fshift[c_centralShiftIndex][XX] += fv[XX] - fj[XX] - fk[XX] - fl[XX];
+            fshift[c_centralShiftIndex][YY] += fv[YY] - fj[YY] - fk[YY] - fl[YY];
+            fshift[c_centralShiftIndex][ZZ] += fv[ZZ] - fj[ZZ] - fk[ZZ] - fl[ZZ];
             rvec_inc(fshift[sij], fj);
             rvec_inc(fshift[sik], fk);
             rvec_inc(fshift[sil], fl);
@@ -1691,16 +2103,16 @@ static int spread_vsiten(const t_iatom             ia[],
         }
         else
         {
-            siv = CENTRAL;
+            siv = c_centralShiftIndex;
         }
         a = ip[ia[i]].vsiten.a;
         svmul(a, f[av], fi);
         rvec_inc(f[ai], fi);
 
-        if (virialHandling == VirialHandling::Pbc && siv != CENTRAL)
+        if (virialHandling == VirialHandling::Pbc && siv != c_centralShiftIndex)
         {
             rvec_inc(fshift[siv], fi);
-            rvec_dec(fshift[CENTRAL], fi);
+            rvec_dec(fshift[c_centralShiftIndex], fi);
         }
         /* 6 Flops */
     }
@@ -1874,7 +2286,7 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
                                              const matrix         box,
                                              gmx_wallcycle*       wcycle)
 {
-    wallcycle_start(wcycle, ewcVSITESPREAD);
+    wallcycle_start(wcycle, WallCycleCounter::VsiteSpread);
 
     const bool useDomdec = domainInfo_.useDomdec();
 
@@ -1885,8 +2297,8 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
         /* This is wasting some CPU time as we now do this multiple times
          * per MD step.
          */
-        pbc_null = set_pbc_dd(&pbc, domainInfo_.pbcType_,
-                              useDomdec ? domainInfo_.domdec_->numCells : nullptr, FALSE, box);
+        pbc_null = set_pbc_dd(
+                &pbc, domainInfo_.pbcType_, useDomdec ? domainInfo_.domdec_->numCells : nullptr, FALSE, box);
     }
     else
     {
@@ -1920,8 +2332,15 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
     {
         /* First spread the vsites that might depend on non-local vsites */
         auto& nlDependentVSites = threadingInfo_.threadDataNonLocalDependent();
-        spreadForceWrapper(x, f, virialHandling, fshift, nlDependentVSites.dxdf, true, iparams_,
-                           nlDependentVSites.ilist, pbc_null);
+        spreadForceWrapper(x,
+                           f,
+                           virialHandling,
+                           fshift,
+                           nlDependentVSites.dxdf,
+                           true,
+                           iparams_,
+                           nlDependentVSites.ilist,
+                           pbc_null);
 
 #pragma omp parallel num_threads(numThreads)
         {
@@ -1941,7 +2360,7 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
                     {
                         fshift_t = tData.fshift;
 
-                        for (int i = 0; i < SHIFTS; i++)
+                        for (int i = 0; i < c_numShiftVectors; i++)
                         {
                             clear_rvec(fshift_t[i]);
                         }
@@ -1966,8 +2385,15 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
                     {
                         copy_rvec(f[idTask->vsite[i]], idTask->force[idTask->vsite[i]]);
                     }
-                    spreadForceWrapper(x, idTask->force, virialHandling, fshift_t, tData.dxdf, true,
-                                       iparams_, tData.idTask.ilist, pbc_null);
+                    spreadForceWrapper(x,
+                                       idTask->force,
+                                       virialHandling,
+                                       fshift_t,
+                                       tData.dxdf,
+                                       true,
+                                       iparams_,
+                                       tData.idTask.ilist,
+                                       pbc_null);
 
                     /* We need a barrier before reducing forces below
                      * that have been produced by a different thread above.
@@ -2003,8 +2429,8 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
                 }
 
                 /* Spread the vsites that spread locally only */
-                spreadForceWrapper(x, f, virialHandling, fshift_t, tData.dxdf, false, iparams_,
-                                   tData.ilist, pbc_null);
+                spreadForceWrapper(
+                        x, f, virialHandling, fshift_t, tData.dxdf, false, iparams_, tData.ilist, pbc_null);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }
@@ -2013,7 +2439,7 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
         {
             for (int th = 1; th < numThreads; th++)
             {
-                for (int i = 0; i < SHIFTS; i++)
+                for (int i = 0; i < c_numShiftVectors; i++)
                 {
                     rvec_inc(fshift[i], threadingInfo_.threadData(th).fshift[i]);
                 }
@@ -2054,7 +2480,7 @@ void VirtualSitesHandler::Impl::spreadForces(ArrayRef<const RVec> x,
     inc_nrnb(nrnb, eNR_VSITE4FDN, vsite_count(ilists_, F_VSITE4FDN));
     inc_nrnb(nrnb, eNR_VSITEN, vsite_count(ilists_, F_VSITEN));
 
-    wallcycle_stop(wcycle, ewcVSITESPREAD);
+    wallcycle_stop(wcycle, WallCycleCounter::VsiteSpread);
 }
 
 /*! \brief Returns the an array with group indices for each atom
@@ -2107,7 +2533,7 @@ void VirtualSitesHandler::spreadForces(ArrayRef<const RVec> x,
 }
 
 int countInterUpdategroupVsites(const gmx_mtop_t&                           mtop,
-                                gmx::ArrayRef<const gmx::RangePartitioning> updateGroupingPerMoleculetype)
+                                gmx::ArrayRef<const gmx::RangePartitioning> updateGroupingsPerMoleculeType)
 {
     int n_intercg_vsite = 0;
     for (const gmx_molblock_t& molb : mtop.molblock)
@@ -2115,9 +2541,9 @@ int countInterUpdategroupVsites(const gmx_mtop_t&                           mtop
         const gmx_moltype_t& molt = mtop.moltype[molb.type];
 
         std::vector<int> atomToGroup;
-        if (!updateGroupingPerMoleculetype.empty())
+        if (!updateGroupingsPerMoleculeType.empty())
         {
-            atomToGroup = makeAtomToGroupMapping(updateGroupingPerMoleculetype[molb.type]);
+            atomToGroup = makeAtomToGroupMapping(updateGroupingsPerMoleculeType[molb.type]);
         }
         for (int ftype = c_ftypeVsiteStart; ftype < c_ftypeVsiteEnd; ftype++)
         {
@@ -2151,7 +2577,8 @@ int countInterUpdategroupVsites(const gmx_mtop_t&                           mtop
 
 std::unique_ptr<VirtualSitesHandler> makeVirtualSitesHandler(const gmx_mtop_t& mtop,
                                                              const t_commrec*  cr,
-                                                             PbcType           pbcType)
+                                                             PbcType           pbcType,
+                                                             ArrayRef<const RangePartitioning> updateGroupingPerMoleculeType)
 {
     GMX_RELEASE_ASSERT(cr != nullptr, "We need a valid commrec");
 
@@ -2166,7 +2593,7 @@ std::unique_ptr<VirtualSitesHandler> makeVirtualSitesHandler(const gmx_mtop_t& m
             GMX_ASSERT(ftype >= c_ftypeVsiteStart && ftype < c_ftypeVsiteEnd,
                        "c_ftypeVsiteStart and/or c_ftypeVsiteEnd do not have correct values");
 
-            nvsite += gmx_mtop_ftype_count(&mtop, ftype);
+            nvsite += gmx_mtop_ftype_count(mtop, ftype);
         }
         else
         {
@@ -2180,10 +2607,10 @@ std::unique_ptr<VirtualSitesHandler> makeVirtualSitesHandler(const gmx_mtop_t& m
         return vsite;
     }
 
-    return std::make_unique<VirtualSitesHandler>(mtop, cr->dd, pbcType);
+    return std::make_unique<VirtualSitesHandler>(mtop, cr->dd, pbcType, updateGroupingPerMoleculeType);
 }
 
-ThreadingInfo::ThreadingInfo() : numThreads_(gmx_omp_nthreads_get(emntVSITE))
+ThreadingInfo::ThreadingInfo() : numThreads_(gmx_omp_nthreads_get(ModuleMultiThread::VirtualSite))
 {
     if (numThreads_ > 1)
     {
@@ -2209,27 +2636,21 @@ ThreadingInfo::ThreadingInfo() : numThreads_(gmx_omp_nthreads_get(emntVSITE))
     }
 }
 
-//! Returns the number of inter update-group vsites
-static int getNumInterUpdategroupVsites(const gmx_mtop_t& mtop, const gmx_domdec_t* domdec)
-{
-    gmx::ArrayRef<const gmx::RangePartitioning> updateGroupingPerMoleculetype;
-    if (domdec)
-    {
-        updateGroupingPerMoleculetype = getUpdateGroupingPerMoleculetype(*domdec);
-    }
-
-    return countInterUpdategroupVsites(mtop, updateGroupingPerMoleculetype);
-}
-
-VirtualSitesHandler::Impl::Impl(const gmx_mtop_t& mtop, gmx_domdec_t* domdec, const PbcType pbcType) :
-    numInterUpdategroupVirtualSites_(getNumInterUpdategroupVsites(mtop, domdec)),
+VirtualSitesHandler::Impl::Impl(const gmx_mtop_t&                       mtop,
+                                gmx_domdec_t*                           domdec,
+                                const PbcType                           pbcType,
+                                const ArrayRef<const RangePartitioning> updateGroupingPerMoleculeType) :
+    numInterUpdategroupVirtualSites_(countInterUpdategroupVsites(mtop, updateGroupingPerMoleculeType)),
     domainInfo_({ pbcType, pbcType != PbcType::No && numInterUpdategroupVirtualSites_ > 0, domdec }),
     iparams_(mtop.ffparams.iparams)
 {
 }
 
-VirtualSitesHandler::VirtualSitesHandler(const gmx_mtop_t& mtop, gmx_domdec_t* domdec, const PbcType pbcType) :
-    impl_(new Impl(mtop, domdec, pbcType))
+VirtualSitesHandler::VirtualSitesHandler(const gmx_mtop_t&                       mtop,
+                                         gmx_domdec_t*                           domdec,
+                                         const PbcType                           pbcType,
+                                         const ArrayRef<const RangePartitioning> updateGroupingPerMoleculeType) :
+    impl_(new Impl(mtop, domdec, pbcType, updateGroupingPerMoleculeType))
 {
 }
 
@@ -2265,7 +2686,7 @@ static void assignVsitesToThread(VsiteThread*                    tData,
                                  gmx::ArrayRef<int>              taskIndex,
                                  ArrayRef<const InteractionList> ilist,
                                  ArrayRef<const t_iparams>       ip,
-                                 const unsigned short*           ptype)
+                                 ArrayRef<const ParticleType>    ptype)
 {
     for (int ftype = c_ftypeVsiteStart; ftype < c_ftypeVsiteEnd; ftype++)
     {
@@ -2300,7 +2721,7 @@ static void assignVsitesToThread(VsiteThread*                    tData,
                     /* Do a range check to avoid a harmless race on taskIndex */
                     if (iat[j] < tData->rangeStart || iat[j] >= tData->rangeEnd || taskIndex[iat[j]] != thread)
                     {
-                        if (!tData->useInterdependentTask || ptype[iat[j]] == eptVSite)
+                        if (!tData->useInterdependentTask || ptype[iat[j]] == ParticleType::VSite)
                         {
                             /* At least one constructing atom is a vsite
                              * that is not assigned to the same thread.
@@ -2330,12 +2751,21 @@ static void assignVsitesToThread(VsiteThread*                    tData,
                     /* Do a range check to avoid a harmless race on taskIndex */
                     if (iat[j] < tData->rangeStart || iat[j] >= tData->rangeEnd || taskIndex[iat[j]] != thread)
                     {
-                        GMX_ASSERT(ptype[iat[j]] != eptVSite,
+                        GMX_ASSERT(ptype[iat[j]] != ParticleType::VSite,
                                    "A vsite to be assigned in assignVsitesToThread has a vsite as "
                                    "a constructing atom that does not belong to our task, such "
                                    "vsites should be assigned to the single 'master' task");
 
-                        task = nthread + thread;
+                        if (tData->useInterdependentTask)
+                        {
+                            // Assign to the interdependent task
+                            task = nthread + thread;
+                        }
+                        else
+                        {
+                            // Assign to the separate, non-parallel task
+                            task = 2 * nthread;
+                        }
                     }
                 }
             }
@@ -2424,7 +2854,9 @@ static void assignVsitesToSingleTask(VsiteThread*                    tData,
 
 void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
                                     ArrayRef<const t_iparams>       iparams,
-                                    const t_mdatoms&                mdatoms,
+                                    const int                       numAtoms,
+                                    const int                       homenr,
+                                    ArrayRef<const ParticleType>    ptype,
                                     const bool                      useDomdec)
 {
     if (numThreads_ <= 1)
@@ -2497,20 +2929,23 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
          * When assigning vsites to threads, we should take care that the last
          * threads also covers the non-local range.
          */
-        vsite_atom_range = mdatoms.nr;
-        natperthread     = (mdatoms.homenr + numThreads_ - 1) / numThreads_;
+        vsite_atom_range = numAtoms;
+        natperthread     = (homenr + numThreads_ - 1) / numThreads_;
     }
 
     if (debug)
     {
-        fprintf(debug, "virtual site thread dist: natoms %d, range %d, natperthread %d\n",
-                mdatoms.nr, vsite_atom_range, natperthread);
+        fprintf(debug,
+                "virtual site thread dist: natoms %d, range %d, natperthread %d\n",
+                numAtoms,
+                vsite_atom_range,
+                natperthread);
     }
 
     /* To simplify the vsite assignment, we make an index which tells us
      * to which task particles, both non-vsites and vsites, are assigned.
      */
-    taskIndex_.resize(mdatoms.nr);
+    taskIndex_.resize(numAtoms);
 
     /* Initialize the task index array. Here we assign the non-vsite
      * particles to task=thread, so we easily figure out if vsites
@@ -2518,9 +2953,9 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
      */
     {
         int thread = 0;
-        for (int i = 0; i < mdatoms.nr; i++)
+        for (int i = 0; i < numAtoms; i++)
         {
-            if (mdatoms.ptype[i] == eptVSite)
+            if (ptype[i] == ParticleType::VSite)
             {
                 /* vsites are not assigned to a task yet */
                 taskIndex_[i] = -1;
@@ -2570,12 +3005,13 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
             }
 
             /* To avoid large f_buf allocations of #threads*vsite_atom_range
-             * we don't use task2 with more than 200000 atoms. This doesn't
-             * affect performance, since with such a large range relatively few
-             * vsites will end up in the separate task.
-             * Note that useTask2 should be the same for all threads.
+             * we don't use the interdependent tasks with more than 200000 atoms.
+             * This doesn't affect performance, since with such a large range
+             * relatively few vsites will end up in the separate task.
+             * Note that useInterdependentTask should be the same for all threads.
              */
-            tData.useInterdependentTask = (vsite_atom_range <= 200000);
+            const int c_maxNumLocalAtomsForInterdependentTask = 200000;
+            tData.useInterdependentTask = (vsite_atom_range <= c_maxNumLocalAtomsForInterdependentTask);
             if (tData.useInterdependentTask)
             {
                 size_t              natoms_use_in_vsites = vsite_atom_range;
@@ -2599,10 +3035,10 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
             else
             {
                 /* The last thread should cover up to the end of the range */
-                tData.rangeEnd = mdatoms.nr;
+                tData.rangeEnd = numAtoms;
             }
-            assignVsitesToThread(&tData, thread, numThreads_, natperthread, taskIndex_, ilists,
-                                 iparams, mdatoms.ptype);
+            assignVsitesToThread(
+                    &tData, thread, numThreads_, natperthread, taskIndex_, ilists, iparams, ptype);
 
             if (tData.useInterdependentTask)
             {
@@ -2644,7 +3080,8 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
 
     if (debug && numThreads_ > 1)
     {
-        fprintf(debug, "virtual site useInterdependentTask %d, nuse:\n",
+        fprintf(debug,
+                "virtual site useInterdependentTask %d, nuse:\n",
                 static_cast<int>(tData_[0]->useInterdependentTask));
         for (int th = 0; th < numThreads_ + 1; th++)
         {
@@ -2659,7 +3096,9 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
                 fprintf(debug, "%-20s thread dist:", interaction_function[ftype].longname);
                 for (int th = 0; th < numThreads_ + 1; th++)
                 {
-                    fprintf(debug, " %4d %4d ", tData_[th]->ilist[ftype].size(),
+                    fprintf(debug,
+                            " %4d %4d ",
+                            tData_[th]->ilist[ftype].size(),
                             tData_[th]->idTask.ilist[ftype].size());
                 }
                 fprintf(debug, "\n");
@@ -2681,16 +3120,21 @@ void ThreadingInfo::setVirtualSites(ArrayRef<const InteractionList> ilists,
 }
 
 void VirtualSitesHandler::Impl::setVirtualSites(ArrayRef<const InteractionList> ilists,
-                                                const t_mdatoms&                mdatoms)
+                                                const int                       numAtoms,
+                                                const int                       homenr,
+                                                ArrayRef<const ParticleType>    ptype)
 {
     ilists_ = ilists;
 
-    threadingInfo_.setVirtualSites(ilists, iparams_, mdatoms, domainInfo_.useDomdec());
+    threadingInfo_.setVirtualSites(ilists, iparams_, numAtoms, homenr, ptype, domainInfo_.useDomdec());
 }
 
-void VirtualSitesHandler::setVirtualSites(ArrayRef<const InteractionList> ilists, const t_mdatoms& mdatoms)
+void VirtualSitesHandler::setVirtualSites(ArrayRef<const InteractionList> ilists,
+                                          const int                       numAtoms,
+                                          const int                       homenr,
+                                          ArrayRef<const ParticleType>    ptype)
 {
-    impl_->setVirtualSites(ilists, mdatoms);
+    impl_->setVirtualSites(ilists, numAtoms, homenr, ptype);
 }
 
 } // namespace gmx

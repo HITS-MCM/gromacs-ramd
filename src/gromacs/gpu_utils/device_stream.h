@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_GPU_UTILS_DEVICE_STREAM_H
 #define GMX_GPU_UTILS_DEVICE_STREAM_H
@@ -48,6 +47,8 @@
 
 #include "config.h"
 
+#include <memory>
+
 #if GMX_GPU_CUDA
 #    include <cuda_runtime.h>
 
@@ -56,6 +57,7 @@
 #elif GMX_GPU_SYCL
 #    include "gromacs/gpu_utils/gmxsycl.h"
 #endif
+
 #include "gromacs/utility/classhelpers.h"
 
 struct DeviceInformation;
@@ -98,6 +100,7 @@ public:
     DeviceStream(const DeviceContext& deviceContext, DeviceStreamPriority priority, bool useTiming);
 
     //! Destructor
+    // NOLINTNEXTLINE(performance-trivially-destructible)
     ~DeviceStream();
 
     /*! \brief Check if the underlying stream is valid.
@@ -119,24 +122,24 @@ private:
 #elif GMX_GPU_SYCL
 
     /*! \brief
-     * Getter for the underlying \c cl::sycl:queue object.
+     * Getter for the underlying \c sycl:queue object.
      *
      * Returns a copy instead of const-reference, because it's impossible to submit to or wait
-     * on a \c const cl::sycl::queue. SYCL standard guarantees that operating on copy is
+     * on a \c const sycl::queue. SYCL standard guarantees that operating on copy is
      * equivalent to operating on the original queue.
      *
      * \throws std::bad_optional_access if the stream is not valid.
      *
-     * \returns A copy of the internal \c cl::sycl:queue.
+     * \returns A copy of the internal \c sycl:queue.
      */
-    cl::sycl::queue stream() const { return cl::sycl::queue(stream_); }
+    sycl::queue stream() const { return sycl::queue(stream_); }
     //! Getter. Can throw std::bad_optional_access if the stream is not valid.
-    cl::sycl::queue& stream() { return stream_; }
+    sycl::queue& stream() { return stream_; }
     //! Synchronize the stream. Non-const version of \c ::synchronize() for SYCL that does not do unnecessary copying.
     void synchronize();
 
 private:
-    cl::sycl::queue stream_;
+    sycl::queue stream_;
 #elif GMX_GPU_OPENCL || defined DOXYGEN
 
     //! Getter

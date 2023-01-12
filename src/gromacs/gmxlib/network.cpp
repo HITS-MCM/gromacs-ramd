@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -87,11 +83,12 @@ CommrecHandle init_commrec(MPI_Comm communicator)
 
     // For now, we want things to go horribly wrong if this is used too early...
     // TODO: Remove when communicators are removed from commrec (#2395)
-    cr->nnodes           = -1;
-    cr->nodeid           = -1;
-    cr->sim_nodeid       = -1;
-    cr->mpi_comm_mysim   = MPI_COMM_NULL;
-    cr->mpi_comm_mygroup = MPI_COMM_NULL;
+    cr->nnodes                    = -1;
+    cr->sizeOfMyGroupCommunicator = -1;
+    cr->nodeid                    = -1;
+    cr->sim_nodeid                = -1;
+    cr->mpi_comm_mysim            = MPI_COMM_NULL;
+    cr->mpi_comm_mygroup          = MPI_COMM_NULL;
 
     // TODO cr->duty should not be initialized here
     cr->duty = (DUTY_PP | DUTY_PME);
@@ -190,8 +187,10 @@ void gmx_setup_nodecomm(FILE gmx_unused* fplog, t_commrec* cr)
         nc->bUse = TRUE;
         if (fplog)
         {
-            fprintf(fplog, "Using two step summing over %d groups of on average %.1f ranks\n\n", ng,
-                    (real)n / (real)ng);
+            fprintf(fplog,
+                    "Using two step summing over %d groups of on average %.1f ranks\n\n",
+                    ng,
+                    real(n) / real(ng));
         }
         if (nc->rank_intra > 0)
         {
@@ -219,6 +218,10 @@ void gmx_setup_nodecomm(FILE gmx_unused* fplog, t_commrec* cr)
 
 void gmx_barrier(MPI_Comm gmx_unused communicator)
 {
+    if (communicator == MPI_COMM_NULL)
+    {
+        return;
+    }
 #if !GMX_MPI
     GMX_RELEASE_ASSERT(false, "Invalid call to gmx_barrier");
 #else
@@ -228,19 +231,21 @@ void gmx_barrier(MPI_Comm gmx_unused communicator)
 
 void gmx_bcast(int gmx_unused nbytes, void gmx_unused* b, MPI_Comm gmx_unused communicator)
 {
-#if !GMX_MPI
-    GMX_RELEASE_ASSERT(false, "Invalid call to gmx_bcast");
-#else
+    // Without MPI we have a single rank, so bcast is a no-op
+#if GMX_MPI
     MPI_Bcast(b, nbytes, MPI_BYTE, 0, communicator);
 #endif
 }
 
 void gmx_sumd(int gmx_unused nr, double gmx_unused r[], const t_commrec gmx_unused* cr)
 {
-#if !GMX_MPI
-    GMX_RELEASE_ASSERT(false, "Invalid call to gmx_sumd");
-#else
-#    if MPI_IN_PLACE_EXISTS
+    // Without MPI we have a single rank, so sum is a no-op
+#if GMX_MPI
+    if (cr->sizeOfMyGroupCommunicator == 1)
+    {
+        return;
+    }
+
     if (cr->nc.bUse)
     {
         if (cr->nc.rank_intra == 0)
@@ -262,43 +267,18 @@ void gmx_sumd(int gmx_unused nr, double gmx_unused r[], const t_commrec gmx_unus
     {
         MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_DOUBLE, MPI_SUM, cr->mpi_comm_mygroup);
     }
-#    else
-    int i;
-
-    if (nr > cr->mpb->dbuf_alloc)
-    {
-        cr->mpb->dbuf_alloc = nr;
-        srenew(cr->mpb->dbuf, cr->mpb->dbuf_alloc);
-    }
-    if (cr->nc.bUse)
-    {
-        /* Use two step summing */
-        MPI_Allreduce(r, cr->mpb->dbuf, nr, MPI_DOUBLE, MPI_SUM, cr->nc.comm_intra);
-        if (cr->nc.rank_intra == 0)
-        {
-            /* Sum with the buffers reversed */
-            MPI_Allreduce(cr->mpb->dbuf, r, nr, MPI_DOUBLE, MPI_SUM, cr->nc.comm_inter);
-        }
-        MPI_Bcast(r, nr, MPI_DOUBLE, 0, cr->nc.comm_intra);
-    }
-    else
-    {
-        MPI_Allreduce(r, cr->mpb->dbuf, nr, MPI_DOUBLE, MPI_SUM, cr->mpi_comm_mygroup);
-        for (i = 0; i < nr; i++)
-        {
-            r[i] = cr->mpb->dbuf[i];
-        }
-    }
-#    endif
 #endif
 }
 
 void gmx_sumf(int gmx_unused nr, float gmx_unused r[], const t_commrec gmx_unused* cr)
 {
-#if !GMX_MPI
-    GMX_RELEASE_ASSERT(false, "Invalid call to gmx_sumf");
-#else
-#    if MPI_IN_PLACE_EXISTS
+    // Without MPI we have a single rank, so sum is a no-op
+#if GMX_MPI
+    if (cr->sizeOfMyGroupCommunicator == 1)
+    {
+        return;
+    }
+
     if (cr->nc.bUse)
     {
         /* Use two step summing.  */
@@ -320,43 +300,18 @@ void gmx_sumf(int gmx_unused nr, float gmx_unused r[], const t_commrec gmx_unuse
     {
         MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_FLOAT, MPI_SUM, cr->mpi_comm_mygroup);
     }
-#    else
-    int i;
-
-    if (nr > cr->mpb->fbuf_alloc)
-    {
-        cr->mpb->fbuf_alloc = nr;
-        srenew(cr->mpb->fbuf, cr->mpb->fbuf_alloc);
-    }
-    if (cr->nc.bUse)
-    {
-        /* Use two step summing */
-        MPI_Allreduce(r, cr->mpb->fbuf, nr, MPI_FLOAT, MPI_SUM, cr->nc.comm_intra);
-        if (cr->nc.rank_intra == 0)
-        {
-            /* Sum with the buffers reversed */
-            MPI_Allreduce(cr->mpb->fbuf, r, nr, MPI_FLOAT, MPI_SUM, cr->nc.comm_inter);
-        }
-        MPI_Bcast(r, nr, MPI_FLOAT, 0, cr->nc.comm_intra);
-    }
-    else
-    {
-        MPI_Allreduce(r, cr->mpb->fbuf, nr, MPI_FLOAT, MPI_SUM, cr->mpi_comm_mygroup);
-        for (i = 0; i < nr; i++)
-        {
-            r[i] = cr->mpb->fbuf[i];
-        }
-    }
-#    endif
 #endif
 }
 
 void gmx_sumi(int gmx_unused nr, int gmx_unused r[], const t_commrec gmx_unused* cr)
 {
-#if !GMX_MPI
-    GMX_RELEASE_ASSERT(false, "Invalid call to gmx_sumi");
-#else
-#    if MPI_IN_PLACE_EXISTS
+    // Without MPI we have a single rank, so sum is a no-op
+#if GMX_MPI
+    if (cr->sizeOfMyGroupCommunicator == 1)
+    {
+        return;
+    }
+
     if (cr->nc.bUse)
     {
         /* Use two step summing */
@@ -378,92 +333,6 @@ void gmx_sumi(int gmx_unused nr, int gmx_unused r[], const t_commrec gmx_unused*
     {
         MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_INT, MPI_SUM, cr->mpi_comm_mygroup);
     }
-#    else
-    int i;
-
-    if (nr > cr->mpb->ibuf_alloc)
-    {
-        cr->mpb->ibuf_alloc = nr;
-        srenew(cr->mpb->ibuf, cr->mpb->ibuf_alloc);
-    }
-    if (cr->nc.bUse)
-    {
-        /* Use two step summing */
-        MPI_Allreduce(r, cr->mpb->ibuf, nr, MPI_INT, MPI_SUM, cr->nc.comm_intra);
-        if (cr->nc.rank_intra == 0)
-        {
-            /* Sum with the buffers reversed */
-            MPI_Allreduce(cr->mpb->ibuf, r, nr, MPI_INT, MPI_SUM, cr->nc.comm_inter);
-        }
-        MPI_Bcast(r, nr, MPI_INT, 0, cr->nc.comm_intra);
-    }
-    else
-    {
-        MPI_Allreduce(r, cr->mpb->ibuf, nr, MPI_INT, MPI_SUM, cr->mpi_comm_mygroup);
-        for (i = 0; i < nr; i++)
-        {
-            r[i] = cr->mpb->ibuf[i];
-        }
-    }
-#    endif
-#endif
-}
-
-void gmx_sumli(int gmx_unused nr, int64_t gmx_unused r[], const t_commrec gmx_unused* cr)
-{
-#if !GMX_MPI
-    GMX_RELEASE_ASSERT(false, "Invalid call to gmx_sumli");
-#else
-#    if MPI_IN_PLACE_EXISTS
-    if (cr->nc.bUse)
-    {
-        /* Use two step summing */
-        if (cr->nc.rank_intra == 0)
-        {
-            MPI_Reduce(MPI_IN_PLACE, r, nr, MPI_INT64_T, MPI_SUM, 0, cr->nc.comm_intra);
-            /* Sum with the buffers reversed */
-            MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_INT64_T, MPI_SUM, cr->nc.comm_inter);
-        }
-        else
-        {
-            /* This is here because of the silly MPI specification
-                that MPI_IN_PLACE should be put in sendbuf instead of recvbuf */
-            MPI_Reduce(r, nullptr, nr, MPI_INT64_T, MPI_SUM, 0, cr->nc.comm_intra);
-        }
-        MPI_Bcast(r, nr, MPI_INT64_T, 0, cr->nc.comm_intra);
-    }
-    else
-    {
-        MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_INT64_T, MPI_SUM, cr->mpi_comm_mygroup);
-    }
-#    else
-    int i;
-
-    if (nr > cr->mpb->libuf_alloc)
-    {
-        cr->mpb->libuf_alloc = nr;
-        srenew(cr->mpb->libuf, cr->mpb->libuf_alloc);
-    }
-    if (cr->nc.bUse)
-    {
-        /* Use two step summing */
-        MPI_Allreduce(r, cr->mpb->libuf, nr, MPI_INT64_T, MPI_SUM, cr->nc.comm_intra);
-        if (cr->nc.rank_intra == 0)
-        {
-            /* Sum with the buffers reversed */
-            MPI_Allreduce(cr->mpb->libuf, r, nr, MPI_INT64_T, MPI_SUM, cr->nc.comm_inter);
-        }
-        MPI_Bcast(r, nr, MPI_INT64_T, 0, cr->nc.comm_intra);
-    }
-    else
-    {
-        MPI_Allreduce(r, cr->mpb->libuf, nr, MPI_INT64_T, MPI_SUM, cr->mpi_comm_mygroup);
-        for (i = 0; i < nr; i++)
-        {
-            r[i] = cr->mpb->libuf[i];
-        }
-    }
-#    endif
 #endif
 }
 

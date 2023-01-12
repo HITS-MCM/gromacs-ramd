@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -590,8 +586,18 @@ void draw_mol(t_x11* x11, t_manager* man)
     }
 
     /* Draw the objects */
-    draw_objects(x11->disp, win->self, x11->gc, nvis, man->obj, man->ix, man->x, man->col,
-                 man->size, mw->bShowHydrogen, mw->bond_type, man->bPlus);
+    draw_objects(x11->disp,
+                 win->self,
+                 x11->gc,
+                 nvis,
+                 man->obj,
+                 man->ix,
+                 man->x,
+                 man->col,
+                 man->size,
+                 mw->bShowHydrogen,
+                 mw->bond_type,
+                 man->bPlus);
 
     /* Draw the labels */
     XSetForeground(x11->disp, x11->gc, WHITE);
@@ -599,8 +605,13 @@ void draw_mol(t_x11* x11, t_manager* man)
     {
         if (man->bLabel[i] && man->bVis[i])
         {
-            XDrawString(x11->disp, win->self, x11->gc, vec2[i][XX] + 2, vec2[i][YY] - 2,
-                        man->szLab[i], std::strlen(man->szLab[i]));
+            XDrawString(x11->disp,
+                        win->self,
+                        x11->gc,
+                        vec2[i][XX] + 2,
+                        vec2[i][YY] - 2,
+                        man->szLab[i],
+                        std::strlen(man->szLab[i]));
         }
     }
 

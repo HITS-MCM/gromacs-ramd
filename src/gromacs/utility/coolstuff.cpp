@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Functionality for printing cool strings
@@ -295,7 +294,7 @@ std::string getCoolQuote()
         { "With a Lead Filled Snowshoe", "F. Zappa" },
         { "Right Between the Eyes", "F. Zappa" },
         { "BioBeat is Not Available In Regular Shops", "P.J. Meulenhoff" },
-        { "Rub It Right Accross Your Eyes", "F. Zappa" },
+        { "Rub It Right Across Your Eyes", "F. Zappa" },
         { "Shake Yourself", "YES" },
         { "I Am a Wonderful Thing", "Kid Creole" },
         { "Way to Go Dude", "Beavis and Butthead" },
@@ -395,8 +394,7 @@ std::string getCoolQuote()
         { "Disturb the Peace of a John Q Citizen", "Urban Dance Squad" },
         { "Wicky-wicky Wa-wild West", "Will Smith" },
         { "This is Tense !", "Star Wars Episode I The Phantom Menace" },
-        { "Fly to the Court of England and Unfold",
-          "Macbeth, Act 3, Scene 6, William Shakespeare" },
+        { "Fly to the Court of England and Unfold", "Macbeth, Act 3, Scene 6, William Shakespeare" },
         { "Why, how now, Claudio ! Whence Comes this Restraint ?",
           "Lucio in Measure for measure, Act 1, Scene 4, William Shakespeare" },
         { "In the End Science Comes Down to Praying", "P. v.d. Berg" },
@@ -454,8 +452,7 @@ std::string getCoolQuote()
         { "Nobody Never Learnt No-Nothing from No History", "Gogol Bordello" },
         { "I'd be Safe and Warm if I was in L.A.", "The Mamas and the Papas" },
         { "It's Unacceptable That Chocolate Makes You Fat", "MI 3" },
-        { "My Brothers are Protons (Protons!), My Sisters are Neurons (Neurons)",
-          "Gogol Bordello" },
+        { "My Brothers are Protons (Protons!), My Sisters are Neurons (Neurons)", "Gogol Bordello" },
         { "Put Me Inside SSC, Let's Test Superstring Theory, Oh Yoi Yoi Accelerate the Protons",
           "Gogol Bordello" },
         { "Do You Have Sex Maniacs or Schizophrenics or Astrophysicists in Your Family?",
@@ -536,8 +533,7 @@ std::string getCoolQuote()
         { "The scientific method is an integral part of human intelligence, and when it has once "
           "been set at work it can only be dismissed by dismissing the intelligence itself",
           "George H. Mead" },
-        { "Der Ball ist rund, das Spiel dauert 90 minuten, alles andere ist Theorie",
-          "Lola rennt" },
+        { "Der Ball ist rund, das Spiel dauert 90 minuten, alles andere ist Theorie", "Lola rennt" },
         { "Life in the streets is not easy", "Marky Mark" },
         { "How will I know it's working right?", "MGMT" },
         { "There was no preconception on what to do", "Daft Punk" },
@@ -753,9 +749,6 @@ std::string getCoolQuote()
         { "UNIX is basically a simple operating system. It just takes a genius to understand its "
           "simplicity.",
           "Dennis Ritchie" },
-        { "There are two major products that come out of Berkeley: LSD and UNIX. We don't believe "
-          "this to be a coincidence.",
-          "Jeremy Anderson" },
         { "There are only two kinds of programming languages: those people always bitch about and "
           "those nobody uses.",
           "Bjarne Stroustrup" },
@@ -1231,7 +1224,7 @@ std::string getCoolQuote()
         { "What is a Unix or Linux sysadmin's favourite hangout place? Foo Bar.", "Anonymous" },
         { "If you have any trouble sounding condescending, find a UNIX user to show you how it's "
           "done.",
-          "Scott Adams, Dibert Cartoonist" },
+          "Scott Adams, Dilbert Cartoonist" },
         { "There is no place like ~", "Anonymous" },
         { "Thou shalt not kill -9", "Anonymous" },
         { "printf(\"%d is the year of the linux desktop\", year+1);", "Anonymous" },
@@ -1309,8 +1302,7 @@ std::string getCoolQuote()
         { "All sorts of things can happen when you're open to new ideas and playing around with "
           "things.",
           "Stephanie Kwolek, inventor of Kevlar" },
-        { "As always in life, people want a simple answer... and it's always wrong.",
-          "Marie Daly" },
+        { "As always in life, people want a simple answer... and it's always wrong.", "Marie Daly" },
         { "For a research worker the unforgotten moments of his life are those rare ones which "
           "come after years of plodding work, when the veil over natures secret seems suddenly to "
           "lift & when what was dark & chaotic appears in a clear & beautiful light & pattern.",
@@ -1380,8 +1372,7 @@ std::string getCoolQuote()
           "3-phosphoshikimate-carboxyvinyl transferase?' Shopkeeper: 'You mean Roundup?' "
           "Scientist: 'Yeah, that's it. I can never remember that dang name!'",
           "John Pickett" },
-        { "It is not clear that intelligence has any long-term survival value.",
-          "Stephen Hawking" },
+        { "It is not clear that intelligence has any long-term survival value.", "Stephen Hawking" },
         { "The greatest shortcoming of the human race is our inability to understand the "
           "exponential function.",
           "Albert Bartlett" },
@@ -1450,8 +1441,6 @@ std::string getCoolQuote()
           "married, it never occurred to him to verify this statement by examining his wives' "
           "mouths.",
           "Bertrand Russell" },
-        { "I had trouble with physics in college. When I signed up I thought it said psychics.",
-          "Greg Tamblyn" },
         { "I don't believe in astrology; I'm a Sagittarian and we're skeptical.",
           "Arthur C. Clarke" },
         { "I see they found out the universe is 80 million years older than we thought. It's also "
@@ -1584,7 +1573,65 @@ std::string getCoolQuote()
           "attempted.",
           "Anonymous" },
         { "If my PhD doesn't allow me to be right on the internet, what is it even good for?",
-          "Martin Vögele" }
+          "Martin Vögele" },
+        { "A little less conversation, a little more action, please.", "Elvis Presley" },
+        { "Friends don't let friends use Berendsen!", "John Chodera (on Twitter)" },
+        { "The plural of regex is regrets", "Steve McCarthy (on Twitter)" },
+        { "Culture eats strategy for breakfast", "Peter Drucker" },
+        { "Roses are read // Violets are blue // Unexpected '}' on line 32", "Anonymous" },
+        { "We cannot wait for Nature's good graces - to take them from her is our goal",
+          "Ivan Michurin" },
+        { "By three methods we may learn wisdom: First, by reflection, which is noblest; "
+          "Second, by imitation, which is easiest; "
+          "and third by experience, which is the bitterest.",
+          "Confucius" },
+        { "There are three types of people: Those who see, those who see when they are shown, "
+          "and those who do not see.",
+          "Leonardo da Vinci" },
+        { "Hey, it's me - Pandora. Welcome to my new unboxing video!", "Anonymous" },
+        { "It is an unfortunate fact that when you raise the question of the reliability of many "
+          "simulations you are often told about how much manpower went into it, how large & fast "
+          "the computer is, how important the problem is, and such things, which are completely "
+          "irrelevant to the question that was asked.",
+          "Richard Hamming" },
+        { "Sie haben also recht gehabt, Sie Spitzbube. [You were right after all, you rascal.]",
+          "Albert Einstein (letter to Wolfgang Pauli)" },
+        { "You should call it 'entropy'. No one knows what entropy really is, so in a debate you "
+          "will always have the advantage.",
+          "John von Neumann to Claude Shannon, "
+          "on why he should borrow the term for information theory" },
+        { "We must have perseverance and above all confidence in ourselves. We must believe that "
+          "we are gifted for something and that this thing must be attained.",
+          "Marie Curie" },
+        { "Courage is like - it's a habitus, a habit, a virtue: you get it by courageous acts. "
+          "It's like you learn to swim by swimming. You learn courage by couraging.",
+          "Marie Daly" },
+        { "We will always have STEM with us. Some things will drop out of the public eye and "
+          "will go away, but there will always be science, engineering, and technology. And there "
+          "will always, always be mathematics.",
+          "Katherine Johnson" },
+        { "If you want to change the future, start living as if you're already there.",
+          "Lynn Conway" },
+        { "What you do makes a difference, and you have to decide what kind of difference you want "
+          "to make.",
+          "Jane Goodall" },
+        { "I don't fear death because I don't fear anything I don't understand.", "Hedy Lamarr" },
+        { "You cannot hope to build a better world without improving the individuals.",
+          "Marie Curie" },
+        { "Forget this world and all its troubles and, if possible, it's multitudinous Charlatans "
+          "- everything, in short, but the Enchantress of Numbers",
+          "Ada Lovelace" },
+        { "We had the quaint notion at the time that software should be completely, absolutely "
+          "free of bugs. Unfortunately it's a notion that never really quite caught on.",
+          "Mary Allen Wilkes" },
+        { "Like what you do, and then you will do your best.", "Katherine Johnson" },
+        { "All creative people want to do the unexpected", "Hedy Lamarr" },
+        { "Unlike teachers or doctors, our efforts improve the lives of people we'll never meet.",
+          "Katie Busch-Sorensen" },
+        { "Numbers have life; they’re not just symbols on paper.", "Shakuntala Devi" },
+        { "Not everyone is capable of madness; and of those lucky enough to be capable, not many "
+          "have the courage for it.",
+          "August Strindberg" }
     };
 
     if (beCool())

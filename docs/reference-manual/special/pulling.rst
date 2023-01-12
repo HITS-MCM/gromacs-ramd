@@ -19,14 +19,16 @@ canonical ensemble of the initial state A and :math:`\beta=1/k_B T`.
 
 .. _pull:
 
-The pull code
--------------
+Collective variables: the pull code
+-----------------------------------
 
-:ref:`pull` The pull code applies forces or constraints between the
-centers of mass of one or more pairs of groups of atoms. Each pull
-reaction coordinate is called a “coordinate” and it operates on usually
-two, but sometimes more, pull groups. A pull group can be part of one or
-more pull coordinates. Furthermore, a coordinate can also operate on a
+The pull code applies forces or constraints on
+collective variables (sometimes referred to as reaction coordinates). The basic collective pull coordinates are
+a distance, angle and dihedral angle between centers of mass of groups
+atoms, the so-called "pull groups". More complex collective variables
+can be defined using :ref:`transformationcoord`.
+A pull group can be part of one or more pull coordinates.
+Furthermore, a coordinate can also operate on a
 single group and an absolute reference position in space. The distance
 between a pair of groups can be determined in 1, 2 or 3 dimensions, or
 can be along a user-defined vector. The reference distance can be
@@ -68,6 +70,11 @@ linearly changing with time.
    value. This is useful for restraining e.g. the distance between two
    molecules to a certain region.
 
+#. **External potential** This takes the potential acting on the reaction
+   coordinate from another module. Current only the Accelerated Weight
+   Histogram method (see sec. :doc:`awh`) is supported, which provides
+   adaptive biasing of pull coordinates.
+
 In addition, there are different types of reaction coordinates,
 so-called pull geometries. These are set with the :ref:`mdp`
 option ``pull-coord?-geometry``.
@@ -108,16 +115,26 @@ pull vector going through the pull group. This only works for distances
 defined in one dimension, and the cylinder is oriented with its long
 axis along this one dimension. To avoid jumps in the pull force,
 contributions of atoms are weighted as a function of distance (in
-addition to the mass weighting):
+addition to the mass weighting), for atom :math:`i`:
 
 .. math:: \begin{aligned}
-          w(r < r_\mathrm{cyl}) & = &
-          1-2 \left(\frac{r}{r_\mathrm{cyl}}\right)^2 + \left(\frac{r}{r_\mathrm{cyl}}\right)^4 \\
-          w(r \geq r_\mathrm{cyl}) & = & 0\end{aligned}
+          w_i(r_i < r_\mathrm{cyl}) & = &
+          1-2 \left(\frac{r_i}{r_\mathrm{cyl}}\right)^2 + \left(\frac{r_i}{r_\mathrm{cyl}}\right)^4 \\
+          w_i(r_i \geq r_\mathrm{cyl}) & = & 0\end{aligned}
           :label: eqnpulldistmassweight
 
 Note that the radial dependence on the weight causes a radial force on
-both cylinder group and the other pull group. This is an undesirable,
+both cylinder group and the other pull group:
+
+.. math:: \begin{aligned}
+          F^\mathrm{radial}_i(r_i < r_\mathrm{cyl}) & = &
+          F^\mathrm{pull} a_i \frac{1}{\sum_i w_i}\frac{4}{r_\mathrm{cyl}^4} r_i (r_i^2 - r_\mathrm{cyl}^2) \\
+          F^\mathrm{radial}_i(r_i \geq r_\mathrm{cyl}) & = & 0\end{aligned}
+          :label: eqnpulldistmassweightradialforce
+
+where :math:`F^\mathrm{pull}` is the pull force working between the groups
+and :math:`a_i` is the axial distance of atom :math:`i` to the center of
+mass of the cylinder group. This is an undesirable,
 but unavoidable effect. To minimize this effect, the cylinder radius
 should be chosen sufficiently large. The effective mass is 0.47 times
 that of a cylinder with uniform weights and equal to the mass of uniform
@@ -237,6 +254,88 @@ distance vector from group 8 to 1, the second vector is the COM distance
 vector from group 1 to 5, and the third vector is the COM distance
 vector from group 5 to 9. The dihedral angle takes values in the
 interval (-180, 180] deg and has periodic boundaries.
+
+.. _transformationcoord:
+
+The transformation pull coordinate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The transformation pull coordinate is a "meta" pull coordinate that can
+be used to define more complex collective variables.
+It can transform one or more other pull coordinates using an arbitrary
+mathematical expression. This is a powerful tool for generating
+complex collective variables.
+A simple example is a contact coordinate using a non-linear transformation
+of a distance. More complex examples are a (non-)linear combination of
+two or more pull coordinates or a sum of contacts.
+
+Typically, the force constant for pull coordinate(s) the transformation
+coordinates acts on should be zero. This avoids
+unintended addition of direct forces on the pull coordinate(s)
+to the indirect forces from the transition pull coordinate. This is not
+a requirement, but having both a direct and indirect, from the tranformation
+coordinate, force working on them is almost never desirable.
+If the transformation is a linear combination of multiple distances,
+it is useful to normalize the coefficients
+such that the transformation coordinate also has units of nanometer.
+That makes both the choice of the force constant and the interpretation easier.
+
+Here are two examples of pull sections of the :ref:`mdp` input that use
+a tranformation coordinate setups. The first is a contact reaction coordinate
+that is 1 at contact and 0 at larger distances:
+
+::
+
+   pull                     = yes
+   pull-ngroups             = 2
+   pull-ncoords             = 2
+
+   pull-group1-name         = groupA
+   pull-group2-name         = groupB
+
+   pull-coord1-type         = umbrella
+   pull-coord1-geometry     = distance
+   pull-coord1-groups       = 1 2
+   pull-coord1-dim          = Y Y Y
+   pull-coord1-k            = 0      ; avoid forces working directly on this distance
+
+   pull-coord2-type         = umbrella
+   pull-coord2-geometry     = transformation
+   pull-coord2-expression   = 1/(1 + exp(50*(x1 - 1.8*0.3)))  ; x1 refers to the value of coord1
+   pull-coord2-init         = 1      ; this restrains the distance to having the contact
+   pull-coord2-k            = 100
+
+The second example is an average of two distances:
+
+::
+
+   pull                     = yes
+   pull-ngroups             = 4
+   pull-ncoords             = 3
+
+   pull-group1-name         = groupA
+   pull-group2-name         = groupB
+   pull-group3-name         = groupC
+   pull-group4-name         = groupD
+
+   pull-coord1-type         = umbrella
+   pull-coord1-geometry     = distance
+   pull-coord1-groups       = 1 2
+   pull-coord1-dim          = Y Y Y
+   pull-coord1-k            = 0      ; avoid forces working directly on this distance
+
+   pull-coord2-type         = umbrella
+   pull-coord2-geometry     = distance
+   pull-coord2-groups       = 3 4
+   pull-coord2-dim          = Y Y Y
+   pull-coord2-k            = 0      ; avoid forces working directly on this distance
+
+   pull-coord3-type         = umbrella
+   pull-coord3-geometry     = transformation
+   pull-coord3-expression   = 0.5*(x1 + x2)  ; x1 and x2 refer to the value of coord1 and coord2
+   pull-coord3-init         = 0.8    ; restrains the average distance to 0.8 nm
+   pull-coord3-k            = 1000
+
 
 Limitations
 ^^^^^^^^^^^

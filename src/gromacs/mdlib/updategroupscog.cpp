@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* \internal \file
  *
@@ -53,28 +52,27 @@ namespace gmx
 {
 
 UpdateGroupsCog::UpdateGroupsCog(const gmx_mtop_t&                           mtop,
-                                 gmx::ArrayRef<const gmx::RangePartitioning> updateGroupsPerMoleculetype,
+                                 gmx::ArrayRef<const gmx::RangePartitioning> updateGroupingsPerMoleculeType,
                                  real                                        temperature,
                                  int                                         numHomeAtoms) :
-    globalToLocalMap_(numHomeAtoms),
-    mtop_(mtop)
+    globalToLocalMap_(numHomeAtoms), mtop_(mtop)
 {
     int firstUpdateGroupInMolecule = 0;
     for (const auto& molblock : mtop.molblock)
     {
-        const auto& updateGroups = updateGroupsPerMoleculetype[molblock.type];
-        indicesPerMoleculeblock_.push_back({ firstUpdateGroupInMolecule, updateGroups.numBlocks(), {} });
+        const auto& updateGrouping = updateGroupingsPerMoleculeType[molblock.type];
+        indicesPerMoleculeblock_.push_back({ firstUpdateGroupInMolecule, updateGrouping.numBlocks(), {} });
         auto& groupIndex = indicesPerMoleculeblock_.back().groupIndex_;
 
-        for (int block = 0; block < updateGroups.numBlocks(); block++)
+        for (int block = 0; block < updateGrouping.numBlocks(); block++)
         {
-            groupIndex.insert(groupIndex.end(), updateGroups.block(block).size(), block);
+            groupIndex.insert(groupIndex.end(), updateGrouping.block(block).size(), block);
         }
 
-        firstUpdateGroupInMolecule += molblock.nmol * updateGroups.numBlocks();
+        firstUpdateGroupInMolecule += molblock.nmol * updateGrouping.numBlocks();
     }
 
-    maxUpdateGroupRadius_ = computeMaxUpdateGroupRadius(mtop, updateGroupsPerMoleculetype, temperature);
+    maxUpdateGroupRadius_ = computeMaxUpdateGroupRadius(mtop, updateGroupingsPerMoleculeType, temperature);
 }
 
 void UpdateGroupsCog::addCogs(gmx::ArrayRef<const int>       globalAtomIndices,
@@ -95,7 +93,7 @@ void UpdateGroupsCog::addCogs(gmx::ArrayRef<const int>       globalAtomIndices,
         const int globalAtom = globalAtomIndices[localAtom];
         int       moleculeIndex;
         int       atomIndexInMolecule;
-        mtopGetMolblockIndex(&mtop_, globalAtom, &moleculeBlock, &moleculeIndex, &atomIndexInMolecule);
+        mtopGetMolblockIndex(mtop_, globalAtom, &moleculeBlock, &moleculeIndex, &atomIndexInMolecule);
         const auto& indicesForBlock        = indicesPerMoleculeblock_[moleculeBlock];
         int         globalUpdateGroupIndex = indicesForBlock.groupStart_
                                      + moleculeIndex * indicesForBlock.numGroupsPerMolecule_

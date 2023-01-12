@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -114,7 +113,8 @@ void dumpKeyValueTree(TextWriter* writer, const KeyValueTreeObject& tree)
             writer->wrapperSettings().setIndent(oldIndent);
         }
         else if (value.isArray()
-                 && std::all_of(value.asArray().values().begin(), value.asArray().values().end(),
+                 && std::all_of(value.asArray().values().begin(),
+                                value.asArray().values().end(),
                                 [](const auto& elem) { return elem.isObject(); }))
         {
             // Array containing only objects
@@ -168,12 +168,9 @@ class CompareHelper
 {
 public:
     CompareHelper(TextWriter* writer, real ftol, real abstol) :
-        writer_(writer),
-        ftol_(ftol),
-        abstol_(abstol)
+        writer_(writer), ftol_(ftol), abstol_(abstol)
     {
     }
-
     void compareObjects(const KeyValueTreeObject& obj1, const KeyValueTreeObject& obj2)
     {
         for (const auto& prop1 : obj1.properties())
@@ -216,7 +213,8 @@ private:
             else if (!areSimpleValuesOfSameTypeEqual(value1, value2))
             {
                 writer_->writeString(currentPath_.toString());
-                writer_->writeLine(formatString(" (%s - %s)", simpleValueToString(value1).c_str(),
+                writer_->writeLine(formatString(" (%s - %s)",
+                                                simpleValueToString(value1).c_str(),
                                                 simpleValueToString(value2).c_str()));
             }
         }
@@ -238,7 +236,7 @@ private:
         }
     }
 
-    bool areSimpleValuesOfSameTypeEqual(const KeyValueTreeValue& value1, const KeyValueTreeValue& value2)
+    bool areSimpleValuesOfSameTypeEqual(const KeyValueTreeValue& value1, const KeyValueTreeValue& value2) const
     {
         GMX_ASSERT(value1.type() == value2.type(), "Caller should ensure that types are equal");
         if (value1.isType<bool>())
@@ -281,13 +279,15 @@ private:
 
     void handleMissingKeyInFirstObject(const KeyValueTreeValue& value)
     {
-        const std::string message = formatString("%s (missing - %s)", currentPath_.toString().c_str(),
+        const std::string message = formatString("%s (missing - %s)",
+                                                 currentPath_.toString().c_str(),
                                                  formatValueForMissingMessage(value).c_str());
         writer_->writeLine(message);
     }
     void handleMissingKeyInSecondObject(const KeyValueTreeValue& value)
     {
-        const std::string message = formatString("%s (%s - missing)", currentPath_.toString().c_str(),
+        const std::string message = formatString("%s (%s - missing)",
+                                                 currentPath_.toString().c_str(),
                                                  formatValueForMissingMessage(value).c_str());
         writer_->writeLine(message);
     }

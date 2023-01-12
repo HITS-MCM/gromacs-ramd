@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -149,7 +148,7 @@ struct HostAllocatorTest : HostMemoryTest<T>
 {
     using VectorType = PaddedHostVector<T>; //!< PaddedHostVector of type tested
 };
-TYPED_TEST_CASE(HostAllocatorTest, TestTypes);
+TYPED_TEST_SUITE(HostAllocatorTest, TestTypes);
 
 //! Typed test fixture (no mem/gpu initializtion - much faster)
 template<typename T>
@@ -157,7 +156,7 @@ struct HostAllocatorTestNoMem : ::testing::Test
 {
     using VectorType = PaddedHostVector<T>; //!< PaddedHostVector of type tested
 };
-TYPED_TEST_CASE(HostAllocatorTestNoMem, TestTypes);
+TYPED_TEST_SUITE(HostAllocatorTestNoMem, TestTypes);
 
 //! Typed test fixture for tests requiring a copyable type
 template<typename T>
@@ -167,12 +166,12 @@ struct HostAllocatorTestNoMemCopyable : HostAllocatorTestNoMem<T>
 //! The types used in testing minus move only types
 using TestTypesCopyable = ::testing::Types<int32_t, real, RVec>;
 
-TYPED_TEST_CASE(HostAllocatorTestNoMemCopyable, TestTypesCopyable);
+TYPED_TEST_SUITE(HostAllocatorTestNoMemCopyable, TestTypesCopyable);
 
 //! Typed test fixture for tests requiring a copyable type
 template<typename T>
 using HostAllocatorTestCopyable = HostAllocatorTest<T>;
-TYPED_TEST_CASE(HostAllocatorTestCopyable, TestTypesCopyable);
+TYPED_TEST_SUITE(HostAllocatorTestCopyable, TestTypesCopyable);
 
 // Note that in GoogleTest typed tests, the use of TestFixture:: and
 // this-> is sometimes required to get access to things in the fixture
@@ -331,7 +330,7 @@ TYPED_TEST(HostAllocatorTestCopyable, ManualPinningOperationsWorkWithCuda)
         EXPECT_TRUE(input.empty());
         resizeAndFillInput(&input, 3, 1);
         // realloc and copy).
-        auto oldInputData = input.data();
+        auto* oldInputData = input.data();
         changePinningPolicy(&input, PinningPolicy::CannotBePinned);
         EXPECT_FALSE(isPinned(input));
         // These cannot be equal as both had to be allocated at the same
@@ -370,7 +369,7 @@ TEST(HostAllocatorUntypedTest, Comparison)
 using AllocatorTypesToTest =
         ::testing::Types<HostAllocator<real>, HostAllocator<int32_t>, HostAllocator<RVec>, HostAllocator<MoveOnly>>;
 
-TYPED_TEST_CASE(AllocatorTest, AllocatorTypesToTest);
+TYPED_TEST_SUITE(AllocatorTest, AllocatorTypesToTest);
 
 } // namespace test
 } // namespace gmx

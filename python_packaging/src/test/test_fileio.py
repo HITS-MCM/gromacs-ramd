@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """Test gmx.fileio submodule"""
 import os
@@ -70,37 +69,6 @@ def test_read_tpr(spc_water_box):
     assert 'foo' not in parameters
     assert parameters['nsteps'] == 2
     assert tpr_source.output.parameters['nsteps'].result() == 2
-
-
-@pytest.mark.usefixtures('cleandir')
-def test_core_tprcopy_alt(spc_water_box):
-    """Test gmx.core.copy_tprfile() for update of end_time.
-
-    Set a new end time that is 5000 steps later than the original. Read dt
-    from file to avoid floating point round-off errors.
-
-    Transitively test gmx.fileio.read_tpr()
-    """
-    tpr_filename = spc_water_box
-    additional_steps = 5000
-    sim_input = read_tpr(tpr_filename)
-    params = sim_input.parameters.extract()
-    dt = params['dt']
-    nsteps = params['nsteps']
-    init_step = params['init-step']
-    initial_endtime = (init_step + nsteps) * dt
-    new_endtime = initial_endtime + additional_steps*dt
-    _, temp_filename = tempfile.mkstemp(suffix='.tpr')
-    gmxapi._gmxapi.rewrite_tprfile(source=tpr_filename, destination=temp_filename, end_time=new_endtime)
-    tprfile = TprFile(temp_filename, 'r')
-    with tprfile as fh:
-        params = read_tpr(fh).parameters.extract()
-        dt = params['dt']
-        nsteps = params['nsteps']
-        init_step = params['init-step']
-        assert (init_step + nsteps) * dt == new_endtime
-
-    os.unlink(temp_filename)
 
 
 @pytest.mark.usefixtures('cleandir')

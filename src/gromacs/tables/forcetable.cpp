@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -41,24 +37,18 @@
 
 #include <cmath>
 
-#include <algorithm>
-
 #include "gromacs/fileio/xvgr.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/multidimarray.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
-#include "gromacs/math/vec.h"
 #include "gromacs/mdspan/extensions.h"
 #include "gromacs/mdtypes/fcdata.h"
 #include "gromacs/mdtypes/interaction_const.h"
-#include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/mdtypes/nblist.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
-#include "gromacs/utility/smalloc.h"
 
 /* All the possible (implemented) table functions */
 enum
@@ -104,12 +94,17 @@ static const t_tab_props tprops[etabNR] = {
     { "COULSwitch", TRUE },   { "EXPMIN", FALSE },    { "USER", FALSE },
 };
 
-typedef struct
+struct t_tabledata
 {
-    int     nx, nx0;
-    double  tabscale;
-    double *x, *v, *f;
-} t_tabledata;
+    t_tabledata() = default;
+    t_tabledata(int n, int firstTableNum, double scale, bool bAlloc);
+    int                 nx;
+    int                 nx0;
+    double              tabscale;
+    std::vector<double> x;
+    std::vector<double> v;
+    std::vector<double> f;
+};
 
 double v_q_ewald_lr(double beta, double r)
 {
@@ -154,7 +149,7 @@ EwaldCorrectionTables generateEwaldCorrectionTables(const int    numPoints,
     double   x_r0;
 
     /* This function is called using either v_ewald_lr or v_lj_ewald_lr as a function argument
-     * depending on wether we should create electrostatic or Lennard-Jones Ewald tables.
+     * depending on whether we should create electrostatic or Lennard-Jones Ewald tables.
      */
 
     if (numPoints < 2)
@@ -335,8 +330,7 @@ real ewald_spline3_table_scale(const interaction_const_t& ic,
 {
     GMX_RELEASE_ASSERT(!generateCoulombTables || EEL_PME_EWALD(ic.eeltype),
                        "Can only use tables with Ewald");
-    GMX_RELEASE_ASSERT(!generateVdwTables || EVDW_PME(ic.vdwtype),
-                       "Can only use tables with Ewald");
+    GMX_RELEASE_ASSERT(!generateVdwTables || EVDW_PME(ic.vdwtype), "Can only use tables with Ewald");
 
     real sc = 0;
 
@@ -386,14 +380,14 @@ real ewald_spline3_table_scale(const interaction_const_t& ic,
     return sc;
 }
 
-static void copy2table(int          n,
-                       int          offset,
-                       int          stride,
-                       const double x[],
-                       const double Vtab[],
-                       const double Ftab[],
-                       real         scalefactor,
-                       real         dest[])
+static void copy2table(int                         n,
+                       int                         offset,
+                       int                         stride,
+                       gmx::ArrayRef<const double> x,
+                       gmx::ArrayRef<const double> Vtab,
+                       gmx::ArrayRef<const double> Ftab,
+                       real                        scalefactor,
+                       gmx::ArrayRef<real>         dest)
 {
     /* Use double prec. for the intermediary variables
      * and temporary x/vtab/vtab2 data to avoid unnecessary
@@ -429,16 +423,14 @@ static void copy2table(int          n,
     }
 }
 
-static void init_table(int n, int nx0, double tabscale, t_tabledata* td, gmx_bool bAlloc)
+t_tabledata::t_tabledata(int n, int firstTableNum, double scale, bool bAlloc) :
+    nx(n), nx0(firstTableNum), tabscale(scale)
 {
-    td->nx       = n;
-    td->nx0      = nx0;
-    td->tabscale = tabscale;
     if (bAlloc)
     {
-        snew(td->x, td->nx);
-        snew(td->v, td->nx);
-        snew(td->f, td->nx);
+        x.resize(nx);
+        v.resize(nx);
+        f.resize(nx);
     }
 }
 
@@ -446,7 +438,7 @@ static void spline_forces(int nx, double h, const double v[], gmx_bool bS3, gmx_
 {
     int    start, end, i;
     double v3, b_s, b_e, b;
-    double beta, *gamma;
+    double beta;
 
     /* Formulas can be found in:
      * H.J.C. Berendsen, Simulating the Physical World, Cambridge 2007
@@ -512,7 +504,7 @@ static void spline_forces(int nx, double h, const double v[], gmx_bool bS3, gmx_
         end = nx - 1;
     }
 
-    snew(gamma, nx);
+    std::vector<double> gamma(nx);
     beta = (bS3 ? 1 : 4);
 
     /* For V'' fitting */
@@ -534,7 +526,6 @@ static void spline_forces(int nx, double h, const double v[], gmx_bool bS3, gmx_
     {
         f[i] -= gamma[i + 1] * f[i + 1];
     }
-    sfree(gamma);
 
     /* Correct for the minus sign and the spacing */
     for (i = start; i < end; i++)
@@ -574,13 +565,17 @@ static void set_forces(FILE* fp, int angle, int nx, double h, double v[], double
 
     if (fp)
     {
-        fprintf(fp, "Generating forces for table %d, boundary conditions: V''' at %g, %s at %g\n",
-                table + 1, start * h, end == nx ? "V'''" : "V'=0", (end - 1) * h);
+        fprintf(fp,
+                "Generating forces for table %d, boundary conditions: V''' at %g, %s at %g\n",
+                table + 1,
+                start * h,
+                end == nx ? "V'''" : "V'=0",
+                (end - 1) * h);
     }
     spline_forces(end - start, h, v + start, TRUE, end == nx, f + start);
 }
 
-static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_tabledata td[])
+static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int ntab, int angle)
 {
     char     buf[STRLEN];
     double   start, end, dx0, dx1, ssd, vm, vp, f, numf;
@@ -594,8 +589,7 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
     int                                                            numColumns = xvgData.extent(0);
     if (numColumns != nny)
     {
-        gmx_fatal(FARGS, "Trying to read file %s, but nr columns = %d, should be %d", libfn.c_str(),
-                  numColumns, nny);
+        gmx_fatal(FARGS, "Trying to read file %s, but nr columns = %d, should be %d", libfn.c_str(), numColumns, nny);
     }
     int numRows = xvgData.extent(1);
 
@@ -604,8 +598,11 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
     {
         if (yy[0][0] != 0.0)
         {
-            gmx_fatal(FARGS, "The first distance in file %s is %f nm instead of %f nm",
-                      libfn.c_str(), yy[0][0], 0.0);
+            gmx_fatal(FARGS,
+                      "The first distance in file %s is %f nm instead of %f nm",
+                      libfn.c_str(),
+                      yy[0][0],
+                      0.0);
         }
     }
     else
@@ -621,8 +618,13 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
         end = 180.0;
         if (yy[0][0] != start || yy[0][numRows - 1] != end)
         {
-            gmx_fatal(FARGS, "The angles in file %s should go from %f to %f instead of %f to %f\n",
-                      libfn.c_str(), start, end, yy[0][0], yy[0][numRows - 1]);
+            gmx_fatal(FARGS,
+                      "The angles in file %s should go from %f to %f instead of %f to %f\n",
+                      libfn.c_str(),
+                      start,
+                      end,
+                      yy[0][0],
+                      yy[0][numRows - 1]);
         }
     }
 
@@ -653,7 +655,10 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
                 {
                     gmx_fatal(FARGS,
                               "In table file '%s' the x values are not equally spaced: %f %f %f",
-                              filename, yy[0][i - 2], yy[0][i - 1], yy[0][i]);
+                              filename,
+                              yy[0][i - 2],
+                              yy[0][i - 1],
+                              yy[0][i]);
                 }
             }
             if (yy[1 + k * 2][i] != 0)
@@ -666,8 +671,7 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
                 }
                 if (yy[1 + k * 2][i] > 0.01 * GMX_REAL_MAX || yy[1 + k * 2][i] < -0.01 * GMX_REAL_MAX)
                 {
-                    gmx_fatal(FARGS, "Out of range potential value %g in file '%s'",
-                              yy[1 + k * 2][i], filename);
+                    gmx_fatal(FARGS, "Out of range potential value %g in file '%s'", yy[1 + k * 2][i], filename);
                 }
             }
             if (yy[1 + k * 2 + 1][i] != 0)
@@ -680,16 +684,14 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
                 }
                 if (yy[1 + k * 2 + 1][i] > 0.01 * GMX_REAL_MAX || yy[1 + k * 2 + 1][i] < -0.01 * GMX_REAL_MAX)
                 {
-                    gmx_fatal(FARGS, "Out of range force value %g in file '%s'",
-                              yy[1 + k * 2 + 1][i], filename);
+                    gmx_fatal(FARGS, "Out of range force value %g in file '%s'", yy[1 + k * 2 + 1][i], filename);
                 }
             }
         }
 
         if (!bZeroV && bZeroF)
         {
-            set_forces(fp, angle, numRows, 1 / tabscale, yy[1 + k * 2].data(),
-                       yy[1 + k * 2 + 1].data(), k);
+            set_forces(fp, angle, numRows, 1 / tabscale, yy[1 + k * 2].data(), yy[1 + k * 2 + 1].data(), k);
         }
         else
         {
@@ -721,7 +723,10 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
                         "For the %d non-zero entries for table %d in %s the forces deviate on "
                         "average %" PRId64
                         "%% from minus the numerical derivative of the potential\n",
-                        ns, k, libfn.c_str(), gmx::roundToInt64(100 * ssd));
+                        ns,
+                        k,
+                        libfn.c_str(),
+                        gmx::roundToInt64(100 * ssd));
                 if (debug)
                 {
                     fprintf(debug, "%s", buf);
@@ -742,9 +747,10 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
         fprintf(fp, "\nNOTE: All elements in table %s are zero\n\n", libfn.c_str());
     }
 
+    std::vector<t_tabledata> td;
     for (k = 0; (k < ntab); k++)
     {
-        init_table(numRows, nx0, tabscale, &(td[k]), TRUE);
+        td.emplace_back(numRows, nx0, tabscale, true);
         for (i = 0; (i < numRows); i++)
         {
             td[k].x[i] = yy[0][i];
@@ -752,18 +758,7 @@ static void read_tables(FILE* fp, const char* filename, int ntab, int angle, t_t
             td[k].f[i] = yy[2 * k + 2][i];
         }
     }
-}
-
-static void done_tabledata(t_tabledata* td)
-{
-    if (!td)
-    {
-        return;
-    }
-
-    sfree(td->x);
-    sfree(td->v);
-    sfree(td->f);
+    return td;
 }
 
 static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, gmx_bool b14only)
@@ -801,15 +796,18 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
     }
     else
     {
-        bPotentialSwitch = ((tp == etabLJ6Switch) || (tp == etabLJ12Switch) || (tp == etabCOULSwitch)
-                            || (tp == etabEwaldSwitch) || (tp == etabEwaldUserSwitch)
-                            || (tprops[tp].bCoulomb && (ic->coulomb_modifier == eintmodPOTSWITCH))
-                            || (!tprops[tp].bCoulomb && (ic->vdw_modifier == eintmodPOTSWITCH)));
-        bForceSwitch     = ((tp == etabLJ6Shift) || (tp == etabLJ12Shift) || (tp == etabShift)
-                        || (tprops[tp].bCoulomb && (ic->coulomb_modifier == eintmodFORCESWITCH))
-                        || (!tprops[tp].bCoulomb && (ic->vdw_modifier == eintmodFORCESWITCH)));
-        bPotentialShift  = ((tprops[tp].bCoulomb && (ic->coulomb_modifier == eintmodPOTSHIFT))
-                           || (!tprops[tp].bCoulomb && (ic->vdw_modifier == eintmodPOTSHIFT)));
+        bPotentialSwitch =
+                ((tp == etabLJ6Switch) || (tp == etabLJ12Switch) || (tp == etabCOULSwitch)
+                 || (tp == etabEwaldSwitch) || (tp == etabEwaldUserSwitch)
+                 || (tprops[tp].bCoulomb && (ic->coulomb_modifier == InteractionModifiers::PotSwitch))
+                 || (!tprops[tp].bCoulomb && (ic->vdw_modifier == InteractionModifiers::PotSwitch)));
+        bForceSwitch =
+                ((tp == etabLJ6Shift) || (tp == etabLJ12Shift) || (tp == etabShift)
+                 || (tprops[tp].bCoulomb && (ic->coulomb_modifier == InteractionModifiers::ForceSwitch))
+                 || (!tprops[tp].bCoulomb && (ic->vdw_modifier == InteractionModifiers::ForceSwitch)));
+        bPotentialShift =
+                ((tprops[tp].bCoulomb && (ic->coulomb_modifier == InteractionModifiers::PotShift))
+                 || (!tprops[tp].bCoulomb && (ic->vdw_modifier == InteractionModifiers::PotShift)));
     }
 
     reppow = ic->reppow;
@@ -910,7 +908,9 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 gmx_fatal(FARGS,
                           "Cannot apply new potential-shift modifier to interaction type '%s' yet. "
                           "(%s,%d)",
-                          tprops[tp].name, __FILE__, __LINE__);
+                          tprops[tp].name,
+                          __FILE__,
+                          __LINE__);
         }
     }
 
@@ -1027,8 +1027,8 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 break;
             case etabRF:
             case etabRF_ZERO:
-                Vtab = 1.0 / r + ic->k_rf * r2 - ic->c_rf;
-                Ftab = 1.0 / r2 - 2 * ic->k_rf * r;
+                Vtab = 1.0 / r + ic->reactionFieldCoefficient * r2 - ic->reactionFieldShift;
+                Ftab = 1.0 / r2 - 2 * ic->reactionFieldCoefficient * r;
                 if (tp == etabRF_ZERO && r >= rc)
                 {
                     Vtab = 0;
@@ -1116,21 +1116,23 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
 
 static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool b14only)
 {
-    int eltype, vdwtype;
-
     /* Set the different table indices.
      * Coulomb first.
      */
 
+    CoulombInteractionType eltype;
+    VanDerWaalsType        vdwtype;
 
     if (b14only)
     {
         switch (ic->eeltype)
         {
-            case eelUSER:
-            case eelPMEUSER:
-            case eelPMEUSERSWITCH: eltype = eelUSER; break;
-            default: eltype = eelCUT;
+            case CoulombInteractionType::User:
+            case CoulombInteractionType::PmeUser:
+            case CoulombInteractionType::PmeUserSwitch:
+                eltype = CoulombInteractionType::User;
+                break;
+            default: eltype = CoulombInteractionType::Cut;
         }
     }
     else
@@ -1140,9 +1142,9 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
 
     switch (eltype)
     {
-        case eelCUT: tabsel[etiCOUL] = etabCOUL; break;
-        case eelPOISSON: tabsel[etiCOUL] = etabShift; break;
-        case eelSHIFT:
+        case CoulombInteractionType::Cut: tabsel[etiCOUL] = etabCOUL; break;
+        case CoulombInteractionType::Poisson: tabsel[etiCOUL] = etabShift; break;
+        case CoulombInteractionType::Shift:
             if (ic->rcoulomb > ic->rcoulomb_switch)
             {
                 tabsel[etiCOUL] = etabShift;
@@ -1152,17 +1154,17 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
                 tabsel[etiCOUL] = etabCOUL;
             }
             break;
-        case eelEWALD:
-        case eelPME:
-        case eelP3M_AD: tabsel[etiCOUL] = etabEwald; break;
-        case eelPMESWITCH: tabsel[etiCOUL] = etabEwaldSwitch; break;
-        case eelPMEUSER: tabsel[etiCOUL] = etabEwaldUser; break;
-        case eelPMEUSERSWITCH: tabsel[etiCOUL] = etabEwaldUserSwitch; break;
-        case eelRF:
-        case eelRF_ZERO: tabsel[etiCOUL] = etabRF_ZERO; break;
-        case eelSWITCH: tabsel[etiCOUL] = etabCOULSwitch; break;
-        case eelUSER: tabsel[etiCOUL] = etabUSER; break;
-        default: gmx_fatal(FARGS, "Invalid eeltype %d", eltype);
+        case CoulombInteractionType::Ewald:
+        case CoulombInteractionType::Pme:
+        case CoulombInteractionType::P3mAD: tabsel[etiCOUL] = etabEwald; break;
+        case CoulombInteractionType::PmeSwitch: tabsel[etiCOUL] = etabEwaldSwitch; break;
+        case CoulombInteractionType::PmeUser: tabsel[etiCOUL] = etabEwaldUser; break;
+        case CoulombInteractionType::PmeUserSwitch: tabsel[etiCOUL] = etabEwaldUserSwitch; break;
+        case CoulombInteractionType::RF:
+        case CoulombInteractionType::RFZero: tabsel[etiCOUL] = etabRF_ZERO; break;
+        case CoulombInteractionType::Switch: tabsel[etiCOUL] = etabCOULSwitch; break;
+        case CoulombInteractionType::User: tabsel[etiCOUL] = etabUSER; break;
+        default: gmx_fatal(FARGS, "Invalid eeltype %s", enumValueToString(eltype));
     }
 
     /* Van der Waals time */
@@ -1173,9 +1175,9 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
     }
     else
     {
-        if (b14only && ic->vdwtype != evdwUSER)
+        if (b14only && ic->vdwtype != VanDerWaalsType::User)
         {
-            vdwtype = evdwCUT;
+            vdwtype = VanDerWaalsType::Cut;
         }
         else
         {
@@ -1184,33 +1186,33 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
 
         switch (vdwtype)
         {
-            case evdwSWITCH:
+            case VanDerWaalsType::Switch:
                 tabsel[etiLJ6]  = etabLJ6Switch;
                 tabsel[etiLJ12] = etabLJ12Switch;
                 break;
-            case evdwSHIFT:
+            case VanDerWaalsType::Shift:
                 tabsel[etiLJ6]  = etabLJ6Shift;
                 tabsel[etiLJ12] = etabLJ12Shift;
                 break;
-            case evdwUSER:
+            case VanDerWaalsType::User:
                 tabsel[etiLJ6]  = etabUSER;
                 tabsel[etiLJ12] = etabUSER;
                 break;
-            case evdwCUT:
+            case VanDerWaalsType::Cut:
                 tabsel[etiLJ6]  = etabLJ6;
                 tabsel[etiLJ12] = etabLJ12;
                 break;
-            case evdwPME:
+            case VanDerWaalsType::Pme:
                 tabsel[etiLJ6]  = etabLJ6Ewald;
                 tabsel[etiLJ12] = etabLJ12;
                 break;
             default:
-                gmx_fatal(FARGS, "Invalid vdwtype %d in %s line %d", vdwtype, __FILE__, __LINE__);
+                gmx_fatal(FARGS, "Invalid vdwtype %s in %s line %d", enumValueToString(vdwtype), __FILE__, __LINE__);
         }
 
-        if (!b14only && ic->vdw_modifier != eintmodNONE)
+        if (!b14only && ic->vdw_modifier != InteractionModifiers::None)
         {
-            if (ic->vdw_modifier != eintmodPOTSHIFT && ic->vdwtype != evdwCUT)
+            if (ic->vdw_modifier != InteractionModifiers::PotShift && ic->vdwtype != VanDerWaalsType::Cut)
             {
                 gmx_incons(
                         "Potential modifiers other than potential-shift are only implemented for "
@@ -1220,20 +1222,20 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
             /* LJ-PME and other (shift-only) modifiers are handled by applying the modifiers
              * to the original interaction forms when we fill the table, so we only check cutoffs here.
              */
-            if (ic->vdwtype == evdwCUT)
+            if (ic->vdwtype == VanDerWaalsType::Cut)
             {
                 switch (ic->vdw_modifier)
                 {
-                    case eintmodNONE:
-                    case eintmodPOTSHIFT:
-                    case eintmodEXACTCUTOFF:
+                    case InteractionModifiers::None:
+                    case InteractionModifiers::PotShift:
+                    case InteractionModifiers::ExactCutoff:
                         /* No modification */
                         break;
-                    case eintmodPOTSWITCH:
+                    case InteractionModifiers::PotSwitch:
                         tabsel[etiLJ6]  = etabLJ6Switch;
                         tabsel[etiLJ12] = etabLJ12Switch;
                         break;
-                    case eintmodFORCESWITCH:
+                    case InteractionModifiers::ForceSwitch:
                         tabsel[etiLJ6]  = etabLJ6Shift;
                         tabsel[etiLJ12] = etabLJ12Shift;
                         break;
@@ -1244,15 +1246,15 @@ static void set_table_type(int tabsel[], const interaction_const_t* ic, gmx_bool
     }
 }
 
-t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* fn, real rtab, int flags)
+std::unique_ptr<t_forcetable>
+make_tables(FILE* fp, const interaction_const_t* ic, const char* fn, real rtab, int flags)
 {
-    t_tabledata* td;
-    gmx_bool     b14only, useUserTable;
-    int          nx0, tabsel[etiNR];
-    real         scalefactor;
+    gmx_bool b14only, useUserTable;
+    int      nx0, tabsel[etiNR];
+    real     scalefactor;
 
-    t_forcetable* table = new t_forcetable(GMX_TABLE_INTERACTION_ELEC_VDWREP_VDWDISP,
-                                           GMX_TABLE_FORMAT_CUBICSPLINE_YFGH);
+    auto table = std::make_unique<t_forcetable>(
+            TableInteraction::ElectrostaticVdwRepulsionVdwDispersion, TableFormat::CubicsplineYfgh);
 
     b14only = ((flags & GMX_MAKETABLES_14ONLY) != 0);
 
@@ -1266,14 +1268,13 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
     {
         set_table_type(tabsel, ic, b14only);
     }
-    snew(td, etiNR);
-    table->r     = rtab;
-    table->scale = 0;
-    table->n     = 0;
+    std::vector<t_tabledata> td;
+    table->interactionRange = rtab;
+    table->scale            = 0;
+    table->numTablePoints   = 0;
 
-    table->formatsize    = 4;
-    table->ninteractions = etiNR;
-    table->stride        = table->formatsize * table->ninteractions;
+    table->numInteractions = etiNR;
+    table->stride          = table->formatsize * table->numInteractions;
 
     /* Check whether we have to read or generate */
     useUserTable = FALSE;
@@ -1286,10 +1287,10 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
     }
     if (useUserTable)
     {
-        read_tables(out, fn, etiNR, 0, td);
+        td = read_tables(fp, fn, etiNR, 0);
         if (rtab == 0 || (flags & GMX_MAKETABLES_14ONLY))
         {
-            table->n = td[0].nx;
+            table->numTablePoints = td[0].nx;
         }
         else
         {
@@ -1298,30 +1299,32 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
                 gmx_fatal(FARGS,
                           "Tables in file %s not long enough for cut-off:\n"
                           "\tshould be at least %f nm\n",
-                          fn, rtab);
+                          fn,
+                          rtab);
             }
-            table->n = gmx::roundToInt(rtab * td[0].tabscale);
+            table->numTablePoints = gmx::roundToInt(rtab * td[0].tabscale);
         }
         table->scale = td[0].tabscale;
         nx0          = td[0].nx0;
     }
     else
     {
+        td.resize(etiNR);
         // No tables are read
 #if GMX_DOUBLE
         table->scale = 2000.0;
 #else
         table->scale = 500.0;
 #endif
-        table->n = static_cast<int>(rtab * table->scale);
-        nx0      = 10;
+        table->numTablePoints = static_cast<int>(rtab * table->scale);
+        nx0                   = 10;
     }
 
     /* Each table type (e.g. coul,lj6,lj12) requires four
-     * numbers per table->n+1 data points. For performance reasons we want
+     * numbers per table->numTablePoints+1 data points. For performance reasons we want
      * the table data to be aligned to (at least) a 32-byte boundary.
      */
-    table->data.resize(table->stride * (table->n + 1) * sizeof(real));
+    table->data.resize(table->stride * (table->numTablePoints + 1) * sizeof(real));
 
     for (int k = 0; (k < etiNR); k++)
     {
@@ -1335,15 +1338,18 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
             {
                 scale /= ic->buckinghamBMax;
             }
-            init_table(table->n, nx0, scale, &(td[k]), !useUserTable);
+            td[k] = t_tabledata(table->numTablePoints, nx0, scale, !useUserTable);
 
             fill_table(&(td[k]), tabsel[k], ic, b14only);
-            if (out)
+            if (fp)
             {
-                fprintf(out,
+                fprintf(fp,
                         "Generated table with %d data points for %s%s.\n"
                         "Tabscale = %g points/nm\n",
-                        td[k].nx, b14only ? "1-4 " : "", tprops[tabsel[k]].name, td[k].tabscale);
+                        td[k].nx,
+                        b14only ? "1-4 " : "",
+                        tprops[tabsel[k]].name,
+                        td[k].tabscale);
             }
         }
 
@@ -1366,39 +1372,40 @@ t_forcetable* make_tables(FILE* out, const interaction_const_t* ic, const char* 
             scalefactor = 1.0;
         }
 
-        copy2table(table->n, k * table->formatsize, table->stride, td[k].x, td[k].v, td[k].f,
-                   scalefactor, table->data.data());
-
-        done_tabledata(&(td[k]));
+        copy2table(table->numTablePoints,
+                   k * table->formatsize,
+                   table->stride,
+                   td[k].x,
+                   td[k].v,
+                   td[k].f,
+                   scalefactor,
+                   table->data);
     }
-    sfree(td);
 
     return table;
 }
 
 bondedtable_t make_bonded_table(FILE* fplog, const char* fn, int angle)
 {
-    t_tabledata   td;
     int           i;
     bondedtable_t tab;
     int           stride = 4;
 
-    read_tables(fplog, fn, 1, angle, &td);
+    t_tabledata td = read_tables(fplog, fn, 1, angle)[0];
     if (angle > 0)
     {
         /* Convert the table from degrees to radians */
         for (i = 0; i < td.nx; i++)
         {
-            td.x[i] *= DEG2RAD;
-            td.f[i] *= RAD2DEG;
+            td.x[i] *= gmx::c_deg2Rad;
+            td.f[i] *= gmx::c_rad2Deg;
         }
-        td.tabscale *= RAD2DEG;
+        td.tabscale *= gmx::c_rad2Deg;
     }
     tab.n     = td.nx;
     tab.scale = td.tabscale;
     tab.data.resize(tab.n * stride);
-    copy2table(tab.n, 0, stride, td.x, td.v, td.f, 1.0, tab.data.data());
-    done_tabledata(&td);
+    copy2table(tab.n, 0, stride, td.x, td.v, td.f, 1.0, tab.data);
 
     return tab;
 }
@@ -1406,46 +1413,45 @@ bondedtable_t make_bonded_table(FILE* fplog, const char* fn, int angle)
 std::unique_ptr<t_forcetable>
 makeDispersionCorrectionTable(FILE* fp, const interaction_const_t* ic, real rtab, const char* tabfn)
 {
-    GMX_RELEASE_ASSERT(ic->vdwtype != evdwUSER || tabfn,
+    GMX_RELEASE_ASSERT(ic->vdwtype != VanDerWaalsType::User || tabfn,
                        "With VdW user tables we need a table file name");
 
-    t_forcetable* fullTable = make_tables(fp, ic, tabfn, rtab, 0);
+    std::unique_ptr<t_forcetable> fullTable = make_tables(fp, ic, tabfn, rtab, 0);
     /* Copy the contents of the table to one that has just dispersion
      * and repulsion, to improve cache performance. We want the table
      * data to be aligned to 32-byte boundaries.
      */
-    std::unique_ptr<t_forcetable> dispersionCorrectionTable =
-            std::make_unique<t_forcetable>(GMX_TABLE_INTERACTION_VDWREP_VDWDISP, fullTable->format);
-    dispersionCorrectionTable->r             = fullTable->r;
-    dispersionCorrectionTable->n             = fullTable->n;
-    dispersionCorrectionTable->scale         = fullTable->scale;
-    dispersionCorrectionTable->formatsize    = fullTable->formatsize;
-    dispersionCorrectionTable->ninteractions = 2;
+    std::unique_ptr<t_forcetable> dispersionCorrectionTable = std::make_unique<t_forcetable>(
+            TableInteraction::VdwRepulsionVdwDispersion, fullTable->format);
+    dispersionCorrectionTable->interactionRange = fullTable->interactionRange;
+    dispersionCorrectionTable->numTablePoints   = fullTable->numTablePoints;
+    dispersionCorrectionTable->scale            = fullTable->scale;
+    dispersionCorrectionTable->numInteractions  = 2;
     dispersionCorrectionTable->stride =
-            dispersionCorrectionTable->formatsize * dispersionCorrectionTable->ninteractions;
+            dispersionCorrectionTable->formatsize * dispersionCorrectionTable->numInteractions;
     dispersionCorrectionTable->data.resize(dispersionCorrectionTable->stride
-                                           * (dispersionCorrectionTable->n + 1));
+                                           * (dispersionCorrectionTable->numTablePoints + 1));
 
-    for (int i = 0; i <= fullTable->n; i++)
+    for (int i = 0; i <= fullTable->numTablePoints; i++)
     {
         for (int j = 0; j < 8; j++)
         {
             dispersionCorrectionTable->data[8 * i + j] = fullTable->data[12 * i + 4 + j];
         }
     }
-    delete fullTable;
 
     return dispersionCorrectionTable;
 }
 
-t_forcetable::t_forcetable(enum gmx_table_interaction interaction, enum gmx_table_format format) :
+t_forcetable::t_forcetable(enum TableInteraction interaction, enum TableFormat format) :
     interaction(interaction),
     format(format),
-    r(0),
-    n(0),
+    interactionRange(0),
+    numTablePoints(0),
     scale(0),
-    formatsize(0),
-    ninteractions(0),
+    numInteractions(0),
     stride(0)
 {
 }
+
+t_forcetable::~t_forcetable() = default;

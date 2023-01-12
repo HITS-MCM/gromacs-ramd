@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -65,8 +64,9 @@ bool anySmallerZero(Container values)
 template<typename Container>
 bool anyLargerThanValue(Container values, typename Container::value_type boundaryValue)
 {
-    return std::any_of(std::begin(values), std::end(values),
-                       [boundaryValue](auto v) { return v > boundaryValue; });
+    return std::any_of(std::begin(values), std::end(values), [boundaryValue](auto v) {
+        return v > boundaryValue;
+    });
 }
 
 } // namespace
@@ -92,7 +92,8 @@ TranslateAndScale getCoordinateTransformationToLattice(const MrcDensityMapHeader
     RVec       scale = { header.extent_[XX] / (header.cellLength_[XX] * c_AAtoNmConversion),
                    header.extent_[YY] / (header.cellLength_[YY] * c_AAtoNmConversion),
                    header.extent_[ZZ] / (header.cellLength_[ZZ] * c_AAtoNmConversion) };
-    const RVec emdbOrigin{ header.userDefinedFloat_[12], header.userDefinedFloat_[13],
+    const RVec emdbOrigin{ header.userDefinedFloat_[12],
+                           header.userDefinedFloat_[13],
                            header.userDefinedFloat_[14] };
     RVec       translation;
     if (emdbOrigin[XX] == 0. && emdbOrigin[YY] == 0. && emdbOrigin[ZZ] == 0.)
@@ -103,7 +104,8 @@ TranslateAndScale getCoordinateTransformationToLattice(const MrcDensityMapHeader
     }
     else
     {
-        translation = { -emdbOrigin[XX] * c_AAtoNmConversion, -emdbOrigin[YY] * c_AAtoNmConversion,
+        translation = { -emdbOrigin[XX] * c_AAtoNmConversion,
+                        -emdbOrigin[YY] * c_AAtoNmConversion,
                         -emdbOrigin[ZZ] * c_AAtoNmConversion };
     }
     return { scale, translation };
@@ -111,7 +113,8 @@ TranslateAndScale getCoordinateTransformationToLattice(const MrcDensityMapHeader
 
 dynamicExtents3D getDynamicExtents3D(const MrcDensityMapHeader& header)
 {
-    return { header.numColumnRowSection_[ZZ], header.numColumnRowSection_[YY],
+    return { header.numColumnRowSection_[ZZ],
+             header.numColumnRowSection_[YY],
              header.numColumnRowSection_[XX] };
 };
 

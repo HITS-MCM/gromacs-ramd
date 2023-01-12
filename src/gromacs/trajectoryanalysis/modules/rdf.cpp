@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -58,6 +54,7 @@
 #include "gromacs/analysisdata/modules/histogram.h"
 #include "gromacs/analysisdata/modules/plot.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/options/basicoptions.h"
@@ -286,14 +283,14 @@ void Rdf::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* se
     settings->setHelpText(desc);
 
     options->addOption(FileNameOption("o")
-                               .filetype(eftPlot)
+                               .filetype(OptionFileType::Plot)
                                .outputFile()
                                .required()
                                .store(&fnRdf_)
                                .defaultBasename("rdf")
                                .description("Computed RDFs"));
     options->addOption(FileNameOption("cn")
-                               .filetype(eftPlot)
+                               .filetype(OptionFileType::Plot)
                                .outputFile()
                                .store(&fnCumulative_)
                                .defaultBasename("rdf_cn")
@@ -478,8 +475,8 @@ void Rdf::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAna
 {
     AnalysisDataHandle   dh        = pdata->dataHandle(pairDist_);
     AnalysisDataHandle   nh        = pdata->dataHandle(normFactors_);
-    const Selection&     refSel    = TrajectoryAnalysisModuleData::parallelSelection(refSel_);
-    const SelectionList& sel       = TrajectoryAnalysisModuleData::parallelSelections(sel_);
+    const Selection&     refSel    = pdata->parallelSelection(refSel_);
+    const SelectionList& sel       = pdata->parallelSelections(sel_);
     RdfModuleData&       frameData = *static_cast<RdfModuleData*>(pdata);
     const bool           bSurface  = !frameData.surfaceDist2_.empty();
 
@@ -614,19 +611,11 @@ void Rdf::finishAnalysis(int /*nframes*/)
         real prevSphereVolume = 0.0;
         for (int i = 0; i < nbin; ++i)
         {
-            const real r = (i + 0.5) * binwidth_;
-            real       sphereVolume;
-            if (bXY_)
-            {
-                sphereVolume = M_PI * r * r;
-            }
-            else
-            {
-                sphereVolume = (4.0 / 3.0) * M_PI * r * r * r;
-            }
-            const real binVolume = sphereVolume - prevSphereVolume;
-            invBinVolume[i]      = 1.0 / binVolume;
-            prevSphereVolume     = sphereVolume;
+            const real r            = (i + 0.5) * binwidth_;
+            const real sphereVolume = (bXY_) ? M_PI * r * r : (4.0 / 3.0) * M_PI * r * r * r;
+            const real binVolume    = sphereVolume - prevSphereVolume;
+            invBinVolume[i]         = 1.0 / binVolume;
+            prevSphereVolume        = sphereVolume;
         }
         finalRdf->scaleAllByVector(invBinVolume.data());
 

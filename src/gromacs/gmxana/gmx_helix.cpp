@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -159,8 +155,8 @@ int gmx_helix(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -176,11 +172,19 @@ int gmx_helix(int argc, char* argv[])
         gmx_fatal(FARGS,
                   "Sorry can only run when the number of atoms in the run input file (%d) is equal "
                   "to the number in the trajectory (%d)",
-                  top->atoms.nr, natoms);
+                  top->atoms.nr,
+                  natoms);
     }
 
-    bb = mkbbind(ftp2fn(efNDX, NFILE, fnm), &nres, &nbb, r0, &nall, &allindex, top->atoms.atomname,
-                 top->atoms.atom, top->atoms.resinfo);
+    bb = mkbbind(ftp2fn(efNDX, NFILE, fnm),
+                 &nres,
+                 &nbb,
+                 r0,
+                 &nall,
+                 &allindex,
+                 top->atoms.atomname,
+                 top->atoms.atom,
+                 top->atoms.resinfo);
     snew(bbindex, natoms);
     snew(caindex, nres);
 
@@ -237,8 +241,8 @@ int gmx_helix(int argc, char* argv[])
 
             if (teller == 1)
             {
-                write_sto_conf(opt2fn("-cz", NFILE, fnm), "Helix fitted to Z-Axis", &(top->atoms),
-                               x, nullptr, pbcType, box);
+                write_sto_conf(
+                        opt2fn("-cz", NFILE, fnm), "Helix fitted to Z-Axis", &(top->atoms), x, nullptr, pbcType, box);
             }
 
             xf[efhRAD].val   = radius(xf[efhRAD].fp2, nca, caindex, x);
@@ -257,8 +261,15 @@ int gmx_helix(int argc, char* argv[])
             }
 
             av_phipsi(xf[efhPHI].fp, xf[efhPSI].fp, xf[efhPHI].fp2, xf[efhPSI].fp2, t, nres, bb);
-            av_hblen(xf[efhHB3].fp, xf[efhHB3].fp2, xf[efhHB4].fp, xf[efhHB4].fp2, xf[efhHB5].fp,
-                     xf[efhHB5].fp2, t, nres, bb);
+            av_hblen(xf[efhHB3].fp,
+                     xf[efhHB3].fp2,
+                     xf[efhHB4].fp,
+                     xf[efhHB4].fp2,
+                     xf[efhHB5].fp,
+                     xf[efhHB5].fp2,
+                     t,
+                     nres,
+                     bb);
         }
     } while (read_next_x(oenv, status, &t, x, box));
     fprintf(stderr, "\n");
@@ -274,8 +285,7 @@ int gmx_helix(int argc, char* argv[])
             fprintf(xf[efhRMSA].fp, "%10d  %10g\n", r0 + i, bb[i].rmsa / bb[i].nrms);
         }
         fprintf(xf[efhAHX].fp, "%10d  %10g\n", r0 + i, (bb[i].nhx * 100.0) / static_cast<real>(teller));
-        fprintf(xf[efhJCA].fp, "%10d  %10g\n", r0 + i,
-                140.3 + (bb[i].jcaha / static_cast<double>(teller)));
+        fprintf(xf[efhJCA].fp, "%10d  %10g\n", r0 + i, 140.3 + (bb[i].jcaha / static_cast<double>(teller)));
     }
 
     for (i = 0; (i < efhNR); i++)

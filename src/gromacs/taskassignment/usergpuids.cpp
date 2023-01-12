@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines routines for handling user-specified GPU IDs.
@@ -136,41 +135,41 @@ std::vector<int> parseUserGpuIdString(const std::string& gpuIdString)
     return digits;
 }
 
-std::vector<int> makeGpuIdsToUse(const std::vector<std::unique_ptr<DeviceInformation>>& deviceInfoList,
-                                 const std::string& gpuIdsAvailableString)
+std::vector<int> makeListOfAvailableDevices(gmx::ArrayRef<const std::unique_ptr<DeviceInformation>> deviceInfoList,
+                                            const std::string& devicesSelectedByUserString)
 {
-    std::vector<int> gpuIdsAvailable = parseUserGpuIdString(gpuIdsAvailableString);
+    std::vector<int> devicesSelectedByUser = parseUserGpuIdString(devicesSelectedByUserString);
 
-    if (gpuIdsAvailable.empty())
+    if (devicesSelectedByUser.empty())
     {
-        // The user didn't restrict the choice, so we use all compatible GPUs
+        // The user didn't restrict the choice, so we use all compatible devices.
         return getCompatibleDeviceIds(deviceInfoList);
     }
 
-    std::vector<int> gpuIdsToUse;
-    gpuIdsToUse.reserve(gpuIdsAvailable.size());
-    std::vector<int> availableGpuIdsThatAreIncompatible;
-    for (const int& availableGpuId : gpuIdsAvailable)
+    std::vector<int> availableDevices;
+    availableDevices.reserve(devicesSelectedByUser.size());
+    std::vector<int> incompatibleDevicesSelectedByUser;
+    for (const int& selectedDeviceId : devicesSelectedByUser)
     {
-        if (deviceIdIsCompatible(deviceInfoList, availableGpuId))
+        if (deviceIdIsCompatible(deviceInfoList, selectedDeviceId))
         {
-            gpuIdsToUse.push_back(availableGpuId);
+            availableDevices.push_back(selectedDeviceId);
         }
         else
         {
-            // Prepare data for an error message about all incompatible available GPU IDs.
-            availableGpuIdsThatAreIncompatible.push_back(availableGpuId);
+            // Prepare data for an error message about all incompatible devices that were selected by the user.
+            incompatibleDevicesSelectedByUser.push_back(selectedDeviceId);
         }
     }
-    if (!availableGpuIdsThatAreIncompatible.empty())
+    if (!incompatibleDevicesSelectedByUser.empty())
     {
-        auto message = "You requested mdrun to use GPUs with IDs " + gpuIdsAvailableString
-                       + ", but that includes the following incompatible GPUs: "
-                       + formatAndJoin(availableGpuIdsThatAreIncompatible, ",", StringFormatter("%d"))
-                       + ". Request only compatible GPUs.";
+        auto message = "You requested mdrun to use GPU devices with IDs " + devicesSelectedByUserString
+                       + ", but that includes the following incompatible devices: "
+                       + formatAndJoin(incompatibleDevicesSelectedByUser, ",", StringFormatter("%d"))
+                       + ". Request only compatible devices.";
         GMX_THROW(InvalidInputError(message));
     }
-    return gpuIdsToUse;
+    return availableDevices;
 }
 
 std::vector<int> parseUserTaskAssignmentString(const std::string& gpuIdString)
@@ -209,9 +208,9 @@ std::string makeGpuIdString(const std::vector<int>& gpuIds, int totalNumberOfTas
     return formatAndJoin(resultGpuIds, ",", StringFormatter("%d"));
 }
 
-void checkUserGpuIds(const std::vector<std::unique_ptr<DeviceInformation>>& deviceInfoList,
-                     const std::vector<int>&                                compatibleGpus,
-                     const std::vector<int>&                                gpuIds)
+void checkUserGpuIds(const ArrayRef<const std::unique_ptr<DeviceInformation>> deviceInfoList,
+                     const ArrayRef<const int>                                compatibleGpus,
+                     const ArrayRef<const int>                                gpuIds)
 {
     bool        foundIncompatibleGpuIds = false;
     std::string message =
@@ -222,7 +221,8 @@ void checkUserGpuIds(const std::vector<std::unique_ptr<DeviceInformation>>& devi
         if (std::find(compatibleGpus.begin(), compatibleGpus.end(), gpuId) == compatibleGpus.end())
         {
             foundIncompatibleGpuIds = true;
-            message += gmx::formatString("    GPU #%d: %s\n", gpuId,
+            message += gmx::formatString("    GPU #%d: %s\n",
+                                         gpuId,
                                          getDeviceCompatibilityDescription(deviceInfoList, gpuId).c_str());
         }
     }

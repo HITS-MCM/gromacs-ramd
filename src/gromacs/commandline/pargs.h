@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \brief
@@ -48,7 +44,6 @@
 #include "gromacs/commandline/filenm.h"
 #include "gromacs/fileio/oenv.h"
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
 struct gmx_output_env_t;
@@ -92,7 +87,8 @@ typedef struct
      * changed.  In other words, the initial value for the variable defines the
      * default value.
      */
-    union {
+    union
+    {
         /*! \brief
          * Generic pointer for operations that do not need type information.
          *
@@ -120,7 +116,7 @@ typedef struct
          */
         const char** c;
         /** Boolean value for etBOOL. */
-        gmx_bool* b;
+        bool* b;
         /** Vector value for etRVEC. */
         rvec* rv;
     } u;
@@ -168,7 +164,7 @@ int opt2parg_int(const char* option, int nparg, t_pargs pa[]);
  *
  * \p option must specify a valid argument in \p pa of the correct type.
  */
-gmx_bool opt2parg_bool(const char* option, int nparg, t_pargs pa[]);
+bool opt2parg_bool(const char* option, int nparg, t_pargs pa[]);
 
 /*! \brief
  * Returns value of an etREAL/etTIME option.
@@ -216,7 +212,7 @@ const char* opt2parg_enum(const char* option, int nparg, t_pargs pa[]);
  *
  * \p option must specify a valid argument in \p pa.
  */
-gmx_bool opt2parg_bSet(const char* option, int nparg, const t_pargs* pa);
+bool opt2parg_bSet(const char* option, int nparg, const t_pargs* pa);
 
 
 /** Add option -w to view output files (must be implemented in program). */
@@ -258,18 +254,18 @@ gmx_bool opt2parg_bSet(const char* option, int nparg, const t_pargs* pa);
  *
  * \see gmx_run_cmain().
  */
-gmx_bool parse_common_args(int*               argc,
-                           char*              argv[],
-                           unsigned long      Flags,
-                           int                nfile,
-                           t_filenm           fnm[],
-                           int                npargs,
-                           t_pargs*           pa,
-                           int                ndesc,
-                           const char**       desc,
-                           int                nbugs,
-                           const char**       bugs,
-                           gmx_output_env_t** oenv);
+bool parse_common_args(int*               argc,
+                       char*              argv[],
+                       unsigned long      Flags,
+                       int                nfile,
+                       t_filenm           fnm[],
+                       int                npargs,
+                       t_pargs*           pa,
+                       int                ndesc,
+                       const char**       desc,
+                       int                nbugs,
+                       const char**       bugs,
+                       gmx_output_env_t** oenv);
 
 /*! \} */
 

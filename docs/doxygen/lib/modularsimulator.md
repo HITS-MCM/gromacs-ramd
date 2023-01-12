@@ -13,11 +13,9 @@ GROMACS will automatically use the modular simulator for the velocity
 verlet integrator (`integrator = md-vv`), if the functionality chosen
 in the other input parameters is implemented in the new framework.
 Currently, this includes NVE, NVT, NPH, and NPT simulations,
-with or without free energy perturbation, using thermodynamic
-boundary conditions
-
-* `tcoupl`: `no`, `v-rescale`, or `berendsen`
-* `pcoupl`: `no` or `parrinello-rahman`
+with or without free energy perturbation, using all available
+temperature and pressure coupling algorithms. It also includes pull and
+expanded ensemble simulations.
 
 To disable the modular simulator for cases defaulting to the new framework,
 the environment variable `GMX_DISABLE_MODULAR_SIMULATOR=ON` can be set. To
@@ -35,6 +33,7 @@ as `do_md` (MD simulations), `do_cg` and `do_steep` (minimization),
 and `do_tpi` (test-particle insertion).
 
 The legacy approach has some obvious drawbacks:
+
 * *Data management:* Each of the `do_*` functions defines local data,
   including complex objects encapsulating some data and functionality,
   but also data structures effectively used as "global variables" for
@@ -200,13 +199,14 @@ the simulator algorithm.
             builder->add<ForceElement>();
              // We have a full state here (positions(t), velocities(t-dt/2), forces(t)
             builder->add<StatePropagatorData::Element>();
-            if (legacySimulatorData_->inputrec->etc == etcVRESCALE)
+            if (legacySimulatorData_->inputrec->etc == TemperatureCoupling::VRescale)
             {
-                builder->add<VRescaleThermostat>(-1, VRescaleThermostatUseFullStepKE::No);
+                builder->add<VRescaleThermostat>(-1,
+                                                 VRescaleThermostatUseFullStepKE::No,
+                                                 PropagatorTag("LeapFrogPropagator"));
             }
-            builder->add<Propagator<IntegrationStep::LeapFrog>>(legacySimulatorData_->inputrec->delta_t,
-                                                                RegisterWithThermostat::True,
-                                                                RegisterWithBarostat::True);
+            builder->add<Propagator<IntegrationStage::LeapFrog>>(PropagatorTag("LeapFrogPropagator"),
+                                                                legacySimulatorData_->inputrec->delta_t);
             if (legacySimulatorData_->constr)
             {
                 builder->add<ConstraintsElement<ConstraintVariable::Positions>>();
@@ -214,9 +214,9 @@ the simulator algorithm.
             builder->add<ComputeGlobalsElement<ComputeGlobalsAlgorithm::LeapFrog>>();
             // We have the energies at time t here
             builder->add<EnergyData::Element>();
-            if (legacySimulatorData_->inputrec->epc == epcPARRINELLORAHMAN)
+            if (legacySimulatorData_->inputrec->epc == PressureCoupling::ParrinelloRahman)
             {
-                builder->add<ParrinelloRahmanBarostat>(-1);
+                builder->add<ParrinelloRahmanBarostat>(-1, PropagatorTag("LeapFrogPropagator"));
             }
         }
     }
@@ -422,6 +422,7 @@ ModularSimulator note ModularSimulator [ label = "schedulingStep == N + nstlist\
 
 Acceptance tests which need to be 
 fulfilled to make the modular simulator the default code path:
+
 * End-to-end tests pass on both `do_md` and the new loop in
   Gitlab pre- and post-submit pipelines
 * Physical validation cases pass on the new loop
@@ -431,23 +432,27 @@ fulfilled to make the modular simulator the default code path:
   this purpose.
 
 After the MD bare minimum, we will want to add support for
+
 * Pulling
 * Full support of GPU (current implementation does not support
 GPU update)
 
 Using the new modular simulator framework, we will then explore
 adding new functionality to GROMACS, including
+
 * Monte Carlo barostat
 * hybrid MC/MD schemes
 * multiple-time-stepping integration
 
 We will also explore optimization opportunities, including
+
 * re-use of the same queue if conditions created by user input are 
   sufficiently favorable (by design or when observed)
 * simultaneous execution of independent tasks
 
 We will probably not prioritize support for (and might consider
 deprecating from do_md in a future GROMACS version)
+
 * Simulated annealing
 * REMD
 * Simulated tempering
@@ -537,6 +542,7 @@ comparable to fused update elements while keeping easily re-orderable
 single instructions.
 
 Currently, the (templated) implementation covers four cases:
+
  * *PositionsOnly:* Moves the position vector by the given time step
  * *VelocitiesOnly:* Moves the velocity vector by the given time step
  * *LeapFrog:* A manual fusion of the previous two propagators
@@ -545,7 +551,15 @@ Currently, the (templated) implementation covers four cases:
     time step of PositionsOnly.
 
 The propagators also allow to implement temperature and pressure coupling
-schemes by offering (templated) scaling of the velocities.
+schemes by offering (templated) scaling of the velocities. In order to
+link temperature / pressure coupling objects to the propagators, the
+propagator objects have a tag (of strong type `PropagatorTag`). The
+temperature and pressure coupling objects can then connect to the
+matching propagator by comparing their target tag to the different
+propagators. Giving the propagators their tags and informing the
+temperature and pressure coupling algorithms which propagator they are
+connecting to is in the responsibility of the simulation algorithm
+builder.
 
 #### `CompositeSimulatorElement`
 The composite simulator element takes a list of elements and implements
@@ -663,6 +677,14 @@ arguments (e.g frequency, offset, ...).
 Note that `getElementPointer<Element>` will call `Element::getElementPointerImpl`,
 which needs to be implemented by the different elements.
 
+### Data management
+Modular simulator encourages design localizing data as much as possible. It
+also offers access to generally used data structures (such as the current
+state or energies). To allow for generic data to be shared between elements,
+the simulator algorithm builder also allows to store objects with life time
+guaranteed to be either equal to the simulator algorithm builder or equal to
+the simulator algorithm object (i.e. longer than the life time of the elements).
+
 ## Infrastructure
 ### `DomDecHelper` and `PmeLoadBalanceHelper`
 These infrastructure elements are responsible for domain decomposition and 
@@ -696,6 +718,7 @@ straightforward re-entry point at the top of the simulator loop.
 ##### Other (older) approaches
 **Legacy checkpointing approach:** All data to be checkpointed needs to be
 stored in one of the following data structures:
+
 * `t_state`, which also holds pointers to
   - `history_t` (history for restraints)
   - `df_history_t` (history for free energy)
@@ -716,7 +739,7 @@ with the XDR library. The alternative would be to write an entirely new data
 structure, changing the function signature of all checkpoint-related functions,
 and write a corresponding low-level routine interacting with the XDR library.
 
-**The MdModule approach:** To allow for modules to write checkpoints, the legacy
+**The MDModule approach:** To allow for modules to write checkpoints, the legacy
 checkpoint was extended by a KVTree. When writing to checkpoint, this tree gets
 filled (via callbacks) by the single modules, and then serialized. When reading,
 the KVTree gets deserialized, and then distributed to the modules which can read
@@ -724,9 +747,10 @@ back the data previously stored.
 
 ##### Modular simulator design
 
-The MdModule checks off almost all requirements to a modularized checkpointing format.
+The MDModule checks off almost all requirements to a modularized checkpointing format.
 The proposed design is therefore an evolved form of this approach. Notably, two
 improvements include
+
 * Hide the implementation details of the data structure holding the data (currently,
   a KV-Tree) from the clients. This allows to change the implementation details of
   reading / writing checkpoints without touching client code.
@@ -784,19 +808,20 @@ if clients write self-consistent read and write code, this should never be neede
 Checking for key existence seems rather to be a lazy way to circumvent versioning,
 and is therefore discouraged.
 
-**Callback method:** The modular simulator and MdModules don't use the exact same
+**Callback method:** The modular simulator and MDModules don't use the exact same
 way of communicating with clients. The two methods could be unified if needed.
 The only _fundamental_ difference is that modular simulator clients need to identify
-with a unique key to receive their dedicated sub-data, while MdModules all read from
-and write to the same KV-tree. MdModules could be adapted to that by either requiring
+with a unique key to receive their dedicated sub-data, while MDModules all read from
+and write to the same KV-tree. MDModules could be adapted to that by either requiring
 a unique key from the modules, or by using the same `CheckpointData` for all modules
-and using a single unique key (something like "MdModules") to register that object
+and using a single unique key (something like "MDModules") to register that object
 with the global checkpoint.
 
 **Performance:** One of the major differences between the new approach and the legacy
 checkpointing is that data gets _copied_ into `CheckpointData`, while the legacy
 approach only took a pointer to the data and serialized it. This slightly reduces
 performance. Some thoughts on that:
+
 * By default, checkpointing happens at the start of the simulation (only if reading
 from checkpoint), every 15 minutes during simulation runs, and at the end of the
 simulation run. This makes it a low priority target for optimization. Consequently,
@@ -843,3 +868,20 @@ as ITopologyHolderClients. If they do so, they get a handle to the updated local
 topology whenever it is changed, and can rely that their handle is valid 
 until the next update. The domain decomposition element is defined as friend 
 class to be able to update the local topology when needed.
+
+### Reference temperature manager
+
+Some simulation techniques such as simulated annealing and simulated tempering need
+to be able to change the reference temperature of the simulation. The reference
+temperature manager allows elements to register callbacks so they are informed
+when the reference temperature is changed. They can then perform any action they
+need upon change of the reference temperature, such as updating a local value,
+scaling velocities, or recalculating a temperature coupling integral.
+
+When changing temperature, the clients are also informed about which
+algorithm changed the temperature. This is required for compatibility
+to the legacy implementation - different algorithms react differently
+(or not at all) to reference temperature change from different sources.
+The current implementation does not attempt to fix these inconsistencies, but
+rather makes the choices in the legacy implementation very explicit, which will
+allow to tackle these issues more easily moving forward.

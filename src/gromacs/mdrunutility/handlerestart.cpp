@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -188,7 +187,8 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
             "part), or instruct mdrun to write new output files with mdrun -noappend. In "
             "the last case, you will not be able to use appending in future for this "
             "simulation.",
-            numFilesMissing, outputfiles.size());
+            numFilesMissing,
+            outputfiles.size());
     GMX_THROW(InconsistentInputError(stream.toString()));
 }
 
@@ -295,7 +295,8 @@ StartingBehaviorHandler chooseStartingBehavior(const AppendingBehavior appending
     GMX_RELEASE_ASSERT(Path::extensionMatches(logFilename, ftp2ext(efLOG)),
                        formatString("The checkpoint file or its reading is broken, the first "
                                     "output file '%s' must be a log file with extension '%s'",
-                                    logFilename, ftp2ext(efLOG))
+                                    logFilename,
+                                    ftp2ext(efLOG))
                                .c_str());
 
     if (appendingBehavior != AppendingBehavior::NoAppending)
@@ -345,7 +346,8 @@ StartingBehaviorHandler chooseStartingBehavior(const AppendingBehavior appending
         // If the precision does not match, we cannot continue with
         // appending, and will switch to not appending unless
         // instructed otherwise.
-        if (headerContents.file_version >= 13 && headerContents.double_prec != GMX_DOUBLE)
+        if (headerContents.file_version >= CheckPointVersion::DoublePrecisionBuild
+            && headerContents.double_prec != GMX_DOUBLE)
         {
             if (appendingBehavior == AppendingBehavior::Appending)
             {
@@ -353,7 +355,8 @@ StartingBehaviorHandler chooseStartingBehavior(const AppendingBehavior appending
                         "Cannot restart with appending because the previous simulation part used "
                         "%s precision which does not match the %s precision used by this build "
                         "of GROMACS. Either use matching precision or use mdrun -noappend.",
-                        precisionToString(headerContents.double_prec), precisionToString(GMX_DOUBLE))));
+                        precisionToString(headerContents.double_prec),
+                        precisionToString(GMX_DOUBLE))));
             }
         }
         // If the previous log filename had a part number, then we
@@ -401,7 +404,8 @@ void checkOutputFile(t_fileio* fileToCheck, const gmx_file_position_t& outputfil
                     "Can't read %d bytes of '%s' to compute checksum. The file "
                     "has been replaced or its contents have been modified. Cannot "
                     "do appending because of this condition.",
-                    outputfile.checksumSize, outputfile.filename);
+                    outputfile.checksumSize,
+                    outputfile.filename);
             GMX_THROW(InconsistentInputError(message));
         }
     }
@@ -543,8 +547,8 @@ void StartingBehaviorHandler::ensureMultiSimBehaviorsMatch(const gmx_multisim_t*
 
     auto startingBehaviors = gatherIntFromMultiSimulation(ms, static_cast<int>(startingBehavior));
     bool identicalStartingBehaviors =
-            (std::adjacent_find(std::begin(startingBehaviors), std::end(startingBehaviors),
-                                std::not_equal_to<>())
+            (std::adjacent_find(
+                     std::begin(startingBehaviors), std::end(startingBehaviors), std::not_equal_to<>())
              == std::end(startingBehaviors));
 
     const EnumerationArray<StartingBehavior, std::string> behaviorStrings = {
@@ -569,8 +573,8 @@ simulations wanted the following respective behaviors:
         for (index simIndex = 0; simIndex != ssize(startingBehaviors); ++simIndex)
         {
             auto behavior = static_cast<StartingBehavior>(startingBehaviors[simIndex]);
-            message += formatString("  Simulation %6zd: %s\n", simIndex,
-                                    behaviorStrings[behavior].c_str());
+            message += formatString(
+                    "  Simulation %6zd: %s\n", simIndex, behaviorStrings[behavior].c_str());
         }
         GMX_THROW(InconsistentInputError(message));
     }
@@ -585,9 +589,10 @@ simulations wanted the following respective behaviors:
     // describes the same simulation part. If those don't match, then
     // the simulation cannot proceed.
     auto simulationParts = gatherIntFromMultiSimulation(ms, headerContents->simulation_part);
-    bool identicalSimulationParts = (std::adjacent_find(std::begin(simulationParts),
-                                                        std::end(simulationParts), std::not_equal_to<>())
-                                     == std::end(simulationParts));
+    bool identicalSimulationParts =
+            (std::adjacent_find(
+                     std::begin(simulationParts), std::end(simulationParts), std::not_equal_to<>())
+             == std::end(simulationParts));
 
     if (!identicalSimulationParts)
     {

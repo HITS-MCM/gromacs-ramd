@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -48,7 +47,7 @@
 
 #include "gromacs/domdec/gpuhaloexchange.h"
 #include "gromacs/gpu_utils/device_context.h"
-#include "gromacs/gpu_utils/gpueventsynchronizer.cuh"
+#include "gromacs/gpu_utils/gpueventsynchronizer.h"
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/utility/gmxmpi.h"
 
@@ -75,8 +74,6 @@ public:
      * \param [in]    dimIndex                 the dimension index for this instance
      * \param [in]    mpi_comm_mysim           communicator used for simulation
      * \param [in]    deviceContext            GPU device context
-     * \param [in]    localStream              local NB CUDA stream
-     * \param [in]    nonLocalStream           non-local NB CUDA stream
      * \param [in]    pulse                    the communication pulse for this instance
      * \param [in]    wcycle                   The wallclock counter
      */
@@ -84,8 +81,6 @@ public:
          int                  dimIndex,
          MPI_Comm             mpi_comm_mysim,
          const DeviceContext& deviceContext,
-         const DeviceStream&  localStream,
-         const DeviceStream&  nonLocalStream,
          int                  pulse,
          gmx_wallcycle*       wcycle);
     ~Impl();
@@ -101,14 +96,17 @@ public:
     /*! \brief
      * GPU halo exchange of coordinates buffer
      * \param [in] box  Coordinate box (from which shifts will be constructed)
-     * \param [in] coordinatesReadyOnDeviceEvent event recorded when coordinates have been copied to device
+     * \param [in] dependencyEvent   Dependency event for this operation
+     * \returns                      Event recorded when this operation has been launched
      */
-    void communicateHaloCoordinates(const matrix box, GpuEventSynchronizer* coordinatesReadyOnDeviceEvent);
+    GpuEventSynchronizer* communicateHaloCoordinates(const matrix box, GpuEventSynchronizer* dependencyEvent);
 
     /*! \brief  GPU halo exchange of force buffer
-     * \param[in] accumulateForces  True if forces should accumulate, otherwise they are set
+     * \param [in] accumulateForces  True if forces should accumulate, otherwise they are set
+     * \param [in] dependencyEvents  Dependency events for this operation
      */
-    void communicateHaloForces(bool accumulateForces);
+    void communicateHaloForces(bool                                           accumulateForces,
+                               FixedCapacityVector<GpuEventSynchronizer*, 2>* dependencyEvents);
 
     /*! \brief Get the event synchronizer for the forces ready on device.
      *  \returns  The event to synchronize the stream that consumes forces on device.
@@ -117,22 +115,43 @@ public:
 
 private:
     /*! \brief Data transfer wrapper for GPU halo exchange
-     * \param [inout] d_ptr      pointer to coordinates or force buffer in GPU memory
-     * \param [in] haloQuantity  switch on whether X or F halo exchange is being performed
-     * \param [in] coordinatesReadyOnDeviceEvent event recorded when coordinates have been copied to device
+     * \param [in] sendPtr      send buffer address
+     * \param [in] sendSize     number of elements to send
+     * \param [in] sendRank     rank of destination
+     * \param [in] recvPtr      receive buffer address
+     * \param [in] recvSize     number of elements to receive
+     * \param [in] recvRank     rank of source
      */
-    void communicateHaloData(float3*               d_ptr,
-                             HaloQuantity          haloQuantity,
-                             GpuEventSynchronizer* coordinatesReadyOnDeviceEvent);
+    void communicateHaloData(float3* sendPtr, int sendSize, int sendRank, float3* recvPtr, int recvSize, int recvRank);
 
     /*! \brief Data transfer for GPU halo exchange using CUDA memcopies
      * \param [inout] sendPtr    address to send data from
      * \param [in] sendSize      number of atoms to be sent
      * \param [in] sendRank      rank to send data to
-     * \param [inout] remotePtr  remote address to recv data
+     * \param [in] remotePtr     remote address to recv data
      * \param [in] recvRank      rank to recv data from
      */
-    void communicateHaloDataWithCudaDirect(void* sendPtr, int sendSize, int sendRank, void* remotePtr, int recvRank);
+    void communicateHaloDataWithCudaDirect(float3* sendPtr, int sendSize, int sendRank, float3* remotePtr, int recvRank);
+
+    /*! \brief Data transfer wrapper for GPU halo exchange using MPI_send and MPI_Recv
+     * \param [in] sendPtr      send buffer address
+     * \param [in] sendSize     number of elements to send
+     * \param [in] sendRank     rank of destination
+     * \param [in] recvPtr      receive buffer address
+     * \param [in] recvSize     number of elements to receive
+     * \param [in] recvRank     rank of source
+     */
+    void communicateHaloDataWithCudaMPI(float3* sendPtr,
+                                        int     sendSize,
+                                        int     sendRank,
+                                        float3* recvPtr,
+                                        int     recvSize,
+                                        int     recvRank);
+
+    /*! \brief Exchange coordinate-ready event with neighbor ranks and enqueue wait in halo stream
+     * \param [in] eventSync    event recorded when coordinates/forces are ready to device
+     */
+    void enqueueWaitRemoteCoordinatesReadyEvent(GpuEventSynchronizer* coordinatesReadyOnDeviceEvent);
 
     //! Domain decomposition object
     gmx_domdec_t* dd_ = nullptr;
@@ -177,9 +196,9 @@ private:
     //! number of home atoms - offset of local halo region
     int numHomeAtoms_ = 0;
     //! remote GPU coordinates buffer pointer for pushing data
-    void* remoteXPtr_ = nullptr;
+    float3* remoteXPtr_ = nullptr;
     //! remote GPU force buffer pointer for pushing data
-    void* remoteFPtr_ = nullptr;
+    float3* remoteFPtr_ = nullptr;
     //! Periodic Boundary Conditions for this rank
     bool usePBC_ = false;
     //! force shift buffer on device
@@ -190,10 +209,8 @@ private:
     MPI_Comm mpi_comm_mysim_;
     //! GPU context object
     const DeviceContext& deviceContext_;
-    //! CUDA stream for local non-bonded calculations
-    const DeviceStream& localStream_;
-    //! CUDA stream for non-local non-bonded calculations
-    const DeviceStream& nonLocalStream_;
+    //! CUDA stream for this halo exchange
+    DeviceStream* haloStream_;
     //! full coordinates buffer in GPU memory
     float3* d_x_ = nullptr;
     //! full forces buffer in GPU memory
@@ -208,6 +225,8 @@ private:
     gmx_wallcycle* wcycle_ = nullptr;
     //! The atom offset for receive (x) or send (f) for dimension index and pulse corresponding to this halo exchange instance
     int atomOffset_ = 0;
+    //! Event triggered when coordinate halo has been launched
+    GpuEventSynchronizer coordinateHaloLaunched_;
 };
 
 } // namespace gmx

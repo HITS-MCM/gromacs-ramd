@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *
@@ -113,21 +112,6 @@ struct gmx_multisim_t
     MPI_Comm mastersComm_ = MPI_COMM_NULL;
     //! The MPI communicator between ranks of this simulation.
     MPI_Comm simulationComm_ = MPI_COMM_NULL;
-    /*! \brief Communication buffers needed if MPI_IN_PLACE isn't supported
-     *
-     * Other types could be added as needed.
-     *
-     * These vectors are unused when MPI_IN_PLACE is available
-     * and could be removed with preprocessing (or perhaps
-     * templating) or simply requiring MPI 2.0 (the standard
-     * introduced in 1997). However, the additional cache pressure
-     * introduced by the extra size of this type is not of great
-     * concern, since we have at most one per MPI rank.
-     * See issue #3591. */
-    //! \{
-    std::vector<int>     intBuffer_;
-    std::vector<int64_t> int64Buffer_;
-    //! \}
 };
 
 //! Calculate the sum over the simulations of an array of ints

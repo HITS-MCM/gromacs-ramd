@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \libinternal
@@ -77,10 +75,10 @@
 #include <cstdint>
 
 #include <array>
+#include <memory>
 #include <type_traits>
 
 #include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/classhelpers.h"
 #include "gromacs/utility/real.h"
 
 //! \cond libapi
@@ -142,20 +140,14 @@ struct SimdDInt32Tag
 #    include "impl_x86_avx2_256/impl_x86_avx2_256.h"
 #elif GMX_SIMD_X86_AVX2_128
 #    include "impl_x86_avx2_128/impl_x86_avx2_128.h"
-#elif GMX_SIMD_X86_MIC
-#    include "impl_x86_mic/impl_x86_mic.h"
 #elif GMX_SIMD_X86_AVX_512
 #    include "impl_x86_avx_512/impl_x86_avx_512.h"
 #elif GMX_SIMD_X86_AVX_512_KNL
 #    include "impl_x86_avx_512_knl/impl_x86_avx_512_knl.h"
-#elif GMX_SIMD_ARM_NEON
-#    include "impl_arm_neon/impl_arm_neon.h"
 #elif GMX_SIMD_ARM_NEON_ASIMD
 #    include "impl_arm_neon_asimd/impl_arm_neon_asimd.h"
 #elif GMX_SIMD_ARM_SVE
 #    include "impl_arm_sve/impl_arm_sve.h"
-#elif GMX_SIMD_IBM_VMX
-#    include "impl_ibm_vmx/impl_ibm_vmx.h"
 #elif GMX_SIMD_IBM_VSX
 #    include "impl_ibm_vsx/impl_ibm_vsx.h"
 #elif (GMX_SIMD_REFERENCE || defined DOXYGEN)

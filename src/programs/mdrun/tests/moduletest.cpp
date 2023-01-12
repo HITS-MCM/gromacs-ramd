@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -83,9 +81,11 @@ namespace
 
 #if GMX_OPENMP || defined(DOXYGEN)
 //! Number of OpenMP threads for child mdrun call.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 int g_numOpenMPThreads = 1;
 #endif
 //! \cond
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 GMX_TEST_OPTIONS(MdrunTestOptions, options)
 {
     GMX_UNUSED_VALUE(options);
@@ -100,6 +100,8 @@ GMX_TEST_OPTIONS(MdrunTestOptions, options)
 
 SimulationRunner::SimulationRunner(TestFileManager* fileManager) :
     fullPrecisionTrajectoryFileName_(fileManager->getTemporaryFilePath(".trr")),
+    groOutputFileName_(fileManager->getTemporaryFilePath(".gro")),
+    cptOutputFileName_(fileManager->getTemporaryFilePath(".cpt")),
     mdpOutputFileName_(fileManager->getTemporaryFilePath("output.mdp")),
     tprFileName_(fileManager->getTemporaryFilePath(".tpr")),
     logFileName_(fileManager->getTemporaryFilePath(".log")),
@@ -107,6 +109,7 @@ SimulationRunner::SimulationRunner(TestFileManager* fileManager) :
     mtxFileName_(fileManager->getTemporaryFilePath(".mtx")),
 
     nsteps_(-2),
+    maxwarn_(0),
     mdpSource_(SimulationRunnerMdpSource::Undefined),
     fileManager_(*fileManager)
 {
@@ -117,7 +120,7 @@ SimulationRunner::SimulationRunner(TestFileManager* fileManager) :
     // but there is no way to do that currently, and it is also not a
     // problem for such a build. Any code based on such an invalid
     // test fixture will be found in CI testing, however.
-    GMX_RELEASE_ASSERT(MdrunTestFixtureBase::communicator_ != MPI_COMM_NULL,
+    GMX_RELEASE_ASSERT(MdrunTestFixtureBase::s_communicator != MPI_COMM_NULL,
                        "SimulationRunner may only be used from a test fixture that inherits from "
                        "MdrunTestFixtureBase");
 #endif
@@ -148,7 +151,7 @@ void SimulationRunner::useStringAsMdpFile(const std::string& mdpString)
     mdpInputContents_ = mdpString;
 }
 
-void SimulationRunner::useStringAsNdxFile(const char* ndxString)
+void SimulationRunner::useStringAsNdxFile(const char* ndxString) const
 {
     gmx::TextWriter::writeFileFromString(ndxFileName_, ndxString);
 }
@@ -172,6 +175,11 @@ void SimulationRunner::useGroFromDatabase(const char* name)
     groFileName_ = gmx::test::TestFileManager::getInputFilePath((std::string(name) + ".gro").c_str());
 }
 
+void SimulationRunner::useNdxFromDatabase(const std::string& name)
+{
+    ndxFileName_ = gmx::test::TestFileManager::getInputFilePath(name + ".ndx");
+}
+
 void SimulationRunner::useTopGroAndMdpFromFepTestDatabase(const std::string& name)
 {
     GMX_RELEASE_ASSERT(mdpSource_ != SimulationRunnerMdpSource::String,
@@ -181,6 +189,11 @@ void SimulationRunner::useTopGroAndMdpFromFepTestDatabase(const std::string& nam
     groFileName_ = gmx::test::TestFileManager::getInputFilePath("freeenergy/" + name + "/conf.gro");
     mdpFileName_ =
             gmx::test::TestFileManager::getInputFilePath("freeenergy/" + name + "/grompp.mdp");
+}
+
+void SimulationRunner::setMaxWarn(int maxwarn)
+{
+    maxwarn_ = maxwarn;
 }
 
 int SimulationRunner::callGromppOnThisRank(const CommandLine& callerRef)
@@ -210,6 +223,10 @@ int SimulationRunner::callGromppOnThisRank(const CommandLine& callerRef)
 
     caller.addOption("-po", mdpOutputFileName_);
     caller.addOption("-o", tprFileName_);
+    if (maxwarn_ != 0)
+    {
+        caller.addOption("-maxwarn", maxwarn_);
+    }
 
     return gmx_grompp(caller.argc(), caller.argv());
 }
@@ -235,7 +252,7 @@ int SimulationRunner::callGrompp(const CommandLine& callerRef)
     // Make sure rank zero has written the .tpr file before other
     // ranks try to read it. Thread-MPI and serial do this just fine
     // on their own.
-    MPI_Barrier(MdrunTestFixtureBase::communicator_);
+    MPI_Barrier(MdrunTestFixtureBase::s_communicator);
 #endif
     return returnValue;
 }
@@ -245,7 +262,7 @@ int SimulationRunner::callGrompp()
     return callGrompp(CommandLine());
 }
 
-int SimulationRunner::changeTprNsteps(int nsteps)
+int SimulationRunner::changeTprNsteps(int nsteps) const
 {
     CommandLine caller;
     caller.append("convert-tpr");
@@ -258,7 +275,7 @@ int SimulationRunner::changeTprNsteps(int nsteps)
     return gmx::test::CommandLineTestHelper::runModuleFactory(&gmx::ConvertTprInfo::create, &caller);
 }
 
-int SimulationRunner::callNmeig()
+int SimulationRunner::callNmeig() const
 {
     /* Conforming to style guide by not passing a non-const reference
        to this function. Passing a non-const reference might make it
@@ -300,6 +317,8 @@ int SimulationRunner::callMdrun(const CommandLine& callerRef)
     {
         caller.addOption("-dhdl", dhdlFileName_);
     }
+    caller.addOption("-c", groOutputFileName_);
+    caller.addOption("-cpo", cptOutputFileName_);
 
     caller.addOption("-deffnm", fileManager_.getTemporaryFilePath("state"));
 
@@ -316,8 +335,10 @@ int SimulationRunner::callMdrun(const CommandLine& callerRef)
     caller.addOption("-ntomp", g_numOpenMPThreads);
 #endif
 
-    return gmx_mdrun(MdrunTestFixtureBase::communicator_, *MdrunTestFixtureBase::hwinfo_,
-                     caller.argc(), caller.argv());
+    return gmx_mdrun(MdrunTestFixtureBase::s_communicator,
+                     *MdrunTestFixtureBase::s_hwinfo,
+                     caller.argc(),
+                     caller.argv());
 }
 
 int SimulationRunner::callMdrun()
@@ -328,23 +349,25 @@ int SimulationRunner::callMdrun()
 // ====
 
 // static
-MPI_Comm MdrunTestFixtureBase::communicator_ = MPI_COMM_NULL;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+MPI_Comm MdrunTestFixtureBase::s_communicator = MPI_COMM_NULL;
 // static
-std::unique_ptr<gmx_hw_info_t> MdrunTestFixtureBase::hwinfo_;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::unique_ptr<gmx_hw_info_t> MdrunTestFixtureBase::s_hwinfo;
 
 // static
-void MdrunTestFixtureBase::SetUpTestCase()
+void MdrunTestFixtureBase::SetUpTestSuite()
 {
-    communicator_ = MPI_COMM_WORLD;
+    s_communicator = MPI_COMM_WORLD;
     auto newHwinfo =
-            gmx_detect_hardware(PhysicalNodeCommunicator{ communicator_, gmx_physicalnode_id_hash() });
-    std::swap(hwinfo_, newHwinfo);
+            gmx_detect_hardware(PhysicalNodeCommunicator{ s_communicator, gmx_physicalnode_id_hash() });
+    std::swap(s_hwinfo, newHwinfo);
 }
 
 // static
-void MdrunTestFixtureBase::TearDownTestCase()
+void MdrunTestFixtureBase::TearDownTestSuite()
 {
-    hwinfo_.reset(nullptr);
+    s_hwinfo.reset(nullptr);
 }
 
 MdrunTestFixtureBase::MdrunTestFixtureBase()
@@ -364,7 +387,7 @@ MdrunTestFixture::~MdrunTestFixture()
 {
 #if GMX_LIB_MPI
     // fileManager_ should only clean up after all the ranks are done.
-    MPI_Barrier(MdrunTestFixtureBase::communicator_);
+    MPI_Barrier(MdrunTestFixtureBase::s_communicator);
 #endif
 }
 

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief
@@ -54,15 +53,10 @@
 namespace gmx
 {
 
-template<class Function>
-auto dispatchTemplatedFunction(Function&& f)
-{
-    return std::forward<Function>(f)();
-}
-
-/** \internal \brief Helper function to select appropriate template based on runtime values.
+/*! \internal \brief
+ * Helper function to select appropriate template based on runtime values.
  *
- * Can only use enums for template parameters.
+ * Can use enums or booleans for template parameters.
  * These enums must have a member \c Count indicating the total number of valid values.
  *
  * Example usage:
@@ -73,18 +67,30 @@ auto dispatchTemplatedFunction(Function&& f)
         Count = 2
     };
 
-    template<Options p1, Options p2>
+    template<bool p0, Options p1, Options p2>
     bool foo(int i);
 
-    bool bar(Options p1, Options p2, int i) {
+    bool bar(bool p0, Options p1, Options p2, int i) {
         return dispatchTemplatedFunction(
-            [=](auto p1, auto p2) {
-                return foo<p1, p2>(i);
+            [=](auto p0, auto p1, auto p2) {
+                return foo<p0, p1, p2>(i);
             },
-            p1, p2);
+            p0, p1, p2);
     }
  * \endcode
- */
+ *
+ * \tparam Function Type of \p f.
+ * \param f Function to call.
+ * \return The result of calling \c f().
+*/
+template<class Function>
+auto dispatchTemplatedFunction(Function&& f)
+{
+    return std::forward<Function>(f)();
+}
+
+// Recursive templates confuse Doxygen
+//! \cond
 template<class Function, class Enum, class... Enums>
 auto dispatchTemplatedFunction(Function&& f, Enum e, Enums... es)
 {
@@ -97,6 +103,19 @@ auto dispatchTemplatedFunction(Function&& f, Enum e, Enums... es)
             },
             es...);
 }
+
+template<class Function, class... Enums>
+auto dispatchTemplatedFunction(Function&& f, bool e, Enums... es)
+{
+    return dispatchTemplatedFunction(
+            [&](auto... es_) {
+                return compat::mp_with_index<2>(size_t(e), [&](auto e_) {
+                    return std::forward<Function>(f)(std::bool_constant<static_cast<bool>(e_)>(), es_...);
+                });
+            },
+            es...);
+}
+//! \endcond
 
 } // namespace gmx
 

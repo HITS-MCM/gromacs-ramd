@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010,2011,2012,2013,2014 by the GROMACS development team.
- * Copyright (c) 2015,2016,2017,2018,2019 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -153,7 +150,13 @@ static void calc_q2all(const gmx_mtop_t* mtop, /* molecular topology */
         fprintf(stderr,
                 "Molecule %2d (%5d atoms) q2_mol=%10.3e nr.mol.charges=%5d (%6dx)  q2_all=%10.3e  "
                 "tot.charges=%d\n",
-                imol, molecule.atoms.nr, q2_mol, nrq_mol, molblock.nmol, q2_all, nrq_all);
+                imol,
+                molecule.atoms.nr,
+                q2_mol,
+                nrq_mol,
+                molblock.nmol,
+                q2_all,
+                nrq_all);
 #endif
     }
 
@@ -176,7 +179,7 @@ static real estimate_direct(t_inputinfo* info)
     e_dir = 2.0 * info->q2all * gmx::invsqrt(info->q2allnr * r_coulomb * info->volume);
     e_dir *= std::exp(-beta * beta * r_coulomb * r_coulomb);
 
-    return ONE_4PI_EPS0 * e_dir;
+    return gmx::c_one4PiEps0 * e_dir;
 }
 
 #define SUMORDER 6
@@ -599,7 +602,8 @@ static real estimate_reciprocal(t_inputinfo* info,
         }
         if (MASTER(cr))
         {
-            fprintf(stderr, "\rCalculating reciprocal error part 1 ... %3.0f%%",
+            fprintf(stderr,
+                    "\rCalculating reciprocal error part 1 ... %3.0f%%",
                     100.0 * (nx - startlocal + 1) / (x_per_core));
             fflush(stderr);
         }
@@ -652,8 +656,10 @@ static real estimate_reciprocal(t_inputinfo* info,
 
         if (bVerbose && MASTER(cr))
         {
-            fprintf(stdout, "Using %d sample%s to approximate the self interaction error term",
-                    xtot, xtot == 1 ? "" : "s");
+            fprintf(stdout,
+                    "Using %d sample%s to approximate the self interaction error term",
+                    xtot,
+                    xtot == 1 ? "" : "s");
             if (PAR(cr))
             {
                 fprintf(stdout, " (%d sample%s per rank)", x_per_core, x_per_core == 1 ? "" : "s");
@@ -767,7 +773,7 @@ static real estimate_reciprocal(t_inputinfo* info,
     e_rec = std::sqrt(e_rec1 + e_rec2 + e_rec3);
 
 
-    return ONE_4PI_EPS0 * e_rec;
+    return gmx::c_one4PiEps0 * e_rec;
 }
 
 
@@ -944,8 +950,7 @@ static void estimate_PME_error(t_inputinfo*      info,
         fprintf(fp_out, "Ewald_rtol              : %g\n", info->ewald_rtol[0]);
         fprintf(fp_out, "Ewald parameter beta    : %g\n", info->ewald_beta[0]);
         fprintf(fp_out, "Interpolation order     : %d\n", info->pme_order[0]);
-        fprintf(fp_out, "Fourier grid (nx,ny,nz) : %d x %d x %d\n", info->nkx[0], info->nky[0],
-                info->nkz[0]);
+        fprintf(fp_out, "Fourier grid (nx,ny,nz) : %d x %d x %d\n", info->nkx[0], info->nky[0], info->nkz[0]);
         fflush(fp_out);
     }
 
@@ -1033,7 +1038,9 @@ static void estimate_PME_error(t_inputinfo*      info,
             if (MASTER(cr))
             {
                 i++;
-                fprintf(stderr, "difference between real and rec. space error (step %d): %g\n", i,
+                fprintf(stderr,
+                        "difference between real and rec. space error (step %d): %g\n",
+                        i,
                         std::abs(derr));
                 fprintf(stderr, "old beta: %f\n", beta0);
                 fprintf(stderr, "new beta: %f\n", beta);
@@ -1125,8 +1132,8 @@ int gmx_pme_error(int argc, char* argv[])
     t_commrec*    cr            = commrecHandle.get();
     PCA_Flags                   = PCA_NOEXIT_ON_ARGS;
 
-    if (!parse_common_args(&argc, argv, PCA_Flags, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0,
-                           nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_Flags, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -1163,14 +1170,25 @@ int gmx_pme_error(int argc, char* argv[])
         info.nkx[0] = 0;
         info.nky[0] = 0;
         info.nkz[0] = 0;
-        calcFftGrid(stdout, state.box, info.fourier_sp[0], minimalPmeGridSize(info.pme_order[0]),
-                    &(info.nkx[0]), &(info.nky[0]), &(info.nkz[0]));
+        calcFftGrid(stdout,
+                    state.box,
+                    info.fourier_sp[0],
+                    minimalPmeGridSize(info.pme_order[0]),
+                    &(info.nkx[0]),
+                    &(info.nky[0]),
+                    &(info.nkz[0]));
         if ((ir.nkx != info.nkx[0]) || (ir.nky != info.nky[0]) || (ir.nkz != info.nkz[0]))
         {
             gmx_fatal(FARGS,
                       "Wrong fourierspacing %f nm, input file grid = %d x %d x %d, computed grid = "
                       "%d x %d x %d",
-                      fs, ir.nkx, ir.nky, ir.nkz, info.nkx[0], info.nky[0], info.nkz[0]);
+                      fs,
+                      ir.nkx,
+                      ir.nky,
+                      ir.nkz,
+                      info.nkx[0],
+                      info.nky[0],
+                      info.nkz[0]);
         }
     }
 
@@ -1190,7 +1208,7 @@ int gmx_pme_error(int argc, char* argv[])
         if (opt2bSet("-so", NFILE, fnm) || bTUNE)
         {
             ir.ewald_rtol = info.ewald_rtol[0];
-            write_tpx_state(opt2fn("-so", NFILE, fnm), &ir, &state, &mtop);
+            write_tpx_state(opt2fn("-so", NFILE, fnm), &ir, &state, mtop);
         }
         please_cite(fp, "Wang2010");
         fclose(fp);

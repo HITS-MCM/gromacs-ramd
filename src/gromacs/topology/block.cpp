@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -104,7 +100,7 @@ void init_blocka_null(t_blocka* block)
 
 t_blocka* new_blocka()
 {
-    t_blocka* block;
+    t_blocka* block = nullptr;
 
     snew(block, 1);
     snew(block->index, 1);
@@ -235,17 +231,15 @@ static int pr_listoflists_title(FILE* fp, int indent, const char* title, const g
 
 static void low_pr_blocka(FILE* fp, int indent, const char* title, const t_blocka* block, gmx_bool bShowNumbers)
 {
-    int i;
-
     if (available(fp, block, indent, title))
     {
         indent = pr_blocka_title(fp, indent, title, block);
-        for (i = 0; i <= block->nr; i++)
+        for (int i = 0; i <= block->nr; i++)
         {
             pr_indent(fp, indent + INDENT);
             fprintf(fp, "%s->index[%d]=%d\n", title, bShowNumbers ? i : -1, block->index[i]);
         }
-        for (i = 0; i < block->nra; i++)
+        for (int i = 0; i < block->nra; i++)
         {
             pr_indent(fp, indent + INDENT);
             fprintf(fp, "%s->a[%d]=%d\n", title, bShowNumbers ? i : -1, block->a[i]);
@@ -255,19 +249,17 @@ static void low_pr_blocka(FILE* fp, int indent, const char* title, const t_block
 
 void pr_block(FILE* fp, int indent, const char* title, const t_block* block, gmx_bool bShowNumbers)
 {
-    int i, start;
-
     if (available(fp, block, indent, title))
     {
-        indent = pr_block_title(fp, indent, title, block);
-        start  = 0;
+        indent    = pr_block_title(fp, indent, title, block);
+        int start = 0;
         if (block->index[start] != 0)
         {
             fprintf(fp, "block->index[%d] should be 0\n", start);
         }
         else
         {
-            for (i = 0; i < block->nr; i++)
+            for (int i = 0; i < block->nr; i++)
             {
                 int end = block->index[i + 1];
                 pr_indent(fp, indent);
@@ -277,8 +269,12 @@ void pr_block(FILE* fp, int indent, const char* title, const t_block* block, gmx
                 }
                 else
                 {
-                    fprintf(fp, "%s[%d]={%d..%d}\n", title, bShowNumbers ? i : -1,
-                            bShowNumbers ? start : -1, bShowNumbers ? end - 1 : -1);
+                    fprintf(fp,
+                            "%s[%d]={%d..%d}\n",
+                            title,
+                            bShowNumbers ? i : -1,
+                            bShowNumbers ? start : -1,
+                            bShowNumbers ? end - 1 : -1);
                 }
                 start = end;
             }
@@ -288,33 +284,38 @@ void pr_block(FILE* fp, int indent, const char* title, const t_block* block, gmx
 
 void pr_blocka(FILE* fp, int indent, const char* title, const t_blocka* block, gmx_bool bShowNumbers)
 {
-    int i, j, ok, size, start, end;
+    bool ok = false;
 
     if (available(fp, block, indent, title))
     {
-        indent = pr_blocka_title(fp, indent, title, block);
-        start  = 0;
-        end    = start;
-        if ((ok = static_cast<int>(block->index[start] == 0)) == 0)
+        indent    = pr_blocka_title(fp, indent, title, block);
+        int start = 0;
+        int end   = start;
+        ok        = (block->index[start] == 0);
+        if (!ok)
         {
             fprintf(fp, "block->index[%d] should be 0\n", start);
         }
         else
         {
-            for (i = 0; i < block->nr; i++)
+            for (int i = 0; i < block->nr; i++)
             {
-                end  = block->index[i + 1];
-                size = pr_indent(fp, indent);
+                end      = block->index[i + 1];
+                int size = pr_indent(fp, indent);
                 if (end <= start)
                 {
                     size += fprintf(fp, "%s[%d]={", title, i);
                 }
                 else
                 {
-                    size += fprintf(fp, "%s[%d][%d..%d]={", title, bShowNumbers ? i : -1,
-                                    bShowNumbers ? start : -1, bShowNumbers ? end - 1 : -1);
+                    size += fprintf(fp,
+                                    "%s[%d][%d..%d]={",
+                                    title,
+                                    bShowNumbers ? i : -1,
+                                    bShowNumbers ? start : -1,
+                                    bShowNumbers ? end - 1 : -1);
                 }
-                for (j = start; j < end; j++)
+                for (int j = start; j < end; j++)
                 {
                     if (j > start)
                     {

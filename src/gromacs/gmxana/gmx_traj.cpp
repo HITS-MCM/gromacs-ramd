@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -43,6 +39,7 @@
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/commandline/viewit.h"
@@ -160,16 +157,16 @@ static void print_data(FILE*       fp,
                        gmx_bool    bDim[],
                        const char* sffmt)
 {
-    static rvec* xav = nullptr;
+    static std::vector<gmx::RVec> xav;
 
     if (bCom)
     {
-        if (xav == nullptr)
+        if (xav.empty())
         {
-            snew(xav, ngrps);
+            xav.resize(ngrps);
         }
-        average_data(x, xav, mass, ngrps, isize, index);
-        low_print_data(fp, time, xav, ngrps, nullptr, bDim, sffmt);
+        average_data(x, as_rvec_array(xav.data()), mass, ngrps, isize, index);
+        low_print_data(fp, time, as_rvec_array(xav.data()), ngrps, nullptr, bDim, sffmt);
     }
     else
     {
@@ -185,16 +182,17 @@ static void write_trx_x(t_trxstatus*      status,
                         int               isize[],
                         int**             index)
 {
-    static rvec*    xav   = nullptr;
+    static std::vector<gmx::RVec> xav;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
     static t_atoms* atoms = nullptr;
     t_trxframe      fr_av;
     int             i;
 
     if (bCom)
     {
-        if (xav == nullptr)
+        if (xav.empty())
         {
-            snew(xav, ngrps);
+            xav.resize(ngrps);
             snew(atoms, 1);
             *atoms = *fr->atoms;
             snew(atoms->atom, ngrps);
@@ -208,11 +206,11 @@ static void write_trx_x(t_trxstatus*      status,
                 atoms->atomname[i] = fr->atoms->atomname[index[i][0]];
             }
         }
-        average_data(fr->x, xav, mass, ngrps, isize, index);
+        average_data(fr->x, as_rvec_array(xav.data()), mass, ngrps, isize, index);
         fr_av        = *fr;
         fr_av.natoms = ngrps;
         fr_av.atoms  = atoms;
-        fr_av.x      = xav;
+        fr_av.x      = as_rvec_array(xav.data());
         write_trxframe(status, &fr_av, nullptr);
     }
     else
@@ -389,7 +387,7 @@ static real temp(rvec v[], const real mass[], int isize, const int index[])
         ekin2 += mass[j] * norm2(v[j]);
     }
 
-    return ekin2 / (3 * isize * BOLTZ);
+    return ekin2 / (3 * isize * gmx::c_boltz);
 }
 
 static void remove_jump(matrix box, int natoms, rvec xp[], rvec x[])
@@ -478,8 +476,12 @@ static void write_pdb_bfac(const char*             fname,
         fp = xvgropen(xname, title, "Atom", "Spatial component", oenv);
         for (i = 0; i < isize; i++)
         {
-            fprintf(fp, "%-5d  %10.3f  %10.3f  %10.3f\n", 1 + i, sum[index[i]][XX],
-                    sum[index[i]][YY], sum[index[i]][ZZ]);
+            fprintf(fp,
+                    "%-5d  %10.3f  %10.3f  %10.3f\n",
+                    1 + i,
+                    sum[index[i]][XX],
+                    sum[index[i]][YY],
+                    sum[index[i]][ZZ]);
         }
         xvgrclose(fp);
         max  = 0;
@@ -516,8 +518,12 @@ static void write_pdb_bfac(const char*             fname,
             }
         }
 
-        printf("Maximum %s is %g on atom %d %s, res. %s %d\n", title, std::sqrt(max), maxi + 1,
-               *(atoms->atomname[maxi]), *(atoms->resinfo[atoms->atom[maxi].resind].name),
+        printf("Maximum %s is %g on atom %d %s, res. %s %d\n",
+               title,
+               std::sqrt(max),
+               maxi + 1,
+               *(atoms->atomname[maxi]),
+               *(atoms->resinfo[atoms->atom[maxi].resind].name),
                atoms->resinfo[atoms->atom[maxi].resind].nr);
 
         if (atoms->pdbinfo == nullptr)
@@ -707,8 +713,18 @@ int gmx_traj(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW, NFILE, fnm,
-                           asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW,
+                           NFILE,
+                           fnm,
+                           asize(pa),
+                           pa,
+                           asize(desc),
+                           desc,
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -751,7 +767,12 @@ int gmx_traj(int argc, char* argv[])
     }
     std::string sffmt6 = gmx::formatString("%s%s%s%s%s%s", sffmt, sffmt, sffmt, sffmt, sffmt, sffmt);
 
-    bTop = read_tps_conf(ftp2fn(efTPS, NFILE, fnm), &top, &pbcType, &xtop, nullptr, topbox,
+    bTop = read_tps_conf(ftp2fn(efTPS, NFILE, fnm),
+                         &top,
+                         &pbcType,
+                         &xtop,
+                         nullptr,
+                         topbox,
                          bCom && (bOX || bOXT || bOV || bOT || bEKT || bEKR));
     sfree(xtop);
     if ((bMol || bCV || bCF) && !bTop)
@@ -788,8 +809,7 @@ int gmx_traj(int argc, char* argv[])
         {
             if (index0[0][i] < 0 || index0[0][i] >= mols->nr)
             {
-                gmx_fatal(FARGS, "Molecule index (%d) is out of range (%d-%d)", index0[0][i] + 1, 1,
-                          mols->nr);
+                gmx_fatal(FARGS, "Molecule index (%d) is out of range (%d-%d)", index0[0][i] + 1, 1, mols->nr);
             }
             isize[i] = atndx[index0[0][i] + 1] - atndx[index0[0][i]];
             snew(index[i], isize[i]);
@@ -822,8 +842,11 @@ int gmx_traj(int argc, char* argv[])
     if (bOX)
     {
         flags = flags | TRX_READ_X;
-        outx  = xvgropen(opt2fn("-ox", NFILE, fnm), bCom ? "Center of mass" : "Coordinate", label,
-                        "Coordinate (nm)", oenv);
+        outx  = xvgropen(opt2fn("-ox", NFILE, fnm),
+                        bCom ? "Center of mass" : "Coordinate",
+                        label,
+                        "Coordinate (nm)",
+                        oenv);
         make_legend(outx, ngroups, isize0[0], index0[0], grpname, bCom, bMol, bDim, oenv);
     }
     if (bOXT)
@@ -834,15 +857,18 @@ int gmx_traj(int argc, char* argv[])
     if (bOV)
     {
         flags = flags | TRX_READ_V;
-        outv  = xvgropen(opt2fn("-ov", NFILE, fnm), bCom ? "Center of mass velocity" : "Velocity",
-                        label, "Velocity (nm/ps)", oenv);
+        outv  = xvgropen(opt2fn("-ov", NFILE, fnm),
+                        bCom ? "Center of mass velocity" : "Velocity",
+                        label,
+                        "Velocity (nm/ps)",
+                        oenv);
         make_legend(outv, ngroups, isize0[0], index0[0], grpname, bCom, bMol, bDim, oenv);
     }
     if (bOF)
     {
         flags = flags | TRX_READ_F;
-        outf  = xvgropen(opt2fn("-of", NFILE, fnm), "Force", label,
-                        "Force (kJ mol\\S-1\\N nm\\S-1\\N)", oenv);
+        outf  = xvgropen(
+                opt2fn("-of", NFILE, fnm), "Force", label, "Force (kJ mol\\S-1\\N nm\\S-1\\N)", oenv);
         make_legend(outf, ngroups, isize0[0], index0[0], grpname, bCom, bMol, bDim, oenv);
     }
     if (bOB)
@@ -868,8 +894,11 @@ int gmx_traj(int argc, char* argv[])
         bDum[ZZ]  = FALSE;
         bDum[DIM] = TRUE;
         flags     = flags | TRX_READ_V;
-        outekt    = xvgropen(opt2fn("-ekt", NFILE, fnm), "Center of mass translation", label,
-                          "Energy (kJ mol\\S-1\\N)", oenv);
+        outekt    = xvgropen(opt2fn("-ekt", NFILE, fnm),
+                          "Center of mass translation",
+                          label,
+                          "Energy (kJ mol\\S-1\\N)",
+                          oenv);
         make_legend(outekt, ngroups, isize[0], index[0], grpname, bCom, bMol, bDum, oenv);
     }
     if (bEKR)
@@ -879,8 +908,11 @@ int gmx_traj(int argc, char* argv[])
         bDum[ZZ]  = FALSE;
         bDum[DIM] = TRUE;
         flags     = flags | TRX_READ_X | TRX_READ_V;
-        outekr    = xvgropen(opt2fn("-ekr", NFILE, fnm), "Center of mass rotation", label,
-                          "Energy (kJ mol\\S-1\\N)", oenv);
+        outekr    = xvgropen(opt2fn("-ekr", NFILE, fnm),
+                          "Center of mass rotation",
+                          label,
+                          "Energy (kJ mol\\S-1\\N)",
+                          oenv);
         make_legend(outekr, ngroups, isize[0], index[0], grpname, bCom, bMol, bDum, oenv);
     }
     if (bVD)
@@ -989,8 +1021,14 @@ int gmx_traj(int argc, char* argv[])
         if (bOB && fr.bBox)
         {
             fprintf(outb, "\t%g", fr.time);
-            fprintf(outb, sffmt6.c_str(), fr.box[XX][XX], fr.box[YY][YY], fr.box[ZZ][ZZ],
-                    fr.box[YY][XX], fr.box[ZZ][XX], fr.box[ZZ][YY]);
+            fprintf(outb,
+                    sffmt6.c_str(),
+                    fr.box[XX][XX],
+                    fr.box[YY][YY],
+                    fr.box[ZZ][ZZ],
+                    fr.box[YY][XX],
+                    fr.box[ZZ][XX],
+                    fr.box[ZZ][YY]);
             fprintf(outb, "\n");
         }
         if (bOT && fr.bV)
@@ -1117,15 +1155,39 @@ int gmx_traj(int argc, char* argv[])
     }
     if (bCV)
     {
-        write_pdb_bfac(opt2fn("-cv", NFILE, fnm), opt2fn("-av", NFILE, fnm), "average velocity",
-                       &(top.atoms), pbcType, topbox, isize[0], index[0], nr_xfr, sumx, nr_vfr,
-                       sumv, bDim, scale, oenv);
+        write_pdb_bfac(opt2fn("-cv", NFILE, fnm),
+                       opt2fn("-av", NFILE, fnm),
+                       "average velocity",
+                       &(top.atoms),
+                       pbcType,
+                       topbox,
+                       isize[0],
+                       index[0],
+                       nr_xfr,
+                       sumx,
+                       nr_vfr,
+                       sumv,
+                       bDim,
+                       scale,
+                       oenv);
     }
     if (bCF)
     {
-        write_pdb_bfac(opt2fn("-cf", NFILE, fnm), opt2fn("-af", NFILE, fnm), "average force",
-                       &(top.atoms), pbcType, topbox, isize[0], index[0], nr_xfr, sumx, nr_ffr,
-                       sumf, bDim, scale, oenv);
+        write_pdb_bfac(opt2fn("-cf", NFILE, fnm),
+                       opt2fn("-af", NFILE, fnm),
+                       "average force",
+                       &(top.atoms),
+                       pbcType,
+                       topbox,
+                       isize[0],
+                       index[0],
+                       nr_xfr,
+                       sumx,
+                       nr_ffr,
+                       sumf,
+                       bDim,
+                       scale,
+                       oenv);
     }
 
     /* view it */

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *
@@ -73,11 +72,20 @@ enum class DlbOption
     Count             //!< The number of options
 };
 
+/*! \brief Options for checking bonded interactions.
+ *
+ * These values must match the bool false and true used for mdrun -ddcheck */
+enum class DDBondedChecking : bool
+{
+    ExcludeZeroLimit = false, //!< Do not check bonded interactions that go to 0 for large distances
+    All              = true   //!< Check all bonded interactions
+};
+
 /*! \libinternal \brief Structure containing all (command line) options for the domain decomposition */
 struct DomdecOptions
 {
-    //! If true, check that all bonded interactions have been assigned to exactly one domain/rank.
-    bool checkBondedInteractions = true;
+    //! Style of bonded-interaction checking
+    DDBondedChecking ddBondedChecking = DDBondedChecking::All;
     //! If true, don't communicate all atoms between the non-bonded cut-off and the larger bonded cut-off, but only those that have non-local bonded interactions. This significantly reduces the communication volume.
     bool useBondedCommunication = true;
     //! The domain decomposition grid cell count, 0 means let domdec choose based on the number of ranks.

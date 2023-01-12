@@ -1,0 +1,3 @@
+recursive-include gmxapi *.py *.cpp *.h *.in *.json
+global-include CMakeLists.txt *.cmake
+global-exclude *.py[cod]

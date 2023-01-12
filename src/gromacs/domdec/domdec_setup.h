@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -56,7 +55,9 @@ struct t_inputrec;
 namespace gmx
 {
 struct DomdecOptions;
+struct MDModulesNotifiers;
 class MDLogger;
+class SeparatePmeRanksPermitted;
 template<typename T>
 class ArrayRef;
 } // namespace gmx
@@ -82,14 +83,31 @@ struct DDGridSetup
     ivec ddDimensions = { -1, -1, -1 };
 };
 
+/*! \brief Checks for ability to use separate PME ranks
+ *
+ * Disables automatic usage if:
+ * some MDModule could not use separate PME ranks,
+ * GPU setup is not compatible with separate PME ranks,
+ * user provided explicit DD grid
+ * or total number of ranks is not large enough to use PME ranks
+ */
+gmx::SeparatePmeRanksPermitted checkForSeparatePmeRanks(const gmx::MDModulesNotifiers& notifiers,
+                                                        const gmx::DomdecOptions&      options,
+                                                        int  numRanksRequested,
+                                                        bool useGpuForNonbonded,
+                                                        bool useGpuForPme,
+                                                        bool canUseGpuPmeDecomposition);
+
 /*! \brief Checks that requests for PP and PME ranks honor basic expectations
  *
- * Issues a fatal error if there are more PME ranks than PP, or if the
+ * Issues a fatal error if there are more PME ranks than PP, if the
  * count of PP ranks has a prime factor that is too large to be likely
- * to have good performance. */
-void checkForValidRankCountRequests(int  numRanksRequested,
-                                    bool usingPme,
-                                    int  numPmeRanksRequested,
+ * to have good performance or PME-only ranks could not be used,
+ * but requested with -npme > 0 */
+void checkForValidRankCountRequests(int                                   numRanksRequested,
+                                    bool                                  usingPme,
+                                    int                                   numPmeRanksRequested,
+                                    const gmx::SeparatePmeRanksPermitted& separatePmeRanksPermitted,
                                     bool checkForLargePrimeFactors);
 
 /*! \brief Return the minimum cell size (in nm) required for DD */
@@ -97,7 +115,8 @@ real getDDGridSetupCellSizeLimit(const gmx::MDLogger& mdlog,
                                  bool                 bDynLoadBal,
                                  real                 dlb_scale,
                                  const t_inputrec&    ir,
-                                 real                 systemInfoCellSizeLimit);
+                                 real                 systemInfoCellSizeLimit,
+                                 int                  numRanksRequested);
 
 /*! \brief Determines the DD grid setup
  *
@@ -105,18 +124,19 @@ real getDDGridSetupCellSizeLimit(const gmx::MDLogger& mdlog,
  * chooses estimated optimal number of separate PME ranks and DD grid
  * cell setup, DD cell size limits, and the initial ddbox.
  */
-DDGridSetup getDDGridSetup(const gmx::MDLogger&           mdlog,
-                           DDRole                         ddRole,
-                           MPI_Comm                       communicator,
-                           int                            numRanksRequested,
-                           const gmx::DomdecOptions&      options,
-                           const DDSettings&              ddSettings,
-                           const DDSystemInfo&            systemInfo,
-                           real                           cellSizeLimit,
-                           const gmx_mtop_t&              mtop,
-                           const t_inputrec&              ir,
-                           const matrix                   box,
-                           gmx::ArrayRef<const gmx::RVec> xGlobal,
-                           gmx_ddbox_t*                   ddbox);
+DDGridSetup getDDGridSetup(const gmx::MDLogger&                  mdlog,
+                           DDRole                                ddRole,
+                           MPI_Comm                              communicator,
+                           int                                   numRanksRequested,
+                           const gmx::DomdecOptions&             options,
+                           const DDSettings&                     ddSettings,
+                           const DDSystemInfo&                   systemInfo,
+                           real                                  cellSizeLimit,
+                           const gmx_mtop_t&                     mtop,
+                           const t_inputrec&                     ir,
+                           const gmx::SeparatePmeRanksPermitted& separatePmeRanksPermitted,
+                           const matrix                          box,
+                           gmx::ArrayRef<const gmx::RVec>        xGlobal,
+                           gmx_ddbox_t*                          ddbox);
 
 #endif

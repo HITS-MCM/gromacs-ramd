@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -58,6 +54,7 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
 
@@ -129,9 +126,10 @@ static bool dcomp(const InteractionOfType& d1, const InteractionOfType& d2)
     {
         // AMBER force fields with type 9 dihedrals can reach here, where we sort on
         // the contents of the string that names the macro for the parameters.
-        return std::lexicographical_compare(
-                d1.interactionTypeName().begin(), d1.interactionTypeName().end(),
-                d2.interactionTypeName().begin(), d2.interactionTypeName().end());
+        return std::lexicographical_compare(d1.interactionTypeName().begin(),
+                                            d1.interactionTypeName().end(),
+                                            d2.interactionTypeName().begin(),
+                                            d2.interactionTypeName().end());
     }
 }
 
@@ -228,110 +226,114 @@ static int n_hydro(gmx::ArrayRef<const int> a, char*** atomname)
     return nh;
 }
 
+static bool dihedralIsOnSameBondAsImproper(const InteractionOfType&               dihedral,
+                                           gmx::ArrayRef<const InteractionOfType> improperDihedrals)
+{
+    return std::any_of(improperDihedrals.begin(), improperDihedrals.end(), [&dihedral](const auto& improper) {
+        return is_dihedral_on_same_bond(dihedral, improper);
+    });
+}
+
 /* Clean up the dihedrals (both generated and read from the .rtp
  * file). */
-static std::vector<InteractionOfType> clean_dih(gmx::ArrayRef<const InteractionOfType> dih,
-                                                gmx::ArrayRef<const InteractionOfType> improper,
+static std::vector<InteractionOfType> clean_dih(gmx::ArrayRef<const InteractionOfType> originalDihedrals,
+                                                gmx::ArrayRef<const InteractionOfType> improperDihedrals,
                                                 t_atoms*                               atoms,
                                                 bool bKeepAllGeneratedDihedrals,
                                                 bool bRemoveDihedralIfWithImproper)
 {
-    /* Construct the list of the indices of the dihedrals
-     * (i.e. generated or read) that might be kept. */
-    std::vector<std::pair<InteractionOfType, int>> newDihedrals;
-    if (bKeepAllGeneratedDihedrals)
+    std::vector<InteractionOfType> newDihedrals;
+
+    // Note this outer loop starts to iterate over dihedrals, but once we find one to add we
+    // also look for additional subsequent dihedrals over the same bond, so each outer iteration
+    // might process several dihedrals from the input, while resulting in one or zero
+    // new dihedral(s) in the output.
+    for (auto dihedralIt = originalDihedrals.begin(); dihedralIt != originalDihedrals.end();)
     {
-        fprintf(stderr, "Keeping all generated dihedrals\n");
-        int i = 0;
-        for (const auto& dihedral : dih)
+        if (!was_dihedral_set_in_rtp(*dihedralIt) && bRemoveDihedralIfWithImproper
+            && dihedralIsOnSameBondAsImproper(*dihedralIt, improperDihedrals))
         {
-            newDihedrals.emplace_back(std::pair<InteractionOfType, int>(dihedral, i++));
+            // This is a generated dihedral where the two central atoms are identical
+            // to an improper definition. We filter these out before considering
+            // whether to keep all (normal) generated dihedrals. Continue to next iteration.
+            dihedralIt++;
+            continue;
         }
-    }
-    else
-    {
-        /* Check if generated dihedral i should be removed. The
-         * dihedrals have been sorted by dcomp() above, so all those
-         * on the same two central atoms are together, with those from
-         * the .rtp file preceding those that were automatically
-         * generated. We remove the latter if the former exist. */
-        int i = 0;
-        for (auto dihedral = dih.begin(); dihedral != dih.end(); dihedral++)
+        else if (bKeepAllGeneratedDihedrals)
         {
-            /* Keep the dihedrals that were defined in the .rtp file,
-             * and the dihedrals that were generated and different
-             * from the last one (whether it was generated or not). */
-            if (was_dihedral_set_in_rtp(*dihedral) || dihedral == dih.begin()
-                || !is_dihedral_on_same_bond(*dihedral, *(dihedral - 1)))
-            {
-                newDihedrals.emplace_back(std::pair<InteractionOfType, int>(*dihedral, i++));
-            }
-        }
-    }
-    int k = 0;
-    for (auto dihedral = newDihedrals.begin(); dihedral != newDihedrals.end();)
-    {
-        bool bWasSetInRTP = was_dihedral_set_in_rtp(dihedral->first);
-        bool bKeep        = true;
-        if (!bWasSetInRTP && bRemoveDihedralIfWithImproper)
-        {
-            /* Remove the dihedral if there is an improper on the same
-             * bond. */
-            for (auto imp = improper.begin(); imp != improper.end() && bKeep; ++imp)
-            {
-                bKeep = !is_dihedral_on_same_bond(dihedral->first, *imp);
-            }
+            // If we are keeping all generated dihedrals, this one can go straight
+            // to the newDihedrals and we continue with the next iteration.
+            newDihedrals.emplace_back(*dihedralIt++);
+            continue;
         }
 
-        if (bKeep)
+        // If we get here, there are two possible scenarios:
+        //
+        // 1. The dihedral was explicitly listed in the RTP section,
+        //    and should be added - but we still need to check if other
+        //    dihedrals with the same two central atoms as this one should
+        //    be removed. That should be done by keeping the dihedral with
+        //    most heavy atoms (i.e., remove the ones with more hydrogens).
+        //    Here we *could* end up in the undefined behaviour situation
+        //    that the explicitly listed dihedral has more hydrogens.
+        //    In that case we assume the user actually wanted that, and keep
+        //    the explicit one - but warn about it. This way it's at least
+        //    possible to change the behavior by changing the RTP entry.
+        // 2. It was rather a generated dihedral. In this case we run the
+        //    same overlap check, but don't have to worry about any
+        //    explicitly listed RTP having higher priority. We just keep the
+        //    dihedral with fewest hydrogens.
+
+        // Let beginSameBondIt point to the dihedral we are tentatively planning
+        // to add, and then search from next dihedral until we find one that
+        // either is not on the same bond, or another diehdral that was also
+        // explicitly set in the RTP.
+        const auto beginSameBondIt = dihedralIt++;
+        dihedralIt = std::find_if(dihedralIt, originalDihedrals.end(), [&beginSameBondIt](const auto& dih) {
+            return !is_dihedral_on_same_bond(*beginSameBondIt, dih) || was_dihedral_set_in_rtp(dih);
+        });
+
+        // [beginSameBondIt,dihedralIt[ now specifies a range of dihedrals with the same central bond.
+        // Find the element (dihedral) with the smallest number of hydrogens in this range.
+        // Since the range is non-empty (it includes at least the element beginSameBondIt points
+        // to), there will be a valid match.
+        const auto bestMatchIt =
+                std::min_element(beginSameBondIt, dihedralIt, [atoms](const auto& d1, const auto& d2) {
+                    return n_hydro(d1.atoms(), atoms->atomname) < n_hydro(d2.atoms(), atoms->atomname);
+                });
+
+        // If the original candidate (beginSameBondIt) dihedral was not explicitly set in the RTP,
+        // we just add the dihedral that is the best match in the sense of fewest hydrogens in
+        // positions 1,4.  Note that this *could* be the first one (i.e., *beginSameBondIt).
+        if (!was_dihedral_set_in_rtp(*beginSameBondIt))
         {
-            /* If we don't want all dihedrals, we want to select the
-             * ones with the fewest hydrogens. Note that any generated
-             * dihedrals on the same bond as an .rtp dihedral may have
-             * been already pruned above in the construction of
-             * index[]. However, their parameters are still present,
-             * and l is looping over this dihedral and all of its
-             * pruned siblings. */
-            int bestl = dihedral->second;
-            if (!bKeepAllGeneratedDihedrals && !bWasSetInRTP)
-            {
-                /* Minimum number of hydrogens for i and l atoms */
-                int minh = 2;
-                int next = dihedral->second + 1;
-                for (int l = dihedral->second;
-                     (l < next && is_dihedral_on_same_bond(dihedral->first, dih[l])); l++)
-                {
-                    int nh = n_hydro(dih[l].atoms(), atoms->atomname);
-                    if (nh < minh)
-                    {
-                        minh  = nh;
-                        bestl = l;
-                    }
-                    if (0 == minh)
-                    {
-                        break;
-                    }
-                }
-                dihedral->first = dih[bestl];
-            }
-            if (k == bestl)
-            {
-                ++dihedral;
-            }
-            k++;
+            newDihedrals.emplace_back(*bestMatchIt);
         }
         else
         {
-            dihedral = newDihedrals.erase(dihedral);
+            // Since beginSameBondIt was explicitly listed in RTP we should definitely add it.
+            newDihedrals.emplace_back(*beginSameBondIt);
+            // However, since we did the checks above, we can issue warning a warning
+            // that the RTP entry really wasn't the best match. This should not happen in normal
+            // usage, but might help catch typos or RTP errors.
+            if (n_hydro(bestMatchIt->atoms(), atoms->atomname)
+                < n_hydro(beginSameBondIt->atoms(), atoms->atomname))
+            {
+                fprintf(stderr,
+                        "WARNING: Generated dihedral %d-%d-%d-%d with more heavy atoms is\n"
+                        "         ignored since %d-%d-%d-%d was set in the rtp entry.\n",
+                        bestMatchIt->ai() + 1,
+                        bestMatchIt->aj() + 1,
+                        bestMatchIt->ak() + 1,
+                        bestMatchIt->al() + 1,
+                        beginSameBondIt->ai() + 1,
+                        beginSameBondIt->aj() + 1,
+                        beginSameBondIt->ak() + 1,
+                        beginSameBondIt->al() + 1);
+            }
         }
     }
-    std::vector<InteractionOfType> finalDihedrals;
-    finalDihedrals.reserve(newDihedrals.size());
-    for (const auto& param : newDihedrals)
-    {
-        finalDihedrals.emplace_back(param.first);
-    }
-    return finalDihedrals;
+    return newDihedrals;
 }
 
 static std::vector<InteractionOfType> get_impropers(t_atoms*                             atoms,
@@ -347,15 +349,15 @@ static std::vector<InteractionOfType> get_impropers(t_atoms*                    
     {
         for (int i = 0; (i < atoms->nres); i++)
         {
-            BondedInteractionList* impropers = &globalPatches[i].rb[ebtsIDIHS];
+            BondedInteractionList* impropers = &globalPatches[i].rb[BondedTypes::ImproperDihedrals];
             for (const auto& bondeds : impropers->b)
             {
                 bool             bStop = false;
                 std::vector<int> ai;
                 for (int k = 0; (k < 4) && !bStop; k++)
                 {
-                    const int entry = search_atom(bondeds.a[k].c_str(), start, atoms, "improper",
-                                                  bAllowMissing, cyclicBondsIndex);
+                    const int entry = search_atom(
+                            bondeds.a[k].c_str(), start, atoms, "improper", bAllowMissing, cyclicBondsIndex);
 
                     if (entry != -1)
                     {
@@ -369,7 +371,7 @@ static std::vector<InteractionOfType> get_impropers(t_atoms*                    
                 if (!bStop)
                 {
                     /* Not broken out */
-                    improper.emplace_back(InteractionOfType(ai, {}, bondeds.s));
+                    improper.emplace_back(ai, gmx::ArrayRef<const real>{}, bondeds.s);
                 }
             }
             while ((start < atoms->nr) && (atoms->atom[start].resind == i))
@@ -451,7 +453,7 @@ static void gen_excls(t_atoms*                             atoms,
         int r = atoms->atom[a].resind;
         if (a == atoms->nr - 1 || atoms->atom[a + 1].resind != r)
         {
-            BondedInteractionList* hbexcl = &globalPatches[r].rb[ebtsEXCLS];
+            BondedInteractionList* hbexcl = &globalPatches[r].rb[BondedTypes::Exclusions];
 
             for (const auto& bondeds : hbexcl->b)
             {
@@ -605,9 +607,9 @@ void gen_pad(t_atoms*                               atoms,
         /* mark all entries as not matched yet */
         for (int i = 0; i < atoms->nres; i++)
         {
-            for (int j = 0; j < ebtsNR; j++)
+            for (auto bondedsList : globalPatches[i].rb)
             {
-                for (auto& bondeds : globalPatches[i].rb[j].b)
+                for (auto& bondeds : bondedsList.b)
                 {
                     bondeds.match = false;
                 }
@@ -649,7 +651,7 @@ void gen_pad(t_atoms*                               atoms,
                             {
                                 res += maxres - minres;
                                 get_atomnames_min(3, anm, res, atoms, atomNumbers);
-                                BondedInteractionList* hbang = &globalPatches[res].rb[ebtsANGLES];
+                                BondedInteractionList* hbang = &globalPatches[res].rb[BondedTypes::Angles];
                                 for (auto& bondeds : hbang->b)
                                 {
                                     if (anm[1] == bondeds.aj())
@@ -700,7 +702,8 @@ void gen_pad(t_atoms*                               atoms,
                                     {
                                         res += maxres - minres;
                                         get_atomnames_min(4, anm, res, atoms, atomNumbers);
-                                        BondedInteractionList* hbdih = &globalPatches[res].rb[ebtsPDIHS];
+                                        BondedInteractionList* hbdih =
+                                                &globalPatches[res].rb[BondedTypes::ProperDihedrals];
                                         for (auto& bondeds : hbdih->b)
                                         {
                                             bool bFound = false;
@@ -773,7 +776,7 @@ void gen_pad(t_atoms*                               atoms,
         for (int i = 0; i < atoms->nres; i++)
         {
             /* Add remaining angles from hackblock */
-            BondedInteractionList* hbang = &globalPatches[i].rb[ebtsANGLES];
+            BondedInteractionList* hbang = &globalPatches[i].rb[BondedTypes::Angles];
             for (auto& bondeds : hbang->b)
             {
                 if (bondeds.match)
@@ -824,7 +827,7 @@ void gen_pad(t_atoms*                               atoms,
             }
 
             /* Add remaining dihedrals from hackblock */
-            BondedInteractionList* hbdih = &globalPatches[i].rb[ebtsPDIHS];
+            BondedInteractionList* hbdih = &globalPatches[i].rb[BondedTypes::ProperDihedrals];
             for (auto& bondeds : hbdih->b)
             {
                 if (bondeds.match)
@@ -913,8 +916,7 @@ void gen_pad(t_atoms*                               atoms,
     if (!dih.empty())
     {
         fprintf(stderr, "Before cleaning: %zu dihedrals\n", dih.size());
-        dih = clean_dih(dih, improper, atoms, rtpFFDB[0].bKeepAllGeneratedDihedrals,
-                        rtpFFDB[0].bRemoveDihedralIfWithImproper);
+        dih = clean_dih(dih, improper, atoms, rtpFFDB[0].bKeepAllGeneratedDihedrals, rtpFFDB[0].bRemoveDihedralIfWithImproper);
     }
 
     /* Now we have unique lists of angles and dihedrals

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* TODO find out what this file should be called */
 #include "gmxpre.h"
@@ -108,8 +104,12 @@ void gmx_sum_qgrid_dd(gmx_pme_t* pme, real* grid, const int direction)
         /* Copy data to contiguous send buffer */
         if (debug)
         {
-            fprintf(debug, "PME send rank %d %d -> %d grid start %d Communicating %d to %d\n",
-                    pme->nodeid, overlap->nodeid, send_id, pme->pmegrid_start_iy,
+            fprintf(debug,
+                    "PME send rank %d %d -> %d grid start %d Communicating %d to %d\n",
+                    pme->nodeid,
+                    overlap->nodeid,
+                    send_id,
+                    pme->pmegrid_start_iy,
                     send_index0 - pme->pmegrid_start_iy,
                     send_index0 - pme->pmegrid_start_iy + send_nindex);
         }
@@ -131,15 +131,28 @@ void gmx_sum_qgrid_dd(gmx_pme_t* pme, real* grid, const int direction)
 
         datasize = pme->pmegrid_nx * pme->nkz;
 
-        MPI_Sendrecv(overlap->sendbuf.data(), send_nindex * datasize, GMX_MPI_REAL, send_id, ipulse,
-                     overlap->recvbuf.data(), recv_nindex * datasize, GMX_MPI_REAL, recv_id, ipulse,
-                     overlap->mpi_comm, &stat);
+        MPI_Sendrecv(overlap->sendbuf.data(),
+                     send_nindex * datasize,
+                     GMX_MPI_REAL,
+                     send_id,
+                     ipulse,
+                     overlap->recvbuf.data(),
+                     recv_nindex * datasize,
+                     GMX_MPI_REAL,
+                     recv_id,
+                     ipulse,
+                     overlap->mpi_comm,
+                     &stat);
 
         /* Get data from contiguous recv buffer */
         if (debug)
         {
-            fprintf(debug, "PME recv rank %d %d <- %d grid start %d Communicating %d to %d\n",
-                    pme->nodeid, overlap->nodeid, recv_id, pme->pmegrid_start_iy,
+            fprintf(debug,
+                    "PME recv rank %d %d <- %d grid start %d Communicating %d to %d\n",
+                    pme->nodeid,
+                    overlap->nodeid,
+                    recv_id,
+                    pme->pmegrid_start_iy,
                     recv_index0 - pme->pmegrid_start_iy,
                     recv_index0 - pme->pmegrid_start_iy + recv_nindex);
         }
@@ -203,18 +216,36 @@ void gmx_sum_qgrid_dd(gmx_pme_t* pme, real* grid, const int direction)
 
         if (debug)
         {
-            fprintf(debug, "PME send rank %d %d -> %d grid start %d Communicating %d to %d\n",
-                    pme->nodeid, overlap->nodeid, send_id, pme->pmegrid_start_ix,
+            fprintf(debug,
+                    "PME send rank %d %d -> %d grid start %d Communicating %d to %d\n",
+                    pme->nodeid,
+                    overlap->nodeid,
+                    send_id,
+                    pme->pmegrid_start_ix,
                     send_index0 - pme->pmegrid_start_ix,
                     send_index0 - pme->pmegrid_start_ix + send_nindex);
-            fprintf(debug, "PME recv rank %d %d <- %d grid start %d Communicating %d to %d\n",
-                    pme->nodeid, overlap->nodeid, recv_id, pme->pmegrid_start_ix,
+            fprintf(debug,
+                    "PME recv rank %d %d <- %d grid start %d Communicating %d to %d\n",
+                    pme->nodeid,
+                    overlap->nodeid,
+                    recv_id,
+                    pme->pmegrid_start_ix,
                     recv_index0 - pme->pmegrid_start_ix,
                     recv_index0 - pme->pmegrid_start_ix + recv_nindex);
         }
 
-        MPI_Sendrecv(sendptr, send_nindex * datasize, GMX_MPI_REAL, send_id, ipulse, recvptr,
-                     recv_nindex * datasize, GMX_MPI_REAL, recv_id, ipulse, overlap->mpi_comm, &stat);
+        MPI_Sendrecv(sendptr,
+                     send_nindex * datasize,
+                     GMX_MPI_REAL,
+                     send_id,
+                     ipulse,
+                     recvptr,
+                     recv_nindex * datasize,
+                     GMX_MPI_REAL,
+                     recv_id,
+                     ipulse,
+                     overlap->mpi_comm,
+                     &stat);
 
         /* ADD data from contiguous recv buffer */
         if (direction == GMX_SUM_GRID_FORWARD)
@@ -244,8 +275,8 @@ int copy_pmegrid_to_fftgrid(const gmx_pme_t* pme, const real* pmegrid, real* fft
     int  pmeidx, fftidx;
 
     /* Dimensions should be identical for A/B grid, so we just use A here */
-    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset,
-                                   local_fft_size);
+    gmx_parallel_3dfft_real_limits(
+            pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset, local_fft_size);
 
     local_pme_size[0] = pme->pmegrid_nx;
     local_pme_size[1] = pme->pmegrid_ny;
@@ -280,14 +311,31 @@ int copy_pmegrid_to_fftgrid(const gmx_pme_t* pme, const real* pmegrid, real* fft
                     val = 100 * pmegrid[pmeidx];
                     if (pmegrid[pmeidx] != 0)
                     {
-                        gmx_fprintf_pdb_atomline(fp, epdbATOM, pmeidx, "CA", ' ', "GLY", ' ', pmeidx,
-                                                 ' ', 5.0 * ix, 5.0 * iy, 5.0 * iz, 1.0, val, "");
+                        gmx_fprintf_pdb_atomline(fp,
+                                                 epdbATOM,
+                                                 pmeidx,
+                                                 "CA",
+                                                 ' ',
+                                                 "GLY",
+                                                 ' ',
+                                                 pmeidx,
+                                                 ' ',
+                                                 5.0 * ix,
+                                                 5.0 * iy,
+                                                 5.0 * iz,
+                                                 1.0,
+                                                 val,
+                                                 "");
                     }
                     if (pmegrid[pmeidx] != 0)
                     {
-                        fprintf(fp2, "%-12s  %5d  %5d  %5d  %12.5e\n", "qgrid",
-                                pme->pmegrid_start_ix + ix, pme->pmegrid_start_iy + iy,
-                                pme->pmegrid_start_iz + iz, pmegrid[pmeidx]);
+                        fprintf(fp2,
+                                "%-12s  %5d  %5d  %5d  %12.5e\n",
+                                "qgrid",
+                                pme->pmegrid_start_ix + ix,
+                                pme->pmegrid_start_iy + iy,
+                                pme->pmegrid_start_iz + iz,
+                                pmegrid[pmeidx]);
                     }
 #endif
                 }
@@ -331,8 +379,8 @@ int copy_fftgrid_to_pmegrid(struct gmx_pme_t* pme, const real* fftgrid, real* pm
     c1 = omp_cyc_start();
 #endif
     /* Dimensions should be identical for A/B grid, so we just use A here */
-    gmx_parallel_3dfft_real_limits(pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset,
-                                   local_fft_size);
+    gmx_parallel_3dfft_real_limits(
+            pme->pfft_setup[grid_index], local_fft_ndata, local_fft_offset, local_fft_size);
 
     local_pme_size[0] = pme->pmegrid_nx;
     local_pme_size[1] = pme->pmegrid_ny;
@@ -630,7 +678,10 @@ static void make_subgrid_division(const ivec n, int ovl, int nthread, ivec nsub)
         gmx_fatal(FARGS,
                   "PME grid thread division (%d x %d x %d) does not match the total number of "
                   "threads (%d)",
-                  nsub[XX], nsub[YY], nsub[ZZ], nthread);
+                  nsub[XX],
+                  nsub[YY],
+                  nsub[ZZ],
+                  nthread);
     }
 }
 
@@ -675,17 +726,20 @@ void pmegrids_init(pmegrids_t* grids,
 
         if (debug)
         {
-            fprintf(debug, "pmegrid thread local division: %d x %d x %d\n", grids->nc[XX],
-                    grids->nc[YY], grids->nc[ZZ]);
-            fprintf(debug, "pmegrid %d %d %d max thread pmegrid %d %d %d\n", nx, ny, nz, nst[XX],
-                    nst[YY], nst[ZZ]);
+            fprintf(debug,
+                    "pmegrid thread local division: %d x %d x %d\n",
+                    grids->nc[XX],
+                    grids->nc[YY],
+                    grids->nc[ZZ]);
+            fprintf(debug, "pmegrid %d %d %d max thread pmegrid %d %d %d\n", nx, ny, nz, nst[XX], nst[YY], nst[ZZ]);
         }
 
         snew(grids->grid_th, grids->nthread);
         t        = 0;
         gridsize = nst[XX] * nst[YY] * nst[ZZ];
         set_gridsize_alignment(&gridsize, pme_order);
-        snew_aligned(grids->grid_all, grids->nthread * gridsize + (grids->nthread + 1) * GMX_CACHE_SEP,
+        snew_aligned(grids->grid_all,
+                     grids->nthread * gridsize + (grids->nthread + 1) * GMX_CACHE_SEP,
                      SIMD4_ALIGNMENT);
 
         for (x = 0; x < grids->nc[XX]; x++)
@@ -694,10 +748,18 @@ void pmegrids_init(pmegrids_t* grids,
             {
                 for (z = 0; z < grids->nc[ZZ]; z++)
                 {
-                    pmegrid_init(&grids->grid_th[t], x, y, z, (n[XX] * (x)) / grids->nc[XX],
-                                 (n[YY] * (y)) / grids->nc[YY], (n[ZZ] * (z)) / grids->nc[ZZ],
-                                 (n[XX] * (x + 1)) / grids->nc[XX], (n[YY] * (y + 1)) / grids->nc[YY],
-                                 (n[ZZ] * (z + 1)) / grids->nc[ZZ], TRUE, pme_order,
+                    pmegrid_init(&grids->grid_th[t],
+                                 x,
+                                 y,
+                                 z,
+                                 (n[XX] * (x)) / grids->nc[XX],
+                                 (n[YY] * (y)) / grids->nc[YY],
+                                 (n[ZZ] * (z)) / grids->nc[ZZ],
+                                 (n[XX] * (x + 1)) / grids->nc[XX],
+                                 (n[YY] * (y + 1)) / grids->nc[YY],
+                                 (n[ZZ] * (z + 1)) / grids->nc[ZZ],
+                                 TRUE,
+                                 pme_order,
                                  grids->grid_all + GMX_CACHE_SEP + t * (gridsize + GMX_CACHE_SEP));
                     t++;
                 }
@@ -742,7 +804,9 @@ void pmegrids_init(pmegrids_t* grids,
         }
         if (debug != nullptr)
         {
-            fprintf(debug, "pmegrid thread grid communication range in %c: %d\n", 'x' + d,
+            fprintf(debug,
+                    "pmegrid thread grid communication range in %c: %d\n",
+                    'x' + d,
                     grids->nthread_comm[d]);
         }
         /* It should be possible to make grids->nthread_comm[d]==grids->nc[d]
@@ -776,7 +840,12 @@ void pmegrids_destroy(pmegrids_t* grids)
     }
 }
 
-void make_gridindex_to_localindex(int n, int local_start, int local_range, int** global_to_local, real** fraction_shift)
+void make_gridindex_to_localindex(int    n,
+                                  int    local_start,
+                                  int    local_range,
+                                  bool   checkRoundingAtBoundary,
+                                  int**  global_to_local,
+                                  real** fraction_shift)
 {
     /* Here we construct array for looking up the grid line index and
      * fraction for particles. This is done because it is slighlty
@@ -803,7 +872,7 @@ void make_gridindex_to_localindex(int n, int local_start, int local_range, int**
          */
         fsh[i] = 0;
         /* Check if we are using domain decomposition for PME */
-        if (local_range < n)
+        if (local_range < n && checkRoundingAtBoundary)
         {
             /* Due to rounding issues i could be 1 beyond the lower or
              * upper boundary of the local grid. Correct the index for this.

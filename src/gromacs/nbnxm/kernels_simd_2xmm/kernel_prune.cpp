@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #include "gmxpre.h"
@@ -48,10 +47,10 @@
 #endif
 
 /* Prune a single nbnxn_pairtlist_t entry with distance rlistInner */
-void nbnxn_kernel_prune_2xnn(NbnxnPairlistCpu*       nbl,
-                             const nbnxn_atomdata_t* nbat,
-                             const rvec* gmx_restrict shift_vec,
-                             real                     rlistInner)
+void nbnxn_kernel_prune_2xnn(NbnxnPairlistCpu*              nbl,
+                             const nbnxn_atomdata_t*        nbat,
+                             gmx::ArrayRef<const gmx::RVec> shiftvec,
+                             real                           rlistInner)
 {
 #ifdef GMX_NBNXN_SIMD_2XNN
     using namespace gmx;
@@ -61,13 +60,12 @@ void nbnxn_kernel_prune_2xnn(NbnxnPairlistCpu*       nbl,
     nbl->cj.resize(nbl->cjOuter.size());
 
     const nbnxn_ci_t* gmx_restrict ciOuter = nbl->ciOuter.data();
-    nbnxn_ci_t* gmx_restrict ciInner       = nbl->ci.data();
+    nbnxn_ci_t* gmx_restrict       ciInner = nbl->ci.data();
 
     const nbnxn_cj_t* gmx_restrict cjOuter = nbl->cjOuter.data();
-    nbnxn_cj_t* gmx_restrict cjInner       = nbl->cj.data();
+    nbnxn_cj_t* gmx_restrict       cjInner = nbl->cj.data();
 
-    const real* gmx_restrict shiftvec = shift_vec[0];
-    const real* gmx_restrict x        = nbat->x().data();
+    const real* gmx_restrict x = nbat->x().data();
 
     const SimdReal rlist2_S(rlistInner * rlistInner);
 
@@ -85,13 +83,12 @@ void nbnxn_kernel_prune_2xnn(NbnxnPairlistCpu*       nbl,
         ciInner[nciInner].cj_ind_start = ncjInner;
 
         /* Extract shift data */
-        int ish  = (ciEntry->shift & NBNXN_CI_SHIFT);
-        int ish3 = ish * 3;
-        int ci   = ciEntry->ci;
+        int ish = (ciEntry->shift & NBNXN_CI_SHIFT);
+        int ci  = ciEntry->ci;
 
-        SimdReal shX_S = SimdReal(shiftvec[ish3]);
-        SimdReal shY_S = SimdReal(shiftvec[ish3 + 1]);
-        SimdReal shZ_S = SimdReal(shiftvec[ish3 + 2]);
+        SimdReal shX_S = SimdReal(shiftvec[ish][XX]);
+        SimdReal shY_S = SimdReal(shiftvec[ish][YY]);
+        SimdReal shZ_S = SimdReal(shiftvec[ish][ZZ]);
 
 #    if UNROLLJ <= 4
         int scix = ci * STRIDE * DIM;
@@ -171,7 +168,7 @@ void nbnxn_kernel_prune_2xnn(NbnxnPairlistCpu*       nbl,
 
     GMX_UNUSED_VALUE(nbl);
     GMX_UNUSED_VALUE(nbat);
-    GMX_UNUSED_VALUE(shift_vec);
+    GMX_UNUSED_VALUE(shiftvec);
     GMX_UNUSED_VALUE(rlistInner);
 
 #endif /* GMX_NBNXN_SIMD_2XNN */

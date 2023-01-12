@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -54,6 +50,7 @@
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/linearalgebra/nrjac.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
@@ -493,7 +490,7 @@ real calc_radius(const t_eigvec& vec)
         rad += gmx::square((vec.refproj[i] - vec.xproj[i]));
     }
 
-    return rad = sqrt(rad);
+    return sqrt(rad);
 }
 } // namespace
 
@@ -903,14 +900,14 @@ static void update_adaption(t_edpar* edi)
 }
 
 
-static void do_single_flood(FILE*            edo,
-                            const rvec       x[],
-                            rvec             force[],
-                            t_edpar*         edi,
-                            int64_t          step,
-                            const matrix     box,
-                            const t_commrec* cr,
-                            gmx_bool         bNS) /* Are we in a neighbor searching step? */
+static void do_single_flood(FILE*                          edo,
+                            gmx::ArrayRef<const gmx::RVec> coords,
+                            gmx::ArrayRef<gmx::RVec>       force,
+                            t_edpar*                       edi,
+                            int64_t                        step,
+                            const matrix                   box,
+                            const t_commrec*               cr,
+                            gmx_bool bNS) /* Are we in a neighbor searching step? */
 {
     int                i;
     matrix             rotmat;   /* rotation matrix */
@@ -926,16 +923,34 @@ static void do_single_flood(FILE*            edo,
     /* Broadcast the positions of the AVERAGE structure such that they are known on
      * every processor. Each node contributes its local positions x and stores them in
      * the collective ED array buf->xcoll */
-    communicate_group_positions(cr, buf->xcoll, buf->shifts_xcoll, buf->extra_shifts_xcoll, bNS, x,
-                                edi->sav.nr, edi->sav.nr_loc, edi->sav.anrs_loc, edi->sav.c_ind,
-                                edi->sav.x_old, box);
+    communicate_group_positions(cr,
+                                buf->xcoll,
+                                buf->shifts_xcoll,
+                                buf->extra_shifts_xcoll,
+                                bNS,
+                                as_rvec_array(coords.data()),
+                                edi->sav.nr,
+                                edi->sav.nr_loc,
+                                edi->sav.anrs_loc,
+                                edi->sav.c_ind,
+                                edi->sav.x_old,
+                                box);
 
     /* Only assembly REFERENCE positions if their indices differ from the average ones */
     if (!edi->bRefEqAv)
     {
-        communicate_group_positions(cr, buf->xc_ref, buf->shifts_xc_ref, buf->extra_shifts_xc_ref,
-                                    bNS, x, edi->sref.nr, edi->sref.nr_loc, edi->sref.anrs_loc,
-                                    edi->sref.c_ind, edi->sref.x_old, box);
+        communicate_group_positions(cr,
+                                    buf->xc_ref,
+                                    buf->shifts_xc_ref,
+                                    buf->extra_shifts_xc_ref,
+                                    bNS,
+                                    as_rvec_array(coords.data()),
+                                    edi->sref.nr,
+                                    edi->sref.nr_loc,
+                                    edi->sref.anrs_loc,
+                                    edi->sref.c_ind,
+                                    edi->sref.x_old,
+                                    box);
     }
 
     /* If bUpdateShifts was TRUE, the shifts have just been updated in get_positions.
@@ -1009,20 +1024,20 @@ static void do_single_flood(FILE*            edo,
 
 
 /* Main flooding routine, called from do_force */
-extern void do_flood(const t_commrec*  cr,
-                     const t_inputrec* ir,
-                     const rvec        x[],
-                     rvec              force[],
-                     gmx_edsam*        ed,
-                     const matrix      box,
-                     int64_t           step,
-                     gmx_bool          bNS)
+void do_flood(const t_commrec*               cr,
+              const t_inputrec&              ir,
+              gmx::ArrayRef<const gmx::RVec> coords,
+              gmx::ArrayRef<gmx::RVec>       force,
+              gmx_edsam*                     ed,
+              const matrix                   box,
+              int64_t                        step,
+              bool                           bNS)
 {
     /* Write time to edo, when required. Output the time anyhow since we need
      * it in the output file for ED constraints. */
     if (MASTER(cr) && do_per_step(step, ed->edpar.begin()->outfrq))
     {
-        fprintf(ed->edo, "\n%12f", ir->init_t + step * ir->delta_t);
+        fprintf(ed->edo, "\n%12f", ir.init_t + step * ir.delta_t);
     }
 
     if (ed->eEDtype != EssentialDynamicsType::Flooding)
@@ -1035,7 +1050,7 @@ extern void do_flood(const t_commrec*  cr,
         /* Call flooding for one matrix */
         if (edi.flood.vecs.neig)
         {
-            do_single_flood(ed->edo, x, force, &edi, step, box, cr, bNS);
+            do_single_flood(ed->edo, coords, force, &edi, step, box, cr, bNS);
         }
     }
 }
@@ -1057,7 +1072,9 @@ static void init_flood(t_edpar* edi, gmx_edsam* ed, real dt)
         /* If in any of the ED groups we find a flooding vector, flooding is turned on */
         ed->eEDtype = EssentialDynamicsType::Flooding;
 
-        fprintf(stderr, "ED: Flooding %d eigenvector%s.\n", edi->flood.vecs.neig,
+        fprintf(stderr,
+                "ED: Flooding %d eigenvector%s.\n",
+                edi->flood.vecs.neig,
                 edi->flood.vecs.neig > 1 ? "s" : "");
 
         if (edi->flood.bConstForce)
@@ -1069,8 +1086,10 @@ static void init_flood(t_edpar* edi, gmx_edsam* ed, real dt)
             {
                 edi->flood.vecs.fproj[i] = edi->flood.vecs.stpsz[i];
 
-                fprintf(stderr, "ED: applying on eigenvector %d a constant force of %g\n",
-                        edi->flood.vecs.ieig[i], edi->flood.vecs.fproj[i]);
+                fprintf(stderr,
+                        "ED: applying on eigenvector %d a constant force of %g\n",
+                        edi->flood.vecs.ieig[i],
+                        edi->flood.vecs.fproj[i]);
             }
         }
     }
@@ -1135,8 +1154,8 @@ static std::unique_ptr<gmx::EssentialDynamics> ed_open(int                      
                                                        const gmx_output_env_t*     oenv,
                                                        const t_commrec*            cr)
 {
-    auto edHandle = std::make_unique<gmx::EssentialDynamics>();
-    auto ed       = edHandle->getLegacyED();
+    auto  edHandle = std::make_unique<gmx::EssentialDynamics>();
+    auto* ed       = edHandle->getLegacyED();
     /* We want to perform ED (this switch might later be upgraded to EssentialDynamicsType::Flooding) */
     ed->eEDtype = EssentialDynamicsType::EDSampling;
 
@@ -1170,8 +1189,11 @@ static std::unique_ptr<gmx::EssentialDynamics> ed_open(int                      
         }
         else
         {
-            ed->edo = xvgropen(edoFileName, "Essential dynamics / flooding output", "Time (ps)",
-                               "RMSDs (nm), projections on EVs (nm), ...", oenv);
+            ed->edo = xvgropen(edoFileName,
+                               "Essential dynamics / flooding output",
+                               "Time (ps)",
+                               "RMSDs (nm), projections on EVs (nm), ...",
+                               oenv);
 
             /* Make a descriptive legend */
             write_edo_legend(ed, EDstate->nED, oenv);
@@ -1199,8 +1221,7 @@ static void bc_ed_positions(const t_commrec* cr, struct gmx_edx* s, EssentialDyn
          * There, also memory is allocated */
         s->nalloc_loc = 0;                    /* allocation size of s->anrs_loc */
         snew_bc(MASTER(cr), s->x_old, s->nr); /* To be able to always make the ED molecule whole, ... */
-        nblock_bc(cr->mpi_comm_mygroup, s->nr,
-                  s->x_old); /* ... keep track of shift changes with the help of old coords */
+        nblock_bc(cr->mpi_comm_mygroup, s->nr, s->x_old); /* ... keep track of shift changes with the help of old coords */
     }
 
     /* broadcast masses for the reference structure (for mass-weighted fitting) */
@@ -1265,10 +1286,8 @@ static void broadcast_ed_data(const t_commrec* cr, gmx_edsam* ed)
         block_bc(cr->mpi_comm_mygroup, edi);
 
         /* Broadcast positions */
-        bc_ed_positions(cr, &(edi.sref),
-                        EssentialDynamicsStructure::Reference); /* reference positions (don't broadcast masses)    */
-        bc_ed_positions(cr, &(edi.sav),
-                        EssentialDynamicsStructure::Average); /* average positions (do broadcast masses as well) */
+        bc_ed_positions(cr, &(edi.sref), EssentialDynamicsStructure::Reference); /* reference positions (don't broadcast masses)    */
+        bc_ed_positions(cr, &(edi.sav), EssentialDynamicsStructure::Average); /* average positions (do broadcast masses as well) */
         bc_ed_positions(cr, &(edi.star), EssentialDynamicsStructure::Target); /* target positions */
         bc_ed_positions(cr, &(edi.sori), EssentialDynamicsStructure::Origin); /* origin positions */
 
@@ -1295,7 +1314,7 @@ static void broadcast_ed_data(const t_commrec* cr, gmx_edsam* ed)
 
 
 /* init-routine called for every *.edi-cycle, initialises t_edpar structure */
-static void init_edi(const gmx_mtop_t* mtop, t_edpar* edi)
+static void init_edi(const gmx_mtop_t& mtop, t_edpar* edi)
 {
     int  i;
     real totalmass = 0.0;
@@ -1328,7 +1347,9 @@ static void init_edi(const gmx_mtop_t* mtop, t_edpar* edi)
                       ">0.\n"
                       "Either make the covariance analysis non-mass-weighted, or exclude massless\n"
                       "atoms from the reference structure by creating a proper index group.\n",
-                      i, edi->sref.anrs[i] + 1, edi->sref.m[i]);
+                      i,
+                      edi->sref.anrs[i] + 1,
+                      edi->sref.m[i]);
         }
 
         totalmass += edi->sref.m[i];
@@ -1360,7 +1381,9 @@ static void init_edi(const gmx_mtop_t* mtop, t_edpar* edi)
                       ">0.\n"
                       "Either make the covariance analysis non-mass-weighted, or exclude massless\n"
                       "atoms from the average structure by creating a proper index group.\n",
-                      i, edi->sav.anrs[i] + 1, edi->sav.m[i]);
+                      i,
+                      edi->sav.anrs[i] + 1,
+                      edi->sav.m[i]);
         }
     }
 
@@ -1383,7 +1406,8 @@ static void check(const char* line, const char* label)
         gmx_fatal(FARGS,
                   "Could not find input parameter %s at expected position in edsam input-file "
                   "(.edi)\nline read instead is %s",
-                  label, line);
+                  label,
+                  line);
     }
 }
 
@@ -1558,8 +1582,8 @@ bool readEdVecWithReferenceProjection(FILE*     in,
         double    stepSize            = 0.;
         double    referenceProjection = 0.;
         double    referenceSlope      = 0.;
-        const int nscan = sscanf(line, max_ev_fmt_dlflflf, &numEigenVectors, &stepSize,
-                                 &referenceProjection, &referenceSlope);
+        const int nscan               = sscanf(
+                line, max_ev_fmt_dlflflf, &numEigenVectors, &stepSize, &referenceProjection, &referenceSlope);
         /* Zero out values which were not scanned */
         switch (nscan)
         {
@@ -1732,8 +1756,7 @@ t_edpar read_edi(FILE* in, int nr_mdatoms, bool hasConstForceFlooding, const cha
     edi.nini = read_edint(in, &bEOF);
     if (edi.nini != nr_mdatoms)
     {
-        gmx_fatal(FARGS, "Nr of atoms in %s (%d) does not match nr of md atoms (%d)", fn, edi.nini,
-                  nr_mdatoms);
+        gmx_fatal(FARGS, "Nr of atoms in %s (%d) does not match nr of md atoms (%d)", fn, edi.nini, nr_mdatoms);
     }
 
     /* Done checking. For the rest we blindly trust the input */
@@ -1788,7 +1811,9 @@ t_edpar read_edi(FILE* in, int nr_mdatoms, bool hasConstForceFlooding, const cha
     bool bHaveReference = false;
     if (edi.flood.bHarmonic)
     {
-        bHaveReference = readEdVecWithReferenceProjection(in, edi.sav.nr, &edi.flood.vecs,
+        bHaveReference = readEdVecWithReferenceProjection(in,
+                                                          edi.sav.nr,
+                                                          &edi.flood.vecs,
                                                           &edi.flood.initialReferenceProjection,
                                                           &edi.flood.referenceProjectionSlope);
     }
@@ -1855,7 +1880,9 @@ std::vector<t_edpar> read_edi_file(const char* fn, int nr_mdatoms)
         gmx_fatal(FARGS, "No complete ED data set found in edi file %s.", fn);
     }
 
-    fprintf(stderr, "ED: Found %zu ED group%s.\n", essentialDynamicsParameters.size(),
+    fprintf(stderr,
+            "ED: Found %zu ED group%s.\n",
+            essentialDynamicsParameters.size(),
             essentialDynamicsParameters.size() > 1 ? "s" : "");
 
     /* Close the .edi file again */
@@ -1929,7 +1956,7 @@ static void translate_and_rotate(rvec*  x,        /* The positions to be transla
 
 /* Gets the rms deviation of the positions to the structure s */
 /* fit_to_structure has to be called before calling this routine! */
-static real rmsd_from_structure(rvec* x,           /* The positions under consideration */
+static real rmsd_from_structure(rvec*           x, /* The positions under consideration */
                                 struct gmx_edx* s) /* The structure from which the rmsd shall be computed */
 {
     real rmsd = 0.0;
@@ -1960,13 +1987,23 @@ void dd_make_local_ed_indices(gmx_domdec_t* dd, struct gmx_edsam* ed)
              * if their indices differ from the average ones */
             if (!edi.bRefEqAv)
             {
-                dd_make_local_group_indices(dd->ga2la, edi.sref.nr, edi.sref.anrs, &edi.sref.nr_loc,
-                                            &edi.sref.anrs_loc, &edi.sref.nalloc_loc, edi.sref.c_ind);
+                dd_make_local_group_indices(dd->ga2la,
+                                            edi.sref.nr,
+                                            edi.sref.anrs,
+                                            &edi.sref.nr_loc,
+                                            &edi.sref.anrs_loc,
+                                            &edi.sref.nalloc_loc,
+                                            edi.sref.c_ind);
             }
 
             /* Local atoms of the average structure (on these ED will be performed) */
-            dd_make_local_group_indices(dd->ga2la, edi.sav.nr, edi.sav.anrs, &edi.sav.nr_loc,
-                                        &edi.sav.anrs_loc, &edi.sav.nalloc_loc, edi.sav.c_ind);
+            dd_make_local_group_indices(dd->ga2la,
+                                        edi.sav.nr,
+                                        edi.sav.anrs,
+                                        &edi.sav.nr_loc,
+                                        &edi.sav.anrs_loc,
+                                        &edi.sav.nalloc_loc,
+                                        edi.sav.c_ind);
 
             /* Indicate that the ED shift vectors for this structure need to be updated
              * at the next call to communicate_group_positions, since obviously we are in a NS step */
@@ -2382,14 +2419,18 @@ static void crosscheck_edi_file_vs_checkpoint(const gmx_edsam& ed, edsamhistory_
             gmx_fatal(FARGS,
                       "The number of reference structure atoms in ED group %c is\n"
                       "not the same in .cpt (NREF=%d) and .edi (NREF=%d) files!\n",
-                      get_EDgroupChar(edinum + 1, 0), EDstate->nref[edinum], ed.edpar[edinum].sref.nr);
+                      get_EDgroupChar(edinum + 1, 0),
+                      EDstate->nref[edinum],
+                      ed.edpar[edinum].sref.nr);
         }
         if (EDstate->nav[edinum] != ed.edpar[edinum].sav.nr)
         {
             gmx_fatal(FARGS,
                       "The number of average structure atoms in ED group %c is\n"
                       "not the same in .cpt (NREF=%d) and .edi (NREF=%d) files!\n",
-                      get_EDgroupChar(edinum + 1, 0), EDstate->nav[edinum], ed.edpar[edinum].sav.nr);
+                      get_EDgroupChar(edinum + 1, 0),
+                      EDstate->nav[edinum],
+                      ed.edpar[edinum].sav.nr);
         }
     }
 
@@ -2399,7 +2440,8 @@ static void crosscheck_edi_file_vs_checkpoint(const gmx_edsam& ed, edsamhistory_
                   "The number of essential dynamics / flooding groups is not consistent.\n"
                   "There are %d ED groups in the .cpt file, but %zu in the .edi file!\n"
                   "Are you sure this is the correct .edi file?\n",
-                  EDstate->nED, ed.edpar.size());
+                  EDstate->nED,
+                  ed.edpar.size());
     }
 }
 
@@ -2522,29 +2564,37 @@ static void write_edo_legend(gmx_edsam* ed, int nED, const gmx_output_env_t* oen
 
     auto edi = ed->edpar.begin();
 
-    fprintf(ed->edo, "# Output will be written every %d step%s\n", edi->outfrq,
-            edi->outfrq != 1 ? "s" : "");
+    fprintf(ed->edo, "# Output will be written every %d step%s\n", edi->outfrq, edi->outfrq != 1 ? "s" : "");
 
     for (nr_edi = 1; nr_edi <= nED; nr_edi++)
     {
         fprintf(ed->edo, "#\n");
-        fprintf(ed->edo, "# Summary of applied con/restraints for the ED group %c\n",
+        fprintf(ed->edo,
+                "# Summary of applied con/restraints for the ED group %c\n",
                 get_EDgroupChar(nr_edi, nED));
         fprintf(ed->edo, "# Atoms in average structure: %d\n", edi->sav.nr);
-        fprintf(ed->edo, "#    monitor  : %d vec%s\n", edi->vecs.mon.neig,
-                edi->vecs.mon.neig != 1 ? "s" : "");
-        fprintf(ed->edo, "#    LINFIX   : %d vec%s\n", edi->vecs.linfix.neig,
+        fprintf(ed->edo, "#    monitor  : %d vec%s\n", edi->vecs.mon.neig, edi->vecs.mon.neig != 1 ? "s" : "");
+        fprintf(ed->edo,
+                "#    LINFIX   : %d vec%s\n",
+                edi->vecs.linfix.neig,
                 edi->vecs.linfix.neig != 1 ? "s" : "");
-        fprintf(ed->edo, "#    LINACC   : %d vec%s\n", edi->vecs.linacc.neig,
+        fprintf(ed->edo,
+                "#    LINACC   : %d vec%s\n",
+                edi->vecs.linacc.neig,
                 edi->vecs.linacc.neig != 1 ? "s" : "");
-        fprintf(ed->edo, "#    RADFIX   : %d vec%s\n", edi->vecs.radfix.neig,
+        fprintf(ed->edo,
+                "#    RADFIX   : %d vec%s\n",
+                edi->vecs.radfix.neig,
                 edi->vecs.radfix.neig != 1 ? "s" : "");
-        fprintf(ed->edo, "#    RADACC   : %d vec%s\n", edi->vecs.radacc.neig,
+        fprintf(ed->edo,
+                "#    RADACC   : %d vec%s\n",
+                edi->vecs.radacc.neig,
                 edi->vecs.radacc.neig != 1 ? "s" : "");
-        fprintf(ed->edo, "#    RADCON   : %d vec%s\n", edi->vecs.radcon.neig,
+        fprintf(ed->edo,
+                "#    RADCON   : %d vec%s\n",
+                edi->vecs.radcon.neig,
                 edi->vecs.radcon.neig != 1 ? "s" : "");
-        fprintf(ed->edo, "#    FLOODING : %d vec%s  ", edi->flood.vecs.neig,
-                edi->flood.vecs.neig != 1 ? "s" : "");
+        fprintf(ed->edo, "#    FLOODING : %d vec%s  ", edi->flood.vecs.neig, edi->flood.vecs.neig != 1 ? "s" : "");
 
         if (edi->flood.vecs.neig)
         {
@@ -2653,32 +2703,53 @@ static void write_edo_legend(gmx_edsam* ed, int nED, const gmx_output_env_t* oen
             nice_legend(&setname, &nsets, &LegendStr, "RMSD to ref", "nm", get_EDgroupChar(nr_edi, nED));
 
             /* Essential dynamics, projections on eigenvectors */
-            nice_legend_evec(&setname, &nsets, &LegendStr, &edi->vecs.mon,
-                             get_EDgroupChar(nr_edi, nED), "MON");
-            nice_legend_evec(&setname, &nsets, &LegendStr, &edi->vecs.linfix,
-                             get_EDgroupChar(nr_edi, nED), "LINFIX");
-            nice_legend_evec(&setname, &nsets, &LegendStr, &edi->vecs.linacc,
-                             get_EDgroupChar(nr_edi, nED), "LINACC");
-            nice_legend_evec(&setname, &nsets, &LegendStr, &edi->vecs.radfix,
-                             get_EDgroupChar(nr_edi, nED), "RADFIX");
+            nice_legend_evec(&setname,
+                             &nsets,
+                             &LegendStr,
+                             &edi->vecs.mon,
+                             get_EDgroupChar(nr_edi, nED),
+                             "MON");
+            nice_legend_evec(&setname,
+                             &nsets,
+                             &LegendStr,
+                             &edi->vecs.linfix,
+                             get_EDgroupChar(nr_edi, nED),
+                             "LINFIX");
+            nice_legend_evec(&setname,
+                             &nsets,
+                             &LegendStr,
+                             &edi->vecs.linacc,
+                             get_EDgroupChar(nr_edi, nED),
+                             "LINACC");
+            nice_legend_evec(&setname,
+                             &nsets,
+                             &LegendStr,
+                             &edi->vecs.radfix,
+                             get_EDgroupChar(nr_edi, nED),
+                             "RADFIX");
             if (edi->vecs.radfix.neig)
             {
-                nice_legend(&setname, &nsets, &LegendStr, "RADFIX radius", "nm",
-                            get_EDgroupChar(nr_edi, nED));
+                nice_legend(&setname, &nsets, &LegendStr, "RADFIX radius", "nm", get_EDgroupChar(nr_edi, nED));
             }
-            nice_legend_evec(&setname, &nsets, &LegendStr, &edi->vecs.radacc,
-                             get_EDgroupChar(nr_edi, nED), "RADACC");
+            nice_legend_evec(&setname,
+                             &nsets,
+                             &LegendStr,
+                             &edi->vecs.radacc,
+                             get_EDgroupChar(nr_edi, nED),
+                             "RADACC");
             if (edi->vecs.radacc.neig)
             {
-                nice_legend(&setname, &nsets, &LegendStr, "RADACC radius", "nm",
-                            get_EDgroupChar(nr_edi, nED));
+                nice_legend(&setname, &nsets, &LegendStr, "RADACC radius", "nm", get_EDgroupChar(nr_edi, nED));
             }
-            nice_legend_evec(&setname, &nsets, &LegendStr, &edi->vecs.radcon,
-                             get_EDgroupChar(nr_edi, nED), "RADCON");
+            nice_legend_evec(&setname,
+                             &nsets,
+                             &LegendStr,
+                             &edi->vecs.radcon,
+                             get_EDgroupChar(nr_edi, nED),
+                             "RADCON");
             if (edi->vecs.radcon.neig)
             {
-                nice_legend(&setname, &nsets, &LegendStr, "RADCON radius", "nm",
-                            get_EDgroupChar(nr_edi, nED));
+                nice_legend(&setname, &nsets, &LegendStr, "RADCON radius", "nm", get_EDgroupChar(nr_edi, nED));
             }
         }
         ++edi;
@@ -2691,7 +2762,10 @@ static void write_edo_legend(gmx_edsam* ed, int nED, const gmx_output_env_t* oen
     fprintf(ed->edo,
             "#\n"
             "# Legend for %d column%s of flooding plus %d column%s of essential dynamics data:\n",
-            n_flood, 1 == n_flood ? "" : "s", n_edsam, 1 == n_edsam ? "" : "s");
+            n_flood,
+            1 == n_flood ? "" : "s",
+            n_edsam,
+            1 == n_edsam ? "" : "s");
     fprintf(ed->edo, "%s", LegendStr);
     sfree(LegendStr);
 
@@ -2704,8 +2778,8 @@ static void write_edo_legend(gmx_edsam* ed, int nED, const gmx_output_env_t* oen
 std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        mdlog,
                                                    const char*                 ediFileName,
                                                    const char*                 edoFileName,
-                                                   const gmx_mtop_t*           mtop,
-                                                   const t_inputrec*           ir,
+                                                   const gmx_mtop_t&           mtop,
+                                                   const t_inputrec&           ir,
                                                    const t_commrec*            cr,
                                                    gmx::Constraints*           constr,
                                                    const t_state*              globalState,
@@ -2740,8 +2814,8 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
                     "gmx grompp and the related .mdp options may change also.");
 
     /* Open input and output files, allocate space for ED data structure */
-    auto edHandle = ed_open(mtop->natoms, oh, ediFileName, edoFileName, startingBehavior, oenv, cr);
-    auto ed       = edHandle->getLegacyED();
+    auto  edHandle = ed_open(mtop.natoms, oh, ediFileName, edoFileName, startingBehavior, oenv, cr);
+    auto* ed       = edHandle->getLegacyED();
     GMX_RELEASE_ASSERT(constr != nullptr, "Must have valid constraints object");
     constr->saveEdsamPointer(ed);
 
@@ -2760,7 +2834,7 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
         for (auto& edi : ed->edpar)
         {
             init_edi(mtop, &edi);
-            init_flood(&edi, ed, ir->delta_t);
+            init_flood(&edi, ed, ir.delta_t);
         }
     }
 
@@ -2773,9 +2847,9 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
         if (!EDstate->bFromCpt)
         {
             /* Remove PBC, make molecule(s) subject to ED whole. */
-            snew(x_pbc, mtop->natoms);
-            copy_rvecn(globalState->x.rvec_array(), x_pbc, 0, mtop->natoms);
-            do_pbc_first_mtop(nullptr, ir->pbcType, globalState->box, mtop, x_pbc);
+            snew(x_pbc, mtop.natoms);
+            copy_rvecn(globalState->x.rvec_array(), x_pbc, 0, mtop.natoms);
+            do_pbc_first_mtop(nullptr, ir.pbcType, globalState->box, &mtop, x_pbc);
         }
         /* Reset pointer to first ED data set which contains the actual ED data */
         auto edi = ed->edpar.begin();
@@ -2832,7 +2906,8 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
 
             /* Output how well we fit to the reference at the start */
             translate_and_rotate(xfit, edi->sref.nr, fit_transvec, fit_rotmat);
-            fprintf(stderr, "ED: Initial RMSD from reference after fit = %f nm",
+            fprintf(stderr,
+                    "ED: Initial RMSD from reference after fit = %f nm",
                     rmsd_from_structure(xfit, &edi->sref));
             if (EDstate->nED > 1)
             {
@@ -2954,12 +3029,13 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
             {
                 for (i = 0; i < edi->flood.vecs.neig; i++)
                 {
-                    fprintf(stdout, "ED: EV %d flooding potential center: %11.4e",
-                            edi->flood.vecs.ieig[i], edi->flood.vecs.refproj[i]);
+                    fprintf(stdout,
+                            "ED: EV %d flooding potential center: %11.4e",
+                            edi->flood.vecs.ieig[i],
+                            edi->flood.vecs.refproj[i]);
                     if (edi->flood.bHarmonic)
                     {
-                        fprintf(stdout, " (adding %11.4e/timestep)",
-                                edi->flood.referenceProjectionSlope[i]);
+                        fprintf(stdout, " (adding %11.4e/timestep)", edi->flood.referenceProjectionSlope[i]);
                     }
                     fprintf(stdout, "\n");
                 }
@@ -2982,14 +3058,15 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
 
     } /* end of MASTER only section */
 
-    if (PAR(cr))
+    if (haveDDAtomOrdering(*cr))
     {
-        /* Broadcast the essential dynamics / flooding data to all nodes */
+        /* Broadcast the essential dynamics / flooding data to all nodes.
+         * In a single-rank case, only the necessary memory allocation is done. */
         broadcast_ed_data(cr, ed);
     }
     else
     {
-        /* In the single-CPU case, point the local atom numbers pointers to the global
+        /* In the non-DD case, point the local atom numbers pointers to the global
          * one, so that we can use the same notation in serial and parallel case: */
         /* Loop over all ED data sets (usually only one, though) */
         for (auto edi = ed->edpar.begin(); edi != ed->edpar.end(); ++edi)
@@ -3062,7 +3139,13 @@ std::unique_ptr<gmx::EssentialDynamics> init_edsam(const gmx::MDLogger&        m
 }
 
 
-void do_edsam(const t_inputrec* ir, int64_t step, const t_commrec* cr, rvec xs[], rvec v[], const matrix box, gmx_edsam* ed)
+void do_edsam(const t_inputrec*        ir,
+              int64_t                  step,
+              const t_commrec*         cr,
+              gmx::ArrayRef<gmx::RVec> coords,
+              gmx::ArrayRef<gmx::RVec> velocities,
+              const matrix             box,
+              gmx_edsam*               ed)
 {
     int    i, edinr, iupdate = 500;
     matrix rotmat;         /* rotation matrix */
@@ -3106,17 +3189,34 @@ void do_edsam(const t_inputrec* ir, int64_t step, const t_commrec* cr, rvec xs[]
              * the collective buf->xcoll array. Note that for edinr > 1
              * xs could already have been modified by an earlier ED */
 
-            communicate_group_positions(cr, buf->xcoll, buf->shifts_xcoll, buf->extra_shifts_xcoll,
-                                        PAR(cr) ? buf->bUpdateShifts : TRUE, xs, edi.sav.nr, edi.sav.nr_loc,
-                                        edi.sav.anrs_loc, edi.sav.c_ind, edi.sav.x_old, box);
+            communicate_group_positions(cr,
+                                        buf->xcoll,
+                                        buf->shifts_xcoll,
+                                        buf->extra_shifts_xcoll,
+                                        PAR(cr) ? buf->bUpdateShifts : TRUE,
+                                        as_rvec_array(coords.data()),
+                                        edi.sav.nr,
+                                        edi.sav.nr_loc,
+                                        edi.sav.anrs_loc,
+                                        edi.sav.c_ind,
+                                        edi.sav.x_old,
+                                        box);
 
             /* Only assembly reference positions if their indices differ from the average ones */
             if (!edi.bRefEqAv)
             {
-                communicate_group_positions(
-                        cr, buf->xc_ref, buf->shifts_xc_ref, buf->extra_shifts_xc_ref,
-                        PAR(cr) ? buf->bUpdateShifts : TRUE, xs, edi.sref.nr, edi.sref.nr_loc,
-                        edi.sref.anrs_loc, edi.sref.c_ind, edi.sref.x_old, box);
+                communicate_group_positions(cr,
+                                            buf->xc_ref,
+                                            buf->shifts_xc_ref,
+                                            buf->extra_shifts_xc_ref,
+                                            PAR(cr) ? buf->bUpdateShifts : TRUE,
+                                            as_rvec_array(coords.data()),
+                                            edi.sref.nr,
+                                            edi.sref.nr_loc,
+                                            edi.sref.anrs_loc,
+                                            edi.sref.c_ind,
+                                            edi.sref.x_old,
+                                            box);
             }
 
             /* If bUpdateShifts was TRUE then the shifts have just been updated in communicate_group_positions.
@@ -3212,21 +3312,21 @@ void do_edsam(const t_inputrec* ir, int64_t step, const t_commrec* cr, rvec xs[]
                 for (i = 0; i < edi.sav.nr_loc; i++)
                 {
                     /* Unshift local ED coordinate and store in x_unsh */
-                    ed_unshift_single_coord(box, buf->xcoll[edi.sav.c_ind[i]],
-                                            buf->shifts_xcoll[edi.sav.c_ind[i]], x_unsh);
+                    ed_unshift_single_coord(
+                            box, buf->xcoll[edi.sav.c_ind[i]], buf->shifts_xcoll[edi.sav.c_ind[i]], x_unsh);
 
                     /* dx is the ED correction to the positions: */
-                    rvec_sub(x_unsh, xs[edi.sav.anrs_loc[i]], dx);
+                    rvec_sub(x_unsh, coords[edi.sav.anrs_loc[i]], dx);
 
-                    if (v != nullptr)
+                    if (!velocities.empty())
                     {
                         /* dv is the ED correction to the velocity: */
                         svmul(dt_1, dx, dv);
                         /* apply the velocity correction: */
-                        rvec_inc(v[edi.sav.anrs_loc[i]], dv);
+                        rvec_inc(velocities[edi.sav.anrs_loc[i]], dv);
                     }
                     /* Finally apply the position correction due to ED: */
-                    copy_rvec(x_unsh, xs[edi.sav.anrs_loc[i]]);
+                    copy_rvec(x_unsh, coords[edi.sav.anrs_loc[i]]);
                 }
             }
         } /* END of if ( bNeedDoEdsam(edi) ) */

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,15 +26,16 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
- * Implements a RAII encapsulation for PbcAiuc
- * note this is a header implementation to make inlining easier if needed
+ * Implements a RAII encapsulation objects for PbcAiuc and t_pbc that
+ * can be passed to listed forces.
+ * Note: this is a header implementation to make inlining easier if needed.
  *
  * \author Victor Holanda <victor.holanda@cscs.ch>
  * \author Joe Jordan <ejjordan@kth.se>
@@ -48,21 +48,23 @@
 
 #include "nblib/box.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/pbcutil/ishift.h"
+#include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/pbc_aiuc.h"
 
 namespace nblib
 {
 
-/*! \brief life-time manager for PbcAiuc
+/*! \brief life-time manager for pbcAiuc
  *
  */
-class PbcHolder
+class PbcHolderAiuc
 {
 public:
     //! \brief ctor
-    explicit PbcHolder(const Box& box)
+    explicit PbcHolderAiuc(PbcType pbcType, const Box& box)
     {
-        setPbcAiuc(3, box.legacyMatrix(), &m_pbc);
+        setPbcAiuc(numPbcDimensions(pbcType), box.legacyMatrix(), &m_pbc);
     }
 
     //! \brief calculate pbc-aware r1-r2
@@ -75,6 +77,30 @@ private:
    PbcAiuc m_pbc;
 };
 
+/*! \brief life-time manager for t_pbc
+ *
+ */
+class PbcHolder
+{
+public:
+    //! \brief ctor
+    explicit PbcHolder(PbcType pbcType, const Box& box)
+    {
+        set_pbc(&m_pbc, pbcType, box.legacyMatrix());
+    }
+
+    //! \brief calculate pbc-aware r1-r2, including the shift index
+    template<class T>
+    inline int dxAiuc(const gmx::BasicVector<T>& r1, const gmx::BasicVector<T>& r2,
+                      gmx::BasicVector<T>& dr) const
+    {
+        return pbc_dx_aiuc(&m_pbc, r1.as_vec(), r2.as_vec(), dr.as_vec());
+    }
+
+private:
+    t_pbc m_pbc;
+};
+
 /*! \brief dummy class used to turn off Pbc in listed forces
  *
  */
@@ -83,9 +109,11 @@ class NoPbc
 public:
 
     //! \brief calculate r1-r2, ignore pbc
-    inline void dxAiuc(const rvec& r1, const rvec& r2, rvec dr) const
+    template<class T>
+    inline int dxAiuc(const gmx::BasicVector<T>& r1, const gmx::BasicVector<T>& r2, gmx::BasicVector<T>& dr) const
     {
-        rvec_sub(r1, r2, dr);
+        dr = r1 - r2;
+        return gmx::c_centralShiftIndex;
     }
 };
 

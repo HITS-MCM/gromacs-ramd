@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #ifndef GMX_SIMD_IMPL_X86_AVX_256_SIMD_DOUBLE_H
@@ -331,9 +329,10 @@ static inline SimdDouble frexp(SimdDouble value, SimdDInt32* exponent)
         // precision fields, but a bit below we'll need a corresponding integer variable with 4x
         // 32-bit fields. Since AVX1 does not support shuffling across the upper/lower 128-bit
         // lanes, we need to extract those first, and then shuffle between two 128-bit variables.
-        __m128i iValueIsZero = _mm_castps_si128(_mm_shuffle_ps(
-                _mm256_extractf128_ps(_mm256_castpd_ps(valueIsZero), 0x0),
-                _mm256_extractf128_ps(_mm256_castpd_ps(valueIsZero), 0x1), _MM_SHUFFLE(2, 0, 2, 0)));
+        __m128i iValueIsZero = _mm_castps_si128(
+                _mm_shuffle_ps(_mm256_extractf128_ps(_mm256_castpd_ps(valueIsZero), 0x0),
+                               _mm256_extractf128_ps(_mm256_castpd_ps(valueIsZero), 0x1),
+                               _MM_SHUFFLE(2, 0, 2, 0)));
 
         // Set exponent to 0 when input value was zero
         iExponentLow = _mm_andnot_si128(iValueIsZero, iExponentLow);

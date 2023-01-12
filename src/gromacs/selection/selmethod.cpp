@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -181,53 +179,65 @@ static bool check_params(FILE*                                  fp,
         {
             if (param[i].val.type != INT_VALUE && param[i].val.type != REAL_VALUE)
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "error: SPAR_RANGES cannot be set for a non-numeric parameter");
                 bOk = false;
             }
             if (param[i].flags & SPAR_DYNAMIC)
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "warning: SPAR_DYNAMIC does not have effect with SPAR_RANGES");
                 param[i].flags &= ~SPAR_DYNAMIC;
             }
             if (!(param[i].flags & SPAR_VARNUM) && param[i].val.nr != 1)
             {
                 report_param_error(
-                        fp, name, param[i].name,
+                        fp,
+                        name,
+                        param[i].name,
                         "error: range should take either one or an arbitrary number of values");
                 bOk = false;
             }
             if (param[i].flags & SPAR_ATOMVAL)
             {
-                report_param_error(fp, name, param[i].name,
-                                   "error: SPAR_RANGES and SPAR_ATOMVAL both set");
+                report_param_error(
+                        fp, name, param[i].name, "error: SPAR_RANGES and SPAR_ATOMVAL both set");
                 bOk = false;
             }
         }
         if ((param[i].flags & SPAR_VARNUM) && (param[i].flags & SPAR_ATOMVAL))
         {
-            report_param_error(fp, name, param[i].name,
-                               "error: SPAR_VARNUM and SPAR_ATOMVAL both set");
+            report_param_error(
+                    fp, name, param[i].name, "error: SPAR_VARNUM and SPAR_ATOMVAL both set");
             bOk = false;
         }
         if (param[i].flags & SPAR_ENUMVAL)
         {
             if (param[i].val.type != STR_VALUE)
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "error: SPAR_ENUMVAL can only be set for string parameters");
                 bOk = false;
             }
             if (param[i].val.nr != 1)
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "error: SPAR_ENUMVAL parameters should take exactly one value");
                 bOk = false;
             }
             if (param[i].flags & (SPAR_DYNAMIC | SPAR_VARNUM | SPAR_ATOMVAL))
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "error: only SPAR_OPTIONAL supported with SPAR_ENUMVAL");
                 bOk = false;
             }
@@ -237,7 +247,9 @@ static bool check_params(FILE*                                  fp,
         {
             if (param[i].val.nr != 0)
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "error: number of values should be zero for boolean parameters");
                 bOk = false;
             }
@@ -247,7 +259,9 @@ static bool check_params(FILE*                                  fp,
             /* Any other flags should not be specified */
             if (param[i].flags & ~SPAR_OPTIONAL)
             {
-                report_param_error(fp, name, param[i].name,
+                report_param_error(fp,
+                                   name,
+                                   param[i].name,
                                    "error: boolean parameter should not have any flags set");
                 bOk = false;
             }
@@ -258,7 +272,9 @@ static bool check_params(FILE*                                  fp,
             if (param[i].val.nr != -1)
             {
                 report_param_error(
-                        fp, name, param[i].name,
+                        fp,
+                        name,
+                        param[i].name,
                         "warning: val.nr is not -1 although SPAR_VARNUM/SPAR_ATOMVAL is set");
             }
             param[i].val.nr = -1;
@@ -295,8 +311,8 @@ static bool check_params(FILE*                                  fp,
         {
             if (param[i].name[j] != '_' && !isalnum(param[i].name[j]))
             {
-                report_param_error(fp, name, param[i].name,
-                                   "error: name contains non-alphanumeric characters");
+                report_param_error(
+                        fp, name, param[i].name, "error: name contains non-alphanumeric characters");
                 bOk = false;
                 break;
             }
@@ -308,7 +324,9 @@ static bool check_params(FILE*                                  fp,
         /* Check that the name does not conflict with a method */
         if (symtab.findSymbol(param[i].name) != nullptr)
         {
-            report_param_error(fp, name, param[i].name,
+            report_param_error(fp,
+                               name,
+                               param[i].name,
                                "error: name conflicts with another method or a keyword");
             bOk = false;
         }
@@ -322,7 +340,9 @@ static bool check_params(FILE*                                  fp,
         gmx_ana_selparam_t*  param  = gmx_ana_selmethod_find_param(name, method);
         if (param)
         {
-            report_param_error(fp, method->name, param->name,
+            report_param_error(fp,
+                               method->name,
+                               param->name,
                                "error: name conflicts with another method or a keyword");
             bOk = false;
         }
@@ -353,7 +373,8 @@ static bool check_callbacks(FILE* fp, gmx_ana_selmethod_t* method)
     /* Make some checks on init_data and free */
     if (method->nparams > 0 && !method->init_data)
     {
-        report_error(fp, method->name,
+        report_error(fp,
+                     method->name,
                      "error: init_data should be provided because the method has parameters");
         bOk = false;
     }
@@ -364,14 +385,16 @@ static bool check_callbacks(FILE* fp, gmx_ana_selmethod_t* method)
     /* Check presence of outinit for position-valued methods */
     if (method->type == POS_VALUE && !method->outinit)
     {
-        report_error(fp, method->name,
+        report_error(fp,
+                     method->name,
                      "error: outinit should be provided because the method has POS_VALUE");
         bOk = false;
     }
     /* Check presence of outinit for variable output count methods */
     if ((method->flags & SMETH_VARNUMVAL) && !method->outinit)
     {
-        report_error(fp, method->name,
+        report_error(fp,
+                     method->name,
                      "error: outinit should be provided because the method has SMETH_VARNUMVAL");
         bOk = false;
     }
@@ -447,7 +470,8 @@ static bool check_method(FILE* fp, gmx_ana_selmethod_t* method, const gmx::Selec
         /* Check that conflicting flags are not present. */
         if (method->flags & SMETH_VARNUMVAL)
         {
-            report_error(fp, method->name,
+            report_error(fp,
+                         method->name,
                          "error: SMETH_VARNUMVAL cannot be set for group-valued methods");
             bOk = false;
         }
@@ -462,7 +486,8 @@ static bool check_method(FILE* fp, gmx_ana_selmethod_t* method, const gmx::Selec
     }
     if ((method->flags & SMETH_CHARVAL) && method->type != STR_VALUE)
     {
-        report_error(fp, method->name,
+        report_error(fp,
+                     method->name,
                      "error: SMETH_CHARVAL can only be specified for STR_VALUE methods");
         bOk = false;
     }
@@ -506,7 +531,8 @@ static bool check_modifier(FILE* fp, gmx_ana_selmethod_t* method, const gmx::Sel
     /* Check flags */
     if (method->flags & (SMETH_SINGLEVAL | SMETH_VARNUMVAL))
     {
-        report_error(fp, method->name,
+        report_error(fp,
+                     method->name,
                      "error: modifier should not have SMETH_SINGLEVAL or SMETH_VARNUMVAL set");
         bOk = false;
     }

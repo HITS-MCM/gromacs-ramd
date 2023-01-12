@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief Header for the code that writes energy-like quantities.
@@ -47,20 +46,25 @@
 
 #include <cstdio>
 
+#include <array>
 #include <memory>
 
+#include "gromacs/math/vectypes.h"
+#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/enerdata.h"
+#include "gromacs/topology/ifunc.h"
+#include "gromacs/utility/arrayref.h"
+#include "gromacs/utility/real.h"
 
 class energyhistory_t;
 struct ener_file;
-struct gmx_ekindata_t;
+class gmx_ekindata_t;
 struct gmx_enerdata_t;
 struct SimulationGroups;
 struct gmx_mtop_t;
 struct gmx_output_env_t;
 struct pull_t;
 struct t_ebin;
-struct t_expanded;
 struct t_fcdata;
 struct t_grpopts;
 struct t_inputrec;
@@ -73,12 +77,18 @@ namespace gmx
 {
 class Awh;
 class Constraints;
-struct MdModulesNotifier;
+struct MDModulesNotifiers;
 enum class StartingBehavior;
 } // namespace gmx
 
+extern const char* const pvEnergyFieldName;
+
+extern const char* const enthalpyEnergyFieldName;
+
+extern const std::array<const char*, 9> virialEnergyFieldNames;
+
 //! \brief Printed names for intergroup energies
-extern const char* egrp_nm[egNR + 1];
+const char* enumValueToString(NonBondedEnergyTerms enumValue);
 
 /* \brief delta_h block type enum: the kinds of energies written out. */
 enum
@@ -124,7 +134,6 @@ struct PTCouplingArrays
  * be written out to the .edr file.
  *
  * \todo Use more std containers.
- * \todo Remove GMX_CONSTRAINTVIR
  * \todo Write free-energy output also to energy file (after adding more tests)
  */
 class EnergyOutput
@@ -134,23 +143,23 @@ public:
      *
      * \param[in] fp_ene     Energy output file.
      * \param[in] mtop       Topology.
-     * \param[in] ir         Input parameters.
+     * \param[in] inputrec   Input parameters.
      * \param[in] pull_work  Pulling simulations data
      * \param[in] fp_dhdl    FEP file.
      * \param[in] isRerun    Is this is a rerun instead of the simulations.
      * \param[in] startingBehavior  Run starting behavior.
      * \param[in] simulationsShareState  Tells whether the physical state is shared over simulations
-     * \param[in] mdModulesNotifier Notifications to MD modules.
+     * \param[in] mdModulesNotifiers Notifications to MD modules.
      */
-    EnergyOutput(ener_file*               fp_ene,
-                 const gmx_mtop_t*        mtop,
-                 const t_inputrec*        ir,
-                 const pull_t*            pull_work,
-                 FILE*                    fp_dhdl,
-                 bool                     isRerun,
-                 StartingBehavior         startingBehavior,
-                 bool                     simulationsShareState,
-                 const MdModulesNotifier& mdModulesNotifier);
+    EnergyOutput(ener_file*                fp_ene,
+                 const gmx_mtop_t&         mtop,
+                 const t_inputrec&         inputrec,
+                 const pull_t*             pull_work,
+                 FILE*                     fp_dhdl,
+                 bool                      isRerun,
+                 StartingBehavior          startingBehavior,
+                 bool                      simulationsShareState,
+                 const MDModulesNotifiers& mdModulesNotifiers);
 
     ~EnergyOutput();
 
@@ -164,12 +173,9 @@ public:
      * \param[in] tmass             Total mass
      * \param[in] enerd             Energy data object.
      * \param[in] fep               FEP data.
-     * \param[in] expand            Expanded ensemble (for FEP).
      * \param[in] lastbox           PBC data.
      * \param[in] ptCouplingArrays  Arrays connected to pressure and temperature coupling.
      * \param[in] fep_state         The current alchemical state we are in.
-     * \param[in] svir              Constraint virial.
-     * \param[in] fvir              Force virial.
      * \param[in] vir               Total virial.
      * \param[in] pres              Pressure.
      * \param[in] ekind             Kinetic energy data.
@@ -182,12 +188,9 @@ public:
                              real                    tmass,
                              const gmx_enerdata_t*   enerd,
                              const t_lambda*         fep,
-                             const t_expanded*       expand,
                              const matrix            lastbox,
                              PTCouplingArrays        ptCouplingArrays,
                              int                     fep_state,
-                             const tensor            svir,
-                             const tensor            fvir,
                              const tensor            vir,
                              const tensor            pres,
                              const gmx_ekindata_t*   ekind,
@@ -240,7 +243,7 @@ public:
      * \param[in] opts    Atom temperature coupling groups options
      *                    (annealing is done by groups).
      */
-    static void printAnnealingTemperatures(FILE* log, const SimulationGroups* groups, t_grpopts* opts);
+    static void printAnnealingTemperatures(FILE* log, const SimulationGroups* groups, const t_grpopts* opts);
 
     /*! \brief Prints average values to log file.
      *
@@ -308,7 +311,7 @@ private:
     bool bMTTK_ = false;
 
     //! Temperature control scheme
-    int etc_ = 0;
+    TemperatureCoupling etc_ = TemperatureCoupling::No;
 
     //! Which of the main energy terms should be printed
     bool bEner_[F_NRE] = { false };
@@ -342,14 +345,6 @@ private:
     //! Index for entalpy (pV + total energy)
     int ienthalpy_ = 0;
 
-    /*! \brief If the constraints virial should be printed.
-     * Can only be true if "GMX_CONSTRAINTVIR" environmental variable is set */
-    bool bConstrVir_ = false;
-    //! Index for constrains virial
-    int isvir_ = 0;
-    //! Index for force virial
-    int ifvir_ = 0;
-
     //! If we have pressure computed
     bool bPres_ = false;
     //! Index for total virial
@@ -361,7 +356,7 @@ private:
     int isurft_ = 0;
 
     //! Pressure control scheme
-    int epc_ = 0;
+    PressureCoupling epc_ = PressureCoupling::No;
     //! Index for velocity of the box borders
     int ipc_ = 0;
 
@@ -375,8 +370,8 @@ private:
     //! Index for viscocity
     int ivisc_ = 0;
 
-    //! Which energy terms from egNR list should be printed in group-to-group block
-    bool bEInd_[egNR] = { false };
+    //! Which energy terms from NonBondedEnergyTerms list should be printed in group-to-group block
+    gmx::EnumerationArray<NonBondedEnergyTerms, bool> bEInd_;
     //! Number of energy terms to be printed (these, for which bEInd[] == true)
     int nEc_ = 0;
     //! Number of energy output groups
@@ -384,7 +379,7 @@ private:
     //! Number of intergroup energy sets to be printed for each energy term (nE = (nEg*(nEg+1))/2)
     int nE_ = 0;
     //! Indexes for integroup energy sets (each set with nEc energies)
-    int* igrp_ = nullptr;
+    std::vector<int> igrp_;
 
     //! Number of temperature coupling groups
     int nTC_ = 0;
@@ -405,26 +400,19 @@ private:
     //! Index for scalling factor of MTTK
     int itcb_ = 0;
 
-    //! Number of acceleration groups
-    int nU_ = 0;
-    //! Index for group velocities
-    int iu_ = 0;
-
     //! Array to accumulate values during update
-    real* tmp_r_ = nullptr;
-    //! Array to accumulate values during update
-    rvec* tmp_v_ = nullptr;
+    std::vector<real> tmp_r_;
 
     //! The dhdl.xvg output file
     FILE* fp_dhdl_ = nullptr;
+    //! Whether the free-energy lambda moves dynamically between lambda states
+    bool haveFepLambdaMoves_;
     //! Energy components for dhdl.xvg output
-    double* dE_ = nullptr;
+    std::vector<double> dE_;
     //! The delta U components (raw data + histogram)
-    t_mde_delta_h_coll* dhc_ = nullptr;
+    std::unique_ptr<t_mde_delta_h_coll> dhc_;
     //! Temperatures for simulated tempering groups
-    real* temperatures_ = nullptr;
-    //! Number of temperatures actually saved
-    int numTemperatures_ = 0;
+    std::vector<real> temperatures_;
 
     //! For tracking the conserved or total energy
     std::unique_ptr<EnergyDriftTracker> conservedEnergyTracker_;

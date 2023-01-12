@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020 Research Organization for Information Science and Technology (RIST).
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,15 +26,16 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*
  * armv8+sve support to GROMACS was contributed by the Research Organization for
  * Information Science and Technology (RIST).
+ * Copyright (c) 2020 Research Organization for Information Science and Technology (RIST).
  */
 
 #ifndef GMX_SIMD_IMPL_ARM_SVE_UTIL_FLOAT_H
@@ -54,18 +53,12 @@
 
 #include "impl_arm_sve_simd_float.h"
 
-#define SVE_FLOAT_HALF_MASK svwhilelt_b32(0, GMX_SIMD_FLOAT_WIDTH / 2)
-#define SVE_FINT32_HALF_MASK svwhilelt_b32(0, GMX_SIMD_FLOAT_WIDTH / 2)
-
-#define SVE_FLOAT4_MASK svptrue_pat_b32(SV_VL4)
-#define SVE_FLOAT3_MASK svptrue_pat_b32(SV_VL3)
-
 namespace gmx
 {
 
 template<int align>
 static inline void gmx_simdcall
-                   gatherLoadBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v0, SimdFloat* v1)
+gatherLoadBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v0, SimdFloat* v1)
 {
     // Base pointer must be aligned to the smaller of 2 elements and float SIMD width
     assert(std::size_t(base) % 8 == 0);
@@ -123,7 +116,7 @@ static inline void gmx_simdcall gatherLoadTranspose(const float*       base,
 
 template<int align>
 static inline void gmx_simdcall
-                   gatherLoadTranspose(const float* base, const std::int32_t offset[], SimdFloat* v0, SimdFloat* v1)
+gatherLoadTranspose(const float* base, const std::int32_t offset[], SimdFloat* v0, SimdFloat* v1)
 {
     assert(std::size_t(offset) % 64 == 0);
     assert(std::size_t(base) % 8 == 0);
@@ -159,7 +152,7 @@ static inline void gmx_simdcall gatherLoadUTranspose(const float*       base,
 
 template<int align>
 static inline void gmx_simdcall
-                   transposeScatterStoreU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
+transposeScatterStoreU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
 {
     assert(std::size_t(offset) % 16 == 0);
 
@@ -176,7 +169,7 @@ static inline void gmx_simdcall
 
 template<int align>
 static inline void gmx_simdcall
-                   transposeScatterIncrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
+transposeScatterIncrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
 {
     assert(std::size_t(offset) % 64 == 0);
 
@@ -197,7 +190,7 @@ static inline void gmx_simdcall
 
 template<int align>
 static inline void gmx_simdcall
-                   transposeScatterDecrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
+transposeScatterDecrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
 {
     assert(std::size_t(offset) % 16 == 0);
 
@@ -262,7 +255,7 @@ static inline void gmx_simdcall gatherLoadBySimdIntTranspose(const float* base,
 
 template<int align>
 static inline void gmx_simdcall
-                   gatherLoadUBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v0, SimdFloat* v1)
+gatherLoadUBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v0, SimdFloat* v1)
 {
     svbool_t  pg      = svptrue_b32();
     svint32_t offsets = svmul_n_s32_x(pg, offset.simdInternal_, align * 4);
@@ -309,8 +302,8 @@ static inline SimdFloat gmx_simdcall loadU1DualHsimd(const float* m)
 {
     svfloat32_t v0, v1;
     svbool_t    pg = SVE_FLOAT_HALF_MASK;
-    v0             = svdup_f32(m[0]);
-    v1             = svdup_f32(m[1]);
+    v0             = svdup_n_f32(m[0]);
+    v1             = svdup_n_f32(m[1]);
     return { svsplice_f32(pg, v0, v1) };
 }
 
@@ -362,7 +355,7 @@ static inline float gmx_simdcall reduceIncr4ReturnSumHsimd(float* m, SimdFloat v
     svbool_t    pg2 = sveor_b_z(svptrue_b32(), pg, svptrue_b32());
     svfloat32_t _m, _s;
 
-    _s = svdup_f32(0.0f);
+    _s = svdup_n_f32(0.0f);
     _s = svinsr_n_f32(_s, svaddv_f32(pg2, v1.simdInternal_));
     _s = svinsr_n_f32(_s, svaddv_f32(pg, v1.simdInternal_));
     _s = svinsr_n_f32(_s, svaddv_f32(pg2, v0.simdInternal_));

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -107,8 +103,7 @@ static int read_g96_pos(char line[], t_symtab* symtab, FILE* fp, const char* inf
                 }
                 if ((nwanted != -1) && (natoms >= nwanted))
                 {
-                    gmx_fatal(FARGS, "Found more coordinates (%d) in %s than expected %d\n", natoms,
-                              infile, nwanted);
+                    gmx_fatal(FARGS, "Found more coordinates (%d) in %s than expected %d\n", natoms, infile, nwanted);
                 }
                 if (atoms)
                 {
@@ -133,8 +128,7 @@ static int read_g96_pos(char line[], t_symtab* symtab, FILE* fp, const char* inf
                         newres++;
                         if (newres >= atoms->nr)
                         {
-                            gmx_fatal(FARGS, "More residues than atoms in %s (natoms = %d)", infile,
-                                      atoms->nr);
+                            gmx_fatal(FARGS, "More residues than atoms in %s (natoms = %d)", infile, atoms->nr);
                         }
                         atoms->atom[natoms].resind = newres;
                         if (newres + 1 > atoms->nres)
@@ -159,8 +153,7 @@ static int read_g96_pos(char line[], t_symtab* symtab, FILE* fp, const char* inf
         }
         if ((nwanted != -1) && natoms != nwanted)
         {
-            fprintf(stderr, "Warning: found less coordinates (%d) in %s than expected %d\n", natoms,
-                    infile, nwanted);
+            fprintf(stderr, "Warning: found less coordinates (%d) in %s than expected %d\n", natoms, infile, nwanted);
         }
     }
 
@@ -200,8 +193,7 @@ static int read_g96_vel(char line[], FILE* fp, const char* infile, t_trxframe* f
                 }
                 if ((nwanted != -1) && (natoms >= nwanted))
                 {
-                    gmx_fatal(FARGS, "Found more velocities (%d) in %s than expected %d\n", natoms,
-                              infile, nwanted);
+                    gmx_fatal(FARGS, "Found more velocities (%d) in %s than expected %d\n", natoms, infile, nwanted);
                 }
                 if (fr->v)
                 {
@@ -214,8 +206,7 @@ static int read_g96_vel(char line[], FILE* fp, const char* infile, t_trxframe* f
         }
         if ((nwanted != -1) && (natoms != nwanted))
         {
-            fprintf(stderr, "Warning: found less velocities (%d) in %s than expected %d\n", natoms,
-                    infile, nwanted);
+            fprintf(stderr, "Warning: found less velocities (%d) in %s than expected %d\n", natoms, infile, nwanted);
         }
     }
 
@@ -312,8 +303,17 @@ int read_g96_conf(FILE* fp, const char* infile, char** name, t_trxframe* fr, t_s
                 bEnd = (strncmp(line, "END", 3) == 0);
                 if (!bEnd && (line[0] != '#'))
                 {
-                    nbp = sscanf(line, "%15lf%15lf%15lf%15lf%15lf%15lf%15lf%15lf%15lf", &db1, &db2,
-                                 &db3, &db4, &db5, &db6, &db7, &db8, &db9);
+                    nbp = sscanf(line,
+                                 "%15lf%15lf%15lf%15lf%15lf%15lf%15lf%15lf%15lf",
+                                 &db1,
+                                 &db2,
+                                 &db3,
+                                 &db4,
+                                 &db5,
+                                 &db6,
+                                 &db7,
+                                 &db8,
+                                 &db9);
                     if (nbp < 3)
                     {
                         gmx_fatal(FARGS, "Found a BOX line, but no box in %s", infile);
@@ -378,10 +378,15 @@ void write_g96_conf(FILE* out, const char* title, const t_trxframe* fr, int nind
                 {
                     a = i;
                 }
-                fprintf(out, "%5d %-5s %-5s%7d%15.9f%15.9f%15.9f\n",
+                fprintf(out,
+                        "%5d %-5s %-5s%7d%15.9f%15.9f%15.9f\n",
                         (atoms->resinfo[atoms->atom[a].resind].nr) % 100000,
-                        *atoms->resinfo[atoms->atom[a].resind].name, *atoms->atomname[a],
-                        (i + 1) % 10000000, fr->x[a][XX], fr->x[a][YY], fr->x[a][ZZ]);
+                        *atoms->resinfo[atoms->atom[a].resind].name,
+                        *atoms->atomname[a],
+                        (i + 1) % 10000000,
+                        fr->x[a][XX],
+                        fr->x[a][YY],
+                        fr->x[a][ZZ]);
             }
         }
         else
@@ -417,10 +422,15 @@ void write_g96_conf(FILE* out, const char* title, const t_trxframe* fr, int nind
                 {
                     a = i;
                 }
-                fprintf(out, "%5d %-5s %-5s%7d%15.9f%15.9f%15.9f\n",
+                fprintf(out,
+                        "%5d %-5s %-5s%7d%15.9f%15.9f%15.9f\n",
                         (atoms->resinfo[atoms->atom[a].resind].nr) % 100000,
-                        *atoms->resinfo[atoms->atom[a].resind].name, *atoms->atomname[a],
-                        (i + 1) % 10000000, fr->v[a][XX], fr->v[a][YY], fr->v[a][ZZ]);
+                        *atoms->resinfo[atoms->atom[a].resind].name,
+                        *atoms->atomname[a],
+                        (i + 1) % 10000000,
+                        fr->v[a][XX],
+                        fr->v[a][YY],
+                        fr->v[a][ZZ]);
             }
         }
         else
@@ -448,8 +458,14 @@ void write_g96_conf(FILE* out, const char* title, const t_trxframe* fr, int nind
         if ((fr->box[XX][YY] != 0.0F) || (fr->box[XX][ZZ] != 0.0F) || (fr->box[YY][XX] != 0.0F)
             || (fr->box[YY][ZZ] != 0.0F) || (fr->box[ZZ][XX] != 0.0F) || (fr->box[ZZ][YY] != 0.0F))
         {
-            fprintf(out, "%15.9f%15.9f%15.9f%15.9f%15.9f%15.9f", fr->box[XX][YY], fr->box[XX][ZZ],
-                    fr->box[YY][XX], fr->box[YY][ZZ], fr->box[ZZ][XX], fr->box[ZZ][YY]);
+            fprintf(out,
+                    "%15.9f%15.9f%15.9f%15.9f%15.9f%15.9f",
+                    fr->box[XX][YY],
+                    fr->box[XX][ZZ],
+                    fr->box[YY][XX],
+                    fr->box[YY][ZZ],
+                    fr->box[ZZ][XX],
+                    fr->box[ZZ][YY]);
         }
         fprintf(out, "\n");
         fprintf(out, "END\n");

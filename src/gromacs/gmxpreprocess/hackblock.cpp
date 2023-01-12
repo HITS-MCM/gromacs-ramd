@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -49,15 +45,27 @@
 #include "gromacs/topology/symtab.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringcompare.h"
 
-/* these MUST correspond to the enum in hackblock.h */
-const char* btsNames[ebtsNR] = { "bonds", "angles", "dihedrals", "impropers", "exclusions", "cmap" };
-const int   btsNiatoms[ebtsNR] = { 2, 3, 4, 4, 2, 5 };
+const char* enumValueToString(BondedTypes enumValue)
+{
+    /* these MUST correspond to the enum in hackblock.h */
+    constexpr gmx::EnumerationArray<BondedTypes, const char*> bondedTypeNames = {
+        "bonds", "angles", "dihedrals", "impropers", "exclusions", "cmap"
+    };
+    return bondedTypeNames[enumValue];
+}
+
+int enumValueToNumIAtoms(BondedTypes enumValue)
+{
+    constexpr gmx::EnumerationArray<BondedTypes, int> bondedTypeIAtoms = { 2, 3, 4, 4, 2, 5 };
+    return bondedTypeIAtoms[enumValue];
+}
 
 MoleculePatchType MoleculePatch::type() const
 {
@@ -83,13 +91,11 @@ void clearModificationBlock(MoleculePatchDatabase* globalPatches)
 {
     globalPatches->name.clear();
     globalPatches->hack.clear();
-    for (int i = 0; i < ebtsNR; i++)
+    for (auto bondedsList : globalPatches->rb)
     {
-        globalPatches->rb[i].b.clear();
+        bondedsList.b.clear();
     }
 }
-
-#define safe_strdup(str) (((str) != NULL) ? gmx_strdup(str) : NULL)
 
 static bool contains_char(const BondedInteraction& s, char c)
 {
@@ -152,9 +158,10 @@ bool mergeBondedInteractionList(gmx::ArrayRef<const BondedInteractionList> s,
                                 bool                                       bPlus)
 {
     bool bBondsRemoved = false;
-    for (int i = 0; i < ebtsNR; i++)
+    for (auto i : gmx::EnumerationWrapper<BondedTypes>{})
     {
-        if (!s[i].b.empty())
+        int value = static_cast<int>(i);
+        if (!s[value].b.empty())
         {
             /* Record how many bonds we have in the destination when we start.
              *
@@ -171,15 +178,15 @@ bool mergeBondedInteractionList(gmx::ArrayRef<const BondedInteractionList> s,
              * it is a hackblock entry meant to override the main rtp, and then
              * we don't add the main rtp one.
              */
-            int nbHackblockStart = d[i].b.size();
+            int nbHackblockStart = d[value].b.size();
 
-            for (const auto& b : s[i].b)
+            for (const auto& b : s[value].b)
             {
                 /* Check if this bonded string already exists before adding.
                  * We are merging from the main RTP to the hackblocks, so this
                  * will mean the hackblocks overwrite the man RTP, as intended.
                  */
-                int index = rbonded_find_atoms_in_list(b, d[i].b, btsNiatoms[i]);
+                int index = rbonded_find_atoms_in_list(b, d[value].b, enumValueToNumIAtoms(i));
                 /* - If we did not find this interaction at all, the index will be -1,
                  *   and then we should definitely add it to the merged hackblock and rtp.
                  *
@@ -200,9 +207,9 @@ bool mergeBondedInteractionList(gmx::ArrayRef<const BondedInteractionList> s,
                 {
                     if (!(bMin && contains_char(b, '-')) && !(bPlus && contains_char(b, '+')))
                     {
-                        d[i].b.push_back(b);
+                        d[value].b.push_back(b);
                     }
-                    else if (i == ebtsBONDS)
+                    else if (i == BondedTypes::Bonds)
                     {
                         bBondsRemoved = true;
                     }
@@ -237,7 +244,7 @@ void copyPreprocessResidues(const PreprocessResidue& s, PreprocessResidue* d, t_
     {
         d->cgnr.push_back(c);
     }
-    for (int i = 0; i < ebtsNR; i++)
+    for (auto i : gmx::EnumerationWrapper<BondedTypes>{})
     {
         d->rb[i].type = s.rb[i].type;
         d->rb[i].b.clear();
@@ -264,11 +271,9 @@ void copyModificationBlocks(const MoleculePatchDatabase& s, MoleculePatchDatabas
     *d      = s;
     d->name = s.name;
     d->hack.clear();
-    for (int i = 0; i < ebtsNR; i++)
+    for (auto bondedList : d->rb)
     {
-        d->rb[i].b.clear();
+        bondedList.b.clear();
     }
     mergeAtomAndBondModifications(s, d);
 }
-
-#undef safe_strdup

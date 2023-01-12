@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -47,6 +46,7 @@
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/pbcutil/ishift.h"
+#include "gromacs/utility/arrayref.h"
 
 #include "testutils/refdata.h"
 
@@ -61,8 +61,8 @@ TEST(PbcTest, CalcShiftsWorks)
     // Choose box vector entries whose magnitudes will lead to unique
     // shift vector values when the largest box shift in any dimension
     // is two.
-    const matrix box = { { 0.01, 1, -100 }, { 300, -0.03, 3 }, { -6, -600, 0.06 } };
-    rvec         shiftVectors[SHIFTS];
+    const matrix           box = { { 0.01, 1, -100 }, { 300, -0.03, 3 }, { -6, -600, 0.06 } };
+    std::vector<gmx::RVec> shiftVectors(c_numShiftVectors);
 
     calc_shifts(box, shiftVectors);
 

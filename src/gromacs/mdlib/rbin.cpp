@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -86,9 +83,6 @@ int add_binr(t_bin* b, int nr, const real r[])
     /* Copy pointer */
     rbuf = b->rbuf + b->nreal;
 
-#if (defined __ICC && __ICC >= 1500 || defined __ICL && __ICL >= 1500) && defined __MIC__
-#    pragma novector /* Work-around for incorrect vectorization */
-#endif
     for (i = 0; (i < nr); i++)
     {
         rbuf[i] = r[i];
@@ -134,6 +128,11 @@ int add_bind(t_bin* b, int nr, const double r[])
     return index;
 }
 
+int add_bind(t_bin* b, gmx::ArrayRef<const double> r)
+{
+    return add_bind(b, r.size(), r.data());
+}
+
 void sum_bin(t_bin* b, const t_commrec* cr)
 {
     int i;
@@ -172,4 +171,9 @@ void extract_bind(t_bin* b, int index, int nr, double r[])
     {
         r[i] = rbuf[i];
     }
+}
+
+void extract_bind(t_bin* b, int index, gmx::ArrayRef<double> r)
+{
+    extract_bind(b, index, r.size(), r.data());
 }

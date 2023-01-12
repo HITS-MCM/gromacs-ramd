@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Testing/debugging tool for the selection engine.
@@ -116,10 +114,9 @@ void SelectionTester::analyzeFrame(int /*frnr*/,
     for (size_t g = 0; g < selections_.size(); ++g)
     {
         const Selection& sel = selections_[g];
-        int              n;
 
         fprintf(stderr, "  Atoms (%d pcs):", sel.atomCount());
-        n = sel.atomCount();
+        int n = sel.atomCount();
         if (nmaxind_ >= 0 && n > nmaxind_)
         {
             n = nmaxind_;
@@ -144,8 +141,14 @@ void SelectionTester::analyzeFrame(int /*frnr*/,
         for (int i = 0; i < n; ++i)
         {
             const SelectionPosition& p = sel.position(i);
-            fprintf(stderr, "    (%.2f,%.2f,%.2f) r=%d, m=%d, n=%d\n", p.x()[XX], p.x()[YY],
-                    p.x()[ZZ], p.refId(), p.mappedId(), p.atomCount());
+            fprintf(stderr,
+                    "    (%.2f,%.2f,%.2f) r=%d, m=%d, n=%d\n",
+                    p.x()[XX],
+                    p.x()[YY],
+                    p.x()[ZZ],
+                    p.refId(),
+                    p.mappedId(),
+                    p.atomCount());
         }
         if (n < sel.posCount())
         {

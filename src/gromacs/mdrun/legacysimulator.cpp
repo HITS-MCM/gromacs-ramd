@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal
  * \brief Defines the dispatch function for the .mdp integrator field.
@@ -54,11 +53,11 @@ void LegacySimulator::run()
 {
     switch (inputrec->eI)
     {
-        case eiMD:
-        case eiBD:
-        case eiSD1:
-        case eiVV:
-        case eiVVAK:
+        case IntegrationAlgorithm::MD:
+        case IntegrationAlgorithm::BD:
+        case IntegrationAlgorithm::SD1:
+        case IntegrationAlgorithm::VV:
+        case IntegrationAlgorithm::VVAK:
             if (!EI_DYNAMICS(inputrec->eI))
             {
                 GMX_THROW(APIError(
@@ -73,7 +72,7 @@ void LegacySimulator::run()
                 do_md();
             }
             break;
-        case eiMimic:
+        case IntegrationAlgorithm::Mimic:
             if (doRerun)
             {
                 do_rerun();
@@ -83,19 +82,20 @@ void LegacySimulator::run()
                 do_mimic();
             }
             break;
-        case eiSteep: do_steep(); break;
-        case eiCG: do_cg(); break;
-        case eiNM: do_nm(); break;
-        case eiLBFGS: do_lbfgs(); break;
-        case eiTPI:
-        case eiTPIC:
+        case IntegrationAlgorithm::Steep: do_steep(); break;
+        case IntegrationAlgorithm::CG: do_cg(); break;
+        case IntegrationAlgorithm::NM: do_nm(); break;
+        case IntegrationAlgorithm::LBFGS: do_lbfgs(); break;
+        case IntegrationAlgorithm::TPI:
+        case IntegrationAlgorithm::TPIC:
             if (!EI_TPI(inputrec->eI))
             {
                 GMX_THROW(APIError("do_tpi integrator would be called for a non-TPI integrator"));
             }
             do_tpi();
             break;
-        case eiSD2_REMOVED: GMX_THROW(NotImplementedError("SD2 integrator has been removed"));
+        case IntegrationAlgorithm::SD2Removed:
+            GMX_THROW(NotImplementedError("SD2 integrator has been removed"));
         default: GMX_THROW(APIError("Non existing integrator selected"));
     }
 }

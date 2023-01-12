@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #include "gmxpre.h"
@@ -50,11 +49,7 @@ struct BalanceRegion
 {
     /*! \brief Constructor */
     BalanceRegion() :
-        isOpen(false),
-        isOpenOnCpu(false),
-        isOpenOnGpu(false),
-        cyclesOpenCpu(0),
-        cyclesLastCpu(0)
+        isOpen(false), isOpenOnCpu(false), isOpenOnGpu(false), cyclesOpenCpu(0), cyclesLastCpu(0)
     {
     }
 
@@ -175,17 +170,13 @@ void DDBalanceRegionHandler::closeRegionGpuImpl(float waitGpuCyclesInCpuRegion,
 //! Accumulates flop counts for force calculations.
 static double force_flop_count(const t_nrnb* nrnb)
 {
-    int         i;
-    double      sum;
-    const char* name;
-
-    sum = 0;
-    for (i = 0; i < eNR_NBKERNEL_FREE_ENERGY; i++)
+    double sum = 0;
+    for (int i = 0; i < eNR_NBKERNEL_FREE_ENERGY; i++)
     {
         /* To get closer to the real timings, we half the count
          * for the normal loops and again half it for water loops.
          */
-        name = nrnb_str(i);
+        const char* name = nrnb_str(i);
         if (strstr(name, "W3") != nullptr || strstr(name, "W4") != nullptr)
         {
             sum += nrnb->n[i] * 0.25 * cost_nrnb(i);
@@ -195,15 +186,15 @@ static double force_flop_count(const t_nrnb* nrnb)
             sum += nrnb->n[i] * 0.50 * cost_nrnb(i);
         }
     }
-    for (i = eNR_NBKERNEL_FREE_ENERGY; i <= eNR_NB14; i++)
+    for (int i = eNR_NBKERNEL_FREE_ENERGY; i <= eNR_NB14; i++)
     {
-        name = nrnb_str(i);
+        const char* name = nrnb_str(i);
         if (strstr(name, "W3") != nullptr || strstr(name, "W4") != nullptr)
         {
             sum += nrnb->n[i] * cost_nrnb(i);
         }
     }
-    for (i = eNR_BONDS; i <= eNR_WALLS; i++)
+    for (int i = eNR_BONDS; i <= eNR_WALLS; i++)
     {
         sum += nrnb->n[i] * cost_nrnb(i);
     }
@@ -230,9 +221,7 @@ void dd_force_flop_stop(gmx_domdec_t* dd, t_nrnb* nrnb)
 
 void clear_dd_cycle_counts(gmx_domdec_t* dd)
 {
-    int i;
-
-    for (i = 0; i < ddCyclNr; i++)
+    for (int i = 0; i < ddCyclNr; i++)
     {
         dd->comm->cycl[i]     = 0;
         dd->comm->cycl_n[i]   = 0;

@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -81,8 +79,8 @@ void CommandLineHelpWriterTest::checkHelp(gmx::CommandLineHelpWriter* writer)
 {
     gmx::StringOutputStream     stream;
     gmx::TextWriter             streamWriter(&stream);
-    gmx::CommandLineHelpContext context(&streamWriter, gmx::eHelpOutputFormat_Console, nullptr,
-                                        "test");
+    gmx::CommandLineHelpContext context(
+            &streamWriter, gmx::eHelpOutputFormat_Console, nullptr, "test");
     context.setShowHidden(bHidden_);
     writer->writeHelp(context);
     stream.close();
@@ -132,30 +130,32 @@ TEST_F(CommandLineHelpWriterTest, HandlesOptionTypes)
     std::string filename;
     options.addOption(FileNameOption("f")
                               .description("Input file description")
-                              .filetype(eftTrajectory)
+                              .filetype(OptionFileType::Trajectory)
                               .inputFile()
                               .required()
                               .defaultBasename("traj"));
     options.addOption(FileNameOption("mult")
                               .description("Multiple file description")
-                              .filetype(eftTrajectory)
+                              .filetype(OptionFileType::Trajectory)
                               .inputFile()
                               .multiValue()
                               .defaultBasename("traj"));
     options.addOption(FileNameOption("lib")
                               .description("Library file description")
-                              .filetype(eftGenericData)
+                              .filetype(OptionFileType::GenericData)
                               .inputFile()
                               .libraryFile()
                               .defaultBasename("libdata"));
     options.addOption(FileNameOption("io")
                               .store(&filename)
                               .description("Input/Output file description")
-                              .filetype(eftGenericData)
+                              .filetype(OptionFileType::GenericData)
                               .inputOutputFile()
                               .defaultBasename("inout"));
-    options.addOption(
-            FileNameOption("o").description("Output file description").filetype(eftPlot).outputFile());
+    options.addOption(FileNameOption("o")
+                              .description("Output file description")
+                              .filetype(OptionFileType::Plot)
+                              .outputFile());
 
     CommandLineHelpWriter writer(options);
     bHidden_ = true;
@@ -209,37 +209,36 @@ TEST_F(CommandLineHelpWriterTest, HandlesDefaultValuesFromVariables)
  */
 TEST_F(CommandLineHelpWriterTest, HandlesLongFileOptions)
 {
-    using gmx::eftGenericData;
-    using gmx::eftTrajectory;
     using gmx::FileNameOption;
+    using gmx::OptionFileType;
 
     gmx::Options options;
     options.addOption(FileNameOption("f")
                               .description("File name option with a long value")
-                              .filetype(eftTrajectory)
+                              .filetype(OptionFileType::Trajectory)
                               .inputFile()
                               .required()
                               .defaultBasename("path/to/long/trajectory/name"));
     options.addOption(FileNameOption("f2")
                               .description("File name option with a long value")
-                              .filetype(eftTrajectory)
+                              .filetype(OptionFileType::Trajectory)
                               .inputFile()
                               .required()
                               .defaultBasename("path/to/long/trajectory"));
     options.addOption(FileNameOption("lib")
                               .description("File name option with a long value and type")
-                              .filetype(eftTrajectory)
+                              .filetype(OptionFileType::Trajectory)
                               .inputFile()
                               .libraryFile()
                               .defaultBasename("path/to/long/trajectory/name"));
     options.addOption(FileNameOption("longfileopt")
                               .description("File name option with a long name")
-                              .filetype(eftGenericData)
+                              .filetype(OptionFileType::GenericData)
                               .inputFile()
                               .defaultBasename("deffile"));
     options.addOption(FileNameOption("longfileopt2")
                               .description("File name option with multiple long fields")
-                              .filetype(eftGenericData)
+                              .filetype(OptionFileType::GenericData)
                               .inputFile()
                               .libraryFile()
                               .defaultBasename("path/to/long/file/name"));

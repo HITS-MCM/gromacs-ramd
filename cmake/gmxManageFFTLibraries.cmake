@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2012- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,12 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
+
+include_guard()
 
 # Manage setup of the different FFT libraries we can use in Gromacs.
 set(PKG_FFT "")
@@ -40,9 +40,7 @@ set(PKG_FFT_LIBS "")
 # all their stuff. It's not easy if you only want some of their
 # stuff...
 set(MKL_MANUALLY FALSE)
-if (GMX_FFT_LIBRARY STREQUAL "MKL" AND
-    NOT ((CMAKE_C_COMPILER_ID MATCHES "Intel" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER "11")
-         OR GMX_INTEL_LLVM))
+if (GMX_FFT_LIBRARY STREQUAL "MKL" AND NOT GMX_INTEL_LLVM)
     # The user will have to provide the set of magic libraries in
     # MKL_LIBRARIES (see below), which we cache (non-advanced), so that they
     # don't have to keep specifying it, and can easily see that
@@ -126,15 +124,12 @@ if(${GMX_FFT_LIBRARY} STREQUAL "FFTW3")
 
     set(FFT_LIBRARIES ${${FFTW}_LIBRARIES})
 elseif(${GMX_FFT_LIBRARY} STREQUAL "MKL")
-    # Intel 11 and up makes life somewhat easy if you just want to use
+    # Intel compilers make life somewhat easy if you just want to use
     # all their stuff. It's not easy if you only want some of their
     # stuff...
     if (NOT MKL_MANUALLY)
         # The next line takes care of everything for MKL
         if (WIN32)
-            # This works according to the Intel MKL 10.3 for Windows
-            # docs, but on Jenkins Win2k8, icl tries to interpret it
-            # as a file. Shrug.
             set(FFT_LINKER_FLAGS "/Qmkl:sequential")
         elseif(GMX_INTEL_LLVM AND GMX_INTEL_LLVM_VERSION GREATER_EQUAL 2021020)
             set(FFT_LINKER_FLAGS "-qmkl=sequential")

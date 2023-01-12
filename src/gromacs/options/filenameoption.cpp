@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -53,6 +51,7 @@
 #include "gromacs/options/filenameoptionmanager.h"
 #include "gromacs/options/optionmanagercontainer.h"
 #include "gromacs/utility/arrayref.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/stringutil.h"
@@ -80,11 +79,9 @@ struct FileTypeMapping
 };
 
 //! Mappings from OptionFileType to file types in filetypes.h.
-const FileTypeMapping c_fileTypeMapping[] = { { eftTopology, efTPS },   { eftRunInput, efTPR },
-                                              { eftTrajectory, efTRX }, { eftEnergy, efEDR },
-                                              { eftPDB, efPDB },        { eftIndex, efNDX },
-                                              { eftPlot, efXVG },       { eftGenericData, efDAT },
-                                              { eftCsv, efCSV } };
+constexpr EnumerationArray<OptionFileType, int> sc_fileTypeMapping = { efTPS, efTPR, efTRX, efEDR,
+                                                                       efPDB, efNDX, efXVG, efDAT,
+                                                                       efCSV, efQMI };
 
 /********************************************************************
  * FileTypeHandler
@@ -137,9 +134,7 @@ private:
 };
 
 FileTypeHandler::FileTypeHandler(int fileType) :
-    fileType_(fileType),
-    extensionCount_(0),
-    genericTypes_(nullptr)
+    fileType_(fileType), extensionCount_(0), genericTypes_(nullptr)
 {
     if (fileType_ >= 0)
     {
@@ -211,19 +206,17 @@ FileNameOptionStorage::FileNameOptionStorage(const FileNameOption& settings, Fil
 {
     GMX_RELEASE_ASSERT(!hasFlag(efOption_MultipleTimes),
                        "allowMultiple() is not supported for file name options");
-    if (settings.optionType_ == eftUnknown && settings.legacyType_ >= 0)
+    if (settings.optionType_ == OptionFileType::Count && settings.legacyType_ >= 0)
     {
         fileType_ = settings.legacyType_;
     }
     else
     {
-        ArrayRef<const FileTypeMapping>                 map(c_fileTypeMapping);
-        ArrayRef<const FileTypeMapping>::const_iterator i;
-        for (i = map.begin(); i != map.end(); ++i)
+        for (auto i : keysOf(sc_fileTypeMapping))
         {
-            if (i->optionType == settings.optionType_)
+            if (i == settings.optionType_)
             {
-                fileType_ = i->fileType;
+                fileType_ = sc_fileTypeMapping[i];
                 break;
             }
         }
@@ -360,7 +353,8 @@ std::string FileNameOptionStorage::processValue(const std::string& value) const
                 "File '%s' cannot be used by GROMACS because it "
                 "does not have a recognizable extension.\n"
                 "The following extensions are possible for this option:\n  %s",
-                value.c_str(), joinStrings(extensions(), ", ").c_str());
+                value.c_str(),
+                joinStrings(extensions(), ", ").c_str());
         GMX_THROW(InvalidInputError(message));
     }
     else if (!isValidType(fileType))
@@ -368,7 +362,8 @@ std::string FileNameOptionStorage::processValue(const std::string& value) const
         std::string message = formatString(
                 "File name '%s' cannot be used for this option.\n"
                 "Only the following extensions are possible:\n  %s",
-                value.c_str(), joinStrings(extensions(), ", ").c_str());
+                value.c_str(),
+                joinStrings(extensions(), ", ").c_str());
         GMX_THROW(InvalidInputError(message));
     }
     return value;

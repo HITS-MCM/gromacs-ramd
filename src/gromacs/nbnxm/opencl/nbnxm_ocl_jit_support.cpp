@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *  \brief Defines functions that support JIT compilation (e.g. for OpenCL)
@@ -62,14 +60,6 @@
 
 #include "nbnxm_ocl_types.h"
 
-/*! \brief Stringifies the input argument
- */
-#define STRINGIFY_PARAM(c) #c
-
-/*! \brief Stringifies the result of expansion of a macro argument
- */
-#define STRINGIFY_MACRO(c) STRINGIFY_PARAM(c)
-
 /*! \brief Array of the defines needed to generate a specific eel flavour
  *
  * The twin-cutoff entries are not normally used, because those setups are
@@ -99,18 +89,18 @@ static const char* kernel_VdW_family_definitions[] = {
 
 /*! \brief Returns a string with the compiler defines required to avoid all flavour generation
  *
- * For example if flavour eelTypeRF with evdwTypeFSWITCH, the output will be such that the corresponding
+ * For example if flavour ElecType::RF with VdwType::FSwitch, the output will be such that the corresponding
  * kernel flavour is generated:
  * -DGMX_OCL_FASTGEN          (will replace flavour generator nbnxn_ocl_kernels.clh with nbnxn_ocl_kernels_fastgen.clh)
- * -DEL_RF                    (The eelTypeRF flavour)
+ * -DEL_RF                    (The ElecType::RF flavour)
  * -DEELNAME=_ElecRF          (The first part of the generated kernel name )
- * -DLJ_EWALD_COMB_GEOM       (The evdwTypeFSWITCH flavour)
+ * -DLJ_EWALD_COMB_GEOM       (The VdwType::FSwitch flavour)
  * -DVDWNAME=_VdwLJEwCombGeom (The second part of the generated kernel name )
  *
  * prune/energy are still generated as originally. It is only the flavour-level that has changed, so that
  * only the required flavour for the simulation is compiled.
  *
- * If eeltype is single-range Ewald, then we need to add the
+ * If elecType is single-range Ewald, then we need to add the
  * twin-cutoff flavour kernels to the JIT, because PME tuning might
  * need it. This path sets -DGMX_OCL_FASTGEN_ADD_TWINCUT, which
  * triggers the use of nbnxn_ocl_kernels_fastgen_add_twincut.clh. This
@@ -122,19 +112,22 @@ static const char* kernel_VdW_family_definitions[] = {
  * JIT defaults to compiling all kernel flavours.
  *
  * \param[in]  bFastGen    Whether FastGen should be used
- * \param[in]  eeltype     Electrostatics kernel flavour for FastGen
- * \param[in]  vdwtype     VDW kernel flavour for FastGen
+ * \param[in]  elecType    Electrostatics kernel flavour for FastGen
+ * \param[in]  vdwType     VDW kernel flavour for FastGen
  * \return                 String with the defines if FastGen is active
  *
  * \throws std::bad_alloc if out of memory
  */
-static std::string makeDefinesForKernelTypes(bool bFastGen, int eeltype, int vdwtype)
+static std::string makeDefinesForKernelTypes(bool                 bFastGen,
+                                             enum Nbnxm::ElecType elecType,
+                                             enum Nbnxm::VdwType  vdwType)
 {
+    using Nbnxm::ElecType;
     std::string defines_for_kernel_types;
 
     if (bFastGen)
     {
-        bool bIsEwaldSingleCutoff = (eeltype == eelTypeEWALD_TAB || eeltype == eelTypeEWALD_ANA);
+        bool bIsEwaldSingleCutoff = (elecType == ElecType::EwaldTab || elecType == ElecType::EwaldAna);
 
         if (bIsEwaldSingleCutoff)
         {
@@ -146,8 +139,8 @@ static std::string makeDefinesForKernelTypes(bool bFastGen, int eeltype, int vdw
                nbnxn_ocl_kernels_fastgen.clh. */
             defines_for_kernel_types += "-DGMX_OCL_FASTGEN";
         }
-        defines_for_kernel_types += kernel_electrostatic_family_definitions[eeltype];
-        defines_for_kernel_types += kernel_VdW_family_definitions[vdwtype];
+        defines_for_kernel_types += kernel_electrostatic_family_definitions[static_cast<int>(elecType)];
+        defines_for_kernel_types += kernel_VdW_family_definitions[static_cast<int>(vdwType)];
     }
 
     return defines_for_kernel_types;
@@ -182,7 +175,7 @@ void nbnxn_gpu_compile_kernels(NbnxmGpu* nb)
     try
     {
         std::string extraDefines =
-                makeDefinesForKernelTypes(bFastGen, nb->nbparam->eeltype, nb->nbparam->vdwtype);
+                makeDefinesForKernelTypes(bFastGen, nb->nbparam->elecType, nb->nbparam->vdwType);
 
         /* Here we pass macros and static const/constexpr int variables defined
          * in include files outside the opencl as macros, to avoid
@@ -196,23 +189,32 @@ void nbnxn_gpu_compile_kernels(NbnxmGpu* nb)
                 " -DNBNXM_MIN_DISTANCE_SQUARED_VALUE_FLOAT=%g"
                 " -Dc_nbnxnGpuNumClusterPerSupercluster=%d"
                 " -Dc_nbnxnGpuJgroupSize=%d"
+                " -Dc_centralShiftIndex=%d"
                 "%s",
-                c_nbnxnGpuClusterSize, c_nbnxnMinDistanceSquared, c_nbnxnGpuNumClusterPerSupercluster,
-                c_nbnxnGpuJgroupSize, (nb->bPrefetchLjParam) ? " -DIATYPE_SHMEM" : "");
+                c_nbnxnGpuClusterSize,
+                c_nbnxnMinDistanceSquared,
+                c_nbnxnGpuNumClusterPerSupercluster,
+                c_nbnxnGpuJgroupSize,
+                gmx::c_centralShiftIndex,
+                (nb->bPrefetchLjParam) ? " -DIATYPE_SHMEM" : "");
         try
         {
             /* TODO when we have a proper MPI-aware logging module,
                the log output here should be written there */
-            program = gmx::ocl::compileProgram(
-                    stderr, "gromacs/nbnxm/opencl", "nbnxm_ocl_kernels.cl", extraDefines,
-                    nb->deviceContext_->context(), nb->deviceContext_->deviceInfo().oclDeviceId,
-                    nb->deviceContext_->deviceInfo().deviceVendor);
+            program = gmx::ocl::compileProgram(stderr,
+                                               "gromacs/nbnxm/opencl",
+                                               "nbnxm_ocl_kernels.cl",
+                                               extraDefines,
+                                               nb->deviceContext_->context(),
+                                               nb->deviceContext_->deviceInfo().oclDeviceId,
+                                               nb->deviceContext_->deviceInfo().deviceVendor);
         }
         catch (gmx::GromacsException& e)
         {
-            e.prependContext(gmx::formatString(
-                    "Failed to compile/load nbnxm kernels for GPU #%d %s\n",
-                    nb->deviceContext_->deviceInfo().id, nb->deviceContext_->deviceInfo().device_name));
+            e.prependContext(
+                    gmx::formatString("Failed to compile/load nbnxm kernels for GPU #%d %s\n",
+                                      nb->deviceContext_->deviceInfo().id,
+                                      nb->deviceContext_->deviceInfo().device_name));
             throw;
         }
     }

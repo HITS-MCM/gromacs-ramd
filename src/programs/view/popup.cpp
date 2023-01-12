@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -98,9 +95,16 @@ static bool MenuCallBack(t_x11* x11, XEvent* event, Window /*w*/, void* data)
             /* Nothing to be done */
             if (m->bGrabbed)
             {
-                m->bGrabbed = GrabOK(stderr, XGrabPointer(x11->disp, m->wd.self, True, ButtonReleaseMask,
-                                                          GrabModeAsync, GrabModeAsync, m->wd.self,
-                                                          None, CurrentTime));
+                m->bGrabbed = GrabOK(stderr,
+                                     XGrabPointer(x11->disp,
+                                                  m->wd.self,
+                                                  True,
+                                                  ButtonReleaseMask,
+                                                  GrabModeAsync,
+                                                  GrabModeAsync,
+                                                  m->wd.self,
+                                                  X11None,
+                                                  CurrentTime));
             }
             break;
         case ButtonRelease: hide_menu(x11, m); break;
@@ -163,8 +167,8 @@ t_menu* init_menu(t_x11* x11, Window Parent, unsigned long fg, unsigned long bg,
     }
     InitWin(&(m->wd), 10, 10, fcol * mlen, frows * mht, 1, "Menu");
     snew(m->item, nent);
-    m->wd.self = XCreateSimpleWindow(x11->disp, Parent, m->wd.x, m->wd.y, m->wd.width, m->wd.height,
-                                     m->wd.bwidth, fg, bg);
+    m->wd.self = XCreateSimpleWindow(
+            x11->disp, Parent, m->wd.x, m->wd.y, m->wd.width, m->wd.height, m->wd.bwidth, fg, bg);
     x11->RegisterCallback(x11, m->wd.self, Parent, MenuCallBack, m);
     x11->SetInputMask(x11, m->wd.self, ExposureMask | OwnerGrabButtonMask | ButtonReleaseMask);
 
@@ -177,10 +181,11 @@ t_menu* init_menu(t_x11* x11, Window Parent, unsigned long fg, unsigned long bg,
             kid->Parent = Parent;
             w           = &(kid->wd);
             InitWin(w, j * mlen, k * mht, mlen - 2, mht - 2, 1, nullptr);
-            w->self = XCreateSimpleWindow(x11->disp, m->wd.self, w->x, w->y, w->width, w->height,
-                                          w->bwidth, bg, bg);
+            w->self = XCreateSimpleWindow(
+                    x11->disp, m->wd.self, w->x, w->y, w->width, w->height, w->bwidth, bg, bg);
             x11->RegisterCallback(x11, w->self, m->wd.self, ChildCallBack, kid);
-            x11->SetInputMask(x11, w->self,
+            x11->SetInputMask(x11,
+                              w->self,
                               ButtonPressMask | ButtonReleaseMask | OwnerGrabButtonMask
                                       | ExposureMask | EnterWindowMask | LeaveWindowMask);
         }

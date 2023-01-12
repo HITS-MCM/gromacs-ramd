@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -62,8 +61,8 @@ TEST(NBlibTest, CanSplitListedWork)
 {
     ListedInteractionData interactions;
 
-    HarmonicAngleType angle(Degrees(1), 1);
-    HarmonicBondType  bond(1, 1);
+    HarmonicAngle    angle(1, Degrees(1));
+    HarmonicBondType bond(1, 1);
 
     int largestIndex = 20;
     int nSplits      = 3; // split ranges: [0,5], [6,11], [12, 19]
@@ -71,30 +70,30 @@ TEST(NBlibTest, CanSplitListedWork)
     std::vector<InteractionIndex<HarmonicBondType>> bondIndices{
         { 0, 1, 0 }, { 0, 6, 0 }, { 11, 12, 0 }, { 18, 19, 0 }
     };
-    std::vector<InteractionIndex<HarmonicAngleType>> angleIndices{
+    std::vector<InteractionIndex<HarmonicAngle>> angleIndices{
         { 0, 1, 2, 0 }, { 0, 6, 7, 0 }, { 11, 12, 13, 0 }, { 17, 19, 18, 0 }
     };
 
-    pickType<HarmonicBondType>(interactions).indices  = bondIndices;
-    pickType<HarmonicAngleType>(interactions).indices = angleIndices;
+    pickType<HarmonicBondType>(interactions).indices = bondIndices;
+    pickType<HarmonicAngle>(interactions).indices    = angleIndices;
 
     std::vector<ListedInteractionData> splitInteractions =
             splitListedWork(interactions, largestIndex, nSplits);
 
     std::vector<InteractionIndex<HarmonicBondType>> refBondIndices0{ { 0, 1, 0 }, { 0, 6, 0 } };
-    std::vector<InteractionIndex<HarmonicAngleType>> refAngleIndices0{ { 0, 1, 2, 0 }, { 0, 6, 7, 0 } };
-    std::vector<InteractionIndex<HarmonicBondType>>  refBondIndices1{ { 11, 12, 0 } };
-    std::vector<InteractionIndex<HarmonicAngleType>> refAngleIndices1{ { 11, 12, 13, 0 } };
-    std::vector<InteractionIndex<HarmonicBondType>>  refBondIndices2{ { 18, 19, 0 } };
-    std::vector<InteractionIndex<HarmonicAngleType>> refAngleIndices2{ { 17, 19, 18, 0 } };
+    std::vector<InteractionIndex<HarmonicAngle>> refAngleIndices0{ { 0, 1, 2, 0 }, { 0, 6, 7, 0 } };
+    std::vector<InteractionIndex<HarmonicBondType>> refBondIndices1{ { 11, 12, 0 } };
+    std::vector<InteractionIndex<HarmonicAngle>>    refAngleIndices1{ { 11, 12, 13, 0 } };
+    std::vector<InteractionIndex<HarmonicBondType>> refBondIndices2{ { 18, 19, 0 } };
+    std::vector<InteractionIndex<HarmonicAngle>>    refAngleIndices2{ { 17, 19, 18, 0 } };
 
     EXPECT_EQ(refBondIndices0, pickType<HarmonicBondType>(splitInteractions[0]).indices);
     EXPECT_EQ(refBondIndices1, pickType<HarmonicBondType>(splitInteractions[1]).indices);
     EXPECT_EQ(refBondIndices2, pickType<HarmonicBondType>(splitInteractions[2]).indices);
 
-    EXPECT_EQ(refAngleIndices0, pickType<HarmonicAngleType>(splitInteractions[0]).indices);
-    EXPECT_EQ(refAngleIndices1, pickType<HarmonicAngleType>(splitInteractions[1]).indices);
-    EXPECT_EQ(refAngleIndices2, pickType<HarmonicAngleType>(splitInteractions[2]).indices);
+    EXPECT_EQ(refAngleIndices0, pickType<HarmonicAngle>(splitInteractions[0]).indices);
+    EXPECT_EQ(refAngleIndices1, pickType<HarmonicAngle>(splitInteractions[1]).indices);
+    EXPECT_EQ(refAngleIndices2, pickType<HarmonicAngle>(splitInteractions[2]).indices);
 }
 
 
@@ -106,12 +105,13 @@ TEST(NBlibTest, ListedForceBuffer)
     T              vzero{ 0, 0, 0 };
     std::vector<T> masterBuffer(ncoords, vzero);
 
-    // the ForceBuffer is going to access indices [10-15) through the masterBuffer
+    // the ForceBufferProxy is going to access indices [10-15) through the masterBuffer
     // and the outliers internally
     int rangeStart = 10;
     int rangeEnd   = 15;
 
-    ForceBuffer<T> forceBuffer(masterBuffer.data(), rangeStart, rangeEnd);
+    ForceBufferProxy<T> forceBuffer(rangeStart, rangeEnd);
+    forceBuffer.setMasterBuffer(masterBuffer);
 
     // in range
     T internal1{ 1, 2, 3 };
@@ -131,8 +131,8 @@ TEST(NBlibTest, ListedForceBuffer)
     {
         for (size_t m = 0; m < dimSize; ++m)
         {
-            EXPECT_REAL_EQ_TOL(refMasterBuffer[i][m], masterBuffer[i][m],
-                               gmx::test::defaultRealTolerance());
+            EXPECT_REAL_EQ_TOL(
+                    refMasterBuffer[i][m], masterBuffer[i][m], gmx::test::defaultRealTolerance());
         }
     }
 

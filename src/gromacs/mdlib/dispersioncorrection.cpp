@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -45,7 +44,6 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/mdtypes/nblist.h"
 #include "gromacs/tables/forcetable.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
@@ -57,7 +55,8 @@
 DispersionCorrection::InteractionParams::~InteractionParams() = default;
 
 /* Returns a matrix, as flat list, of combination rule combined LJ parameters */
-static std::vector<real> mk_nbfp_combination_rule(const gmx_ffparams_t& ffparams, const int comb_rule)
+static std::vector<real> mk_nbfp_combination_rule(const gmx_ffparams_t& ffparams,
+                                                  const CombinationRule comb_rule)
 {
     const int atnr = ffparams.atnr;
 
@@ -73,7 +72,7 @@ static std::vector<real> mk_nbfp_combination_rule(const gmx_ffparams_t& ffparams
             const real c12j = ffparams.iparams[j * (atnr + 1)].lj.c12;
             real       c6   = std::sqrt(c6i * c6j);
             real       c12  = std::sqrt(c12i * c12j);
-            if (comb_rule == eCOMB_ARITHMETIC && !gmx_numzero(c6) && !gmx_numzero(c12))
+            if (comb_rule == CombinationRule::Arithmetic && !gmx_numzero(c6) && !gmx_numzero(c12))
             {
                 const real sigmai = gmx::sixthroot(c12i / c6i);
                 const real sigmaj = gmx::sixthroot(c12j / c6j);
@@ -121,9 +120,10 @@ DispersionCorrection::TopologyParams::TopologyParams(const gmx_mtop_t&         m
      * combination rules. */
     if (EVDW_PME(inputrec.vdwtype))
     {
-        nbfp_comb = mk_nbfp_combination_rule(
-                mtop.ffparams,
-                (inputrec.ljpme_combination_rule == eljpmeLB) ? eCOMB_ARITHMETIC : eCOMB_GEOMETRIC);
+        nbfp_comb = mk_nbfp_combination_rule(mtop.ffparams,
+                                             (inputrec.ljpme_combination_rule == LongRangeVdW::LB)
+                                                     ? CombinationRule::Arithmetic
+                                                     : CombinationRule::Geometric);
         for (int tpi = 0; tpi < ntp; ++tpi)
         {
             for (int tpj = 0; tpj < ntp; ++tpj)
@@ -135,7 +135,7 @@ DispersionCorrection::TopologyParams::TopologyParams(const gmx_mtop_t&         m
         nbfp = nbfp_comb;
     }
 
-    for (int q = 0; q < (inputrec.efep == efepNO ? 1 : 2); q++)
+    for (int q = 0; q < (inputrec.efep == FreeEnergyPerturbationType::No ? 1 : 2); q++)
     {
         double  csix    = 0;
         double  ctwelve = 0;
@@ -148,7 +148,7 @@ DispersionCorrection::TopologyParams::TopologyParams(const gmx_mtop_t&         m
 
             /* Count the types so we avoid natoms^2 operations */
             std::vector<int> typecount(ntp);
-            gmx_mtop_count_atomtypes(&mtop, q, typecount.data());
+            gmx_mtop_count_atomtypes(mtop, q, typecount.data());
 
             for (int tpi = 0; tpi < ntp; tpi++)
             {
@@ -384,18 +384,20 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
     InteractionCorrection energy;
     InteractionCorrection virial;
 
-    if ((ic.vdw_modifier == eintmodPOTSHIFT) || (ic.vdw_modifier == eintmodPOTSWITCH)
-        || (ic.vdw_modifier == eintmodFORCESWITCH) || (ic.vdwtype == evdwSHIFT)
-        || (ic.vdwtype == evdwSWITCH))
+    if ((ic.vdw_modifier == InteractionModifiers::PotShift)
+        || (ic.vdw_modifier == InteractionModifiers::PotSwitch)
+        || (ic.vdw_modifier == InteractionModifiers::ForceSwitch)
+        || (ic.vdwtype == VanDerWaalsType::Shift) || (ic.vdwtype == VanDerWaalsType::Switch))
     {
-        if (((ic.vdw_modifier == eintmodPOTSWITCH) || (ic.vdw_modifier == eintmodFORCESWITCH)
-             || (ic.vdwtype == evdwSWITCH))
+        if (((ic.vdw_modifier == InteractionModifiers::PotSwitch)
+             || (ic.vdw_modifier == InteractionModifiers::ForceSwitch)
+             || (ic.vdwtype == VanDerWaalsType::Switch))
             && ic.rvdw_switch == 0)
         {
             gmx_fatal(FARGS,
                       "With dispersion correction rvdw-switch can not be zero "
                       "for vdw-type = %s",
-                      evdw_names[ic.vdwtype]);
+                      enumValueToString(ic.vdwtype));
         }
 
         GMX_ASSERT(iParams->dispersionCorrectionTable_, "We need an initialized table");
@@ -403,7 +405,7 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
         /* TODO This code depends on the logic in tables.c that
            constructs the table layout, which should be made
            explicit in future cleanup. */
-        GMX_ASSERT(iParams->dispersionCorrectionTable_->interaction == GMX_TABLE_INTERACTION_VDWREP_VDWDISP,
+        GMX_ASSERT(iParams->dispersionCorrectionTable_->interaction == TableInteraction::VdwRepulsionVdwDispersion,
                    "Dispersion-correction code needs a table with both repulsion and dispersion "
                    "terms");
         const real  scale  = iParams->dispersionCorrectionTable_->scale;
@@ -429,13 +431,13 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
          * we need to calculate the constant shift up to the point where we
          * start modifying the potential.
          */
-        ri0 = (ic.vdw_modifier == eintmodPOTSHIFT) ? ri1 : ri0;
+        ri0 = (ic.vdw_modifier == InteractionModifiers::PotShift) ? ri1 : ri0;
 
         const double r0  = ri0 / scale;
         const double rc3 = r0 * r0 * r0;
         const double rc9 = rc3 * rc3 * rc3;
 
-        if ((ic.vdw_modifier == eintmodFORCESWITCH) || (ic.vdwtype == evdwSHIFT))
+        if ((ic.vdw_modifier == InteractionModifiers::ForceSwitch) || (ic.vdwtype == VanDerWaalsType::Shift))
         {
             /* Determine the constant energy shift below rvdw_switch.
              * Table has a scale factor since we have scaled it down to compensate
@@ -444,7 +446,7 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
             iParams->enershiftsix_ = static_cast<real>(-1.0 / (rc3 * rc3)) - 6.0 * vdwtab[8 * ri0];
             iParams->enershifttwelve_ = static_cast<real>(1.0 / (rc9 * rc3)) - 12.0 * vdwtab[8 * ri0 + 4];
         }
-        else if (ic.vdw_modifier == eintmodPOTSHIFT)
+        else if (ic.vdw_modifier == InteractionModifiers::PotShift)
         {
             iParams->enershiftsix_    = static_cast<real>(-1.0 / (rc3 * rc3));
             iParams->enershifttwelve_ = static_cast<real>(1.0 / (rc9 * rc3));
@@ -482,7 +484,8 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
          */
         addCorrectionBeyondCutoff(&energy, &virial, r0);
     }
-    else if (ic.vdwtype == evdwCUT || EVDW_PME(ic.vdwtype) || ic.vdwtype == evdwUSER)
+    else if (ic.vdwtype == VanDerWaalsType::Cut || EVDW_PME(ic.vdwtype)
+             || ic.vdwtype == VanDerWaalsType::User)
     {
         /* Note that with LJ-PME, the dispersion correction is multiplied
          * by the difference between the actual C6 and the value of C6
@@ -493,7 +496,7 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
 
         const double rc3 = ic.rvdw * ic.rvdw * ic.rvdw;
         const double rc9 = rc3 * rc3 * rc3;
-        if (ic.vdw_modifier == eintmodPOTSHIFT)
+        if (ic.vdw_modifier == InteractionModifiers::PotShift)
         {
             /* Contribution within the cut-off */
             energy.dispersion += -4.0 * M_PI / (3.0 * rc3);
@@ -504,8 +507,9 @@ void DispersionCorrection::setInteractionParameters(InteractionParams*         i
     }
     else
     {
-        gmx_fatal(FARGS, "Dispersion correction is not implemented for vdw-type = %s",
-                  evdw_names[ic.vdwtype]);
+        gmx_fatal(FARGS,
+                  "Dispersion correction is not implemented for vdw-type = %s",
+                  enumValueToString(ic.vdwtype));
     }
 
     iParams->enerdiffsix_    = energy.dispersion;
@@ -527,7 +531,7 @@ DispersionCorrection::DispersionCorrection(const gmx_mtop_t&          mtop,
     eFep_(inputrec.efep),
     topParams_(mtop, inputrec, useBuckingham, numAtomTypes, nonbondedForceParameters)
 {
-    if (eDispCorr_ != edispcNO)
+    if (eDispCorr_ != DispersionCorrectionType::No)
     {
         GMX_RELEASE_ASSERT(tableFileName, "Need a table file name");
 
@@ -537,7 +541,8 @@ DispersionCorrection::DispersionCorrection(const gmx_mtop_t&          mtop,
 
 bool DispersionCorrection::correctFullInteraction() const
 {
-    return (eDispCorr_ == edispcAllEner || eDispCorr_ == edispcAllEnerPres);
+    return (eDispCorr_ == DispersionCorrectionType::AllEner
+            || eDispCorr_ == DispersionCorrectionType::AllEnerPres);
 }
 
 void DispersionCorrection::print(const gmx::MDLogger& mdlog) const
@@ -548,7 +553,7 @@ void DispersionCorrection::print(const gmx::MDLogger& mdlog) const
                 .asParagraph()
                 .appendText("WARNING: There are no atom pairs for dispersion correction");
     }
-    else if (vdwType_ == evdwUSER)
+    else if (vdwType_ == VanDerWaalsType::User)
     {
         GMX_LOG(mdlog.warning)
                 .asParagraph()
@@ -565,7 +570,7 @@ void DispersionCorrection::print(const gmx::MDLogger& mdlog) const
 
 void DispersionCorrection::setParameters(const interaction_const_t& ic)
 {
-    if (eDispCorr_ != edispcNO)
+    if (eDispCorr_ != DispersionCorrectionType::No)
     {
         setInteractionParameters(&iParams_, ic, nullptr);
     }
@@ -576,13 +581,14 @@ DispersionCorrection::Correction DispersionCorrection::calculate(const matrix bo
 {
     Correction corr;
 
-    if (eDispCorr_ == edispcNO)
+    if (eDispCorr_ == DispersionCorrectionType::No)
     {
         return corr;
     }
 
     const bool bCorrAll  = correctFullInteraction();
-    const bool bCorrPres = (eDispCorr_ == edispcEnerPres || eDispCorr_ == edispcAllEnerPres);
+    const bool bCorrPres = (eDispCorr_ == DispersionCorrectionType::EnerPres
+                            || eDispCorr_ == DispersionCorrectionType::AllEnerPres);
 
     const real invvol  = 1 / det(box);
     const real density = topParams_.numAtomsForDensity_ * invvol;
@@ -590,7 +596,7 @@ DispersionCorrection::Correction DispersionCorrection::calculate(const matrix bo
 
     real avcsix;
     real avctwelve;
-    if (eFep_ == efepNO)
+    if (eFep_ == FreeEnergyPerturbationType::No)
     {
         avcsix    = topParams_.avcsix_[0];
         avctwelve = topParams_.avctwelve_[0];
@@ -604,7 +610,7 @@ DispersionCorrection::Correction DispersionCorrection::calculate(const matrix bo
     const real enerdiff = numCorr * (density * iParams_.enerdiffsix_ - iParams_.enershiftsix_);
     corr.energy += avcsix * enerdiff;
     real dvdlambda = 0;
-    if (eFep_ != efepNO)
+    if (eFep_ != FreeEnergyPerturbationType::No)
     {
         dvdlambda += (topParams_.avcsix_[1] - topParams_.avcsix_[0]) * enerdiff;
     }
@@ -612,7 +618,7 @@ DispersionCorrection::Correction DispersionCorrection::calculate(const matrix bo
     {
         const real enerdiff = numCorr * (density * iParams_.enerdifftwelve_ - iParams_.enershifttwelve_);
         corr.energy += avctwelve * enerdiff;
-        if (eFep_ != efepNO)
+        if (eFep_ != FreeEnergyPerturbationType::No)
         {
             dvdlambda += (topParams_.avctwelve_[1] - topParams_.avctwelve_[0]) * enerdiff;
         }
@@ -621,15 +627,15 @@ DispersionCorrection::Correction DispersionCorrection::calculate(const matrix bo
     if (bCorrPres)
     {
         corr.virial = numCorr * density * avcsix * iParams_.virdiffsix_ / 3.0;
-        if (eDispCorr_ == edispcAllEnerPres)
+        if (eDispCorr_ == DispersionCorrectionType::AllEnerPres)
         {
             corr.virial += numCorr * density * avctwelve * iParams_.virdifftwelve_ / 3.0;
         }
         /* The factor 2 is because of the Gromacs virial definition */
-        corr.pressure = -2.0 * invvol * corr.virial * PRESFAC;
+        corr.pressure = -2.0 * invvol * corr.virial * gmx::c_presfac;
     }
 
-    if (eFep_ != efepNO)
+    if (eFep_ != FreeEnergyPerturbationType::No)
     {
         corr.dvdl += dvdlambda;
     }

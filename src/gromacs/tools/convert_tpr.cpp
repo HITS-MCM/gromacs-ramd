@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -73,7 +69,8 @@ static void rangeCheck(int numberInIndexFile, int maxAtomNumber)
         gmx_fatal(FARGS,
                   "Your index file contains atomnumbers (e.g. %d)\nthat are larger than the number "
                   "of atoms in the tpr file (%d)",
-                  (numberInIndexFile), (maxAtomNumber));
+                  (numberInIndexFile),
+                  (maxAtomNumber));
     }
 }
 
@@ -127,8 +124,13 @@ static gmx::ListOfLists<int> reduce_listoflists(gmx::ArrayRef<const int>     inv
         }
     }
 
-    fprintf(stderr, "Reduced block %8s from %6zu to %6zu index-, %6d to %6d a-entries\n", name,
-            src.size(), lists.size(), src.numElements(), lists.numElements());
+    fprintf(stderr,
+            "Reduced block %8s from %6zu to %6zu index-, %6d to %6d a-entries\n",
+            name,
+            src.size(),
+            lists.size(),
+            src.numElements(),
+            lists.numElements());
 
     return lists;
 }
@@ -215,8 +217,11 @@ static void reduce_ilist(gmx::ArrayRef<const int> invindex,
                 ilReduced.push_back(il->iatoms[i], nratoms, newAtoms.data());
             }
         }
-        fprintf(stderr, "Reduced ilist %8s from %6d to %6d entries\n", name,
-                il->size() / (nratoms + 1), ilReduced.size() / (nratoms + 1));
+        fprintf(stderr,
+                "Reduced ilist %8s from %6d to %6d entries\n",
+                name,
+                il->size() / (nratoms + 1),
+                ilReduced.size() / (nratoms + 1));
 
         *il = std::move(ilReduced);
     }
@@ -226,7 +231,7 @@ static void reduce_topology_x(int gnx, int index[], gmx_mtop_t* mtop, rvec x[], 
 {
     gmx_localtop_t top(mtop->ffparams);
     gmx_mtop_generate_local_top(*mtop, &top, false);
-    t_atoms atoms = gmx_mtop_global_atoms(mtop);
+    t_atoms atoms = gmx_mtop_global_atoms(*mtop);
 
     const std::vector<bool> bKeep    = bKeepIt(gnx, atoms.nr, index);
     const std::vector<int>  invindex = invind(gnx, atoms.nr, index);
@@ -237,7 +242,10 @@ static void reduce_topology_x(int gnx, int index[], gmx_mtop_t* mtop, rvec x[], 
 
     for (int i = 0; (i < F_NRE); i++)
     {
-        reduce_ilist(invindex, bKeep, &(top.idef.il[i]), interaction_function[i].nratoms,
+        reduce_ilist(invindex,
+                     bKeep,
+                     &(top.idef.il[i]),
+                     interaction_function[i].nratoms,
                      interaction_function[i].name);
     }
 
@@ -348,21 +356,21 @@ void ConvertTpr::initOptions(IOptionsContainer* options, ICommandLineOptionsModu
     settings->setHelpText(desc);
 
     options->addOption(FileNameOption("s")
-                               .filetype(eftTopology)
+                               .filetype(OptionFileType::Topology)
                                .inputFile()
                                .required()
                                .store(&inputTprFileName_)
                                .defaultBasename("topol")
                                .description("Run input file to modify"));
     options->addOption(FileNameOption("n")
-                               .filetype(eftIndex)
+                               .filetype(OptionFileType::Index)
                                .inputFile()
                                .store(&inputIndexFileName_)
                                .storeIsSet(&haveReadIndexFile_)
                                .defaultBasename("index")
                                .description("File containing additional index groups"));
     options->addOption(FileNameOption("o")
-                               .filetype(eftTopology)
+                               .filetype(OptionFileType::Topology)
                                .outputFile()
                                .store(&outputTprFileName_)
                                .defaultBasename("tprout")
@@ -405,12 +413,6 @@ int ConvertTpr::run()
     {
         printf("Cannot do both runtime modification and charge-zeroing/index group extraction in a "
                "single call.\n");
-        return 1;
-    }
-
-    if (zeroQIsSet_ && !haveReadIndexFile_)
-    {
-        printf("Charge zeroing need an index file.\n");
         return 1;
     }
 
@@ -466,13 +468,13 @@ int ConvertTpr::run()
     else
     {
         // If zeroQIsSet_, then we are doing charge zero-ing; otherwise index group extraction
-        // In both cases an index filename has been provided
 
-        atoms         = gmx_mtop_global_atoms(&mtop);
-        int   gnx     = 0;
-        int*  index   = nullptr;
-        char* grpname = nullptr;
-        get_index(&atoms, inputIndexFileName_.c_str(), 1, &gnx, &index, &grpname);
+        atoms                     = gmx_mtop_global_atoms(mtop);
+        int         gnx           = 0;
+        int*        index         = nullptr;
+        char*       grpname       = nullptr;
+        const char* indexFilename = haveReadIndexFile_ ? inputIndexFileName_.c_str() : nullptr;
+        get_index(&atoms, indexFilename, 1, &gnx, &index, &grpname);
         bool bSel = false;
         if (!zeroQIsSet_)
         {
@@ -491,7 +493,8 @@ int ConvertTpr::run()
             fprintf(stderr,
                     "Will write subset %s of original tpx containing %d "
                     "atoms\n",
-                    grpname, gnx);
+                    grpname,
+                    gnx);
             reduce_topology_x(gnx, index, &mtop, state.x.rvec_array(), state.v.rvec_array());
             state.natoms = gnx;
         }
@@ -507,7 +510,7 @@ int ConvertTpr::run()
     }
 
     // Writing output tpx regardless of the operation performed
-    write_tpx_state(outputTprFileName_.c_str(), ir, &state, &mtop);
+    write_tpx_state(outputTprFileName_.c_str(), ir, &state, mtop);
 
     return 0;
 }

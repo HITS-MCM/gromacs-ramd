@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -58,6 +54,8 @@
 #include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/utility/gmxmpi.h"
 
+#include "pullcoordexpressionparser.h"
+
 /*! \brief Determines up to what local atom count a pull group gets processed single-threaded.
  *
  * We set this limit to 1 with debug to catch bugs.
@@ -72,6 +70,8 @@ static const int c_pullMaxNumLocalAtomsSingleThreaded = 1;
 
 class PullHistory;
 enum class PbcType : int;
+
+class t_state;
 
 enum
 {
@@ -91,14 +91,25 @@ struct pull_group_work_t
      * \param[in] params                  The group parameters set by the user
      * \param[in] atomSet                 The global to local atom set manager
      * \param[in] setPbcRefToPrevStepCOM Does this pull group use the COM from the previous step as reference position?
+     * \param[in] maxNumThreads           Use either this number of threads of 1 for operations on x and f
      */
-    pull_group_work_t(const t_pull_group& params, gmx::LocalAtomSet atomSet, bool setPbcRefToPrevStepCOM);
+    pull_group_work_t(const t_pull_group& params,
+                      gmx::LocalAtomSet   atomSet,
+                      bool                setPbcRefToPrevStepCOM,
+                      int                 maxNumThreads);
+
+    //! Returns the number of threads to use for local atom operations based on the local atom count
+    int numThreads() const
+    {
+        return atomSet.numAtomsLocal() <= c_pullMaxNumLocalAtomsSingleThreaded ? 1 : maxNumThreads;
+    }
 
     /* Data only modified at initialization */
     const t_pull_group params;   /**< The pull group parameters */
     const int          epgrppbc; /**< The type of pbc for this pull group, see enum above */
-    bool               needToCalcCom; /**< Do we need to calculate the COM? (Not for group 0 or if only used as cylinder group) */
-    std::vector<real>  globalWeights; /**< Weights per atom set by the user and/or mass/friction coefficients, if empty all weights are equal */
+    const int maxNumThreads; /**< The maximum number of threads to use for operations on x and f */
+    bool      needToCalcCom; /**< Do we need to calculate the COM? (Not for group 0 or if only used as cylinder group) */
+    std::vector<real> globalWeights; /**< Weights per atom set by the user and/or mass/friction coefficients, if empty all weights are equal */
 
     /* Data modified only at init or at domain decomposition */
     gmx::LocalAtomSet                  atomSet;      /**< Global to local atom set mapper */
@@ -134,29 +145,43 @@ struct PullCoordSpatialData
     double value; /* The current value of the coordinate, units of nm or rad */
 };
 
-/* Struct with parameters and force evaluation local data for a pull coordinate */
+//! \internal \brief Struct with parameters and force evaluation local data for a pull coordinate
 struct pull_coord_work_t
 {
-    /* Constructor */
+    //! Constructor
     pull_coord_work_t(const t_pull_coord& params) :
         params(params),
         value_ref(0),
         spatialData(),
         scalarForce(0),
-        bExternalPotentialProviderHasBeenRegistered(false)
+        bExternalPotentialProviderHasBeenRegistered(false),
+        expressionParser(params.eGeom == PullGroupGeometry::Transformation ? params.expression : "",
+                         params.coordIndex),
+        transformationVariables(params.eGeom == PullGroupGeometry::Transformation ? params.coordIndex : 0)
     {
     }
 
-    const t_pull_coord params; /* Pull coordinate parameters */
+    //! Pull coordinate parameters
+    const t_pull_coord params;
 
-    double value_ref; /* The reference value, usually init+rate*t, units of nm or rad */
+    //! Dynamic pull group 0 for this coordinate with dynamic weights, only present when needed */
+    std::unique_ptr<pull_group_work_t> dynamicGroup0;
+    //! The reference value, usually init+rate*t, units of nm or rad.
+    double value_ref;
 
-    PullCoordSpatialData spatialData; /* Data defining the current geometry */
+    //! Data defining the current geometry
+    PullCoordSpatialData spatialData;
 
-    double scalarForce; /* Scalar force for this cooordinate */
+    //! Scalar force for this cooordinate
+    double scalarForce;
 
-    /* For external-potential coordinates only, for checking if a provider has been registered */
+    //! For external-potential coordinates only, for checking if a provider has been registered
     bool bExternalPotentialProviderHasBeenRegistered;
+
+    //! The expression parser for a transformation coordinate
+    gmx::PullCoordExpressionParser expressionParser;
+    //! Variables from other pull coordinates for a transformation coordinate
+    std::vector<double> transformationVariables;
 };
 
 /* Struct for storing vectorial forces for a pull coordinate */
@@ -205,7 +230,7 @@ struct pull_comm_t
 #if GMX_MPI
     MPI_Comm mpi_comm_com; /* Communicator for pulling */
 #endif
-    int  nparticipate; /* The number of ranks participating */
+    int nparticipate; /* The number of ranks participating */
     bool isMasterRank; /* Tells whether our rank is the master rank and thus should add the pull virial */
 
     int64_t setup_count; /* The number of decomposition calls */
@@ -236,7 +261,6 @@ struct pull_t
 
     /* Parameters + dynamic data for groups */
     std::vector<pull_group_work_t> group; /* The pull group param and work data */
-    std::vector<pull_group_work_t> dyna;  /* Dynamic groups for geom=cylinder */
 
     /* Parameters + dynamic data for coordinates */
     std::vector<pull_coord_work_t> coord; /* The pull group param and work data */
@@ -244,8 +268,7 @@ struct pull_t
     /* Global dynamic data */
     gmx_bool bSetPBCatoms; /* Do we need to set x_pbc for the groups? */
 
-    int                  nthreads; /* Number of threads used by the pull code */
-    std::vector<ComSums> comSums;  /* Work array for summing for COM, 1 entry per thread */
+    std::vector<ComSums> comSums; /* Work array for summing for COM, 1 entry per thread */
 
     pull_comm_t comm; /* Communication parameters, communicator and buffers */
 

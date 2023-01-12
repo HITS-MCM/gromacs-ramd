@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Declares the topology class for the modular simulator
@@ -70,12 +69,13 @@ class VirtualSitesHandler;
  * Clients can register to get an updated local topology whenever there
  * is a change (infrequent, only due to domdec currently).
  */
-class TopologyHolder final
+class TopologyHolder final : public IDomDecHelperClient
 {
 public:
     //! Constructor
     TopologyHolder(std::vector<ITopologyHolderClient*> clients,
                    const gmx_mtop_t&                   globalTopology,
+                   gmx_localtop_t*                     localTopology,
                    const t_commrec*                    cr,
                    const t_inputrec*                   inputrec,
                    t_forcerec*                         fr,
@@ -86,7 +86,10 @@ public:
     //! Get global topology
     const gmx_mtop_t& globalTopology() const;
 
-    //! Allow domdec to update local topology
+    //! Callback on domain decomposition repartitioning
+    DomDecCallback registerDomDecCallback() override;
+
+    //! Allow domdec to access local topology directly
     friend class DomDecHelper;
 
     //! The builder
@@ -96,7 +99,7 @@ private:
     //! Constant reference to the global topology
     const gmx_mtop_t& globalTopology_;
     //! Pointer to the currently valid local topology
-    std::unique_ptr<gmx_localtop_t> localTopology_;
+    gmx_localtop_t* localTopology_;
 
     //! List of clients to be updated if local topology changes
     std::vector<ITopologyHolderClient*> clients_;

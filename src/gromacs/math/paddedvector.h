@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \brief
@@ -231,8 +230,7 @@ public:
     PaddedVector() : storage_(), unpaddedEnd_(begin()) {}
     /*! \brief Constructor that specifies the initial size. */
     explicit PaddedVector(size_type count, const allocator_type& allocator = Allocator()) :
-        storage_(count, allocator),
-        unpaddedEnd_(begin() + count)
+        storage_(count, allocator), unpaddedEnd_(begin() + count)
     {
         // The count elements have been default inserted, and now
         // the padding elements are added
@@ -240,8 +238,7 @@ public:
     }
     /*! \brief Constructor that specifies the initial size and an element to copy. */
     explicit PaddedVector(size_type count, value_type const& v, const allocator_type& allocator = Allocator()) :
-        storage_(count, v, allocator),
-        unpaddedEnd_(begin() + count)
+        storage_(count, v, allocator), unpaddedEnd_(begin() + count)
     {
         // The count elements have been default inserted, and now
         // the padding elements are added
@@ -249,8 +246,7 @@ public:
     }
     //! Default constructor with allocator
     explicit PaddedVector(allocator_type const& allocator) :
-        storage_(allocator),
-        unpaddedEnd_(begin())
+        storage_(allocator), unpaddedEnd_(begin())
     {
     }
     //! Copy constructor
@@ -260,8 +256,7 @@ public:
      * Leaves \c o in a valid state (ie the destructor can be
      * called). */
     PaddedVector(PaddedVector&& o) noexcept :
-        storage_(std::exchange(o.storage_, {})),
-        unpaddedEnd_(o.unpaddedEnd_)
+        storage_(std::exchange(o.storage_, {})), unpaddedEnd_(o.unpaddedEnd_)
     {
     }
     /*! \brief Move constructor using \c alloc for the new vector.
@@ -274,8 +269,7 @@ public:
      * Leaves \c o in a valid state (ie. the destructor can be
      * called). */
     PaddedVector(PaddedVector&& o, const Allocator& alloc) noexcept :
-        storage_(alloc),
-        unpaddedEnd_(begin())
+        storage_(alloc), unpaddedEnd_(begin())
     {
         if (alloc == o.storage_.get_allocator())
         {
@@ -294,8 +288,7 @@ public:
     }
     //! Construct from an initializer list
     PaddedVector(std::initializer_list<value_type> const& il) :
-        storage_(il),
-        unpaddedEnd_(storage_.end())
+        storage_(il), unpaddedEnd_(storage_.end())
     {
         // We can't choose the padding until we know the size of
         // the normal vector, so we have to make the storage_ and

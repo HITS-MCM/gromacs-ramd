@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2012- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 include(CheckCXXSourceCompiles)
 
@@ -62,10 +60,8 @@ macro(gmx_test_compiler_problems)
         if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5)
             set(cxx_required_version "Clang 5")
         endif()
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.1)
-            set(cxx_required_version "Intel Compiler 2017")
-        endif()
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        # All versions of IntelLLVM (a.k.a. DPCPP) compiler so far support C++17
     else()
         message(WARNING "You are using an unsupported compiler. Please make sure it fully supports C++17.")
     endif()
@@ -73,6 +69,16 @@ macro(gmx_test_compiler_problems)
         message(FATAL_ERROR "${cxx_required_version} or later required. "
                             "Earlier versions don't have full C++17 support.")
     endif()
+
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Intel" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        message(WARNING "The Intel classic compiler is no longer supported. It may pass the tests, but is not tested by the GROMACS developers. Use the clang-based compiler from oneAPI, or gcc")
+    endif()
+    # Intel LLVM 2021.2 defaults to no-finite-math which isn't OK for GROMACS and its dependencies (muParser and GTest).
+    # This is why we set the flags globally via CMAKE_CXX_FLAGS
+    if(GMX_INTEL_LLVM AND GMX_INTEL_LLVM_VERSION GREATER_EQUAL 2021020)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-finite-math-only")
+    endif()
+
 
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "XL")
         check_cxx_source_compiles(
@@ -90,7 +96,19 @@ TestStruct::TestStruct() : b(0) {}
         endif()
     endif()
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "PGI")
-        message(WARNING "Currently tested PGI compiler versions (up to 15.7) generate binaries that do not pass all regression test, and the generated binaries are significantly slower than with GCC, ICC or Clang. For now we do not recommend PGI beyond development testing - make sure to run the regressiontests.")
+        message(WARNING "Currently tested PGI compiler versions (up to 15.7) generate binaries that do not pass all regression test, and the generated binaries are significantly slower than with GCC or Clang. For now we do not recommend PGI beyond development testing - make sure to run the regressiontests.")
     endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        check_cxx_source_compiles(
+"#if !defined(__cray__) || !__cray__
+#error Not Cray
+#endif
+int main(void){return 0;}" HAVE_CRAY_MACRO)
+        if (HAVE_CRAY_MACRO AND GMX_OPENMP AND GMX_THREAD_MPI)
+            message(WARNING "Clang-based Cray compiler works poorly with OpenMP and threadMPI. Consider enabling libMPI with -DGMX_MPI=ON.")
+        endif()
+    endif()
+
 
 endmacro(gmx_test_compiler_problems)

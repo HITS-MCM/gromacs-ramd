@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,15 +26,17 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_MDLIB_SIGHANDLER_H
 #define GMX_MDLIB_SIGHANDLER_H
 
 #include "gromacs/utility/basedefinitions.h"
+
+#include <csignal>
 
 /* NOTE: the terminology is:
    incoming signals (provided by the operating system, or transmitted from
@@ -46,17 +45,18 @@
 
 /* the stop conditions. They are explicitly allowed to be compared against
    each other. */
-typedef enum
+enum class StopCondition : sig_atomic_t
 {
-    gmx_stop_cond_none = 0,
-    gmx_stop_cond_next_ns, /* stop a the next neighbour searching step */
-    gmx_stop_cond_next,    /* stop a the next step */
-    gmx_stop_cond_abort    /* stop now. (this should never be seen) */
-} gmx_stop_cond_t;
+    None = 0,
+    NextNS, /* stop a the next neighbour searching step */
+    Next,   /* stop a the next step */
+    Abort,  /* stop now. (this should never be seen) */
+    Count
+};
 
 /* Our names for the stop conditions.
    These must match the number given in gmx_stop_cond_t.*/
-extern const char* gmx_stop_cond_name[];
+const char* enumValueToString(StopCondition enumValue);
 
 /* the externally visible functions: */
 
@@ -64,10 +64,10 @@ extern const char* gmx_stop_cond_name[];
 void signal_handler_install();
 
 /* get the current stop condition */
-gmx_stop_cond_t gmx_get_stop_condition();
+StopCondition gmx_get_stop_condition();
 
 /* set the stop condition upon receiving a remote one */
-void gmx_set_stop_condition(gmx_stop_cond_t recvd_stop_cond);
+void gmx_set_stop_condition(StopCondition recvd_stop_cond);
 
 /*!
  * \brief Reinitializes the global stop condition.

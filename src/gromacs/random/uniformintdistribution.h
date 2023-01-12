@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \file
@@ -49,6 +48,7 @@
 #define GMX_RANDOM_UNIFORMINTDISTRIBUTION_H
 
 #include <limits>
+#include <memory>
 
 #include "gromacs/math/functions.h"
 #include "gromacs/utility/basedefinitions.h"
@@ -93,8 +93,7 @@ public:
          * \param b   Upper end of range (inclusive)
          */
         explicit param_type(result_type a = 0, result_type b = std::numeric_limits<result_type>::max()) :
-            a_(a),
-            b_(b)
+            a_(a), b_(b)
         {
             GMX_RELEASE_ASSERT(a <= b, "The uniform integer distribution requires a<=b");
         }
@@ -121,7 +120,6 @@ public:
         bool operator!=(const param_type& x) const { return !operator==(x); }
     };
 
-public:
     /*! \brief Construct new distribution with given integer parameters.
      *
      * \param a   Lower end of range (inclusive)
@@ -129,9 +127,7 @@ public:
      */
     explicit UniformIntDistribution(result_type a = 0,
                                     result_type b = std::numeric_limits<result_type>::max()) :
-        param_(param_type(a, b)),
-        savedRandomBits_(0),
-        savedRandomBitsLeft_(0)
+        param_(param_type(a, b)), savedRandomBits_(0), savedRandomBitsLeft_(0)
     {
     }
 
@@ -140,9 +136,7 @@ public:
      * \param param  Parameter class as defined inside gmx::UniformIntDistribution.
      */
     explicit UniformIntDistribution(const param_type& param) :
-        param_(param),
-        savedRandomBits_(0),
-        savedRandomBitsLeft_(0)
+        param_(param), savedRandomBits_(0), savedRandomBitsLeft_(0)
     {
     }
 

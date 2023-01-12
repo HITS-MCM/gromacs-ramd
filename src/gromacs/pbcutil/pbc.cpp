@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -63,8 +59,9 @@
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
-const gmx::EnumerationArray<PbcType, std::string> c_pbcTypeNames = { { "xyz", "no", "xy", "screw",
-                                                                       "unset" } };
+const gmx::EnumerationArray<PbcType, std::string> c_pbcTypeNames = {
+    { "xyz", "no", "xy", "screw", "unset" }
+};
 
 /* Skip 0 so we have more chance of detecting if we forgot to call set_pbc. */
 enum
@@ -138,7 +135,17 @@ const char* check_box(PbcType pbcType, const matrix box)
         return nullptr;
     }
 
-    if ((box[XX][YY] != 0) || (box[XX][ZZ] != 0) || (box[YY][ZZ] != 0))
+    GMX_ASSERT(box != nullptr, "check_box requires a valid box unless pbcType is No");
+
+    if (pbcType == PbcType::Xyz && box[XX][XX] == 0 && box[YY][YY] == 0 && box[ZZ][ZZ] == 0)
+    {
+        ptr = "Empty diagonal for a 3-dimensional periodic box";
+    }
+    else if (pbcType == PbcType::XY && box[XX][XX] == 0 && box[YY][YY] == 0)
+    {
+        ptr = "Empty diagonal for a 2-dimensional periodic box";
+    }
+    else if ((box[XX][YY] != 0) || (box[XX][ZZ] != 0) || (box[YY][ZZ] != 0))
     {
         ptr = "Only triclinic boxes with the first vector parallel to the x-axis and the second "
               "vector in the xy-plane are supported.";
@@ -165,7 +172,7 @@ const char* check_box(PbcType pbcType, const matrix box)
 void matrix_convert(matrix box, const rvec vec, const rvec angleInDegrees)
 {
     rvec angle;
-    svmul(DEG2RAD, angleInDegrees, angle);
+    svmul(gmx::c_deg2Rad, angleInDegrees, angle);
     box[XX][XX] = vec[XX];
     box[YY][XX] = vec[YY] * cos(angle[ZZ]);
     box[YY][YY] = vec[YY] * sin(angle[ZZ]);
@@ -207,11 +214,13 @@ real max_cutoff2(PbcType pbcType, const matrix box)
 }
 
 //! Set to true if warning has been printed
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static gmx_bool bWarnedGuess = FALSE;
 
 PbcType guessPbcType(const matrix box)
 {
     PbcType pbcType;
+    GMX_RELEASE_ASSERT(box != nullptr, "guessPbcType requires a valid box");
 
     if (box[XX][XX] > 0 && box[YY][YY] > 0 && box[ZZ][ZZ] > 0)
     {
@@ -232,7 +241,9 @@ PbcType guessPbcType(const matrix box)
             fprintf(stderr,
                     "WARNING: Unsupported box diagonal %f %f %f, "
                     "will not use periodic boundary conditions\n\n",
-                    box[XX][XX], box[YY][YY], box[ZZ][ZZ]);
+                    box[XX][XX],
+                    box[YY][YY],
+                    box[ZZ][ZZ]);
             bWarnedGuess = TRUE;
         }
         pbcType = PbcType::No;
@@ -549,9 +560,18 @@ static void low_set_pbc(t_pbc* pbc, PbcType pbcType, const ivec dd_pbc, const ma
                                             fprintf(debug,
                                                     "  tricvec %2d = %2d %2d %2d  %5.2f %5.2f  "
                                                     "%5.2f %5.2f %5.2f  %5.2f %5.2f %5.2f\n",
-                                                    pbc->ntric_vec, i, j, k, sqrt(d2old),
-                                                    sqrt(d2new), trial[XX], trial[YY], trial[ZZ],
-                                                    pos[XX], pos[YY], pos[ZZ]);
+                                                    pbc->ntric_vec,
+                                                    i,
+                                                    j,
+                                                    k,
+                                                    sqrt(d2old),
+                                                    sqrt(d2new),
+                                                    trial[XX],
+                                                    trial[YY],
+                                                    trial[ZZ],
+                                                    pos[XX],
+                                                    pos[YY],
+                                                    pos[ZZ]);
                                         }
                                     }
                                 }
@@ -1053,10 +1073,10 @@ int pbc_dx_aiuc(const t_pbc* pbc, const rvec x1, const rvec x2, rvec dx)
                       "Internal error in pbc_dx_aiuc, set_pbc_dd or set_pbc has not been called");
     }
 
-    is = IVEC2IS(ishift);
+    is = gmx::ivecToShiftIndex(ishift);
     if (debug)
     {
-        range_check_mesg(is, 0, SHIFTS, "PBC shift vector index range check.");
+        range_check_mesg(is, 0, gmx::c_numShiftVectors, "PBC shift vector index range check.");
     }
 
     return is;
@@ -1183,13 +1203,13 @@ void pbc_dx_d(const t_pbc* pbc, const dvec x1, const dvec x2, dvec dx)
     }
 }
 
-void calc_shifts(const matrix box, rvec shift_vec[])
+void calc_shifts(const matrix box, gmx::ArrayRef<gmx::RVec> shift_vec)
 {
-    for (int n = 0, m = -D_BOX_Z; m <= D_BOX_Z; m++)
+    for (int n = 0, m = -gmx::c_dBoxZ; m <= gmx::c_dBoxZ; m++)
     {
-        for (int l = -D_BOX_Y; l <= D_BOX_Y; l++)
+        for (int l = -gmx::c_dBoxY; l <= gmx::c_dBoxY; l++)
         {
-            for (int k = -D_BOX_X; k <= D_BOX_X; k++, n++)
+            for (int k = -gmx::c_dBoxX; k <= gmx::c_dBoxX; k++, n++)
             {
                 for (int d = 0; d < DIM; d++)
                 {

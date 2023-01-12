@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Implements gmx dump utility.
@@ -242,16 +238,23 @@ void list_trr(const char* fn)
         snew(x, trrheader.natoms);
         snew(v, trrheader.natoms);
         snew(f, trrheader.natoms);
-        if (gmx_trr_read_frame_data(fpread, &trrheader, trrheader.box_size ? box : nullptr,
-                                    trrheader.x_size ? x : nullptr, trrheader.v_size ? v : nullptr,
+        if (gmx_trr_read_frame_data(fpread,
+                                    &trrheader,
+                                    trrheader.box_size ? box : nullptr,
+                                    trrheader.x_size ? x : nullptr,
+                                    trrheader.v_size ? v : nullptr,
                                     trrheader.f_size ? f : nullptr))
         {
             sprintf(buf, "%s frame %d", fn, nframe);
             indent = 0;
             indent = pr_title(stdout, indent, buf);
             pr_indent(stdout, indent);
-            fprintf(stdout, "natoms=%10d  step=%10" PRId64 "  time=%12.7e  lambda=%10g\n",
-                    trrheader.natoms, trrheader.step, trrheader.t, trrheader.lambda);
+            fprintf(stdout,
+                    "natoms=%10d  step=%10" PRId64 "  time=%12.7e  lambda=%10g\n",
+                    trrheader.natoms,
+                    trrheader.step,
+                    trrheader.t,
+                    trrheader.lambda);
             if (trrheader.box_size)
             {
                 pr_rvecs(stdout, indent, "box", box, DIM);
@@ -309,8 +312,7 @@ void list_xtc(const char* fn)
         indent = 0;
         indent = pr_title(stdout, indent, buf);
         pr_indent(stdout, indent);
-        fprintf(stdout, "natoms=%10d  step=%10" PRId64 "  time=%12.7e  prec=%10g\n", natoms, step,
-                time, prec);
+        fprintf(stdout, "natoms=%10d  step=%10" PRId64 "  time=%12.7e  prec=%10g\n", natoms, step, time, prec);
         pr_rvecs(stdout, indent, "box", box, DIM);
         pr_rvecs(stdout, indent, "x", x, natoms);
         nframe++;
@@ -381,25 +383,32 @@ void list_tng(const char* fn)
             int64_t n_values_per_frame, n_atoms;
             char    block_name[STRLEN];
 
-            gmx_get_tng_data_next_frame_of_block_type(tng, block_ids[i], &values, &step,
-                                                      &frame_time, &n_values_per_frame, &n_atoms,
-                                                      &prec, block_name, STRLEN, &bOK);
+            gmx_get_tng_data_next_frame_of_block_type(tng,
+                                                      block_ids[i],
+                                                      &values,
+                                                      &step,
+                                                      &frame_time,
+                                                      &n_values_per_frame,
+                                                      &n_atoms,
+                                                      &prec,
+                                                      block_name,
+                                                      STRLEN,
+                                                      &bOK);
             if (!bOK)
             {
                 /* Can't write any output because we don't know what
                    arrays are valid. */
-                fprintf(stderr, "\nWARNING: Incomplete frame at time %g, will not write output\n",
-                        frame_time);
+                fprintf(stderr, "\nWARNING: Incomplete frame at time %g, will not write output\n", frame_time);
             }
             else
             {
-                list_tng_inner(fn, (0 == i), values, step, frame_time, n_values_per_frame, n_atoms,
-                               prec, nframe, block_name);
+                list_tng_inner(
+                        fn, (0 == i), values, step, frame_time, n_values_per_frame, n_atoms, prec, nframe, block_name);
             }
         }
         nframe++;
-    } while (gmx_get_tng_data_block_types_of_next_frame(tng, step, 0, nullptr, &step, &ndatablocks,
-                                                        &block_ids));
+    } while (gmx_get_tng_data_block_types_of_next_frame(
+            tng, step, 0, nullptr, &step, &ndatablocks, &block_ids));
 
     if (block_ids)
     {
@@ -421,8 +430,7 @@ void list_trx(const char* fn)
         case efTRR: list_trr(fn); break;
         case efTNG: list_tng(fn); break;
         default:
-            fprintf(stderr, "File %s is of an unsupported type. Try using the command\n 'less %s'\n",
-                    fn, fn);
+            fprintf(stderr, "File %s is of an unsupported type. Try using the command\n 'less %s'\n", fn, fn);
     }
 }
 
@@ -456,18 +464,23 @@ void list_ene(const char* fn)
         {
             printf("\n%24s  %12.5e  %12s  %12s\n", "time:", fr->t, "step:", gmx_step_str(fr->step, buf));
             printf("%24s  %12s  %12s  %12s\n", "", "", "nsteps:", gmx_step_str(fr->nsteps, buf));
-            printf("%24s  %12.5e  %12s  %12s\n", "delta_t:", fr->dt,
-                   "sum steps:", gmx_step_str(fr->nsum, buf));
+            printf("%24s  %12.5e  %12s  %12s\n", "delta_t:", fr->dt, "sum steps:", gmx_step_str(fr->nsum, buf));
             if (fr->nre == nre)
             {
-                printf("%24s  %12s  %12s  %12s\n", "Component", "Energy", "Av. Energy",
+                printf("%24s  %12s  %12s  %12s\n",
+                       "Component",
+                       "Energy",
+                       "Av. Energy",
                        "Sum Energy");
                 if (fr->nsum > 0)
                 {
                     for (i = 0; (i < nre); i++)
                     {
-                        printf("%24s  %12.5e  %12.5e  %12.5e\n", enm[i].name, fr->ener[i].e,
-                               fr->ener[i].eav, fr->ener[i].esum);
+                        printf("%24s  %12.5e  %12.5e  %12.5e\n",
+                               enm[i].name,
+                               fr->ener[i].e,
+                               fr->ener[i].eav,
+                               fr->ener[i].esum);
                     }
                 }
                 else
@@ -493,42 +506,44 @@ void list_ene(const char* fn)
                 for (i = 0; i < eb->nsub; i++)
                 {
                     t_enxsubblock* sb = &(eb->sub[i]);
-                    printf("  Sub block %3d (%5d elems, type=%s) values:\n", i, sb->nr,
-                           xdr_datatype_names[sb->type]);
+                    printf("  Sub block %3d (%5d elems, type=%s) values:\n",
+                           i,
+                           sb->nr,
+                           enumValueToString(sb->type));
 
                     switch (sb->type)
                     {
-                        case xdr_datatype_float:
+                        case XdrDataType::Float:
                             for (j = 0; j < sb->nr; j++)
                             {
                                 printf("%14d   %8.4f\n", j, sb->fval[j]);
                             }
                             break;
-                        case xdr_datatype_double:
+                        case XdrDataType::Double:
                             for (j = 0; j < sb->nr; j++)
                             {
                                 printf("%14d   %10.6f\n", j, sb->dval[j]);
                             }
                             break;
-                        case xdr_datatype_int:
+                        case XdrDataType::Int:
                             for (j = 0; j < sb->nr; j++)
                             {
                                 printf("%14d %10d\n", j, sb->ival[j]);
                             }
                             break;
-                        case xdr_datatype_int64:
+                        case XdrDataType::Int64:
                             for (j = 0; j < sb->nr; j++)
                             {
                                 printf("%14d %s\n", j, gmx_step_str(sb->lval[j], buf));
                             }
                             break;
-                        case xdr_datatype_char:
+                        case XdrDataType::Char:
                             for (j = 0; j < sb->nr; j++)
                             {
                                 printf("%14d %1c\n", j, sb->cval[j]);
                             }
                             break;
-                        case xdr_datatype_string:
+                        case XdrDataType::String:
                             for (j = 0; j < sb->nr; j++)
                             {
                                 printf("%14d %80s\n", j, sb->sval[j]);
@@ -644,15 +659,21 @@ void Dump::initOptions(IOptionsContainer* options, ICommandLineOptionsModuleSett
     // fix it or block that run path:
     //   Position restraint output from -sys -s is broken
 
-    options->addOption(
-            FileNameOption("s").filetype(eftRunInput).inputFile().store(&inputTprFilename_).description("Run input file to dump"));
+    options->addOption(FileNameOption("s")
+                               .filetype(OptionFileType::RunInput)
+                               .inputFile()
+                               .store(&inputTprFilename_)
+                               .description("Run input file to dump"));
     options->addOption(FileNameOption("f")
-                               .filetype(eftTrajectory)
+                               .filetype(OptionFileType::Trajectory)
                                .inputFile()
                                .store(&inputTrajectoryFilename_)
                                .description("Trajectory file to dump"));
-    options->addOption(
-            FileNameOption("e").filetype(eftEnergy).inputFile().store(&inputEnergyFilename_).description("Energy file to dump"));
+    options->addOption(FileNameOption("e")
+                               .filetype(OptionFileType::Energy)
+                               .inputFile()
+                               .store(&inputEnergyFilename_)
+                               .description("Energy file to dump"));
     options->addOption(
             FileNameOption("cp").legacyType(efCPT).inputFile().store(&inputCheckpointFilename_).description("Checkpoint file to dump"));
     options->addOption(
@@ -686,8 +707,11 @@ int Dump::run()
 {
     if (!inputTprFilename_.empty())
     {
-        list_tpr(inputTprFilename_.c_str(), bShowNumbers_, bShowParams_,
-                 outputMdpFilename_.empty() ? nullptr : outputMdpFilename_.c_str(), bSysTop_,
+        list_tpr(inputTprFilename_.c_str(),
+                 bShowNumbers_,
+                 bShowParams_,
+                 outputMdpFilename_.empty() ? nullptr : outputMdpFilename_.c_str(),
+                 bSysTop_,
                  bOriginalInputrec_);
     }
     else if (!inputTrajectoryFilename_.empty())

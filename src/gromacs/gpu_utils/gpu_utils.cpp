@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *  \brief Function definitions for non-GPU builds
@@ -43,45 +42,41 @@
 
 #include "config.h"
 
-#include <cassert>
-
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/smalloc.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/stringutil.h"
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 6237)
 #endif
 
-/*! \brief Help build a descriptive message in \c error if there are
- * \c errorReasons why nonbondeds on a GPU are not supported.
- *
- * \returns Whether the lack of errorReasons indicate there is support. */
-static bool addMessageIfNotSupported(gmx::ArrayRef<const std::string> errorReasons, std::string* error)
+const char* enumValueToString(GpuApiCallBehavior enumValue)
 {
-    bool isSupported = errorReasons.empty();
-    if (!isSupported && error)
-    {
-        *error = "Nonbonded interactions cannot run on GPUs: ";
-        *error += joinStrings(errorReasons, "; ") + ".";
-    }
-    return isSupported;
+    static constexpr gmx::EnumerationArray<GpuApiCallBehavior, const char*> s_gpuApiCallBehaviorNames = {
+        "Synchronous", "Asynchronous"
+    };
+    return s_gpuApiCallBehaviorNames[enumValue];
 }
 
-bool buildSupportsNonbondedOnGpu(std::string* error)
+bool decideGpuTimingsUsage()
 {
-    std::vector<std::string> errorReasons;
-    if (GMX_DOUBLE)
+    if (GMX_GPU_CUDA || GMX_GPU_SYCL)
     {
-        errorReasons.emplace_back("double precision");
+        /* CUDA: timings are incorrect with multiple streams.
+         * This is the main reason why they are disabled by default.
+         * TODO: Consider turning on by default when we can detect nr of streams.
+         *
+         * SYCL: compilers and runtimes change rapidly, so we disable timings by default
+         * to avoid any possible overhead. */
+        return (getenv("GMX_ENABLE_GPU_TIMING") != nullptr);
     }
-    if (!GMX_GPU)
+    else if (GMX_GPU_OPENCL)
     {
-        errorReasons.emplace_back("non-GPU build of GROMACS");
+        return (getenv("GMX_DISABLE_GPU_TIMING") == nullptr);
     }
-    if (GMX_GPU_SYCL)
+    else
     {
-        errorReasons.emplace_back("SYCL build of GROMACS");
+        // CPU-only build
+        return false;
     }
-    return addMessageIfNotSupported(errorReasons, error);
 }

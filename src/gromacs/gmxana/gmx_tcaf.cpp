@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -70,16 +66,19 @@
 #define NKC0 4
 static const int kset_c[NKC + 1] = { 0, 3, 9, 13, 16, 19, NK };
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static rvec v0[NK] = { { 1, 0, 0 },  { 0, 1, 0 },  { 0, 0, 1 },  { 1, 1, 0 },  { 1, -1, 0 },
                        { 1, 0, 1 },  { 1, 0, -1 }, { 0, 1, 1 },  { 0, 1, -1 }, { 1, 1, 1 },
                        { 1, 1, -1 }, { 1, -1, 1 }, { -1, 1, 1 }, { 2, 0, 0 },  { 0, 2, 0 },
                        { 0, 0, 2 },  { 3, 0, 0 },  { 0, 3, 0 },  { 0, 0, 3 },  { 4, 0, 0 },
                        { 0, 4, 0 },  { 0, 0, 4 } };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static rvec v1[NK] = { { 0, 1, 0 },  { 0, 0, 1 },  { 1, 0, 0 },  { 0, 0, 1 }, { 0, 0, 1 },
                        { 0, 1, 0 },  { 0, 1, 0 },  { 1, 0, 0 },  { 1, 0, 0 }, { 1, -1, 0 },
                        { 1, -1, 0 }, { 1, 0, -1 }, { 0, 1, -1 }, { 0, 1, 0 }, { 0, 0, 1 },
                        { 1, 0, 0 },  { 0, 1, 0 },  { 0, 0, 1 },  { 1, 0, 0 }, { 0, 1, 0 },
                        { 0, 0, 1 },  { 1, 0, 0 } };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static rvec v2[NK] = { { 0, 0, 1 },  { 1, 0, 0 }, { 0, 1, 0 },  { 1, -1, 0 }, { 1, 1, 0 },
                        { 1, 0, -1 }, { 1, 0, 1 }, { 0, 1, -1 }, { 0, 1, 1 },  { 1, 1, -2 },
                        { 1, 1, 2 },  { 1, 2, 1 }, { 2, 1, 1 },  { 0, 0, 1 },  { 1, 0, 0 },
@@ -151,8 +150,22 @@ static void process_tcaf(int                     nframes,
         sig[i] = std::exp(0.5 * i * dt / wt);
     }
 
-    low_do_autocorr(fn_tca, oenv, "Transverse Current Autocorrelation Functions", nframes, ntc,
-                    ncorr, tc, dt, eacNormal, 1, FALSE, FALSE, FALSE, 0, 0, 0);
+    low_do_autocorr(fn_tca,
+                    oenv,
+                    "Transverse Current Autocorrelation Functions",
+                    nframes,
+                    ntc,
+                    ncorr,
+                    tc,
+                    dt,
+                    eacNormal,
+                    1,
+                    FALSE,
+                    FALSE,
+                    FALSE,
+                    0,
+                    0,
+                    0);
     do_view(oenv, fn_tca, "-nxy");
 
     fp = xvgropen(fn_tc, "Transverse Current Autocorrelation Functions", "Time (ps)", "TCAF", oenv);
@@ -226,9 +239,9 @@ static void process_tcaf(int                     nframes,
         tcaf[k][0]  = 1.0;
         fitparms[0] = 1;
         fitparms[1] = 1;
-        do_lmfit(ncorr, tcaf[k], sig, dt, nullptr, 0, ncorr * dt, oenv, bDebugMode(), effnVAC,
-                 fitparms, 0, nullptr);
-        eta = 1000 * fitparms[1] * rho / (4 * fitparms[0] * PICO * norm2(kfac[k]) / (NANO * NANO));
+        do_lmfit(ncorr, tcaf[k], sig, dt, nullptr, 0, ncorr * dt, oenv, bDebugMode(), effnVAC, fitparms, 0, nullptr);
+        eta = 1000 * fitparms[1] * rho
+              / (4 * fitparms[0] * gmx::c_pico * norm2(kfac[k]) / (gmx::c_nano * gmx::c_nano));
         fprintf(stdout, "k %6.3f  tau %6.3f  eta %8.5f 10^-3 kg/(m s)\n", norm(kfac[k]), fitparms[0], eta);
         fprintf(fp_vk, "%6.3f %g\n", norm(kfac[k]), eta);
         for (i = 0; i < ncorr; i++)
@@ -249,12 +262,15 @@ static void process_tcaf(int                     nframes,
             tcafc[k][0] = 1.0;
             fitparms[0] = 1;
             fitparms[1] = 1;
-            do_lmfit(ncorr, tcafc[k], sig, dt, nullptr, 0, ncorr * dt, oenv, bDebugMode(), effnVAC,
-                     fitparms, 0, nullptr);
+            do_lmfit(ncorr, tcafc[k], sig, dt, nullptr, 0, ncorr * dt, oenv, bDebugMode(), effnVAC, fitparms, 0, nullptr);
             eta = 1000 * fitparms[1] * rho
-                  / (4 * fitparms[0] * PICO * norm2(kfac[kset_c[k]]) / (NANO * NANO));
-            fprintf(stdout, "k %6.3f  tau %6.3f  Omega %6.3f  eta %8.5f 10^-3 kg/(m s)\n",
-                    norm(kfac[kset_c[k]]), fitparms[0], fitparms[1], eta);
+                  / (4 * fitparms[0] * gmx::c_pico * norm2(kfac[kset_c[k]]) / (gmx::c_nano * gmx::c_nano));
+            fprintf(stdout,
+                    "k %6.3f  tau %6.3f  Omega %6.3f  eta %8.5f 10^-3 kg/(m s)\n",
+                    norm(kfac[kset_c[k]]),
+                    fitparms[0],
+                    fitparms[1],
+                    eta);
             fprintf(fp_vk, "%6.3f %g\n", norm(kfac[kset_c[k]]), eta);
             for (i = 0; i < ncorr; i++)
             {
@@ -336,8 +352,6 @@ int gmx_tcaf(int argc, char* argv[])
     real**            tc;
     gmx_output_env_t* oenv;
 
-#define NHISTO 360
-
     t_filenm fnm[] = { { efTRN, "-f", nullptr, ffREAD },      { efTPS, nullptr, nullptr, ffOPTRD },
                        { efNDX, nullptr, nullptr, ffOPTRD },  { efXVG, "-ot", "transcur", ffOPTWR },
                        { efXVG, "-oa", "tcaf_all", ffWRITE }, { efXVG, "-o", "tcaf", ffWRITE },
@@ -350,8 +364,8 @@ int gmx_tcaf(int argc, char* argv[])
     npargs = asize(pa);
     ppa    = add_acf_pargs(&npargs, pa);
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, npargs, ppa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, npargs, ppa, asize(desc), desc, 0, nullptr, &oenv))
     {
         sfree(ppa);
         return 0;
@@ -492,11 +506,22 @@ int gmx_tcaf(int argc, char* argv[])
 
     dt = (t1 - t0) / (nframes - 1);
 
-    rho *= sysmass / nframes * AMU / (NANO * NANO * NANO);
+    rho *= sysmass / nframes * gmx::c_amu / (gmx::c_nano * gmx::c_nano * gmx::c_nano);
     fprintf(stdout, "Density = %g (kg/m^3)\n", rho);
-    process_tcaf(nframes, dt, nkc, tc, kfac, rho, wt, opt2fn_null("-ot", NFILE, fnm),
-                 opt2fn("-oa", NFILE, fnm), opt2fn("-o", NFILE, fnm), opt2fn("-of", NFILE, fnm),
-                 opt2fn_null("-oc", NFILE, fnm), opt2fn("-ov", NFILE, fnm), oenv);
+    process_tcaf(nframes,
+                 dt,
+                 nkc,
+                 tc,
+                 kfac,
+                 rho,
+                 wt,
+                 opt2fn_null("-ot", NFILE, fnm),
+                 opt2fn("-oa", NFILE, fnm),
+                 opt2fn("-o", NFILE, fnm),
+                 opt2fn("-of", NFILE, fnm),
+                 opt2fn_null("-oc", NFILE, fnm),
+                 opt2fn("-ov", NFILE, fnm),
+                 oenv);
 
     return 0;
 }

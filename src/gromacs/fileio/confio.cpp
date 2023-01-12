@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,14 +26,14 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
-#include "confio.h"
+#include "gromacs/fileio/confio.h"
 
 #include <cstdio>
 #include <cstring>
@@ -107,8 +103,8 @@ void write_sto_conf_indexed(const char*    outfile,
         case efENT:
         case efPQR:
             out = gmx_fio_fopen(outfile, "w");
-            write_pdbfile_indexed(out, title, atoms, x, pbcType, box, ' ', -1, nindex, index,
-                                  nullptr, ftp == efPQR);
+            write_pdbfile_indexed(
+                    out, title, atoms, x, pbcType, box, ' ', -1, nindex, index, nullptr, ftp == efPQR);
             gmx_fio_fclose(out);
             break;
         case efESP:
@@ -174,7 +170,7 @@ void write_sto_conf(const char*    outfile,
 
 void write_sto_conf_mtop(const char*       outfile,
                          const char*       title,
-                         const gmx_mtop_t* mtop,
+                         const gmx_mtop_t& mtop,
                          const rvec        x[],
                          const rvec*       v,
                          PbcType           pbcType,
@@ -268,7 +264,7 @@ void ChainIdFiller::fill(t_atoms* atoms, const int startAtomIndex, const int end
     {
         // We always assign a new chain number, but only assign a chain id
         // characters for larger molecules.
-        int chainIdToAssign;
+        char chainIdToAssign;
         if (endAtomIndex - startAtomIndex >= s_chainMinAtoms && !outOfIds_)
         {
             /* Set the chain id for the output */
@@ -407,7 +403,7 @@ void readConfAndAtoms(const char* infile,
         readConfAndTopology(infile, &haveTopology, &mtop, pbcType, x, v, box);
         *symtab                          = mtop.symtab;
         *name                            = gmx_strdup(*mtop.name);
-        *atoms                           = gmx_mtop_global_atoms(&mtop);
+        *atoms                           = gmx_mtop_global_atoms(mtop);
         gmx::RangePartitioning molecules = gmx_mtop_molecules(mtop);
         makeChainIdentifiersAfterTprReading(atoms, molecules);
 
@@ -473,8 +469,8 @@ void readConfAndTopology(const char* infile,
             snew(*v, header.natoms);
         }
         int     natoms;
-        PbcType pbcType_tmp = read_tpx(infile, nullptr, box, &natoms, (x == nullptr) ? nullptr : *x,
-                                       (v == nullptr) ? nullptr : *v, mtop);
+        PbcType pbcType_tmp = read_tpx(
+                infile, nullptr, box, &natoms, (x == nullptr) ? nullptr : *x, (v == nullptr) ? nullptr : *v, mtop);
         if (pbcType != nullptr)
         {
             *pbcType = pbcType_tmp;

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief SHAKE and LINCS tests.
@@ -63,7 +62,6 @@ ConstraintsTestData::ConstraintsTestData(const std::string&       title,
                                          std::vector<int>         constraints,
                                          std::vector<real>        constraintsR0,
                                          bool                     computeVirial,
-                                         tensor                   virialScaledRef,
                                          bool                     compute_dHdLambda,
                                          float                    dHdLambdaRef,
                                          real                     initialTime,
@@ -96,10 +94,10 @@ ConstraintsTestData::ConstraintsTestData(const std::string&       title,
     invdt_ = 1.0 / timestep; // Inverse timestep
 
     // Input record - data that usually comes from configuration file (.mdp)
-    ir_.efep    = 0;
+    ir_.efep    = FreeEnergyPerturbationType::No;
     ir_.init_t  = initialTime;
     ir_.delta_t = timestep;
-    ir_.eI      = 0;
+    ir_.eI      = IntegrationAlgorithm::MD;
 
     // Virial evaluation
     computeVirial_ = computeVirial;
@@ -109,8 +107,7 @@ ConstraintsTestData::ConstraintsTestData(const std::string&       title,
         {
             for (int j = 0; j < DIM; j++)
             {
-                virialScaled_[i][j]    = 0;
-                virialScaledRef_[i][j] = virialScaledRef[i][j];
+                virialScaled_[i][j] = 0;
             }
         }
     }
@@ -122,12 +119,12 @@ ConstraintsTestData::ConstraintsTestData(const std::string&       title,
     dHdLambda_         = 0;
     if (compute_dHdLambda_)
     {
-        ir_.efep      = efepYES;
+        ir_.efep      = FreeEnergyPerturbationType::Yes;
         dHdLambdaRef_ = dHdLambdaRef;
     }
     else
     {
-        ir_.efep      = efepNO;
+        ir_.efep      = FreeEnergyPerturbationType::No;
         dHdLambdaRef_ = 0;
     }
 

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2013,2014,2015,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -90,8 +86,13 @@ static void printDsspResult(char* dssp, const DsspInputStrings& strings, const s
 #if HAVE_PIPES || GMX_NATIVE_WINDOWS
     sprintf(dssp, "%s -i %s %s", strings.dptr.c_str(), strings.pdbfile.c_str(), redirectionString.c_str());
 #else
-    sprintf(dssp, "%s -i %s -o %s > %s %s", strings.dptr.c_str(), strings.pdbfile.c_str(),
-            strings.tmpfile.c_str(), NULL_DEVICE, redirectionString.c_str());
+    sprintf(dssp,
+            "%s -i %s -o %s > %s %s",
+            strings.dptr.c_str(),
+            strings.pdbfile.c_str(),
+            strings.tmpfile.c_str(),
+            NULL_DEVICE,
+            redirectionString.c_str());
 #endif
 }
 
@@ -106,13 +107,13 @@ static int strip_dssp(FILE*                   tapeout,
                       int                     average_area[],
                       const gmx_output_env_t* oenv)
 {
-    static gmx_bool bFirst = TRUE;
-    static char*    ssbuf;
-    char            buf[STRLEN + 1];
-    char            SSTP;
-    int             nr, iacc, nresidues;
-    int             naccf, naccb; /* Count hydrophobic and hydrophilic residues */
-    real            iaccf, iaccb;
+    static gmx_bool    bFirst = TRUE;
+    static std::string ssbuf;
+    char               buf[STRLEN + 1];
+    char               SSTP;
+    int                nr, iacc, nresidues;
+    int                naccf, naccb; /* Count hydrophobic and hydrophilic residues */
+    real               iaccf, iaccb;
 
 
     /* Skip header */
@@ -128,7 +129,7 @@ static int strip_dssp(FILE*                   tapeout,
          * we allocate 2*nres-1, since for each chain there is a
          * separating line in the temp file. (At most each residue
          * could have been defined as a separate chain.) */
-        snew(ssbuf, 2 * nres - 1);
+        ssbuf.resize(2 * nres - 1);
     }
 
     iaccb = iaccf = 0;
@@ -176,8 +177,7 @@ static int strip_dssp(FILE*                   tapeout,
     {
         if (nullptr != acc)
         {
-            fprintf(stderr, "%d residues were classified as hydrophobic and %d as hydrophilic.\n",
-                    naccb, naccf);
+            fprintf(stderr, "%d residues were classified as hydrophobic and %d as hydrophilic.\n", naccb, naccf);
         }
 
         mat->title     = "Secondary structure";
@@ -245,7 +245,9 @@ static gmx_bool* bPhobics(t_atoms* atoms)
     if (i != j)
     {
         fprintf(stderr,
-                "Not all residues were recognized (%d from %d), the result may be inaccurate!\n", j, i);
+                "Not all residues were recognized (%d from %d), the result may be inaccurate!\n",
+                j,
+                i);
     }
 
     for (i = 0; (i < n_surf); i++)
@@ -299,8 +301,7 @@ static void norm_acc(t_atoms* atoms, int nres, const real av_area[], real norm_a
         }
         else
         {
-            fprintf(stderr, "Residue %s not found in surface database (%s)\n",
-                    *atoms->resinfo[i].name, surffn);
+            fprintf(stderr, "Residue %s not found in surface database (%s)\n", *atoms->resinfo[i].name, surffn);
         }
     }
 }
@@ -361,8 +362,22 @@ static void write_sas_mat(const char* fn, real** accr, int nframe, int nres, t_m
         }
         fp   = gmx_ffopen(fn, "w");
         nlev = static_cast<int>(hi - lo + 1);
-        write_xpm(fp, 0, "Solvent Accessible Surface", "Surface (A^2)", "Time", "Residue Index",
-                  nframe, nres, mat->axis_x.data(), mat->axis_y.data(), accr, lo, hi, rlo, rhi, &nlev);
+        write_xpm(fp,
+                  0,
+                  "Solvent Accessible Surface",
+                  "Surface (A^2)",
+                  "Time",
+                  "Residue Index",
+                  nframe,
+                  nres,
+                  mat->axis_x.data(),
+                  mat->axis_y.data(),
+                  accr,
+                  lo,
+                  hi,
+                  rlo,
+                  rhi,
+                  &nlev);
         gmx_ffclose(fp);
     }
 }
@@ -385,8 +400,8 @@ static void analyse_ss(const char* outfile, t_matrix* mat, const char* ss_string
         leg.emplace_back(m.desc);
     }
 
-    fp = xvgropen(outfile, "Secondary Structure", output_env_get_xvgr_tlabel(oenv),
-                  "Number of Residues", oenv);
+    fp = xvgropen(
+            outfile, "Secondary Structure", output_env_get_xvgr_tlabel(oenv), "Number of Residues", oenv);
     if (output_env_get_print_xvgr_codes(oenv))
     {
         fprintf(fp, "@ subtitle \"Structure = ");
@@ -458,25 +473,29 @@ static void analyse_ss(const char* outfile, t_matrix* mat, const char* ss_string
 int gmx_do_dssp(int argc, char* argv[])
 {
     const char* desc[] = {
-        "[THISMODULE] ", "reads a trajectory file and computes the secondary structure for",
-        "each time frame ", "calling the dssp program. If you do not have the dssp program,",
-        "get it from http://swift.cmbi.ru.nl/gv/dssp. [THISMODULE] assumes ",
+        "[THISMODULE] ",
+        "reads a trajectory file and computes the secondary structure for",
+        "each time frame ",
+        "calling the dssp program. If you do not have the dssp program,",
+        "get it from https://swift.cmbi.umcn.nl/gv/dssp. [THISMODULE] assumes ",
         "that the dssp executable is located in ",
         // NOLINTNEXTLINE(bugprone-suspicious-missing-comma)
         "[TT]" GMX_DSSP_PROGRAM_PATH "[tt]. If this is not the case, then you should",
-        "set an environment variable [TT]DSSP[tt] pointing to the dssp", "executable, e.g.: [PAR]",
+        "set an environment variable [TT]DSSP[tt] pointing to the dssp ",
+        "executable, e.g.: [PAR]",
         "[TT]setenv DSSP /opt/dssp/bin/dssp[tt][PAR]",
-        "Since version 2.0.0, dssp is invoked with a syntax that differs",
-        "from earlier versions. If you have an older version of dssp,",
-        "use the [TT]-ver[tt] option to direct do_dssp to use the older syntax.",
+        "The dssp program is invoked with a syntax that differs",
+        "depending on version. Version 1, 2 and 4 are supported, and the correct",
+        "invocation format can be selected using the [TT]-ver[tt] option.",
         "By default, do_dssp uses the syntax introduced with version 2.0.0.",
-        "Even newer versions (which at the time of writing are not yet released)",
-        "are assumed to have the same syntax as 2.0.0.[PAR]",
+        "Newer versions might also have executable name [TT]mkdssp[tt] instead",
+        "of [TT]dssp[tt].[PAR]",
         "The structure assignment for each residue and time is written to an",
         "[REF].xpm[ref] matrix file. This file can be visualized with for instance",
         "[TT]xv[tt] and can be converted to postscript with [TT]xpm2ps[tt].",
         "Individual chains are separated by light grey lines in the [REF].xpm[ref] and",
-        "postscript files.", "The number of residues with each secondary structure type and the",
+        "postscript files.",
+        "The number of residues with each secondary structure type and the",
         "total secondary structure ([TT]-sss[tt]) count as a function of",
         "time are also written to file ([TT]-sc[tt]).[PAR]",
         "Solvent accessible surface (SAS) per residue can be calculated, both in",
@@ -500,7 +519,7 @@ int gmx_do_dssp(int argc, char* argv[])
           FALSE,
           etINT,
           { &dsspVersion },
-          "DSSP major version. Syntax changed with version 2" }
+          "DSSP major version. Syntax changed with version 2 and 4." }
     };
 
     t_trxstatus*      status;
@@ -538,8 +557,18 @@ int gmx_do_dssp(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_CAN_VIEW | PCA_TIME_UNIT, NFILE, fnm,
-                           asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_CAN_TIME | PCA_CAN_VIEW | PCA_TIME_UNIT,
+                           NFILE,
+                           fnm,
+                           asize(pa),
+                           pa,
+                           asize(desc),
+                           desc,
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -610,14 +639,30 @@ int gmx_do_dssp(int argc, char* argv[])
     dsspStrings.tmpfile = tmpfile;
     if (dsspVersion >= 2)
     {
-        if (dsspVersion > 2)
+        if (dsspVersion == 4)
+        {
+            std::string mkdsspCommandLine = dsspStrings.dptr;
+            mkdsspCommandLine += " --output-format dssp ";
+            mkdsspCommandLine += dsspStrings.pdbfile;
+
+#if not HAVE_PIPES && not GMX_NATIVE_WINDOWS
+            // Without pipe/popen, rely on temporary file for output
+            mkdsspCommandLine += " " + dsspStrings.tmpfile;
+#endif
+
+            GMX_RELEASE_ASSERT(mkdsspCommandLine.size() < 255, "DSSP v4 command line too long");
+            strcpy(dssp, mkdsspCommandLine.c_str());
+        }
+        else if (dsspVersion == 2)
+        {
+            printDsspResult(dssp, dsspStrings, redirectionString);
+        }
+        else
         {
             printf("\nWARNING: You use DSSP version %d, which is not explicitly\nsupported by "
                    "do_dssp. Assuming version 2 syntax.\n\n",
                    dsspVersion);
         }
-
-        printDsspResult(dssp, dsspStrings, redirectionString);
     }
     else
     {
@@ -635,8 +680,11 @@ int gmx_do_dssp(int argc, char* argv[])
 
     if (fnTArea)
     {
-        fTArea = xvgropen(fnTArea, "Solvent Accessible Surface Area",
-                          output_env_get_xvgr_tlabel(oenv), "Area (nm\\S2\\N)", oenv);
+        fTArea = xvgropen(fnTArea,
+                          "Solvent Accessible Surface Area",
+                          output_env_get_xvgr_tlabel(oenv),
+                          "Area (nm\\S2\\N)",
+                          oenv);
         xvgr_legend(fTArea, 2, leg, oenv);
     }
     else
@@ -677,7 +725,8 @@ int gmx_do_dssp(int argc, char* argv[])
         }
         gmx_rmpbc(gpbc, natoms, box, x);
         tapein = gmx_ffopen(pdbfile, "w");
-        write_pdbfile_indexed(tapein, nullptr, atoms, x, pbcType, box, ' ', -1, gnx, index, nullptr, FALSE);
+        write_pdbfile_indexed(
+                tapein, nullptr, atoms, x, pbcType, box, 'A', -1, gnx, index, nullptr, FALSE, true);
         gmx_ffclose(tapein);
         /* strip_dssp returns the number of lines found in the dssp file, i.e.
          * the number of residues plus the separator lines */

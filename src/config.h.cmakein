@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief
@@ -94,17 +91,11 @@
 /* AVX2 128-bit SIMD instruction set level was selected */
 #cmakedefine01 GMX_SIMD_X86_AVX2_128
 
-/* MIC (Xeon Phi) SIMD instruction set level was selected */
-#cmakedefine01 GMX_SIMD_X86_MIC
-
 /* AVX-512F foundation level instruction SIMD */
 #cmakedefine01 GMX_SIMD_X86_AVX_512
 
 /* AVX-512ER foundation level instruction SIMD */
 #cmakedefine01 GMX_SIMD_X86_AVX_512_KNL
-
-/* 32-bit ARM NEON SIMD instruction set level was selected */
-#cmakedefine01 GMX_SIMD_ARM_NEON
 
 /* ARM (AArch64) NEON Advanced SIMD instruction set level was selected */
 #cmakedefine01 GMX_SIMD_ARM_NEON_ASIMD
@@ -115,14 +106,8 @@
 /* SVE vector length */
 #define GMX_SIMD_ARM_SVE_LENGTH_VALUE @GMX_SIMD_ARM_SVE_LENGTH_VALUE@
 
-/* IBM VMX was selected as SIMD instructions (Power 6 and later) */
-#cmakedefine01 GMX_SIMD_IBM_VMX
-
 /* IBM VSX was selected as SIMD instructions (Power 7 and later) */
 #cmakedefine01 GMX_SIMD_IBM_VSX
-
-/* Fujitsu Sparc64 HPC-ACE SIMD acceleration */
-#cmakedefine01 GMX_SIMD_SPARC64_HPC_ACE
 
 /* Reference SIMD implementation for testing */
 #cmakedefine01 GMX_SIMD_REFERENCE
@@ -145,9 +130,6 @@
 /* Whether NBNXM and other SIMD kernels should be compiled */
 #cmakedefine01 GMX_USE_SIMD_KERNELS
 
-/* Whether a double-precision configuration may target accuracy equivalent to single precision */
-#cmakedefine01 GMX_RELAXED_DOUBLE_PRECISION
-
 /* Integer byte order is big endian. */
 #cmakedefine01 GMX_INTEGER_BIG_ENDIAN
 
@@ -169,9 +151,6 @@
 /* Make a parallel version of GROMACS using message passing
    (MPI or thread_mpi) */
 #define GMX_MPI (GMX_LIB_MPI || GMX_THREAD_MPI)
-
-/* MPI_IN_PLACE exists for collective operations */
-#cmakedefine01 MPI_IN_PLACE_EXISTS
 
 /* Use OpenMP multithreading */
 #cmakedefine01 GMX_OPENMP
@@ -245,11 +224,33 @@
 /* Define if SYCL GPU acceleration is compiled */
 #cmakedefine01 GMX_GPU_SYCL
 
+/* Define if hipSYCL is used for SYCL support (otherwise DPC++ is assumed) */
+#cmakedefine01 GMX_SYCL_HIPSYCL
+
+// Define if hipSYCL has HIP target(s)
+#cmakedefine01 GMX_HIPSYCL_HAVE_HIP_TARGET
+
+// Define if hipSYCL has CUDA target(s)
+#cmakedefine01 GMX_HIPSYCL_HAVE_CUDA_TARGET
+
+/* Define if Intel's DPC++ is used (default unless hipSYCL is chosen) */
+#define GMX_SYCL_DPCPP (!GMX_SYCL_HIPSYCL && GMX_GPU_SYCL)
+
+/* Define if we wish to use USM (otherwise buffer-accessor mechanism is used) */
+#cmakedefine01 GMX_SYCL_USE_USM
+
 /* Use a single compilation unit when compiling the CUDA (non-bonded) kernels.  */
 #cmakedefine01 GMX_CUDA_NB_SINGLE_COMPILATION_UNIT
 
-/* Cluster size used by nonbonded OpenCL kernel. Should be 8 for NVIDIA/AMD and 4 for Intel */
-#define GMX_OPENCL_NB_CLUSTER_SIZE @GMX_OPENCL_NB_CLUSTER_SIZE@
+/* Use CUDA-aware MPI.  */
+#cmakedefine01 HAVE_MPI_EXT
+#cmakedefine01 MPI_SUPPORTS_CUDA_AWARE_DETECTION
+
+/* Define if HeFFTe library found */
+#cmakedefine01 Heffte_FOUND
+
+/* Cluster size used by nonbonded kernel. Should be 8 for NVIDIA/AMD and 4 for Intel */
+#define GMX_GPU_NB_CLUSTER_SIZE @GMX_GPU_NB_CLUSTER_SIZE@
 
 /* Define constants for build types (starting at 1 to make sure undefined values don't match) */
 #define CMAKE_BUILD_TYPE_DEBUG 1
@@ -276,6 +277,7 @@
 #cmakedefine01 HAVE_FSEEKO
 
 /* Define to 1 if _fseeki64 (and presumably _fseeki64) exists and is declared. */
+//NOLINTNEXTLINE(bugprone-reserved-identifier)
 #cmakedefine01 HAVE__FSEEKI64
 
 /* Have io.h (windows)*/
@@ -288,6 +290,7 @@
 #cmakedefine01 HAVE_MEMALIGN
 
 /* Define to 1 if you have the MSVC _aligned_malloc() function. */
+//NOLINTNEXTLINE(bugprone-reserved-identifier)
 #cmakedefine01 HAVE__ALIGNED_MALLOC
 
 /* Define to 1 if you have the clock_gettime() function. */
@@ -303,12 +306,14 @@
 #cmakedefine01 HAVE_FSYNC
 
 /* Define to 1 if you have the Windows _commit() function. */
+//NOLINTNEXTLINE(bugprone-reserved-identifier)
 #cmakedefine01 HAVE__COMMIT
 
 /* Define to 1 if you have the fileno() function. */
 #cmakedefine01 HAVE_FILENO
 
 /* Define to 1 if you have the _fileno() function. */
+//NOLINTNEXTLINE(bugprone-reserved-identifier)
 #cmakedefine01 HAVE__FILENO
 
 /* Define to 1 if you have the sigaction() function. */
@@ -373,6 +378,7 @@
  * malloc.h or xmmintrin.h, and 0 otherwise. Note that you need to
  * conditionally include the three headers too before using _mm_malloc().
  */
+//NOLINTNEXTLINE(bugprone-reserved-identifier)
 #cmakedefine01 HAVE__MM_MALLOC
 
 /* Define if SIGUSR1 is present */
@@ -393,14 +399,17 @@
 /* Define if we have fedisableexcept */
 #cmakedefine01 HAVE_FEDISABLEEXCEPT
 
+/* Define if we have MKL available */
+#cmakedefine01 HAVE_LIBMKL
+
 /* Define if we have lmfit support */
 #cmakedefine01 HAVE_LMFIT
 
+/* Define if we have muparser support */
+#cmakedefine01 HAVE_MUPARSER
+
 /* Build using clang analyzer */
 #cmakedefine01 GMX_CLANG_ANALYZER
-
-/* Use MiMiC QM/MM interface */
-#cmakedefine01 GMX_MIMIC
 
 /* Use Interactive Molecular Dynamics */
 #cmakedefine01 GMX_IMD

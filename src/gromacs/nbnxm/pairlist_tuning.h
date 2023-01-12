@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \libinternal \file
@@ -85,17 +84,17 @@ void increaseNstlist(FILE*               fplog,
 /*! \brief Set up the dynamic pairlist pruning
  *
  * \param[in,out] mdlog            MD logger
- * \param[in]     ir               The input parameter record
+ * \param[in]     inputrec         The input parameter record
  * \param[in]     mtop             The global topology
  * \param[in]     box              The unit cell
- * \param[in]     ic               The nonbonded interactions constants
+ * \param[in]     interactionConst The nonbonded interactions constants
  * \param[in,out] listParams       The list setup parameters
  */
 void setupDynamicPairlistPruning(const gmx::MDLogger&       mdlog,
-                                 const t_inputrec*          ir,
-                                 const gmx_mtop_t*          mtop,
+                                 const t_inputrec&          inputrec,
+                                 const gmx_mtop_t&          mtop,
                                  matrix                     box,
-                                 const interaction_const_t* ic,
+                                 const interaction_const_t& interactionConst,
                                  PairlistParams*            listParams);
 
 #endif /* NBNXM_PAIRLIST_TUNING_H */

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2005,2006,2007,2008,2009 by the GROMACS development team.
- * Copyright (c) 2010,2011,2012,2013,2014 by the GROMACS development team.
- * Copyright (c) 2015,2016,2017,2018,2019 by the GROMACS development team.
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2005- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* \internal \file
  *
@@ -54,7 +50,6 @@
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
-#include "gromacs/mdlib/nsgrid.h"
 #include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/nblist.h"
 #include "gromacs/mdtypes/state.h"
@@ -184,17 +179,24 @@ static void print_cg_move(FILE*               fplog,
     mesg += gmx::formatString(" in direction %c\n", dim2char(dim));
     fprintf(fplog, "%s", mesg.c_str());
 
-    fprintf(fplog, "distance out of cell %f\n",
+    fprintf(fplog,
+            "distance out of cell %f\n",
             dir == 1 ? pos_d - comm->cell_x1[dim] : pos_d - comm->cell_x0[dim]);
     if (bHaveCgcmOld)
     {
         fprintf(fplog, "Old coordinates: %8.3f %8.3f %8.3f\n", cm_old[XX], cm_old[YY], cm_old[ZZ]);
     }
     fprintf(fplog, "New coordinates: %8.3f %8.3f %8.3f\n", cm_new[XX], cm_new[YY], cm_new[ZZ]);
-    fprintf(fplog, "Old cell boundaries in direction %c: %8.3f %8.3f\n", dim2char(dim),
-            comm->old_cell_x0[dim], comm->old_cell_x1[dim]);
-    fprintf(fplog, "New cell boundaries in direction %c: %8.3f %8.3f\n", dim2char(dim),
-            comm->cell_x0[dim], comm->cell_x1[dim]);
+    fprintf(fplog,
+            "Old cell boundaries in direction %c: %8.3f %8.3f\n",
+            dim2char(dim),
+            comm->old_cell_x0[dim],
+            comm->old_cell_x1[dim]);
+    fprintf(fplog,
+            "New cell boundaries in direction %c: %8.3f %8.3f\n",
+            dim2char(dim),
+            comm->cell_x0[dim],
+            comm->cell_x1[dim]);
 }
 
 [[noreturn]] static void cg_move_error(FILE*               fplog,
@@ -221,20 +223,20 @@ static void print_cg_move(FILE*               fplog,
 
 static void rotate_state_atom(t_state* state, int a)
 {
-    if (state->flags & (1 << estX))
+    if (state->flags & enumValueToBitMask(StateEntry::X))
     {
         auto x = makeArrayRef(state->x);
         /* Rotate the complete state; for a rectangular box only */
         x[a][YY] = state->box[YY][YY] - x[a][YY];
         x[a][ZZ] = state->box[ZZ][ZZ] - x[a][ZZ];
     }
-    if (state->flags & (1 << estV))
+    if (state->flags & enumValueToBitMask(StateEntry::V))
     {
         auto v   = makeArrayRef(state->v);
         v[a][YY] = -v[a][YY];
         v[a][ZZ] = -v[a][ZZ];
     }
-    if (state->flags & (1 << estCGP))
+    if (state->flags & enumValueToBitMask(StateEntry::Cgp))
     {
         auto cg_p   = makeArrayRef(state->cg_p);
         cg_p[a][YY] = -cg_p[a][YY];
@@ -279,7 +281,7 @@ struct MoveLimits
  * The return has move flags set when the group does move and the lower 4 bits
  * are (mis)used to tell which is the first dimension (bit 1,2,3) the group
  * needs to be moved along and in which direction (bit 0 not set for fw
- * and set for bw).
+ * and set for bw), however only values in [0,6) are used.
  */
 static int computeMoveFlag(const gmx_domdec_t& dd, const ivec& dev)
 {
@@ -363,8 +365,8 @@ static void calc_cg_move(FILE*              fplog,
                 {
                     if (pos_d >= moveLimits.upper[d])
                     {
-                        cg_move_error(fplog, dd, step, a, d, 1, false, moveLimits.distance[d],
-                                      cm_new, cm_new, pos_d);
+                        cg_move_error(
+                                fplog, dd, step, a, d, 1, false, moveLimits.distance[d], cm_new, cm_new, pos_d);
                     }
                     dev[d] = 1;
                     if (dd->ci[d] == dd->numCells[d] - 1)
@@ -386,8 +388,8 @@ static void calc_cg_move(FILE*              fplog,
                 {
                     if (pos_d < moveLimits.lower[d])
                     {
-                        cg_move_error(fplog, dd, step, a, d, -1, false, moveLimits.distance[d],
-                                      cm_new, cm_new, pos_d);
+                        cg_move_error(
+                                fplog, dd, step, a, d, -1, false, moveLimits.distance[d], cm_new, cm_new, pos_d);
                     }
                     dev[d] = -1;
                     if (dd->ci[d] == 0)
@@ -486,8 +488,8 @@ static void calcGroupMove(FILE*                     fplog,
                 {
                     if (pos_d >= moveLimits.upper[d])
                     {
-                        cg_move_error(fplog, dd, step, g, d, 1, true, moveLimits.distance[d],
-                                      cogOld, cog, pos_d);
+                        cg_move_error(
+                                fplog, dd, step, g, d, 1, true, moveLimits.distance[d], cogOld, cog, pos_d);
                     }
                     dev[d] = 1;
                     if (dd->ci[d] == dd->numCells[d] - 1)
@@ -499,8 +501,8 @@ static void calcGroupMove(FILE*                     fplog,
                 {
                     if (pos_d < moveLimits.lower[d])
                     {
-                        cg_move_error(fplog, dd, step, g, d, -1, true, moveLimits.distance[d],
-                                      cogOld, cog, pos_d);
+                        cg_move_error(
+                                fplog, dd, step, g, d, -1, true, moveLimits.distance[d], cogOld, cog, pos_d);
                     }
                     dev[d] = -1;
                     if (dd->ci[d] == 0)
@@ -564,10 +566,10 @@ void dd_redistribute_cg(FILE*         fplog,
     }
 
     // Positions are always present, so there's nothing to flag
-    bool bV   = (state->flags & (1 << estV)) != 0;
-    bool bCGP = (state->flags & (1 << estCGP)) != 0;
+    bool bV   = (state->flags & enumValueToBitMask(StateEntry::V)) != 0;
+    bool bCGP = (state->flags & enumValueToBitMask(StateEntry::Cgp)) != 0;
 
-    DDBufferAccess<int> moveBuffer(comm->intBuffer, dd->ncg_home);
+    DDBufferAccess<int> moveBuffer(comm->intBuffer, dd->numHomeAtoms);
     gmx::ArrayRef<int>  move = moveBuffer.buffer;
 
     const int npbcdim = dd->unitCellInfo.npbcdim;
@@ -611,7 +613,7 @@ void dd_redistribute_cg(FILE*         fplog,
     matrix tcm;
     make_tric_corr_matrix(npbcdim, state->box, tcm);
 
-    const int nthread = gmx_omp_nthreads_get(emntDomdec);
+    const int nthread = gmx_omp_nthreads_get(ModuleMultiThread::Domdec);
 
     /* Compute the center of geometry for all home charge groups
      * and put them in the box and determine where they should go.
@@ -629,64 +631,86 @@ void dd_redistribute_cg(FILE*         fplog,
             {
                 const auto& updateGroupsCog = *comm->updateGroupsCog;
                 const int   numGroups       = updateGroupsCog.numCogs();
-                calcGroupMove(fplog, step, dd, state, tric_dir, tcm, cell_x0, cell_x1, moveLimits,
-                              (thread * numGroups) / nthread, ((thread + 1) * numGroups) / nthread,
+                calcGroupMove(fplog,
+                              step,
+                              dd,
+                              state,
+                              tric_dir,
+                              tcm,
+                              cell_x0,
+                              cell_x1,
+                              moveLimits,
+                              (thread * numGroups) / nthread,
+                              ((thread + 1) * numGroups) / nthread,
                               pbcAndFlags);
                 /* We need a barrier as atoms below can be in a COG of a different thread */
 #pragma omp barrier
                 const int numHomeAtoms = comm->atomRanges.numHomeAtoms();
-                applyPbcAndSetMoveFlags(updateGroupsCog, pbcAndFlags, (thread * numHomeAtoms) / nthread,
-                                        ((thread + 1) * numHomeAtoms) / nthread, state->x, move);
+                applyPbcAndSetMoveFlags(updateGroupsCog,
+                                        pbcAndFlags,
+                                        (thread * numHomeAtoms) / nthread,
+                                        ((thread + 1) * numHomeAtoms) / nthread,
+                                        state->x,
+                                        move);
             }
             else
             {
                 /* Here we handle single atoms or charge groups */
-                calc_cg_move(fplog, step, dd, state, tric_dir, tcm, cell_x0, cell_x1, moveLimits,
-                             (thread * dd->ncg_home) / nthread,
-                             ((thread + 1) * dd->ncg_home) / nthread, move);
+                calc_cg_move(fplog,
+                             step,
+                             dd,
+                             state,
+                             tric_dir,
+                             tcm,
+                             cell_x0,
+                             cell_x1,
+                             moveLimits,
+                             (thread * dd->numHomeAtoms) / nthread,
+                             ((thread + 1) * dd->numHomeAtoms) / nthread,
+                             move);
             }
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
     }
 
-    int ncg[DIM * 2] = { 0 };
+    // The counts of atoms to move, forward or backward, over the
+    // possible DIM dimensions.
     int nat[DIM * 2] = { 0 };
-    for (int cg = 0; cg < dd->ncg_home; cg++)
+    for (int cg = 0; cg < dd->numHomeAtoms; cg++)
     {
         if (move[cg] >= 0)
         {
+            // The value in move[cg] was computed by computeMoveFlags
+            // and describes how this atom should move between domains.
             const int flag = move[cg] & ~DD_FLAG_NRCG;
-            const int mc   = move[cg] & DD_FLAG_NRCG;
-            move[cg]       = mc;
+            // mc contains 4 bits that tell which is the first
+            // dimension (bit 1,2,3) that the group needs to be moved
+            // along, and in which direction (bit 0; not set for fw
+            // and set for bw). However the value is always in
+            // the range [0,6)
+            const int mc = move[cg] & DD_FLAG_NRCG;
+            move[cg]     = mc;
 
             std::vector<int>& cggl_flag = comm->cggl_flag[mc];
 
             /* TODO: See if we can use push_back instead */
-            if ((ncg[mc] + 1) * DD_CGIBS > gmx::index(cggl_flag.size()))
+            if ((nat[mc] + 1) * DD_CGIBS > gmx::index(cggl_flag.size()))
             {
-                cggl_flag.resize((ncg[mc] + 1) * DD_CGIBS);
+                cggl_flag.resize((nat[mc] + 1) * DD_CGIBS);
             }
-            cggl_flag[ncg[mc] * DD_CGIBS] = dd->globalAtomGroupIndices[cg];
-            /* We store the cg size in the lower 16 bits
-             * and the place where the charge group should go
-             * in the next 6 bits. This saves some communication volume.
-             *
-             * TODO: Remove the size, as it is now always 1.
-             */
-            const int numAtomsInGroup         = 1;
-            cggl_flag[ncg[mc] * DD_CGIBS + 1] = numAtomsInGroup | flag;
-            ncg[mc] += 1;
-            nat[mc] += numAtomsInGroup;
+            cggl_flag[nat[mc] * DD_CGIBS]     = dd->globalAtomGroupIndices[cg];
+            cggl_flag[nat[mc] * DD_CGIBS + 1] = flag;
+            nat[mc]++;
         }
     }
 
     inc_nrnb(nrnb, eNR_CGCM, comm->atomRanges.numHomeAtoms());
-    inc_nrnb(nrnb, eNR_RESETX, dd->ncg_home);
+    inc_nrnb(nrnb, eNR_RESETX, dd->numHomeAtoms);
 
     *ncg_moved = 0;
     for (int i = 0; i < dd->ndim * 2; i++)
     {
-        *ncg_moved += ncg[i];
+        *ncg_moved += nat[i];
     }
 
     int nvec = 1;
@@ -702,7 +726,7 @@ void dd_redistribute_cg(FILE*         fplog,
     /* Make sure the communication buffers are large enough */
     for (int mc = 0; mc < dd->ndim * 2; mc++)
     {
-        size_t nvr = ncg[mc] + nat[mc] * nvec;
+        size_t nvr = nat[mc] * (1 + nvec);
         if (nvr > comm->cgcm_state[mc].size())
         {
             comm->cgcm_state[mc].resize(nvr);
@@ -727,62 +751,71 @@ void dd_redistribute_cg(FILE*         fplog,
         copyMovedAtomsToBufferPerAtom(move, nvec, vectorIndex++, state->cg_p.rvec_array(), comm);
     }
 
-    int* moved = getMovedBuffer(comm, 0, dd->ncg_home);
+    int* moved = getMovedBuffer(comm, 0, dd->numHomeAtoms);
 
     clear_and_mark_ind(move, dd->globalAtomIndices, dd->ga2la, moved);
 
     /* Now we can remove the excess global atom-group indices from the list */
-    dd->globalAtomGroupIndices.resize(dd->ncg_home);
+    dd->globalAtomGroupIndices.resize(dd->numHomeAtoms);
 
     /* We reuse the intBuffer without reacquiring since we are in the same scope */
     DDBufferAccess<int>& flagBuffer = moveBuffer;
 
-    gmx::ArrayRef<const cginfo_mb_t> cginfo_mb = fr->cginfo_mb;
+    gmx::ArrayRef<const gmx::AtomInfoWithinMoleculeBlock> atomInfoForEachMoleculeBlock =
+            fr->atomInfoForEachMoleculeBlock;
 
     /* Temporarily store atoms passed to our rank at the end of the range */
-    int home_pos_cg = dd->ncg_home;
-    int home_pos_at = dd->ncg_home;
+    int home_pos_at = dd->numHomeAtoms;
     for (int d = 0; d < dd->ndim; d++)
     {
         DDBufferAccess<gmx::RVec> rvecBuffer(comm->rvecBuffer, 0);
 
-        const int dim      = dd->dim[d];
-        int       ncg_recv = 0;
-        int       nvr      = 0;
+        const int dim                = dd->dim[d];
+        int       totalAtomsReceived = 0;
+        int       nvr                = 0;
         for (int dir = 0; dir < (dd->numCells[dim] == 2 ? 1 : 2); dir++)
         {
             const int cdd = d * 2 + dir;
-            /* Communicate the cg and atom counts */
-            int sbuf[2] = { ncg[cdd], nat[cdd] };
+            /* Communicate the atom counts */
             if (debug)
             {
-                fprintf(debug, "Sending ddim %d dir %d: ncg %d nat %d\n", d, dir, sbuf[0], sbuf[1]);
+                fprintf(debug, "Sending ddim %d dir %d: nat %d\n", d, dir, nat[cdd]);
             }
-            int rbuf[2];
-            ddSendrecv(dd, d, dir, sbuf, 2, rbuf, 2);
+            int atomCountToReceive;
+            ddSendrecv(dd, d, dir, &nat[cdd], 1, &atomCountToReceive, 1);
 
-            flagBuffer.resize((ncg_recv + rbuf[0]) * DD_CGIBS);
+            flagBuffer.resize((totalAtomsReceived + atomCountToReceive) * DD_CGIBS);
 
             /* Communicate the charge group indices, sizes and flags */
-            ddSendrecv(dd, d, dir, comm->cggl_flag[cdd].data(), sbuf[0] * DD_CGIBS,
-                       flagBuffer.buffer.data() + ncg_recv * DD_CGIBS, rbuf[0] * DD_CGIBS);
+            ddSendrecv(dd,
+                       d,
+                       dir,
+                       comm->cggl_flag[cdd].data(),
+                       nat[cdd] * DD_CGIBS,
+                       flagBuffer.buffer.data() + totalAtomsReceived * DD_CGIBS,
+                       atomCountToReceive * DD_CGIBS);
 
-            const int nvs = ncg[cdd] + nat[cdd] * nvec;
-            const int i   = rbuf[0] + rbuf[1] * nvec;
+            const int nvs = nat[cdd] * (1 + nvec);
+            const int i   = atomCountToReceive * (1 + nvec);
             rvecBuffer.resize(nvr + i);
 
             /* Communicate cgcm and state */
-            ddSendrecv(dd, d, dir, as_rvec_array(comm->cgcm_state[cdd].data()), nvs,
-                       as_rvec_array(rvecBuffer.buffer.data()) + nvr, i);
-            ncg_recv += rbuf[0];
+            ddSendrecv(dd,
+                       d,
+                       dir,
+                       as_rvec_array(comm->cgcm_state[cdd].data()),
+                       nvs,
+                       as_rvec_array(rvecBuffer.buffer.data()) + nvr,
+                       i);
+            totalAtomsReceived += atomCountToReceive;
             nvr += i;
         }
 
-        dd_resize_atominfo_and_state(fr, state, home_pos_cg + ncg_recv);
+        dd_resize_atominfo_and_state(fr, state, home_pos_at + totalAtomsReceived);
 
         /* Process the received charge or update groups */
         int buf_pos = 0;
-        for (int cg = 0; cg < ncg_recv; cg++)
+        for (int cg = 0; cg < totalAtomsReceived; cg++)
         {
             /* Extract the move flags and COG for the charge or update group */
             int              flag = flagBuffer.buffer[cg * DD_CGIBS + 1];
@@ -797,8 +830,8 @@ void dd_redistribute_cg(FILE*         fplog,
                     || ((flag & DD_FLAG_BW(d)) && cog[dim] < cell_x0[dim]))
                 {
                     rvec pos = { cog[0], cog[1], cog[2] };
-                    cg_move_error(fplog, dd, step, cg, dim, (flag & DD_FLAG_FW(d)) ? 1 : 0, false,
-                                  0, pos, pos, pos[dim]);
+                    cg_move_error(
+                            fplog, dd, step, cg, dim, (flag & DD_FLAG_FW(d)) ? 1 : 0, false, 0, pos, pos, pos[dim]);
                 }
             }
 
@@ -874,9 +907,6 @@ void dd_redistribute_cg(FILE*         fplog,
                 }
             }
 
-            GMX_ASSERT((flag & DD_FLAG_NRCG) == 1,
-                       "Charge groups are gone, so all groups should have size 1");
-            constexpr int nrcg = 1;
             if (mc == -1)
             {
                 /* Set the global charge group index and size */
@@ -886,78 +916,72 @@ void dd_redistribute_cg(FILE*         fplog,
                 buf_pos++;
 
                 /* Set the cginfo */
-                fr->cginfo[home_pos_cg] = ddcginfo(cginfo_mb, globalAtomGroupIndex);
+                fr->atomInfo[home_pos_at] =
+                        ddGetAtomInfo(atomInfoForEachMoleculeBlock, globalAtomGroupIndex);
 
                 auto  x       = makeArrayRef(state->x);
                 auto  v       = makeArrayRef(state->v);
                 auto  cg_p    = makeArrayRef(state->cg_p);
                 rvec* rvecPtr = as_rvec_array(rvecBuffer.buffer.data());
-                for (int i = 0; i < nrcg; i++)
-                {
-                    copy_rvec(rvecPtr[buf_pos++], x[home_pos_at + i]);
-                }
+                copy_rvec(rvecPtr[buf_pos++], x[home_pos_at]);
                 if (bV)
                 {
-                    for (int i = 0; i < nrcg; i++)
-                    {
-                        copy_rvec(rvecPtr[buf_pos++], v[home_pos_at + i]);
-                    }
+                    copy_rvec(rvecPtr[buf_pos++], v[home_pos_at]);
                 }
                 if (bCGP)
                 {
-                    for (int i = 0; i < nrcg; i++)
-                    {
-                        copy_rvec(rvecPtr[buf_pos++], cg_p[home_pos_at + i]);
-                    }
+                    copy_rvec(rvecPtr[buf_pos++], cg_p[home_pos_at]);
                 }
-                home_pos_cg += 1;
-                home_pos_at += nrcg;
+                home_pos_at++;
             }
             else
             {
                 /* Reallocate the buffers if necessary  */
-                if ((ncg[mc] + 1) * DD_CGIBS > gmx::index(comm->cggl_flag[mc].size()))
+                if ((nat[mc] + 1) * DD_CGIBS > gmx::index(comm->cggl_flag[mc].size()))
                 {
-                    comm->cggl_flag[mc].resize((ncg[mc] + 1) * DD_CGIBS);
+                    comm->cggl_flag[mc].resize((nat[mc] + 1) * DD_CGIBS);
                 }
-                size_t nvr = ncg[mc] + nat[mc] * nvec;
-                if (nvr + 1 + nrcg * nvec > comm->cgcm_state[mc].size())
+                size_t nvr = nat[mc] * (1 + nvec);
+                if (nvr + 1 + nvec > comm->cgcm_state[mc].size())
                 {
-                    comm->cgcm_state[mc].resize(nvr + 1 + nrcg * nvec);
+                    comm->cgcm_state[mc].resize(nvr + 1 + nvec);
                 }
                 /* Copy from the receive to the send buffers */
-                memcpy(comm->cggl_flag[mc].data() + ncg[mc] * DD_CGIBS,
-                       flagBuffer.buffer.data() + cg * DD_CGIBS, DD_CGIBS * sizeof(int));
-                memcpy(comm->cgcm_state[mc][nvr], rvecBuffer.buffer.data() + buf_pos,
-                       (1 + nrcg * nvec) * sizeof(rvec));
-                buf_pos += 1 + nrcg * nvec;
-                ncg[mc] += 1;
-                nat[mc] += nrcg;
+                memcpy(comm->cggl_flag[mc].data() + nat[mc] * DD_CGIBS,
+                       flagBuffer.buffer.data() + cg * DD_CGIBS,
+                       DD_CGIBS * sizeof(int));
+                memcpy(comm->cgcm_state[mc][nvr],
+                       rvecBuffer.buffer.data() + buf_pos,
+                       (1 + nvec) * sizeof(rvec));
+                buf_pos += 1 + nvec;
+                nat[mc]++;
             }
         }
     }
 
     /* Note that the indices are now only partially up to date
-     * and ncg_home and nat_home are not the real count, since there are
+     * and numHomeAtoms and nat_home are not the real count, since there are
      * "holes" in the arrays for the charge groups that moved to neighbors.
      */
 
     /* We need to clear the moved flags for the received atoms,
      * because the moved buffer will be passed to the nbnxm gridding call.
      */
-    moved = getMovedBuffer(comm, dd->ncg_home, home_pos_cg);
+    moved = getMovedBuffer(comm, dd->numHomeAtoms, home_pos_at);
 
-    for (int i = dd->ncg_home; i < home_pos_cg; i++)
+    for (int i = dd->numHomeAtoms; i < home_pos_at; i++)
     {
         moved[i] = 0;
     }
 
-    dd->ncg_home = home_pos_cg;
+    dd->numHomeAtoms = home_pos_at;
     comm->atomRanges.setEnd(DDAtomRanges::Type::Home, home_pos_at);
 
     if (debug)
     {
-        fprintf(debug, "Finished repartitioning: cgs moved out %d, new home %d\n", *ncg_moved,
-                dd->ncg_home - *ncg_moved);
+        fprintf(debug,
+                "Finished repartitioning: cgs moved out %d, new home %d\n",
+                *ncg_moved,
+                dd->numHomeAtoms - *ncg_moved);
     }
 }

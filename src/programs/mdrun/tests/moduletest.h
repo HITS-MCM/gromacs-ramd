@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \defgroup module_mdrun_integration_tests Integration test utilities
  * \ingroup group_mdrun
@@ -49,6 +47,8 @@
 #define GMX_MDRUN_TESTS_MODULETEST_H
 
 #include <gtest/gtest.h>
+
+#include <memory>
 
 #include "gromacs/utility/classhelpers.h"
 #include "gromacs/utility/gmxmpi.h"
@@ -116,15 +116,19 @@ public:
     //! Use a given string as input to grompp
     void useStringAsMdpFile(const std::string& mdpString);
     //! Use a string as -n input to grompp
-    void useStringAsNdxFile(const char* ndxString);
+    void useStringAsNdxFile(const char* ndxString) const;
     //! Use a standard .top and .g96 file as input to grompp
     void useTopG96AndNdxFromDatabase(const std::string& name);
     //! Use a standard .top and .gro file as input to grompp
     void useTopGroAndNdxFromDatabase(const std::string& name);
     //! Use a standard .gro file as input to grompp
     void useGroFromDatabase(const char* name);
+    //! Use a standard .ndx as input to grompp
+    void useNdxFromDatabase(const std::string& name);
     //! Use .top, .gro, and .mdp from FEP test database
     void useTopGroAndMdpFromFepTestDatabase(const std::string& name);
+    //! Set a maxmum number of acceptable warnings.
+    void setMaxWarn(int maxwarn);
     //! Calls grompp (on rank 0, with a customized command line) to prepare for the mdrun test
     int callGrompp(const CommandLine& callerRef);
     //! Convenience wrapper for a default call to \c callGrompp
@@ -134,14 +138,14 @@ public:
     //! Convenience wrapper for a default call to \c callGromppOnThisRank
     int callGromppOnThisRank();
     //! Calls nmeig for testing
-    int callNmeig();
+    int callNmeig() const;
     //! Calls mdrun for testing with a customized command line
     int callMdrun(const CommandLine& callerRef);
     /*! \brief Convenience wrapper for calling mdrun for testing
      * with default command line */
     int callMdrun();
     //! Calls convert-tpr on this rank to set a new number of steps in the tpr.
-    int changeTprNsteps(int nsteps);
+    int changeTprNsteps(int nsteps) const;
 
     //@{
     /*! \name Names for frequently used grompp and mdrun output files
@@ -160,16 +164,17 @@ public:
     std::string fullPrecisionTrajectoryFileName_;
     std::string reducedPrecisionTrajectoryFileName_;
     std::string groOutputFileName_;
+    std::string cptOutputFileName_;
     std::string ndxFileName_;
     std::string mdpOutputFileName_;
     std::string tprFileName_;
     std::string logFileName_;
     std::string edrFileName_;
     std::string mtxFileName_;
-    std::string cptFileName_;
     std::string swapFileName_;
     std::string dhdlFileName_;
     int         nsteps_;
+    int         maxwarn_;
     //@}
     //! How the mdp options are defined
     SimulationRunnerMdpSource mdpSource_;
@@ -198,20 +203,22 @@ class MdrunTestFixtureBase : public ::testing::Test
 {
 public:
     //! Per-test-case setup for lengthy processes that need run only once.
-    static void SetUpTestCase();
+    static void SetUpTestSuite();
     //! Per-test-case tear down
-    static void TearDownTestCase();
+    static void TearDownTestSuite();
 
     MdrunTestFixtureBase();
     ~MdrunTestFixtureBase() override;
 
     //! Communicator over which the test fixture works
-    static MPI_Comm communicator_;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+    static MPI_Comm s_communicator;
     /*! \brief Hardware information object
      *
      * Detected within \c communicator_ and available to re-use
      * over all tests in the test case of this text fixture. */
-    static std::unique_ptr<gmx_hw_info_t> hwinfo_;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+    static std::unique_ptr<gmx_hw_info_t> s_hwinfo;
 };
 
 /*! \internal

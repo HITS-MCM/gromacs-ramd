@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *
@@ -54,7 +53,19 @@
 #define GMX_PBCUTIL_PBC_AIUC_CUDA_CUH
 
 #include "gromacs/gpu_utils/vectype_ops.cuh"
+#include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc_aiuc.h"
+
+static inline __device__ int xyzToShiftIndex(int x, int y, int z)
+{
+    return (gmx::detail::c_nBoxX * (gmx::detail::c_nBoxY * ((z) + gmx::c_dBoxZ) + (y) + gmx::c_dBoxY)
+            + (x) + gmx::c_dBoxX);
+}
+
+static inline __device__ int int3ToShiftIndex(int3 iv)
+{
+    return (xyzToShiftIndex(iv.x, iv.y, iv.z));
+}
 
 /*! \brief Computes the vector between two points taking PBC into account.
  *
@@ -70,7 +81,7 @@
  * \todo This routine uses CUDA float4 types for input coordinates and
  *       returns in rvec data-type. Other than that, it does essentially
  *       the same thing as the version below, as well as SIMD and CPU
- *       versions. This routine is used in gpubonded module.
+ *       versions. This routine is used in GPU listed forces module.
  *       To avoid code duplication, these implementations should be
  *       unified. See Issue #2863:
  *       https://gitlab.com/gromacs/gromacs/-/issues/2863
@@ -82,7 +93,8 @@
  */
 template<bool returnShift>
 static __forceinline__ __device__ int
-                       pbcDxAiuc(const PbcAiuc& pbcAiuc, const float4 r1, const float4 r2, float3& dr)
+// NOLINTNEXTLINE(google-runtime-references)
+pbcDxAiuc(const PbcAiuc& pbcAiuc, const float4 r1, const float4 r2, float3& dr)
 {
     dr.x = r1.x - r2.x;
     dr.y = r1.y - r2.y;
@@ -102,13 +114,13 @@ static __forceinline__ __device__ int
 
     if (returnShift)
     {
-        ivec ishift;
+        int3 ishift;
 
-        ishift[XX] = -__float2int_rn(shx);
-        ishift[YY] = -__float2int_rn(shy);
-        ishift[ZZ] = -__float2int_rn(shz);
+        ishift.x = -__float2int_rn(shx);
+        ishift.y = -__float2int_rn(shy);
+        ishift.z = -__float2int_rn(shz);
 
-        return IVEC2IS(ishift);
+        return int3ToShiftIndex(ishift);
     }
     else
     {

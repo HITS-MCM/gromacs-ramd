@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -44,16 +43,33 @@
 
 #include "threadaffinitytest.h"
 
+namespace gmx
+{
+namespace test
+{
 namespace
 {
 
 using gmx::test::ThreadAffinityTestHelper;
 
+//! Helper to establish test requirements on MPI ranks
+class RequireEvenRankCountWithAtLeastFourRanks
+{
+public:
+    //! Function to require even ranks with at least four ranks
+    static bool conditionSatisfied(const int numRanks)
+    {
+        return (numRanks > 2) && (numRanks % 2 == 0);
+    }
+    //! Text to echo when skipping a test that does not satisfy the requirement
+    inline static const char* s_skipReason = "an even rank count of at least four is required";
+};
+
 TEST(ThreadAffinityMultiRankTest, PinsWholeNode)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(AllowAnyRankCount);
     ThreadAffinityTestHelper helper;
-    helper.setLogicalProcessorCount(4);
+    helper.setLogicalProcessorCount(getNumberOfTestMpiRanks());
     helper.expectPinningMessage(false, 1);
     helper.expectAffinitySet(gmx_node_rank());
     helper.setAffinity(1);
@@ -61,11 +77,11 @@ TEST(ThreadAffinityMultiRankTest, PinsWholeNode)
 
 TEST(ThreadAffinityMultiRankTest, PinsWithOffsetAndStride)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(AllowAnyRankCount);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::On);
     helper.setOffsetAndStride(1, 2);
-    helper.setLogicalProcessorCount(8);
+    helper.setLogicalProcessorCount(2 * getNumberOfTestMpiRanks());
     helper.expectWarningMatchingRegex("Applying core pinning offset 1");
     helper.expectPinningMessage(true, 2);
     helper.expectAffinitySet(1 + 2 * gmx_node_rank());
@@ -74,7 +90,7 @@ TEST(ThreadAffinityMultiRankTest, PinsWithOffsetAndStride)
 
 TEST(ThreadAffinityMultiRankTest, PinsTwoNodes)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
     helper.setPhysicalNodeId(gmx_node_rank() / 2);
     helper.setLogicalProcessorCount(2);
@@ -85,30 +101,32 @@ TEST(ThreadAffinityMultiRankTest, PinsTwoNodes)
 
 TEST(ThreadAffinityMultiRankTest, DoesNothingWhenDisabled)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(AllowAnyRankCount);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::Off);
-    helper.setLogicalProcessorCount(4);
+    helper.setLogicalProcessorCount(getNumberOfTestMpiRanks());
     helper.setAffinity(1);
 }
 
 TEST(ThreadAffinityMultiRankTest, HandlesTooManyThreadsWithAuto)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(AllowAnyRankCount);
     ThreadAffinityTestHelper helper;
-    helper.setLogicalProcessorCount(6);
-    helper.expectWarningMatchingRegex("Oversubscribing the CPU");
-    helper.setAffinity(2);
+    const int                threadsPerRank = 2;
+    helper.setLogicalProcessorCount(threadsPerRank * getNumberOfTestMpiRanks() - 1);
+    helper.expectWarningMatchingRegex("Oversubscribing available/permitted CPUs");
+    helper.setAffinity(threadsPerRank);
 }
 
 TEST(ThreadAffinityMultiRankTest, HandlesTooManyThreadsWithForce)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(AllowAnyRankCount);
     ThreadAffinityTestHelper helper;
+    const int                threadsPerRank = 2;
     helper.setAffinityOption(ThreadAffinity::On);
-    helper.setLogicalProcessorCount(6);
-    helper.expectWarningMatchingRegex("Oversubscribing the CPU");
-    helper.setAffinity(2);
+    helper.setLogicalProcessorCount(threadsPerRank * getNumberOfTestMpiRanks() - 1);
+    helper.expectWarningMatchingRegex("Oversubscribing available/permitted CPUs");
+    helper.setAffinity(threadsPerRank);
 }
 
 class ThreadAffinityHeterogeneousNodesTest : public ::testing::Test
@@ -118,11 +136,11 @@ public:
     static int  indexInNode() { return gmx_node_rank() % 2; }
     static bool isMaster() { return gmx_node_rank() == 0; }
 
-    static void setupNodes(ThreadAffinityTestHelper* helper, std::array<int, 2> cores)
+    static void setupNodes(ThreadAffinityTestHelper* helper, int coresOnNodeZero, int coresOnOtherNodes)
     {
         const int node = currentNode();
         helper->setPhysicalNodeId(node);
-        helper->setLogicalProcessorCount(cores[node]);
+        helper->setLogicalProcessorCount(node == 0 ? coresOnNodeZero : coresOnOtherNodes);
     }
     static void expectNodeAffinitySet(ThreadAffinityTestHelper* helper, int node, int core)
     {
@@ -135,11 +153,12 @@ public:
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, PinsOnMasterOnly)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::On);
-    setupNodes(&helper, { { 2, 1 } });
-    helper.expectWarningMatchingRegexIf("Oversubscribing the CPU", isMaster() || currentNode() == 1);
+    setupNodes(&helper, 2, 1);
+    helper.expectWarningMatchingRegexIf("Oversubscribing available/permitted CPUs",
+                                        isMaster() || currentNode() == 1);
     if (currentNode() == 0)
     {
         helper.expectPinningMessage(false, 1);
@@ -150,26 +169,26 @@ TEST_F(ThreadAffinityHeterogeneousNodesTest, PinsOnMasterOnly)
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, PinsOnNonMasterOnly)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::On);
-    setupNodes(&helper, { { 1, 2 } });
-    helper.expectWarningMatchingRegexIf("Oversubscribing the CPU", currentNode() == 0);
-    if (currentNode() == 1)
+    setupNodes(&helper, 1, 2);
+    helper.expectWarningMatchingRegexIf("Oversubscribing available/permitted CPUs", currentNode() == 0);
+    if (currentNode() >= 1)
     {
         helper.expectPinningMessage(false, 1);
+        expectNodeAffinitySet(&helper, currentNode(), indexInNode());
     }
-    expectNodeAffinitySet(&helper, 1, indexInNode());
     helper.setAffinity(1);
 }
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, HandlesUnknownHardwareOnNonMaster)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::On);
-    setupNodes(&helper, { { 2, 0 } });
-    helper.expectWarningMatchingRegexIf("No information on available cores",
+    setupNodes(&helper, 2, 0);
+    helper.expectWarningMatchingRegexIf("No information on available logical cpus",
                                         isMaster() || currentNode() == 1);
     if (currentNode() == 0)
     {
@@ -181,10 +200,11 @@ TEST_F(ThreadAffinityHeterogeneousNodesTest, HandlesUnknownHardwareOnNonMaster)
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, PinsAutomaticallyOnMasterOnly)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
-    setupNodes(&helper, { { 2, 1 } });
-    helper.expectWarningMatchingRegexIf("Oversubscribing the CPU", isMaster() || currentNode() == 1);
+    setupNodes(&helper, 2, 1);
+    helper.expectWarningMatchingRegexIf("Oversubscribing available/permitted CPUs",
+                                        isMaster() || currentNode() == 1);
     if (currentNode() == 0)
     {
         helper.expectPinningMessage(false, 1);
@@ -195,27 +215,27 @@ TEST_F(ThreadAffinityHeterogeneousNodesTest, PinsAutomaticallyOnMasterOnly)
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, PinsAutomaticallyOnNonMasterOnly)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
-    setupNodes(&helper, { { 1, 2 } });
-    helper.expectWarningMatchingRegexIf("Oversubscribing the CPU", currentNode() == 0);
-    if (currentNode() == 1)
+    setupNodes(&helper, 1, 2);
+    helper.expectWarningMatchingRegexIf("Oversubscribing available/permitted CPUs", currentNode() == 0);
+    if (currentNode() >= 1)
     {
         helper.expectPinningMessage(false, 1);
+        expectNodeAffinitySet(&helper, currentNode(), indexInNode());
     }
-    expectNodeAffinitySet(&helper, 1, indexInNode());
     helper.setAffinity(1);
 }
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, HandlesInvalidOffsetOnNonMasterOnly)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::On);
     helper.setOffsetAndStride(2, 0);
-    setupNodes(&helper, { { 4, 2 } });
+    setupNodes(&helper, 4, 2);
     helper.expectWarningMatchingRegex("Applying core pinning offset 2");
-    helper.expectWarningMatchingRegexIf("Requested offset too large", isMaster() || currentNode() == 1);
+    helper.expectWarningMatchingRegexIf("Requested offset too large", isMaster() || currentNode() >= 1);
     if (currentNode() == 0)
     {
         helper.expectPinningMessage(false, 1);
@@ -226,11 +246,11 @@ TEST_F(ThreadAffinityHeterogeneousNodesTest, HandlesInvalidOffsetOnNonMasterOnly
 
 TEST_F(ThreadAffinityHeterogeneousNodesTest, HandlesInvalidStrideOnNonMasterOnly)
 {
-    GMX_MPI_TEST(4);
+    GMX_MPI_TEST(RequireEvenRankCountWithAtLeastFourRanks);
     ThreadAffinityTestHelper helper;
     helper.setAffinityOption(ThreadAffinity::On);
     helper.setOffsetAndStride(0, 2);
-    setupNodes(&helper, { { 4, 2 } });
+    setupNodes(&helper, 4, 2);
     helper.expectWarningMatchingRegexIf("Requested stride too large", isMaster() || currentNode() == 1);
     if (currentNode() == 0)
     {
@@ -241,3 +261,5 @@ TEST_F(ThreadAffinityHeterogeneousNodesTest, HandlesInvalidStrideOnNonMasterOnly
 }
 
 } // namespace
+} // namespace test
+} // namespace gmx

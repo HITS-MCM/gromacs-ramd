@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_GPU_UTILS_DEVICEBUFFER_OCL_H
 #define GMX_GPU_UTILS_DEVICEBUFFER_OCL_H
@@ -69,10 +68,11 @@ void allocateDeviceBuffer(DeviceBuffer<ValueType>* buffer, size_t numValues, con
     GMX_ASSERT(buffer, "needs a buffer pointer");
     void*  hostPtr = nullptr;
     cl_int clError;
-    *buffer = clCreateBuffer(deviceContext.context(), CL_MEM_READ_WRITE,
-                             numValues * sizeof(ValueType), hostPtr, &clError);
+    *buffer = clCreateBuffer(
+            deviceContext.context(), CL_MEM_READ_WRITE, numValues * sizeof(ValueType), hostPtr, &clError);
     GMX_RELEASE_ASSERT(clError == CL_SUCCESS,
-                       gmx::formatString("clCreateBuffer failure (OpenCL error %d: %s)", clError,
+                       gmx::formatString("clCreateBuffer failure (OpenCL error %d: %s)",
+                                         clError,
                                          ocl_get_error_string(clError).c_str())
                                .c_str());
 }
@@ -94,7 +94,8 @@ void freeDeviceBuffer(DeviceBuffer* buffer)
         cl_int clError = clReleaseMemObject(*buffer);
         GMX_RELEASE_ASSERT(clError == CL_SUCCESS,
                            gmx::formatString("clReleaseMemObject failed (OpenCL error %d: %s)",
-                                             clError, ocl_get_error_string(clError).c_str())
+                                             clError,
+                                             ocl_get_error_string(clError).c_str())
                                    .c_str());
     }
 }
@@ -137,21 +138,23 @@ void copyToDeviceBuffer(DeviceBuffer<ValueType>* buffer,
     switch (transferKind)
     {
         case GpuApiCallBehavior::Async:
-            clError = clEnqueueWriteBuffer(deviceStream.stream(), *buffer, CL_FALSE, offset, bytes,
-                                           hostBuffer, 0, nullptr, timingEvent);
+            clError = clEnqueueWriteBuffer(
+                    deviceStream.stream(), *buffer, CL_FALSE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
             GMX_RELEASE_ASSERT(
                     clError == CL_SUCCESS,
-                    gmx::formatString("Asynchronous H2D copy failed (OpenCL error %d: %s)", clError,
+                    gmx::formatString("Asynchronous H2D copy failed (OpenCL error %d: %s)",
+                                      clError,
                                       ocl_get_error_string(clError).c_str())
                             .c_str());
             break;
 
         case GpuApiCallBehavior::Sync:
-            clError = clEnqueueWriteBuffer(deviceStream.stream(), *buffer, CL_TRUE, offset, bytes,
-                                           hostBuffer, 0, nullptr, timingEvent);
+            clError = clEnqueueWriteBuffer(
+                    deviceStream.stream(), *buffer, CL_TRUE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
             GMX_RELEASE_ASSERT(
                     clError == CL_SUCCESS,
-                    gmx::formatString("Synchronous H2D copy failed (OpenCL error %d: %s)", clError,
+                    gmx::formatString("Synchronous H2D copy failed (OpenCL error %d: %s)",
+                                      clError,
                                       ocl_get_error_string(clError).c_str())
                             .c_str());
             break;
@@ -198,27 +201,46 @@ void copyFromDeviceBuffer(ValueType*               hostBuffer,
     switch (transferKind)
     {
         case GpuApiCallBehavior::Async:
-            clError = clEnqueueReadBuffer(deviceStream.stream(), *buffer, CL_FALSE, offset, bytes,
-                                          hostBuffer, 0, nullptr, timingEvent);
+            clError = clEnqueueReadBuffer(
+                    deviceStream.stream(), *buffer, CL_FALSE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
             GMX_RELEASE_ASSERT(
                     clError == CL_SUCCESS,
-                    gmx::formatString("Asynchronous D2H copy failed (OpenCL error %d: %s)", clError,
+                    gmx::formatString("Asynchronous D2H copy failed (OpenCL error %d: %s)",
+                                      clError,
                                       ocl_get_error_string(clError).c_str())
                             .c_str());
             break;
 
         case GpuApiCallBehavior::Sync:
-            clError = clEnqueueReadBuffer(deviceStream.stream(), *buffer, CL_TRUE, offset, bytes,
-                                          hostBuffer, 0, nullptr, timingEvent);
+            clError = clEnqueueReadBuffer(
+                    deviceStream.stream(), *buffer, CL_TRUE, offset, bytes, hostBuffer, 0, nullptr, timingEvent);
             GMX_RELEASE_ASSERT(
                     clError == CL_SUCCESS,
-                    gmx::formatString("Synchronous D2H copy failed (OpenCL error %d: %s)", clError,
+                    gmx::formatString("Synchronous D2H copy failed (OpenCL error %d: %s)",
+                                      clError,
                                       ocl_get_error_string(clError).c_str())
                             .c_str());
             break;
 
         default: throw;
     }
+}
+
+/*! \brief
+ * Performs the device-to-device data copy, synchronous or asynchronously on request.
+ *
+ * \tparam        ValueType                Raw value type of the \p buffer.
+ */
+template<typename ValueType>
+void copyBetweenDeviceBuffers(DeviceBuffer<ValueType>* /* destinationDeviceBuffer */,
+                              DeviceBuffer<ValueType>* /* sourceDeviceBuffer */,
+                              size_t /* numValues */,
+                              const DeviceStream& /* deviceStream */,
+                              GpuApiCallBehavior /* transferKind */,
+                              CommandEvent* /*timingEvent*/)
+{
+    // OpenCL-TODO
+    gmx_fatal(FARGS, "D2D copy stub was called. Not yet implemented in OpenCL.");
 }
 
 /*! \brief
@@ -236,6 +258,10 @@ void clearDeviceBufferAsync(DeviceBuffer<ValueType>* buffer,
                             size_t                   numValues,
                             const DeviceStream&      deviceStream)
 {
+    if (numValues == 0)
+    {
+        return;
+    }
     GMX_ASSERT(buffer, "needs a buffer pointer");
     const size_t    offset        = startingOffset * sizeof(ValueType);
     const size_t    bytes         = numValues * sizeof(ValueType);
@@ -243,11 +269,12 @@ void clearDeviceBufferAsync(DeviceBuffer<ValueType>* buffer,
     const cl_uint   numWaitEvents = 0;
     const cl_event* waitEvents    = nullptr;
     cl_event        commandEvent;
-    cl_int clError = clEnqueueFillBuffer(deviceStream.stream(), *buffer, &pattern, sizeof(pattern),
-                                         offset, bytes, numWaitEvents, waitEvents, &commandEvent);
+    cl_int          clError = clEnqueueFillBuffer(
+            deviceStream.stream(), *buffer, &pattern, sizeof(pattern), offset, bytes, numWaitEvents, waitEvents, &commandEvent);
     GMX_RELEASE_ASSERT(clError == CL_SUCCESS,
                        gmx::formatString("Couldn't clear the device buffer (OpenCL error %d: %s)",
-                                         clError, ocl_get_error_string(clError).c_str())
+                                         clError,
+                                         ocl_get_error_string(clError).c_str())
                                .c_str());
 }
 
@@ -306,11 +333,14 @@ void initParamLookupTable(DeviceBuffer<ValueType>* deviceBuffer,
     cl_int       clError;
     *deviceBuffer = clCreateBuffer(deviceContext.context(),
                                    CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY | CL_MEM_COPY_HOST_PTR,
-                                   bytes, const_cast<ValueType*>(hostBuffer), &clError);
+                                   bytes,
+                                   const_cast<ValueType*>(hostBuffer),
+                                   &clError);
 
     GMX_RELEASE_ASSERT(clError == CL_SUCCESS,
                        gmx::formatString("Constant memory allocation failed (OpenCL error %d: %s)",
-                                         clError, ocl_get_error_string(clError).c_str())
+                                         clError,
+                                         ocl_get_error_string(clError).c_str())
                                .c_str());
 }
 

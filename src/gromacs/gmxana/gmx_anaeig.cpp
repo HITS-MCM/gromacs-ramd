@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -69,8 +65,6 @@
 #include "gromacs/utility/smalloc.h"
 
 #include "thermochemistry.h"
-
-static const char* proj_unit;
 
 static real tick_spacing(real range, int minticks)
 {
@@ -280,8 +274,10 @@ compare(int natoms, int n1, rvec** eigvec1, int n2, rvec** eigvec2, real* eigval
     fprintf(stdout, "Trace of the two matrices: %g and %g\n", sum1, sum2);
     if (neig1 != n || neig2 != n)
     {
-        fprintf(stdout, "this is %d%% and %d%% of the total trace\n",
-                gmx::roundToInt(100 * sum1 / trace1), gmx::roundToInt(100 * sum2 / trace2));
+        fprintf(stdout,
+                "this is %d%% and %d%% of the total trace\n",
+                gmx::roundToInt(100 * sum1 / trace1),
+                gmx::roundToInt(100 * sum2 / trace2));
     }
     fprintf(stdout, "Square root of the traces: %g and %g\n", std::sqrt(sum1), std::sqrt(sum2));
 
@@ -414,8 +410,7 @@ static void inprod_matrix(const char* matfile,
     rhi.b   = 0;
     nlevels = 41;
     out     = gmx_ffopen(matfile, "w");
-    write_xpm(out, 0, "Eigenvector inner-products", "in.prod.", "run 1", "run 2", nx, ny, t_x, t_y,
-              mat, 0.0, maxval, rlo, rhi, &nlevels);
+    write_xpm(out, 0, "Eigenvector inner-products", "in.prod.", "run 1", "run 2", nx, ny, t_x, t_y, mat, 0.0, maxval, rlo, rhi, &nlevels);
     gmx_ffclose(out);
 }
 
@@ -472,6 +467,7 @@ static void project(const char*             trajfile,
                     const char*             twodplotfile,
                     const char*             threedplotfile,
                     const char*             filterfile,
+                    const char*             projUnit,
                     int                     skip,
                     const char*             extremefile,
                     gmx_bool                bExtrAll,
@@ -544,7 +540,8 @@ static void project(const char*             trajfile,
             gmx_fatal(FARGS,
                       "the number of atoms in your trajectory (%d) is larger than the number of "
                       "atoms in your structure file (%d)",
-                      nat, atoms->nr);
+                      nat,
+                      atoms->nr);
         }
         snew(all_at, nat);
 
@@ -647,16 +644,28 @@ static void project(const char*             trajfile,
             sprintf(str, "vec %d", eignr[outvec[v]] + 1);
             ylabel[v] = gmx_strdup(str);
         }
-        sprintf(str, "projection on eigenvectors (%s)", proj_unit);
-        write_xvgr_graphs(projfile, noutvec, 1, str, nullptr, output_env_get_xvgr_tlabel(oenv),
-                          ylabel, nframes, inprod[noutvec], inprod, nullptr,
-                          output_env_get_time_factor(oenv), FALSE, bSplit, oenv);
+        sprintf(str, "projection on eigenvectors (%s)", projUnit);
+        write_xvgr_graphs(projfile,
+                          noutvec,
+                          1,
+                          str,
+                          nullptr,
+                          output_env_get_xvgr_tlabel(oenv),
+                          ylabel,
+                          nframes,
+                          inprod[noutvec],
+                          inprod,
+                          nullptr,
+                          output_env_get_time_factor(oenv),
+                          FALSE,
+                          bSplit,
+                          oenv);
     }
 
     if (twodplotfile)
     {
-        sprintf(str, "projection on eigenvector %d (%s)", eignr[outvec[0]] + 1, proj_unit);
-        sprintf(str2, "projection on eigenvector %d (%s)", eignr[outvec[noutvec - 1]] + 1, proj_unit);
+        sprintf(str, "projection on eigenvector %d (%s)", eignr[outvec[0]] + 1, projUnit);
+        sprintf(str2, "projection on eigenvector %d (%s)", eignr[outvec[noutvec - 1]] + 1, projUnit);
         xvgrout = xvgropen(twodplotfile, "2D projection of trajectory", str, str2, oenv);
         for (i = 0; i < nframes; i++)
         {
@@ -696,13 +705,20 @@ static void project(const char*             trajfile,
                     "You have selected four or more eigenvectors:\n"
                     "fourth eigenvector will be plotted "
                     "in bfactor field of pdb file\n");
-            sprintf(str, "4D proj. of traj. on eigenv. %d, %d, %d and %d", eignr[outvec[0]] + 1,
-                    eignr[outvec[1]] + 1, eignr[outvec[2]] + 1, eignr[outvec[3]] + 1);
+            sprintf(str,
+                    "4D proj. of traj. on eigenv. %d, %d, %d and %d",
+                    eignr[outvec[0]] + 1,
+                    eignr[outvec[1]] + 1,
+                    eignr[outvec[2]] + 1,
+                    eignr[outvec[3]] + 1);
         }
         else
         {
-            sprintf(str, "3D proj. of traj. on eigenv. %d, %d and %d", eignr[outvec[0]] + 1,
-                    eignr[outvec[1]] + 1, eignr[outvec[2]] + 1);
+            sprintf(str,
+                    "3D proj. of traj. on eigenv. %d, %d and %d",
+                    eignr[outvec[0]] + 1,
+                    eignr[outvec[1]] + 1,
+                    eignr[outvec[2]] + 1);
         }
         init_t_atoms(&atoms, nframes, FALSE);
         snew(x, nframes);
@@ -753,9 +769,21 @@ static void project(const char*             trajfile,
                     fprintf(out, "TER\n");
                     j = 0;
                 }
-                gmx_fprintf_pdb_atomline(out, epdbATOM, i + 1, "C", ' ', "PRJ", ' ', j + 1, ' ',
-                                         10 * x[i][XX], 10 * x[i][YY], 10 * x[i][ZZ], 1.0,
-                                         10 * b[i], "");
+                gmx_fprintf_pdb_atomline(out,
+                                         PdbRecordType::Atom,
+                                         i + 1,
+                                         "C",
+                                         ' ',
+                                         "PRJ",
+                                         ' ',
+                                         j + 1,
+                                         ' ',
+                                         10 * x[i][XX],
+                                         10 * x[i][YY],
+                                         10 * x[i][ZZ],
+                                         1.0,
+                                         10 * b[i],
+                                         "");
                 if (j > 0)
                 {
                     fprintf(out, "CONECT%5d%5d\n", i, i + 1);
@@ -798,8 +826,7 @@ static void project(const char*             trajfile,
                 }
                 pmin[v] = inprod[v][imin];
                 pmax[v] = inprod[v][imax];
-                fprintf(stderr, "%7d     %10.6f %10d %10.6f %10d\n", eignr[outvec[v]] + 1, pmin[v],
-                        imin, pmax[v], imax);
+                fprintf(stderr, "%7d     %10.6f %10d %10.6f %10d\n", eignr[outvec[v]] + 1, pmin[v], imin, pmax[v], imax);
             }
         }
         else
@@ -895,9 +922,21 @@ static void components(const char*             outfile,
             }
         }
     }
-    write_xvgr_graphs(outfile, noutvec, 4, "Eigenvector components",
-                      "black: total, red: x, green: y, blue: z", "Atom number", ylabel, natoms, x,
-                      nullptr, y, 1, FALSE, FALSE, oenv);
+    write_xvgr_graphs(outfile,
+                      noutvec,
+                      4,
+                      "Eigenvector components",
+                      "black: total, red: x, green: y, blue: z",
+                      "Atom number",
+                      ylabel,
+                      natoms,
+                      x,
+                      nullptr,
+                      y,
+                      1,
+                      FALSE,
+                      FALSE,
+                      oenv);
     fprintf(stderr, "\n");
 }
 
@@ -939,8 +978,10 @@ static void rmsf(const char*             outfile,
         v = outvec[g];
         if (eignr[v] >= neig)
         {
-            gmx_fatal(FARGS, "Selected vector %d is larger than the number of eigenvalues (%d)",
-                      eignr[v] + 1, neig);
+            gmx_fatal(FARGS,
+                      "Selected vector %d is larger than the number of eigenvalues (%d)",
+                      eignr[v] + 1,
+                      neig);
         }
         sprintf(str, "vec %d", eignr[v] + 1);
         ylabel[g] = gmx_strdup(str);
@@ -950,8 +991,8 @@ static void rmsf(const char*             outfile,
             y[g][i] = std::sqrt(eigval[eignr[v]] * norm2(eigvec[v][i])) / sqrtm[i];
         }
     }
-    write_xvgr_graphs(outfile, noutvec, 1, "RMS fluctuation (nm) ", nullptr, "Atom number", ylabel,
-                      natoms, x, y, nullptr, 1, TRUE, FALSE, oenv);
+    write_xvgr_graphs(
+            outfile, noutvec, 1, "RMS fluctuation (nm) ", nullptr, "Atom number", ylabel, natoms, x, y, nullptr, 1, TRUE, FALSE, oenv);
     fprintf(stderr, "\n");
 }
 
@@ -1109,8 +1150,8 @@ int gmx_anaeig(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW, NFILE, fnm,
-                           NPA, pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW, NFILE, fnm, NPA, pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -1149,15 +1190,18 @@ int gmx_anaeig(int argc, char* argv[])
     bCompare = (Vec2File != nullptr) || (Eig2File != nullptr);
     bPDB3D   = fn2ftp(ThreeDPlotFile) == efPDB;
 
-    read_eigenvectors(VecFile, &natoms, &bFit1, &xref1, &bDMR1, &xav1, &bDMA1, &nvec1, &eignr1,
-                      &eigvec1, &eigval1);
+    read_eigenvectors(
+            VecFile, &natoms, &bFit1, &xref1, &bDMR1, &xav1, &bDMA1, &nvec1, &eignr1, &eigvec1, &eigval1);
     neig1 = std::min(nvec1, DIM * natoms);
     if (nvec1 != DIM * natoms)
     {
         fprintf(stderr,
                 "Warning: number of eigenvectors %d does not match three times\n"
                 "the number of atoms %d in %s. Using %d eigenvectors.\n\n",
-                nvec1, natoms, VecFile, neig1);
+                nvec1,
+                natoms,
+                VecFile,
+                neig1);
     }
 
     /* Overwrite eigenvalues from separate files if the user provides them */
@@ -1168,7 +1212,8 @@ int gmx_anaeig(int argc, char* argv[])
         {
             fprintf(stderr,
                     "Warning: number of eigenvalues in xvg file (%d) does not mtch trr file (%d)\n",
-                    neig1, natoms);
+                    neig1,
+                    natoms);
         }
         neig1 = neig_tmp;
         srenew(eigval1, neig1);
@@ -1178,8 +1223,7 @@ int gmx_anaeig(int argc, char* argv[])
             eigval1[j] = xvgdata[1][j];
             if (debug && (eigval1[j] != tmp))
             {
-                fprintf(debug, "Replacing eigenvalue %d. From trr: %10g, from xvg: %10g\n", j, tmp,
-                        eigval1[j]);
+                fprintf(debug, "Replacing eigenvalue %d. From trr: %10g, from xvg: %10g\n", j, tmp, eigval1[j]);
             }
         }
         for (j = 0; j < i; j++)
@@ -1211,8 +1255,8 @@ int gmx_anaeig(int argc, char* argv[])
             gmx_fatal(FARGS, "Need a second eigenvector file to do this analysis.");
         }
         int natoms2;
-        read_eigenvectors(Vec2File, &natoms2, &bFit2, &xref2, &bDMR2, &xav2, &bDMA2, &nvec2,
-                          &eignr2, &eigvec2, &eigval2);
+        read_eigenvectors(
+                Vec2File, &natoms2, &bFit2, &xref2, &bDMR2, &xav2, &bDMA2, &nvec2, &eignr2, &eigvec2, &eigval2);
 
         neig2 = std::min(nvec2, DIM * natoms2);
         if (neig2 != neig1)
@@ -1301,7 +1345,8 @@ int gmx_anaeig(int argc, char* argv[])
                     gmx_fatal(FARGS,
                               "you selected a group with %d elements instead of %d, your selection "
                               "does not fit the reference structure in the eigenvector file.",
-                              nfit, natoms);
+                              nfit,
+                              natoms);
                 }
                 for (i = 0; (i < nfit); i++)
                 {
@@ -1333,9 +1378,10 @@ int gmx_anaeig(int argc, char* argv[])
     }
 
     snew(sqrtm, natoms);
+    std::string projUnit;
     if (bM && bDMA1)
     {
-        proj_unit = "u\\S1/2\\Nnm";
+        projUnit = "u\\S1/2\\Nnm";
         for (i = 0; (i < natoms); i++)
         {
             sqrtm[i] = std::sqrt(atoms->atom[index[i]].m);
@@ -1343,7 +1389,7 @@ int gmx_anaeig(int argc, char* argv[])
     }
     else
     {
-        proj_unit = "nm";
+        projUnit = "nm";
         for (i = 0; (i < natoms); i++)
         {
             sqrtm[i] = 1.0;
@@ -1465,10 +1511,36 @@ int gmx_anaeig(int argc, char* argv[])
 
     if (bProj)
     {
-        project(bTraj ? opt2fn("-f", NFILE, fnm) : nullptr, bTop ? &top : nullptr, pbcType, topbox,
-                ProjOnVecFile, TwoDPlotFile, ThreeDPlotFile, FilterFile, skip, ExtremeFile,
-                bFirstLastSet, max, nextr, atoms, natoms, index, bFit1, xrefp, nfit, ifit, w_rls,
-                sqrtm, xav1, eignr1, eigvec1, noutvec, outvec, bSplit, oenv);
+        project(bTraj ? opt2fn("-f", NFILE, fnm) : nullptr,
+                bTop ? &top : nullptr,
+                pbcType,
+                topbox,
+                ProjOnVecFile,
+                TwoDPlotFile,
+                ThreeDPlotFile,
+                FilterFile,
+                projUnit.c_str(),
+                skip,
+                ExtremeFile,
+                bFirstLastSet,
+                max,
+                nextr,
+                atoms,
+                natoms,
+                index,
+                bFit1,
+                xrefp,
+                nfit,
+                ifit,
+                w_rls,
+                sqrtm,
+                xav1,
+                eignr1,
+                eigvec1,
+                noutvec,
+                outvec,
+                bSplit,
+                oenv);
     }
 
     if (OverlapFile)
@@ -1478,8 +1550,8 @@ int gmx_anaeig(int argc, char* argv[])
 
     if (InpMatFile)
     {
-        inprod_matrix(InpMatFile, natoms, nvec1, eignr1, eigvec1, nvec2, eignr2, eigvec2,
-                      bFirstLastSet, noutvec, outvec);
+        inprod_matrix(
+                InpMatFile, natoms, nvec1, eignr1, eigvec1, nvec2, eignr2, eigvec2, bFirstLastSet, noutvec, outvec);
     }
 
     if (bCompare)

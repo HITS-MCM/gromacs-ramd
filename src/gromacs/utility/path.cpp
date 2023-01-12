@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2011-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2011- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -162,11 +160,21 @@ bool Path::isEquivalent(const std::string& path1, const std::string& path2)
 
     // p2 is done first, so any error reported is for p1
     // FixME: #1635
-    handle_wrapper h2(CreateFile(path2.c_str(), 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0));
+    handle_wrapper h2(CreateFile(path2.c_str(),
+                                 0,
+                                 FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 0,
+                                 OPEN_EXISTING,
+                                 FILE_FLAG_BACKUP_SEMANTICS,
+                                 0));
 
-    handle_wrapper h1(CreateFile(path1.c_str(), 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0));
+    handle_wrapper h1(CreateFile(path1.c_str(),
+                                 0,
+                                 FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 0,
+                                 OPEN_EXISTING,
+                                 FILE_FLAG_BACKUP_SEMANTICS,
+                                 0));
 
     if (h1.handle == INVALID_HANDLE_VALUE || h2.handle == INVALID_HANDLE_VALUE)
     {
@@ -213,8 +221,8 @@ bool Path::isEquivalent(const std::string& path1, const std::string& path2)
         // but if both are invalid then it is an error.
         if (e1 != 0 && e2 != 0)
         {
-            GMX_THROW_WITH_ERRNO(FileIOError("Path::isEquivalent called with two invalid files"),
-                                 "stat", errno);
+            GMX_THROW_WITH_ERRNO(
+                    FileIOError("Path::isEquivalent called with two invalid files"), "stat", errno);
         }
         return false;
     }
@@ -419,8 +427,8 @@ std::string Path::getWorkingDirectory()
 
 void Path::splitPathEnvironment(const std::string& pathEnv, std::vector<std::string>* result)
 {
-    size_t prevPos = 0;
-    size_t separator;
+    size_t prevPos   = 0;
+    size_t separator = 0;
     do
     {
         separator = pathEnv.find(cPathSeparator, prevPos);
@@ -452,7 +460,7 @@ std::string Path::resolveSymlinks(const std::string& path)
     std::string result(path);
 #if !GMX_NATIVE_WINDOWS
     char buf[GMX_PATH_MAX];
-    int  length;
+    int  length = 0;
     while ((length = readlink(result.c_str(), buf, sizeof(buf) - 1)) > 0)
     {
         buf[length] = '\0';
@@ -488,8 +496,8 @@ void File::throwOnError(const NotFoundInfo& info)
 void File::throwOnNotFound(const NotFoundInfo& info)
 {
     throwOnError(info);
-    const std::string message = formatString("File '%s' does not exist or is not accessible.\n%s",
-                                             info.filename, info.message);
+    const std::string message = formatString(
+            "File '%s' does not exist or is not accessible.\n%s", info.filename, info.message);
     GMX_THROW_WITH_ERRNO(InvalidInputError(message), info.call, info.err);
 }
 

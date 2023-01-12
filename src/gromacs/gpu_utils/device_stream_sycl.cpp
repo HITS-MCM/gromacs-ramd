@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -46,27 +45,51 @@
 #include "gromacs/gpu_utils/device_context.h"
 #include "gromacs/gpu_utils/device_stream.h"
 
+static sycl::property_list makeQueuePropertyList(bool inOrder, bool enableProfiling)
+{
+    if (enableProfiling && inOrder)
+    {
+        return { sycl::property::queue::in_order(), sycl::property::queue::enable_profiling() };
+    }
+    else if (enableProfiling && !inOrder)
+    {
+        return { sycl::property::queue::enable_profiling() };
+    }
+    else if (!enableProfiling && inOrder)
+    {
+        return { sycl::property::queue::in_order() };
+    }
+    else
+    {
+        return {};
+    }
+}
+
 DeviceStream::DeviceStream(const DeviceContext& deviceContext,
                            DeviceStreamPriority /* priority */,
                            const bool useTiming)
 {
-    const std::vector<cl::sycl::device> devicesInContext = deviceContext.context().get_devices();
+    const std::vector<sycl::device> devicesInContext = deviceContext.context().get_devices();
     // The context is constructed to have exactly one device
-    const cl::sycl::device device = devicesInContext[0];
+    const sycl::device device = devicesInContext[0];
 
-    cl::sycl::property_list propertyList = {};
+    bool enableProfiling = false;
     if (useTiming)
     {
-        const bool deviceSupportsTiming = device.get_info<cl::sycl::info::device::queue_profiling>();
-        if (deviceSupportsTiming)
-        {
-            propertyList = cl::sycl::property::queue::enable_profiling();
-        }
+        const bool deviceSupportsTiming = device.get_info<sycl::info::device::queue_profiling>();
+        enableProfiling                 = deviceSupportsTiming;
     }
-    stream_ = cl::sycl::queue(deviceContext.context(), device, propertyList);
+    const bool inOrder = (GMX_SYCL_USE_USM != 0);
+    stream_ = sycl::queue(deviceContext.context(), device, makeQueuePropertyList(inOrder, enableProfiling));
 }
 
-DeviceStream::~DeviceStream() = default;
+DeviceStream::~DeviceStream()
+{
+#if GMX_SYCL_HIPSYCL && GMX_SYCL_USE_USM
+    // Prevents use-after-free errors in hipSYCL's CUDA backend during unit tests
+    synchronize();
+#endif
+};
 
 // NOLINTNEXTLINE readability-convert-member-functions-to-static
 bool DeviceStream::isValid() const
@@ -81,7 +104,7 @@ void DeviceStream::synchronize()
 
 void DeviceStream::synchronize() const
 {
-    /* cl::sycl::queue::wait is a non-const function. However, a lot of code in GROMACS
+    /* sycl::queue::wait is a non-const function. However, a lot of code in GROMACS
      * assumes DeviceStream is const, yet wants to synchronize with it.
      * The chapter "4.3.2 Common reference semantics" of SYCL 1.2.1 specification says:
      * > Each of the following SYCL runtime classes: [...] queue, [...] must obey the following
@@ -94,5 +117,5 @@ void DeviceStream::synchronize() const
      * Same in chapter "4.5.3" of provisional SYCL 2020 specification (June 30, 2020).
      * So, we can copy-construct a new queue and wait() on it.
      */
-    cl::sycl::queue(stream_).wait_and_throw();
+    sycl::queue(stream_).wait_and_throw();
 }

@@ -6,8 +6,8 @@
 #   GPU: None
 #   Scope: configure, build, unit tests, regression tests
 # Test implementation choices (free to change as needed):
-#   OS: Ubuntu 18.04
-#   Compiler: Clang 8
+#   OS: Ubuntu 20.04
+#   Compiler: Clang 11
 #   MPI: thread_MPI
 #   SIMD: AVX2_256
 #   FFT: FFTW3
@@ -18,10 +18,10 @@ gromacs:clang-TSAN:configure:
     - .gromacs:base:configure
     - .use-clang:base
     - .rules:merge-and-post-merge-acceptance
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-8-tsan:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-tsan
   variables:
-    CMAKE: /usr/local/cmake-3.13.0/bin/cmake
-    COMPILER_MAJOR_VERSION: 8
+    CMAKE: /usr/local/cmake-3.17.2/bin/cmake
+    COMPILER_MAJOR_VERSION: 11
     CMAKE_BUILD_TYPE_OPTIONS: "-DCMAKE_BUILD_TYPE=TSAN"
 
 gromacs:clang-TSAN:build:
@@ -31,9 +31,9 @@ gromacs:clang-TSAN:build:
     - .use-clang:base
     - .use-ccache
     - .rules:merge-and-post-merge-acceptance
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-8-tsan:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-tsan
   variables:
-    CMAKE: /usr/local/cmake-3.13.0/bin/cmake
+    CMAKE: /usr/local/cmake-3.17.2/bin/cmake
   needs:
     - job: gromacs:clang-TSAN:configure
 
@@ -41,9 +41,9 @@ gromacs:clang-TSAN:test:
   extends:
     - .gromacs:base:test
     - .rules:post-merge-acceptance
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-8-tsan:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-tsan
   variables:
-    CMAKE: /usr/local/cmake-3.13.0/bin/cmake
+    CMAKE: /usr/local/cmake-3.17.2/bin/cmake
   needs:
     - job: gromacs:clang-TSAN:build
 
@@ -51,9 +51,9 @@ gromacs:clang-TSAN:regressiontest:
   extends:
     - .gromacs:base:regressiontest
     - .rules:post-merge-acceptance
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-8-tsan:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-tsan
   variables:
-    CMAKE: /usr/local/cmake-3.13.0/bin/cmake
+    CMAKE: /usr/local/cmake-3.17.2/bin/cmake
   tags:
     - k8s-scilifelab
   needs:

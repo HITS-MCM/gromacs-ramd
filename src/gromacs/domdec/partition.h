@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *
@@ -48,7 +47,6 @@
 #include <cstdio>
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
 struct gmx_ddbox_t;
@@ -73,13 +71,12 @@ class ImdSession;
 class MDAtoms;
 class MDLogger;
 class VirtualSitesHandler;
-} // namespace gmx
 
 //! Check whether the DD grid has moved too far for correctness.
-bool check_grid_jump(int64_t step, const gmx_domdec_t* dd, real cutoff, const gmx_ddbox_t* ddbox, gmx_bool bFatal);
+bool check_grid_jump(int64_t step, const gmx_domdec_t* dd, real cutoff, const gmx_ddbox_t* ddbox, bool bFatal);
 
 /*! \brief Print statistics for domain decomposition communication */
-void print_dd_statistics(const t_commrec* cr, const t_inputrec* ir, FILE* fplog);
+void print_dd_statistics(const t_commrec* cr, const t_inputrec& inputrec, FILE* fplog);
 
 /*! \brief Partition the system over the nodes.
  *
@@ -96,7 +93,7 @@ void print_dd_statistics(const t_commrec* cr, const t_inputrec* ir, FILE* fplog)
  * \param[in] nstglobalcomm Will globals be computed on this step
  * \param[in] state_global  Global state
  * \param[in] top_global    Global topology
- * \param[in] ir            Input record
+ * \param[in] inputrec      Input record
  * \param[in] imdSession    IMD handle
  * \param[in] pull_work     Pulling data
  * \param[in] state_local   Local state
@@ -114,11 +111,11 @@ void dd_partition_system(FILE*                     fplog,
                          const gmx::MDLogger&      mdlog,
                          int64_t                   step,
                          const t_commrec*          cr,
-                         gmx_bool                  bMasterState,
+                         bool                      bMasterState,
                          int                       nstglobalcomm,
                          t_state*                  state_global,
                          const gmx_mtop_t&         top_global,
-                         const t_inputrec*         ir,
+                         const t_inputrec&         inputrec,
                          gmx::ImdSession*          imdSession,
                          pull_t*                   pull_work,
                          t_state*                  state_local,
@@ -130,26 +127,7 @@ void dd_partition_system(FILE*                     fplog,
                          gmx::Constraints*         constr,
                          t_nrnb*                   nrnb,
                          gmx_wallcycle*            wcycle,
-                         gmx_bool                  bVerbose);
+                         bool                      bVerbose);
 
-/*! \brief Check whether bonded interactions are missing, if appropriate
- *
- * \param[in]    mdlog                                  Logger
- * \param[in]    cr                                     Communication object
- * \param[in]    totalNumberOfBondedInteractions        Result of the global reduction over the number of bonds treated in each domain
- * \param[in]    top_global                             Global topology for the error message
- * \param[in]    top_local                              Local topology for the error message
- * \param[in]    x                                      Position vector for the error message
- * \param[in]    box                                    Box matrix for the error message
- * \param[in,out] shouldCheckNumberOfBondedInteractions Whether we should do the check. Always set to false.
- */
-void checkNumberOfBondedInteractions(const gmx::MDLogger&           mdlog,
-                                     t_commrec*                     cr,
-                                     int                            totalNumberOfBondedInteractions,
-                                     const gmx_mtop_t*              top_global,
-                                     const gmx_localtop_t*          top_local,
-                                     gmx::ArrayRef<const gmx::RVec> x,
-                                     const matrix                   box,
-                                     bool* shouldCheckNumberOfBondedInteractions);
-
+} // namespace gmx
 #endif

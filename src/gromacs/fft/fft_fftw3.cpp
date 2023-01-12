@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2003 David van der Spoel, Erik Lindahl, University of Groningen.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -41,12 +38,13 @@
 #include <cerrno>
 #include <cstdlib>
 
+#include <mutex>
+
 #include <fftw3.h>
 
 #include "gromacs/fft/fft.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/mutex.h"
 
 #if GMX_DOUBLE
 #    define FFTWPREFIX(name) fftw_##name
@@ -56,7 +54,8 @@
 
 /* none of the fftw3 calls, except execute(), are thread-safe, so
    we need to serialize them with this mutex. */
-static gmx::Mutex big_fftw_mutex;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static std::mutex big_fftw_mutex;
 #define FFTW_LOCK              \
     try                        \
     {                          \
@@ -176,22 +175,22 @@ int gmx_fft_init_many_1d(gmx_fft_t* pfft, int nx, int howmany, gmx_fft_flag flag
                                   fftw_complex *out, const int *onembed,
                                   int ostride, int odist,
                                   int sign, unsigned flags */
-    fft->plan[0][0][0] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, up1, &nx, 1, nx, up2, &nx, 1,
-                                                   nx, FFTW_BACKWARD, fftw_flags);
-    fft->plan[0][0][1] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, up1, &nx, 1, nx, up2, &nx, 1,
-                                                   nx, FFTW_FORWARD, fftw_flags);
-    fft->plan[0][1][0] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, up1, &nx, 1, nx, up1, &nx, 1,
-                                                   nx, FFTW_BACKWARD, fftw_flags);
-    fft->plan[0][1][1] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, up1, &nx, 1, nx, up1, &nx, 1,
-                                                   nx, FFTW_FORWARD, fftw_flags);
-    fft->plan[1][0][0] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, p1, &nx, 1, nx, p2, &nx, 1, nx,
-                                                   FFTW_BACKWARD, fftw_flags);
-    fft->plan[1][0][1] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, p1, &nx, 1, nx, p2, &nx, 1, nx,
-                                                   FFTW_FORWARD, fftw_flags);
-    fft->plan[1][1][0] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, p1, &nx, 1, nx, p1, &nx, 1, nx,
-                                                   FFTW_BACKWARD, fftw_flags);
-    fft->plan[1][1][1] = FFTWPREFIX(plan_many_dft)(1, &nx, howmany, p1, &nx, 1, nx, p1, &nx, 1, nx,
-                                                   FFTW_FORWARD, fftw_flags);
+    fft->plan[0][0][0] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, up1, &nx, 1, nx, up2, &nx, 1, nx, FFTW_BACKWARD, fftw_flags);
+    fft->plan[0][0][1] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, up1, &nx, 1, nx, up2, &nx, 1, nx, FFTW_FORWARD, fftw_flags);
+    fft->plan[0][1][0] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, up1, &nx, 1, nx, up1, &nx, 1, nx, FFTW_BACKWARD, fftw_flags);
+    fft->plan[0][1][1] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, up1, &nx, 1, nx, up1, &nx, 1, nx, FFTW_FORWARD, fftw_flags);
+    fft->plan[1][0][0] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, p1, &nx, 1, nx, p2, &nx, 1, nx, FFTW_BACKWARD, fftw_flags);
+    fft->plan[1][0][1] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, p1, &nx, 1, nx, p2, &nx, 1, nx, FFTW_FORWARD, fftw_flags);
+    fft->plan[1][1][0] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, p1, &nx, 1, nx, p1, &nx, 1, nx, FFTW_BACKWARD, fftw_flags);
+    fft->plan[1][1][1] = FFTWPREFIX(plan_many_dft)(
+            1, &nx, howmany, p1, &nx, 1, nx, p1, &nx, 1, nx, FFTW_FORWARD, fftw_flags);
 
     for (i = 0; i < 2; i++)
     {
@@ -294,31 +293,103 @@ int gmx_fft_init_many_1d_real(gmx_fft_t* pfft, int nx, int howmany, gmx_fft_flag
                                       fftw_complex *out, const int *onembed,
                                       int ostride, int odist,
                                       unsigned flag    */
-    fft->plan[0][0][1] = FFTWPREFIX(plan_many_dft_r2c)(
-            1, &nx, howmany, up1, nullptr, 1, (nx / 2 + 1) * 2,
-            reinterpret_cast<FFTWPREFIX(complex)*>(up2), nullptr, 1, (nx / 2 + 1), fftw_flags);
-    fft->plan[0][1][1] = FFTWPREFIX(plan_many_dft_r2c)(
-            1, &nx, howmany, up1, nullptr, 1, (nx / 2 + 1) * 2,
-            reinterpret_cast<FFTWPREFIX(complex)*>(up1), nullptr, 1, (nx / 2 + 1), fftw_flags);
-    fft->plan[1][0][1] = FFTWPREFIX(plan_many_dft_r2c)(
-            1, &nx, howmany, p1, nullptr, 1, (nx / 2 + 1) * 2,
-            reinterpret_cast<FFTWPREFIX(complex)*>(p2), nullptr, 1, (nx / 2 + 1), fftw_flags);
-    fft->plan[1][1][1] = FFTWPREFIX(plan_many_dft_r2c)(
-            1, &nx, howmany, p1, nullptr, 1, (nx / 2 + 1) * 2,
-            reinterpret_cast<FFTWPREFIX(complex)*>(p1), nullptr, 1, (nx / 2 + 1), fftw_flags);
+    fft->plan[0][0][1] = FFTWPREFIX(plan_many_dft_r2c)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       up1,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(up2),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       fftw_flags);
+    fft->plan[0][1][1] = FFTWPREFIX(plan_many_dft_r2c)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       up1,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(up1),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       fftw_flags);
+    fft->plan[1][0][1] = FFTWPREFIX(plan_many_dft_r2c)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       p1,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(p2),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       fftw_flags);
+    fft->plan[1][1][1] = FFTWPREFIX(plan_many_dft_r2c)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       p1,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(p1),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       fftw_flags);
 
-    fft->plan[0][0][0] = FFTWPREFIX(plan_many_dft_c2r)(
-            1, &nx, howmany, reinterpret_cast<FFTWPREFIX(complex)*>(up1), nullptr, 1, (nx / 2 + 1),
-            up2, nullptr, 1, (nx / 2 + 1) * 2, fftw_flags);
-    fft->plan[0][1][0] = FFTWPREFIX(plan_many_dft_c2r)(
-            1, &nx, howmany, reinterpret_cast<FFTWPREFIX(complex)*>(up1), nullptr, 1, (nx / 2 + 1),
-            up1, nullptr, 1, (nx / 2 + 1) * 2, fftw_flags);
-    fft->plan[1][0][0] = FFTWPREFIX(plan_many_dft_c2r)(
-            1, &nx, howmany, reinterpret_cast<FFTWPREFIX(complex)*>(p1), nullptr, 1, (nx / 2 + 1),
-            p2, nullptr, 1, (nx / 2 + 1) * 2, fftw_flags);
-    fft->plan[1][1][0] = FFTWPREFIX(plan_many_dft_c2r)(
-            1, &nx, howmany, reinterpret_cast<FFTWPREFIX(complex)*>(p1), nullptr, 1, (nx / 2 + 1),
-            p1, nullptr, 1, (nx / 2 + 1) * 2, fftw_flags);
+    fft->plan[0][0][0] = FFTWPREFIX(plan_many_dft_c2r)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(up1),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       up2,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       fftw_flags);
+    fft->plan[0][1][0] = FFTWPREFIX(plan_many_dft_c2r)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(up1),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       up1,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       fftw_flags);
+    fft->plan[1][0][0] = FFTWPREFIX(plan_many_dft_c2r)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(p1),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       p2,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       fftw_flags);
+    fft->plan[1][1][0] = FFTWPREFIX(plan_many_dft_c2r)(1,
+                                                       &nx,
+                                                       howmany,
+                                                       reinterpret_cast<FFTWPREFIX(complex)*>(p1),
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1),
+                                                       p1,
+                                                       nullptr,
+                                                       1,
+                                                       (nx / 2 + 1) * 2,
+                                                       fftw_flags);
 
     for (i = 0; i < 2; i++)
     {
@@ -478,7 +549,8 @@ int gmx_fft_1d(gmx_fft_t fft, enum gmx_fft_direction dir, void* in_data, void* o
     }
 
     FFTWPREFIX(execute_dft)
-    (fft->plan[aligned][inplace][isforward], static_cast<FFTWPREFIX(complex)*>(in_data),
+    (fft->plan[aligned][inplace][isforward],
+     static_cast<FFTWPREFIX(complex)*>(in_data),
      static_cast<FFTWPREFIX(complex)*>(out_data));
 
     return 0;
@@ -506,13 +578,15 @@ int gmx_fft_1d_real(gmx_fft_t fft, enum gmx_fft_direction dir, void* in_data, vo
     if (isforward)
     {
         FFTWPREFIX(execute_dft_r2c)
-        (fft->plan[aligned][inplace][isforward], static_cast<real*>(in_data),
+        (fft->plan[aligned][inplace][isforward],
+         static_cast<real*>(in_data),
          static_cast<FFTWPREFIX(complex)*>(out_data));
     }
     else
     {
         FFTWPREFIX(execute_dft_c2r)
-        (fft->plan[aligned][inplace][isforward], static_cast<FFTWPREFIX(complex)*>(in_data),
+        (fft->plan[aligned][inplace][isforward],
+         static_cast<FFTWPREFIX(complex)*>(in_data),
          static_cast<real*>(out_data));
     }
 
@@ -541,13 +615,15 @@ int gmx_fft_2d_real(gmx_fft_t fft, enum gmx_fft_direction dir, void* in_data, vo
     if (isforward)
     {
         FFTWPREFIX(execute_dft_r2c)
-        (fft->plan[aligned][inplace][isforward], static_cast<real*>(in_data),
+        (fft->plan[aligned][inplace][isforward],
+         static_cast<real*>(in_data),
          static_cast<FFTWPREFIX(complex)*>(out_data));
     }
     else
     {
         FFTWPREFIX(execute_dft_c2r)
-        (fft->plan[aligned][inplace][isforward], static_cast<FFTWPREFIX(complex)*>(in_data),
+        (fft->plan[aligned][inplace][isforward],
+         static_cast<FFTWPREFIX(complex)*>(in_data),
          static_cast<real*>(out_data));
     }
 

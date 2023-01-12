@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -83,7 +82,7 @@ TEST_F(FileNameOptionManagerTest, AddsMissingExtension)
 {
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftTrajectory).outputFile()));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Trajectory).outputFile()));
 
     gmx::OptionsAssigner assigner(&options_);
     EXPECT_NO_THROW_GMX(assigner.start());
@@ -100,7 +99,7 @@ TEST_F(FileNameOptionManagerTest, AddsMissingCustomDefaultExtension)
 {
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftTrajectory).outputFile().defaultType(efPDB)));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Trajectory).outputFile().defaultType(efPDB)));
 
     gmx::OptionsAssigner assigner(&options_);
     EXPECT_NO_THROW_GMX(assigner.start());
@@ -116,8 +115,8 @@ TEST_F(FileNameOptionManagerTest, AddsMissingCustomDefaultExtension)
 TEST_F(FileNameOptionManagerTest, GivesErrorOnMissingInputFile)
 {
     std::string value;
-    ASSERT_NO_THROW_GMX(
-            options_.addOption(FileNameOption("f").store(&value).filetype(gmx::eftIndex).inputFile()));
+    ASSERT_NO_THROW_GMX(options_.addOption(
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Index).inputFile()));
     EXPECT_TRUE(value.empty());
 
     gmx::OptionsAssigner assigner(&options_);
@@ -135,7 +134,7 @@ TEST_F(FileNameOptionManagerTest, GivesErrorOnMissingGenericInputFile)
 {
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftTrajectory).inputFile()));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Trajectory).inputFile()));
     EXPECT_TRUE(value.empty());
 
     gmx::OptionsAssigner assigner(&options_);
@@ -153,7 +152,7 @@ TEST_F(FileNameOptionManagerTest, GivesErrorOnMissingDefaultInputFile)
 {
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftIndex).inputFile().defaultBasename("missing")));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Index).inputFile().defaultBasename("missing")));
 
     gmx::OptionsAssigner assigner(&options_);
     EXPECT_NO_THROW_GMX(assigner.start());
@@ -166,8 +165,12 @@ TEST_F(FileNameOptionManagerTest, GivesErrorOnMissingDefaultInputFile)
 TEST_F(FileNameOptionManagerTest, GivesErrorOnMissingRequiredInputFile)
 {
     std::string value;
-    ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).required().filetype(gmx::eftIndex).inputFile().defaultBasename("missing")));
+    ASSERT_NO_THROW_GMX(options_.addOption(FileNameOption("f")
+                                                   .store(&value)
+                                                   .required()
+                                                   .filetype(gmx::OptionFileType::Index)
+                                                   .inputFile()
+                                                   .defaultBasename("missing")));
     EXPECT_EQ("missing.ndx", value);
 
     gmx::OptionsAssigner assigner(&options_);
@@ -180,7 +183,7 @@ TEST_F(FileNameOptionManagerTest, AcceptsMissingInputFileIfSpecified)
 {
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftIndex).inputFile().allowMissing()));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Index).inputFile().allowMissing()));
     EXPECT_TRUE(value.empty());
 
     gmx::OptionsAssigner assigner(&options_);
@@ -199,7 +202,7 @@ TEST_F(FileNameOptionManagerTest, AcceptsMissingDefaultInputFileIfSpecified)
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(FileNameOption("f")
                                                    .store(&value)
-                                                   .filetype(gmx::eftIndex)
+                                                   .filetype(gmx::OptionFileType::Index)
                                                    .inputFile()
                                                    .defaultBasename("missing")
                                                    .allowMissing()));
@@ -220,7 +223,7 @@ TEST_F(FileNameOptionManagerTest, AcceptsMissingRequiredInputFileIfSpecified)
     ASSERT_NO_THROW_GMX(options_.addOption(FileNameOption("f")
                                                    .store(&value)
                                                    .required()
-                                                   .filetype(gmx::eftIndex)
+                                                   .filetype(gmx::OptionFileType::Index)
                                                    .inputFile()
                                                    .defaultBasename("missing")
                                                    .allowMissing()));
@@ -240,7 +243,7 @@ TEST_F(FileNameOptionManagerTest, AddsMissingExtensionBasedOnExistingFile)
 
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftTrajectory).inputFile()));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Trajectory).inputFile()));
 
     gmx::OptionsAssigner assigner(&options_);
     EXPECT_NO_THROW_GMX(assigner.start());
@@ -258,8 +261,12 @@ TEST_F(FileNameOptionManagerTest, AddsMissingExtensionForRequiredDefaultNameBase
     addExistingFile("testfile.trr");
 
     std::string value;
-    ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).required().filetype(gmx::eftTrajectory).inputFile().defaultBasename("testfile")));
+    ASSERT_NO_THROW_GMX(options_.addOption(FileNameOption("f")
+                                                   .store(&value)
+                                                   .required()
+                                                   .filetype(gmx::OptionFileType::Trajectory)
+                                                   .inputFile()
+                                                   .defaultBasename("testfile")));
     EXPECT_EQ("testfile.xtc", value);
 
     gmx::OptionsAssigner assigner(&options_);
@@ -278,7 +285,7 @@ TEST_F(FileNameOptionManagerTest, AddsMissingExtensionForOptionalDefaultNameBase
 
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftTrajectory).inputFile().defaultBasename("testfile")));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Trajectory).inputFile().defaultBasename("testfile")));
 
     gmx::OptionsAssigner assigner(&options_);
     EXPECT_NO_THROW_GMX(assigner.start());
@@ -295,8 +302,12 @@ TEST_F(FileNameOptionManagerTest, AddsMissingExtensionForRequiredFromDefaultName
     addExistingFile("testfile.trr");
 
     std::string value;
-    ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).required().filetype(gmx::eftTrajectory).inputFile().defaultBasename("foo")));
+    ASSERT_NO_THROW_GMX(options_.addOption(FileNameOption("f")
+                                                   .store(&value)
+                                                   .required()
+                                                   .filetype(gmx::OptionFileType::Trajectory)
+                                                   .inputFile()
+                                                   .defaultBasename("foo")));
     ASSERT_NO_THROW_GMX(manager_.addDefaultFileNameOption(&options_, "deffnm"));
     EXPECT_EQ("foo.xtc", value);
 
@@ -317,7 +328,7 @@ TEST_F(FileNameOptionManagerTest, AddsMissingExtensionForOptionalFromDefaultName
 
     std::string value;
     ASSERT_NO_THROW_GMX(options_.addOption(
-            FileNameOption("f").store(&value).filetype(gmx::eftTrajectory).inputFile().defaultBasename("foo")));
+            FileNameOption("f").store(&value).filetype(gmx::OptionFileType::Trajectory).inputFile().defaultBasename("foo")));
     ASSERT_NO_THROW_GMX(manager_.addDefaultFileNameOption(&options_, "deffnm"));
 
     gmx::OptionsAssigner assigner(&options_);
@@ -340,7 +351,7 @@ TEST_F(FileNameOptionManagerTest, DefaultNameOptionWorksWithoutInputChecking)
     ASSERT_NO_THROW_GMX(options_.addOption(FileNameOption("f")
                                                    .store(&value)
                                                    .required()
-                                                   .filetype(gmx::eftIndex)
+                                                   .filetype(gmx::OptionFileType::Index)
                                                    .inputFile()
                                                    .defaultBasename("default")
                                                    .allowMissing()));

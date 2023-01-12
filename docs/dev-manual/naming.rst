@@ -89,8 +89,9 @@ C++ code
 * Member variables are named with a trailing underscore.
 * Accessors for a variable ``foo_`` are named ``foo()`` and ``setFoo()``.
 * Global variables are named with a ``g_`` prefix.
-* Static class variables are named with a ``s_`` prefix.
-* Static ``constexpr`` class members are named with a ``sc_`` prefix.
+* Global and file-static variables are named with a ``g_`` prefix.
+* Static class and function variables are named with an ``s_`` prefix.
+* Static ``constexpr`` file, class, or function members are named with a ``sc_`` prefix.
 * Global constants are often named with a ``c_`` prefix.
 * If the main responsibility of a file is to implement a particular class,
   then the name of the file should match that class, except for possible
@@ -105,6 +106,7 @@ C++ code
   typically including a verb for boolean variables, like ``foundAtom``.
 * Prefer class enums over regular ones, so that unexpected conversions to
   int do not happen.
+* Name functions to convert class enum values to strings as ``enumValueToString``.
 * When using a non-class enum, prefer to include the name of the enumeration type
   as a base in the name of enum values, e.g., ``HelpOutputFormat_Console``,
   in particular for settings exposed to other modules.

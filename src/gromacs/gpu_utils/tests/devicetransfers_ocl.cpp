@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines helper functionality for device transfers for tests
@@ -64,8 +63,8 @@ void throwUponFailure(cl_int status, const char* message)
 {
     if (status != CL_SUCCESS)
     {
-        GMX_THROW(InternalError(formatString("Failure while %s, error was %s", message,
-                                             ocl_get_error_string(status).c_str())));
+        GMX_THROW(InternalError(formatString(
+                "Failure while %s, error was %s", message, ocl_get_error_string(status).c_str())));
     }
 }
 
@@ -90,11 +89,11 @@ void doDeviceTransfers(const DeviceInformation& deviceInfo, ArrayRef<const char>
     auto devicePointer = clCreateBuffer(context, CL_MEM_READ_WRITE, input.size(), nullptr, &status);
     throwUponFailure(status, "creating buffer");
 
-    status = clEnqueueWriteBuffer(commandQueue, devicePointer, CL_TRUE, 0, input.size(),
-                                  input.data(), 0, nullptr, nullptr);
+    status = clEnqueueWriteBuffer(
+            commandQueue, devicePointer, CL_TRUE, 0, input.size(), input.data(), 0, nullptr, nullptr);
     throwUponFailure(status, "transferring host to device");
-    status = clEnqueueReadBuffer(commandQueue, devicePointer, CL_TRUE, 0, output.size(),
-                                 output.data(), 0, nullptr, nullptr);
+    status = clEnqueueReadBuffer(
+            commandQueue, devicePointer, CL_TRUE, 0, output.size(), output.data(), 0, nullptr, nullptr);
     throwUponFailure(status, "transferring device to host");
 
     status = clReleaseMemObject(devicePointer);

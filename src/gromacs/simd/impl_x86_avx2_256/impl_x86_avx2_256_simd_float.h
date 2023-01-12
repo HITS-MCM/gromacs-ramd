@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #ifndef GMX_SIMD_IMPL_X86_AVX2_256_SIMD_FLOAT_H
@@ -92,10 +91,10 @@ static inline SimdFBool gmx_simdcall testBits(SimdFloat a)
 template<MathOptimization opt = MathOptimization::Safe>
 static inline SimdFloat gmx_simdcall frexp(SimdFloat value, SimdFInt32* exponent)
 {
-    const __m256  exponentMask = _mm256_castsi256_ps(_mm256_set1_epi32(0x7F800000));
-    const __m256  mantissaMask = _mm256_castsi256_ps(_mm256_set1_epi32(0x807FFFFF));
+    const __m256 exponentMask = _mm256_castsi256_ps(_mm256_set1_epi32(0x7F800000));
+    const __m256 mantissaMask = _mm256_castsi256_ps(_mm256_set1_epi32(0x807FFFFF));
     const __m256i exponentBias = _mm256_set1_epi32(126); // add 1 to make our definition identical to frexp()
-    const __m256  half = _mm256_set1_ps(0.5);
+    const __m256 half = _mm256_set1_ps(0.5);
 
     __m256i iExponent = _mm256_castps_si256(_mm256_and_ps(value.simdInternal_, exponentMask));
     iExponent         = _mm256_sub_epi32(_mm256_srli_epi32(iExponent, 23), exponentBias);

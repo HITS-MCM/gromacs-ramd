@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Implements common internal types for different NBNXN GPU implementations
@@ -44,9 +43,11 @@
 
 #include "config.h"
 
+#include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/locality.h"
 #include "gromacs/utility/enumerationhelpers.h"
 
+#include "nbnxm.h"
 #include "pairlist.h"
 
 #if GMX_GPU_OPENCL
@@ -57,16 +58,84 @@
 #    include "gromacs/gpu_utils/gpuregiontimer.cuh"
 #endif
 
+#if GMX_GPU_SYCL
+#    include "gromacs/gpu_utils/gpuregiontimer_sycl.h"
+#endif
+
+/*! \brief Macro definining default for the prune kernel's j4 processing concurrency.
+ *
+ *  The GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY macro allows compile-time override with the default value of 4.
+ */
+#ifndef GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY
+#    define GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY 4
+#endif
+//! Default for the prune kernel's j4 processing concurrency.
+static constexpr int c_pruneKernelJ4Concurrency = GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY;
+
+/*! \internal
+ * \brief Staging area for temporary data downloaded from the GPU.
+ *
+ * Since SYCL buffers already have host-side storage, this is a bit redundant.
+ * But it allows prefetching of the data from GPU, and brings GPU backends closer together.
+ */
+struct NBStagingData
+{
+    //! LJ energy
+    float* eLJ = nullptr;
+    //! electrostatic energy
+    float* eElec = nullptr;
+    //! shift forces
+    Float3* fShift = nullptr;
+};
+
+/** \internal
+ * \brief Nonbonded atom data - both inputs and outputs.
+ */
+struct NBAtomDataGpu
+{
+    //! number of atoms
+    int numAtoms;
+    //! number of local atoms
+    int numAtomsLocal;
+    //! allocation size for the atom data (xq, f)
+    int numAtomsAlloc;
+
+    //! atom coordinates + charges, size \ref numAtoms
+    DeviceBuffer<Float4> xq;
+    //! force output array, size \ref numAtoms
+    DeviceBuffer<Float3> f;
+
+    //! LJ energy output, size 1
+    DeviceBuffer<float> eLJ;
+    //! Electrostatics energy input, size 1
+    DeviceBuffer<float> eElec;
+
+    //! shift forces
+    DeviceBuffer<Float3> fShift;
+
+    //! number of atom types
+    int numTypes;
+    //! atom type indices, size \ref numAtoms
+    DeviceBuffer<int> atomTypes;
+    //! sqrt(c6),sqrt(c12) size \ref numAtoms
+    DeviceBuffer<Float2> ljComb;
+
+    //! shifts
+    DeviceBuffer<Float3> shiftVec;
+    //! true if the shift vector has been uploaded
+    bool shiftVecUploaded;
+};
+
 /** \internal
  * \brief Parameters required for the GPU nonbonded calculations.
  */
 struct NBParamGpu
 {
 
-    //! type of electrostatics, takes values from #eelType
-    int eeltype;
-    //! type of VdW impl., takes values from #evdwType
-    int vdwtype;
+    //! type of electrostatics
+    enum Nbnxm::ElecType elecType;
+    //! type of VdW impl.
+    enum Nbnxm::VdwType vdwType;
 
     //! charge multiplication factor
     float epsfac;
@@ -76,7 +145,7 @@ struct NBParamGpu
     float two_k_rf;
     //! Ewald/PME parameter
     float ewald_beta;
-    //! Ewald/PME correction term substracted from the direct-space potential
+    //! Ewald/PME correction term subtracted from the direct-space potential
     float sh_ewald;
     //! LJ-Ewald/PME correction term added to the correction potential
     float sh_lj_ewald;
@@ -105,12 +174,12 @@ struct NBParamGpu
     switch_consts_t vdw_switch;
 
     /* LJ non-bonded parameters - accessed through texture memory */
-    //! nonbonded parameter table with C6/C12 pairs per atom type-pair, 2*ntype^2 elements
-    DeviceBuffer<float> nbfp;
+    //! nonbonded parameter table with 6*C6/12*C12 pairs per atom type-pair, ntype^2 elements
+    DeviceBuffer<Float2> nbfp{};
     //! texture object bound to nbfp
     DeviceTexture nbfp_texobj;
-    //! nonbonded parameter table per atom type, 2*ntype elements
-    DeviceBuffer<float> nbfp_comb;
+    //! nonbonded parameter table per atom type, ntype elements
+    DeviceBuffer<Float2> nbfp_comb{};
     //! texture object bound to nbfp_comb
     DeviceTexture nbfp_comb_texobj;
 
@@ -118,7 +187,7 @@ struct NBParamGpu
     //! table scale/spacing
     float coulomb_tab_scale;
     //! pointer to the table in the device memory
-    DeviceBuffer<float> coulomb_tab;
+    DeviceBuffer<float> coulomb_tab{};
     //! texture object bound to coulomb_tab
     DeviceTexture coulomb_tab_texobj;
 };
@@ -135,7 +204,7 @@ using gmx::InteractionLocality;
  * The two-sized arrays hold the local and non-local values and should always
  * be indexed with eintLocal/eintNonlocal.
  */
-struct gpu_timers_t
+struct GpuTimers
 {
     /*! \internal
      * \brief Timers for local or non-local coordinate/force transfers
@@ -174,7 +243,7 @@ struct gpu_timers_t
     //! timers for coordinate/force transfers (every step)
     gmx::EnumerationArray<AtomLocality, XFTransfers> xf;
     //! timers for interaction related transfers
-    gmx::EnumerationArray<InteractionLocality, Nbnxm::gpu_timers_t::Interaction> interaction;
+    gmx::EnumerationArray<InteractionLocality, Nbnxm::GpuTimers::Interaction> interaction;
 };
 
 /*! \internal

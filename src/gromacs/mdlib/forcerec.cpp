@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013-2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -40,7 +37,6 @@
 
 #include "config.h"
 
-#include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -52,26 +48,22 @@
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/ewald/ewald.h"
-#include "gromacs/ewald/ewald_utils.h"
 #include "gromacs/ewald/pme_pp_comm_gpu.h"
 #include "gromacs/fileio/filetypes.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nonbonded/nonbonded.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/hardware/hw_info.h"
-#include "gromacs/listed_forces/gpubonded.h"
+#include "gromacs/listed_forces/listed_forces_gpu.h"
 #include "gromacs/listed_forces/listed_forces.h"
 #include "gromacs/listed_forces/pairs.h"
 #include "gromacs/math/functions.h"
-#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/dispersioncorrection.h"
 #include "gromacs/mdlib/force.h"
-#include "gromacs/mdlib/forcerec_threading.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/md_support.h"
-#include "gromacs/mdlib/rf_util.h"
 #include "gromacs/mdlib/wall.h"
 #include "gromacs/mdlib/wholemoleculetransform.h"
 #include "gromacs/mdtypes/commrec.h"
@@ -83,11 +75,14 @@
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/multipletimestepping.h"
+#include "gromacs/mdtypes/nblist.h"
+#include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/nbnxm/nbnxm.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/tables/forcetable.h"
 #include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/idef.h"
 #include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/exceptions.h"
@@ -104,7 +99,7 @@
 ForceHelperBuffers::ForceHelperBuffers(bool haveDirectVirialContributions) :
     haveDirectVirialContributions_(haveDirectVirialContributions)
 {
-    shiftForces_.resize(SHIFTS);
+    shiftForces_.resize(gmx::c_numShiftVectors);
 }
 
 void ForceHelperBuffers::resize(int numAtoms)
@@ -115,38 +110,38 @@ void ForceHelperBuffers::resize(int numAtoms)
     }
 }
 
-static std::vector<real> mk_nbfp(const gmx_ffparams_t* idef, gmx_bool bBHAM)
+std::vector<real> makeNonBondedParameterLists(const int                      numAtomTypes,
+                                              gmx::ArrayRef<const t_iparams> iparams,
+                                              bool                           useBuckinghamPotential)
 {
     std::vector<real> nbfp;
-    int               atnr;
 
-    atnr = idef->atnr;
-    if (bBHAM)
+    if (useBuckinghamPotential)
     {
-        nbfp.resize(3 * atnr * atnr);
+        nbfp.resize(3 * numAtomTypes * numAtomTypes);
         int k = 0;
-        for (int i = 0; (i < atnr); i++)
+        for (int i = 0; (i < numAtomTypes); i++)
         {
-            for (int j = 0; (j < atnr); j++, k++)
+            for (int j = 0; (j < numAtomTypes); j++, k++)
             {
-                BHAMA(nbfp, atnr, i, j) = idef->iparams[k].bham.a;
-                BHAMB(nbfp, atnr, i, j) = idef->iparams[k].bham.b;
+                BHAMA(nbfp, numAtomTypes, i, j) = iparams[k].bham.a;
+                BHAMB(nbfp, numAtomTypes, i, j) = iparams[k].bham.b;
                 /* nbfp now includes the 6.0 derivative prefactor */
-                BHAMC(nbfp, atnr, i, j) = idef->iparams[k].bham.c * 6.0;
+                BHAMC(nbfp, numAtomTypes, i, j) = iparams[k].bham.c * 6.0;
             }
         }
     }
     else
     {
-        nbfp.resize(2 * atnr * atnr);
+        nbfp.resize(2 * numAtomTypes * numAtomTypes);
         int k = 0;
-        for (int i = 0; (i < atnr); i++)
+        for (int i = 0; (i < numAtomTypes); i++)
         {
-            for (int j = 0; (j < atnr); j++, k++)
+            for (int j = 0; (j < numAtomTypes); j++, k++)
             {
                 /* nbfp now includes the 6.0/12.0 derivative prefactors */
-                C6(nbfp, atnr, i, j)  = idef->iparams[k].lj.c6 * 6.0;
-                C12(nbfp, atnr, i, j) = idef->iparams[k].lj.c12 * 12.0;
+                C6(nbfp, numAtomTypes, i, j)  = iparams[k].lj.c6 * 6.0;
+                C12(nbfp, numAtomTypes, i, j) = iparams[k].lj.c12 * 12.0;
             }
         }
     }
@@ -154,112 +149,118 @@ static std::vector<real> mk_nbfp(const gmx_ffparams_t* idef, gmx_bool bBHAM)
     return nbfp;
 }
 
-static real* make_ljpme_c6grid(const gmx_ffparams_t* idef, t_forcerec* fr)
+std::vector<real> makeLJPmeC6GridCorrectionParameters(const int                      numAtomTypes,
+                                                      gmx::ArrayRef<const t_iparams> iparams,
+                                                      LongRangeVdW ljpme_combination_rule)
 {
-    int   i, j, k, atnr;
-    real  c6, c6i, c6j, c12i, c12j, epsi, epsj, sigmai, sigmaj;
-    real* grid;
-
     /* For LJ-PME simulations, we correct the energies with the reciprocal space
      * inside of the cut-off. To do this the non-bonded kernels needs to have
      * access to the C6-values used on the reciprocal grid in pme.c
      */
 
-    atnr = idef->atnr;
-    snew(grid, 2 * atnr * atnr);
-    for (i = k = 0; (i < atnr); i++)
+    std::vector<real> grid(2 * numAtomTypes * numAtomTypes, 0.0);
+    int               k = 0;
+    for (int i = 0; (i < numAtomTypes); i++)
     {
-        for (j = 0; (j < atnr); j++, k++)
+        for (int j = 0; (j < numAtomTypes); j++, k++)
         {
-            c6i  = idef->iparams[i * (atnr + 1)].lj.c6;
-            c12i = idef->iparams[i * (atnr + 1)].lj.c12;
-            c6j  = idef->iparams[j * (atnr + 1)].lj.c6;
-            c12j = idef->iparams[j * (atnr + 1)].lj.c12;
-            c6   = std::sqrt(c6i * c6j);
-            if (fr->ljpme_combination_rule == eljpmeLB && !gmx_numzero(c6) && !gmx_numzero(c12i)
+            real c6i  = iparams[i * (numAtomTypes + 1)].lj.c6;
+            real c12i = iparams[i * (numAtomTypes + 1)].lj.c12;
+            real c6j  = iparams[j * (numAtomTypes + 1)].lj.c6;
+            real c12j = iparams[j * (numAtomTypes + 1)].lj.c12;
+            real c6   = std::sqrt(c6i * c6j);
+            if (ljpme_combination_rule == LongRangeVdW::LB && !gmx_numzero(c6) && !gmx_numzero(c12i)
                 && !gmx_numzero(c12j))
             {
-                sigmai = gmx::sixthroot(c12i / c6i);
-                sigmaj = gmx::sixthroot(c12j / c6j);
-                epsi   = c6i * c6i / c12i;
-                epsj   = c6j * c6j / c12j;
-                c6     = std::sqrt(epsi * epsj) * gmx::power6(0.5 * (sigmai + sigmaj));
+                real sigmai = gmx::sixthroot(c12i / c6i);
+                real sigmaj = gmx::sixthroot(c12j / c6j);
+                real epsi   = c6i * c6i / c12i;
+                real epsj   = c6j * c6j / c12j;
+                c6          = std::sqrt(epsi * epsj) * gmx::power6(0.5 * (sigmai + sigmaj));
             }
             /* Store the elements at the same relative positions as C6 in nbfp in order
              * to simplify access in the kernels
              */
-            grid[2 * (atnr * i + j)] = c6 * 6.0;
+            grid[2 * (numAtomTypes * i + j)] = c6 * 6.0;
         }
     }
     return grid;
 }
 
-enum
+//! What kind of constraint affects an atom
+enum class ConstraintTypeForAtom : int
 {
-    acNONE = 0,
-    acCONSTRAINT,
-    acSETTLE
+    None,       //!< No constraint active
+    Constraint, //!< F_CONSTR or F_CONSTRNC active
+    Settle,     //! F_SETTLE active
 };
 
-static std::vector<cginfo_mb_t> init_cginfo_mb(const gmx_mtop_t* mtop, const t_forcerec* fr)
+static std::vector<gmx::AtomInfoWithinMoleculeBlock>
+makeAtomInfoForEachMoleculeBlock(const gmx_mtop_t& mtop, const t_forcerec* fr)
 {
-    gmx_bool* type_VDW;
-    int*      a_con;
-
-    snew(type_VDW, fr->ntype);
+    std::vector<bool> atomUsesVdw(fr->ntype, false);
     for (int ai = 0; ai < fr->ntype; ai++)
     {
-        type_VDW[ai] = FALSE;
         for (int j = 0; j < fr->ntype; j++)
         {
-            type_VDW[ai] = type_VDW[ai] || fr->bBHAM || C6(fr->nbfp, fr->ntype, ai, j) != 0
-                           || C12(fr->nbfp, fr->ntype, ai, j) != 0;
+            atomUsesVdw[ai] = atomUsesVdw[ai] || fr->haveBuckingham || C6(fr->nbfp, fr->ntype, ai, j) != 0
+                              || C12(fr->nbfp, fr->ntype, ai, j) != 0;
         }
     }
 
-    std::vector<cginfo_mb_t> cginfoPerMolblock;
-    int                      a_offset = 0;
-    for (size_t mb = 0; mb < mtop->molblock.size(); mb++)
+    std::vector<gmx::AtomInfoWithinMoleculeBlock> atomInfoForEachMoleculeBlock;
+    int                                           indexOfFirstAtomInMoleculeBlock = 0;
+    for (size_t mb = 0; mb < mtop.molblock.size(); mb++)
     {
-        const gmx_molblock_t& molb = mtop->molblock[mb];
-        const gmx_moltype_t&  molt = mtop->moltype[molb.type];
+        const gmx_molblock_t& molb = mtop.molblock[mb];
+        const gmx_moltype_t&  molt = mtop.moltype[molb.type];
         const auto&           excl = molt.excls;
 
-        /* Check if the cginfo is identical for all molecules in this block.
+        /* Check if all molecules in this block have identical
+         * atominfo. (That's true unless some kind of group- or
+         * distance-based algorithm is involved, e.g. QM/MM groups
+         * affecting multiple molecules within a block differently.)
          * If so, we only need an array of the size of one molecule.
-         * Otherwise we make an array of #mol times #cgs per molecule.
+         * Otherwise we make an array of #mol times #atoms per
+         * molecule.
          */
-        gmx_bool bId = TRUE;
+        bool allMoleculesWithinBlockAreIdentical = true;
         for (int m = 0; m < molb.nmol; m++)
         {
-            const int am = m * molt.atoms.nr;
+            const int numAtomsInAllMolecules = m * molt.atoms.nr;
             for (int a = 0; a < molt.atoms.nr; a++)
             {
-                if (getGroupType(mtop->groups, SimulationAtomGroupType::QuantumMechanics, a_offset + am + a)
-                    != getGroupType(mtop->groups, SimulationAtomGroupType::QuantumMechanics, a_offset + a))
+                if (getGroupType(mtop.groups,
+                                 SimulationAtomGroupType::QuantumMechanics,
+                                 indexOfFirstAtomInMoleculeBlock + numAtomsInAllMolecules + a)
+                    != getGroupType(mtop.groups,
+                                    SimulationAtomGroupType::QuantumMechanics,
+                                    indexOfFirstAtomInMoleculeBlock + a))
                 {
-                    bId = FALSE;
+                    allMoleculesWithinBlockAreIdentical = false;
                 }
-                if (!mtop->groups.groupNumbers[SimulationAtomGroupType::QuantumMechanics].empty())
+                if (!mtop.groups.groupNumbers[SimulationAtomGroupType::QuantumMechanics].empty())
                 {
-                    if (mtop->groups.groupNumbers[SimulationAtomGroupType::QuantumMechanics][a_offset + am + a]
-                        != mtop->groups.groupNumbers[SimulationAtomGroupType::QuantumMechanics][a_offset + a])
+                    if (mtop.groups.groupNumbers[SimulationAtomGroupType::QuantumMechanics]
+                                                [indexOfFirstAtomInMoleculeBlock + numAtomsInAllMolecules + a]
+                        != mtop.groups.groupNumbers[SimulationAtomGroupType::QuantumMechanics]
+                                                   [indexOfFirstAtomInMoleculeBlock + a])
                     {
-                        bId = FALSE;
+                        allMoleculesWithinBlockAreIdentical = false;
                     }
                 }
             }
         }
 
-        cginfo_mb_t cginfo_mb;
-        cginfo_mb.cg_start = a_offset;
-        cginfo_mb.cg_end   = a_offset + molb.nmol * molt.atoms.nr;
-        cginfo_mb.cg_mod   = (bId ? 1 : molb.nmol) * molt.atoms.nr;
-        cginfo_mb.cginfo.resize(cginfo_mb.cg_mod);
-        gmx::ArrayRef<int> cginfo = cginfo_mb.cginfo;
+        gmx::AtomInfoWithinMoleculeBlock atomInfoOfMoleculeBlock;
+        atomInfoOfMoleculeBlock.indexOfFirstAtomInMoleculeBlock = indexOfFirstAtomInMoleculeBlock;
+        atomInfoOfMoleculeBlock.indexOfLastAtomInMoleculeBlock =
+                indexOfFirstAtomInMoleculeBlock + molb.nmol * molt.atoms.nr;
+        int atomInfoSize = (allMoleculesWithinBlockAreIdentical ? 1 : molb.nmol) * molt.atoms.nr;
+        atomInfoOfMoleculeBlock.atomInfo.resize(atomInfoSize);
 
         /* Set constraints flags for constrained atoms */
-        snew(a_con, molt.atoms.nr);
+        std::vector<ConstraintTypeForAtom> constraintTypeOfAtom(molt.atoms.nr, ConstraintTypeForAtom::None);
         for (int ftype = 0; ftype < F_NRE; ftype++)
         {
             if (interaction_function[ftype].flags & IF_CONSTRAINT)
@@ -267,31 +268,31 @@ static std::vector<cginfo_mb_t> init_cginfo_mb(const gmx_mtop_t* mtop, const t_f
                 const int nral = NRAL(ftype);
                 for (int ia = 0; ia < molt.ilist[ftype].size(); ia += 1 + nral)
                 {
-                    int a;
-
-                    for (a = 0; a < nral; a++)
+                    for (int a = 0; a < nral; a++)
                     {
-                        a_con[molt.ilist[ftype].iatoms[ia + 1 + a]] =
-                                (ftype == F_SETTLE ? acSETTLE : acCONSTRAINT);
+                        constraintTypeOfAtom[molt.ilist[ftype].iatoms[ia + 1 + a]] =
+                                (ftype == F_SETTLE ? ConstraintTypeForAtom::Settle
+                                                   : ConstraintTypeForAtom::Constraint);
                     }
                 }
             }
         }
 
-        for (int m = 0; m < (bId ? 1 : molb.nmol); m++)
+        for (int m = 0; m < (allMoleculesWithinBlockAreIdentical ? 1 : molb.nmol); m++)
         {
-            const int molculeOffsetInBlock = m * molt.atoms.nr;
+            const int moleculeOffsetInBlock = m * molt.atoms.nr;
             for (int a = 0; a < molt.atoms.nr; a++)
             {
-                const t_atom& atom     = molt.atoms.atom[a];
-                int&          atomInfo = cginfo[molculeOffsetInBlock + a];
+                const t_atom& atom = molt.atoms.atom[a];
+                int64_t& atomInfo  = atomInfoOfMoleculeBlock.atomInfo[moleculeOffsetInBlock + a];
 
-                /* Store the energy group in cginfo */
-                int gid = getGroupType(mtop->groups, SimulationAtomGroupType::EnergyOutput,
-                                       a_offset + molculeOffsetInBlock + a);
-                SET_CGINFO_GID(atomInfo, gid);
+                /* Store the energy group in atomInfo */
+                int gid  = getGroupType(mtop.groups,
+                                       SimulationAtomGroupType::EnergyOutput,
+                                       indexOfFirstAtomInMoleculeBlock + moleculeOffsetInBlock + a);
+                atomInfo = (atomInfo & ~gmx::sc_atomInfo_EnergyGroupIdMask) | gid;
 
-                bool bHaveVDW = (type_VDW[atom.type] || type_VDW[atom.typeB]);
+                bool bHaveVDW = (atomUsesVdw[atom.type] || atomUsesVdw[atom.typeB]);
                 bool bHaveQ   = (atom.q != 0 || atom.qB != 0);
 
                 bool haveExclusions = false;
@@ -305,65 +306,74 @@ static std::vector<cginfo_mb_t> init_cginfo_mb(const gmx_mtop_t* mtop, const t_f
                     }
                 }
 
-                switch (a_con[a])
+                switch (constraintTypeOfAtom[a])
                 {
-                    case acCONSTRAINT: SET_CGINFO_CONSTR(atomInfo); break;
-                    case acSETTLE: SET_CGINFO_SETTLE(atomInfo); break;
+                    case ConstraintTypeForAtom::Constraint:
+                        atomInfo |= gmx::sc_atomInfo_Constraint;
+                        break;
+                    case ConstraintTypeForAtom::Settle: atomInfo |= gmx::sc_atomInfo_Settle; break;
                     default: break;
                 }
                 if (haveExclusions)
                 {
-                    SET_CGINFO_EXCL_INTER(atomInfo);
+                    atomInfo |= gmx::sc_atomInfo_Exclusion;
                 }
                 if (bHaveVDW)
                 {
-                    SET_CGINFO_HAS_VDW(atomInfo);
+                    atomInfo |= gmx::sc_atomInfo_HasVdw;
                 }
                 if (bHaveQ)
                 {
-                    SET_CGINFO_HAS_Q(atomInfo);
+                    atomInfo |= gmx::sc_atomInfo_HasCharge;
                 }
-                if (fr->efep != efepNO && PERTURBED(atom))
+                if (fr->efep != FreeEnergyPerturbationType::No)
                 {
-                    SET_CGINFO_FEP(atomInfo);
+                    if (PERTURBED(atom))
+                    {
+                        atomInfo |= gmx::sc_atomInfo_FreeEnergyPerturbation;
+                    }
+                    if (atomHasPerturbedChargeIn14Interaction(a, molt))
+                    {
+                        atomInfo |= gmx::sc_atomInfo_HasPerturbedChargeIn14Interaction;
+                    }
                 }
             }
         }
 
-        sfree(a_con);
+        atomInfoForEachMoleculeBlock.push_back(atomInfoOfMoleculeBlock);
 
-        cginfoPerMolblock.push_back(cginfo_mb);
-
-        a_offset += molb.nmol * molt.atoms.nr;
+        indexOfFirstAtomInMoleculeBlock += molb.nmol * molt.atoms.nr;
     }
-    sfree(type_VDW);
 
-    return cginfoPerMolblock;
+    return atomInfoForEachMoleculeBlock;
 }
 
-static std::vector<int> cginfo_expand(const int nmb, gmx::ArrayRef<const cginfo_mb_t> cgi_mb)
+static std::vector<int64_t> expandAtomInfo(const int nmb,
+                                           gmx::ArrayRef<const gmx::AtomInfoWithinMoleculeBlock> atomInfoForEachMoleculeBlock)
 {
-    const int ncg = cgi_mb[nmb - 1].cg_end;
+    const int numAtoms = atomInfoForEachMoleculeBlock[nmb - 1].indexOfLastAtomInMoleculeBlock;
 
-    std::vector<int> cginfo(ncg);
+    std::vector<int64_t> atomInfo(numAtoms);
 
     int mb = 0;
-    for (int cg = 0; cg < ncg; cg++)
+    for (int a = 0; a < numAtoms; a++)
     {
-        while (cg >= cgi_mb[mb].cg_end)
+        while (a >= atomInfoForEachMoleculeBlock[mb].indexOfLastAtomInMoleculeBlock)
         {
             mb++;
         }
-        cginfo[cg] = cgi_mb[mb].cginfo[(cg - cgi_mb[mb].cg_start) % cgi_mb[mb].cg_mod];
+        atomInfo[a] = atomInfoForEachMoleculeBlock[mb]
+                              .atomInfo[(a - atomInfoForEachMoleculeBlock[mb].indexOfFirstAtomInMoleculeBlock)
+                                        % atomInfoForEachMoleculeBlock[mb].atomInfo.size()];
     }
 
-    return cginfo;
+    return atomInfo;
 }
 
 /* Sets the sum of charges (squared) and C6 in the system in fr.
  * Returns whether the system has a net charge.
  */
-static bool set_chargesum(FILE* log, t_forcerec* fr, const gmx_mtop_t* mtop)
+static bool set_chargesum(FILE* log, t_forcerec* fr, const gmx_mtop_t& mtop)
 {
     /*This now calculates sum for q and c6*/
     double qsum, q2sum, q, c6sum, c6;
@@ -371,16 +381,16 @@ static bool set_chargesum(FILE* log, t_forcerec* fr, const gmx_mtop_t* mtop)
     qsum  = 0;
     q2sum = 0;
     c6sum = 0;
-    for (const gmx_molblock_t& molb : mtop->molblock)
+    for (const gmx_molblock_t& molb : mtop.molblock)
     {
         int            nmol  = molb.nmol;
-        const t_atoms* atoms = &mtop->moltype[molb.type].atoms;
+        const t_atoms* atoms = &mtop.moltype[molb.type].atoms;
         for (int i = 0; i < atoms->nr; i++)
         {
             q = atoms->atom[i].q;
             qsum += nmol * q;
             q2sum += nmol * q * q;
-            c6 = mtop->ffparams.iparams[atoms->atom[i].type * (mtop->ffparams.atnr + 1)].lj.c6;
+            c6 = mtop.ffparams.iparams[atoms->atom[i].type * (mtop.ffparams.atnr + 1)].lj.c6;
             c6sum += nmol * c6;
         }
     }
@@ -388,21 +398,21 @@ static bool set_chargesum(FILE* log, t_forcerec* fr, const gmx_mtop_t* mtop)
     fr->q2sum[0] = q2sum;
     fr->c6sum[0] = c6sum;
 
-    if (fr->efep != efepNO)
+    if (fr->efep != FreeEnergyPerturbationType::No)
     {
         qsum  = 0;
         q2sum = 0;
         c6sum = 0;
-        for (const gmx_molblock_t& molb : mtop->molblock)
+        for (const gmx_molblock_t& molb : mtop.molblock)
         {
             int            nmol  = molb.nmol;
-            const t_atoms* atoms = &mtop->moltype[molb.type].atoms;
+            const t_atoms* atoms = &mtop.moltype[molb.type].atoms;
             for (int i = 0; i < atoms->nr; i++)
             {
                 q = atoms->atom[i].qB;
                 qsum += nmol * q;
                 q2sum += nmol * q * q;
-                c6 = mtop->ffparams.iparams[atoms->atom[i].typeB * (mtop->ffparams.atnr + 1)].lj.c6;
+                c6 = mtop.ffparams.iparams[atoms->atom[i].typeB * (mtop.ffparams.atnr + 1)].lj.c6;
                 c6sum += nmol * c6;
             }
             fr->qsum[1]  = qsum;
@@ -418,7 +428,7 @@ static bool set_chargesum(FILE* log, t_forcerec* fr, const gmx_mtop_t* mtop)
     }
     if (log)
     {
-        if (fr->efep == efepNO)
+        if (fr->efep == FreeEnergyPerturbationType::No)
         {
             fprintf(log, "System total charge: %.3f\n", fr->qsum[0]);
         }
@@ -430,62 +440,6 @@ static bool set_chargesum(FILE* log, t_forcerec* fr, const gmx_mtop_t* mtop)
 
     /* A cut-off of 1e-4 is used to catch rounding errors due to ascii input */
     return (std::abs(fr->qsum[0]) > 1e-4 || std::abs(fr->qsum[1]) > 1e-4);
-}
-
-static real calcBuckinghamBMax(FILE* fplog, const gmx_mtop_t* mtop)
-{
-    const t_atoms *at1, *at2;
-    int            i, j, tpi, tpj, ntypes;
-    real           b, bmin;
-
-    if (fplog)
-    {
-        fprintf(fplog, "Determining largest Buckingham b parameter for table\n");
-    }
-    ntypes = mtop->ffparams.atnr;
-
-    bmin            = -1;
-    real bham_b_max = 0;
-    for (size_t mt1 = 0; mt1 < mtop->moltype.size(); mt1++)
-    {
-        at1 = &mtop->moltype[mt1].atoms;
-        for (i = 0; (i < at1->nr); i++)
-        {
-            tpi = at1->atom[i].type;
-            if (tpi >= ntypes)
-            {
-                gmx_fatal(FARGS, "Atomtype[%d] = %d, maximum = %d", i, tpi, ntypes);
-            }
-
-            for (size_t mt2 = mt1; mt2 < mtop->moltype.size(); mt2++)
-            {
-                at2 = &mtop->moltype[mt2].atoms;
-                for (j = 0; (j < at2->nr); j++)
-                {
-                    tpj = at2->atom[j].type;
-                    if (tpj >= ntypes)
-                    {
-                        gmx_fatal(FARGS, "Atomtype[%d] = %d, maximum = %d", j, tpj, ntypes);
-                    }
-                    b = mtop->ffparams.iparams[tpi * ntypes + tpj].bham.b;
-                    if (b > bham_b_max)
-                    {
-                        bham_b_max = b;
-                    }
-                    if ((b < bmin) || (bmin == -1))
-                    {
-                        bmin = b;
-                    }
-                }
-            }
-        }
-    }
-    if (fplog)
-    {
-        fprintf(fplog, "Buckingham b parameters, min: %g, max: %g\n", bmin, bham_b_max);
-    }
-
-    return bham_b_max;
 }
 
 /*!\brief If there's bonded interactions of type \c ftype1 or \c
@@ -501,12 +455,12 @@ static real calcBuckinghamBMax(FILE* fplog, const gmx_mtop_t* mtop)
  * \c ncount. It will contain zero for every bonded interaction index
  * for which no interactions are present in the topology.
  */
-static void count_tables(int ftype1, int ftype2, const gmx_mtop_t* mtop, int* ncount, int** count)
+static void count_tables(int ftype1, int ftype2, const gmx_mtop_t& mtop, int* ncount, int** count)
 {
     int ftype, i, j, tabnr;
 
     // Loop over all moleculetypes
-    for (const gmx_moltype_t& molt : mtop->moltype)
+    for (const gmx_moltype_t& molt : mtop.moltype)
     {
         // Loop over all interaction types
         for (ftype = 0; ftype < F_NRE; ftype++)
@@ -520,7 +474,7 @@ static void count_tables(int ftype1, int ftype2, const gmx_mtop_t* mtop, int* nc
                 for (i = 0; i < il.size(); i += stride)
                 {
                     // Find out which table index the user wanted
-                    tabnr = mtop->ffparams.iparams[il.iatoms[i]].tab.table;
+                    tabnr = mtop.ffparams.iparams[il.iatoms[i]].tab.table;
                     if (tabnr < 0)
                     {
                         gmx_fatal(FARGS, "A bonded table number is smaller than 0: %d\n", tabnr);
@@ -556,7 +510,7 @@ static void count_tables(int ftype1, int ftype2, const gmx_mtop_t* mtop, int* nc
 static std::vector<bondedtable_t> make_bonded_tables(FILE*                            fplog,
                                                      int                              ftype1,
                                                      int                              ftype2,
-                                                     const gmx_mtop_t*                mtop,
+                                                     const gmx_mtop_t&                mtop,
                                                      gmx::ArrayRef<const std::string> tabbfnm,
                                                      const char*                      tabext)
 {
@@ -597,8 +551,10 @@ static std::vector<bondedtable_t> make_bonded_tables(FILE*                      
                               "Tabulated interaction of type '%s%s%s' with index %d cannot be used "
                               "because no table file whose name matched '%s' was passed via the "
                               "gmx mdrun -tableb command-line option.",
-                              interaction_function[ftype1].longname, isPlural ? "' or '" : "",
-                              isPlural ? interaction_function[ftype2].longname : "", i,
+                              interaction_function[ftype1].longname,
+                              isPlural ? "' or '" : "",
+                              isPlural ? interaction_function[ftype2].longname : "",
+                              i,
                               patternToFind.c_str());
                 }
             }
@@ -617,103 +573,6 @@ void forcerec_set_ranges(t_forcerec* fr, int natoms_force, int natoms_force_cons
     for (auto& forceHelperBuffers : fr->forceHelperBuffers)
     {
         forceHelperBuffers.resize(natoms_f_novirsum);
-    }
-}
-
-static real cutoff_inf(real cutoff)
-{
-    if (cutoff == 0)
-    {
-        cutoff = GMX_CUTOFF_INF;
-    }
-
-    return cutoff;
-}
-
-/*! \brief Print Coulomb Ewald citations and set ewald coefficients */
-static void initCoulombEwaldParameters(FILE*                fp,
-                                       const t_inputrec*    ir,
-                                       bool                 systemHasNetCharge,
-                                       interaction_const_t* ic)
-{
-    if (!EEL_PME_EWALD(ir->coulombtype))
-    {
-        return;
-    }
-
-    if (fp)
-    {
-        fprintf(fp, "Will do PME sum in reciprocal space for electrostatic interactions.\n");
-
-        if (ir->coulombtype == eelP3M_AD)
-        {
-            please_cite(fp, "Hockney1988");
-            please_cite(fp, "Ballenegger2012");
-        }
-        else
-        {
-            please_cite(fp, "Essmann95a");
-        }
-
-        if (ir->ewald_geometry == eewg3DC)
-        {
-            if (fp)
-            {
-                fprintf(fp, "Using the Ewald3DC correction for systems with a slab geometry%s.\n",
-                        systemHasNetCharge ? " and net charge" : "");
-            }
-            please_cite(fp, "In-Chul99a");
-            if (systemHasNetCharge)
-            {
-                please_cite(fp, "Ballenegger2009");
-            }
-        }
-    }
-
-    ic->ewaldcoeff_q = calc_ewaldcoeff_q(ir->rcoulomb, ir->ewald_rtol);
-    if (fp)
-    {
-        fprintf(fp, "Using a Gaussian width (1/beta) of %g nm for Ewald\n", 1 / ic->ewaldcoeff_q);
-    }
-
-    if (ic->coulomb_modifier == eintmodPOTSHIFT)
-    {
-        GMX_RELEASE_ASSERT(ic->rcoulomb != 0, "Cutoff radius cannot be zero");
-        ic->sh_ewald = std::erfc(ic->ewaldcoeff_q * ic->rcoulomb) / ic->rcoulomb;
-    }
-    else
-    {
-        ic->sh_ewald = 0;
-    }
-}
-
-/*! \brief Print Van der Waals Ewald citations and set ewald coefficients */
-static void initVdwEwaldParameters(FILE* fp, const t_inputrec* ir, interaction_const_t* ic)
-{
-    if (!EVDW_PME(ir->vdwtype))
-    {
-        return;
-    }
-
-    if (fp)
-    {
-        fprintf(fp, "Will do PME sum in reciprocal space for LJ dispersion interactions.\n");
-        please_cite(fp, "Essmann95a");
-    }
-    ic->ewaldcoeff_lj = calc_ewaldcoeff_lj(ir->rvdw, ir->ewald_rtol_lj);
-    if (fp)
-    {
-        fprintf(fp, "Using a Gaussian width (1/beta) of %g nm for LJ Ewald\n", 1 / ic->ewaldcoeff_lj);
-    }
-
-    if (ic->vdw_modifier == eintmodPOTSHIFT)
-    {
-        real crc2       = gmx::square(ic->ewaldcoeff_lj * ic->rvdw);
-        ic->sh_lj_ewald = (std::exp(-crc2) * (1 + crc2 + 0.5 * crc2 * crc2) - 1) / gmx::power6(ic->rvdw);
-    }
-    else
-    {
-        ic->sh_lj_ewald = 0;
     }
 }
 
@@ -768,192 +627,38 @@ void init_interaction_const_tables(FILE* fp, interaction_const_t* ic, const real
 {
     if (EEL_PME_EWALD(ic->eeltype) || EVDW_PME(ic->vdwtype))
     {
-        init_ewald_f_table(*ic, rlist, tableExtensionLength, ic->coulombEwaldTables.get(),
-                           ic->vdwEwaldTables.get());
+        init_ewald_f_table(
+                *ic, rlist, tableExtensionLength, ic->coulombEwaldTables.get(), ic->vdwEwaldTables.get());
         if (fp != nullptr)
         {
-            fprintf(fp, "Initialized non-bonded Ewald tables, spacing: %.2e size: %zu\n\n",
-                    1 / ic->coulombEwaldTables->scale, ic->coulombEwaldTables->tableF.size());
+            if (EEL_PME_EWALD(ic->eeltype))
+            {
+                fprintf(fp,
+                        "Initialized non-bonded Coulomb Ewald tables, spacing: %.2e size: %zu\n\n",
+                        1 / ic->coulombEwaldTables->scale,
+                        ic->coulombEwaldTables->tableF.size());
+            }
         }
     }
 }
 
-static void clear_force_switch_constants(shift_consts_t* sc)
+real cutoff_inf(real cutoff)
 {
-    sc->c2   = 0;
-    sc->c3   = 0;
-    sc->cpot = 0;
+    if (cutoff == 0)
+    {
+        cutoff = GMX_CUTOFF_INF;
+    }
+
+    return cutoff;
 }
 
-static void force_switch_constants(real p, real rsw, real rc, shift_consts_t* sc)
-{
-    /* Here we determine the coefficient for shifting the force to zero
-     * between distance rsw and the cut-off rc.
-     * For a potential of r^-p, we have force p*r^-(p+1).
-     * But to save flops we absorb p in the coefficient.
-     * Thus we get:
-     * force/p   = r^-(p+1) + c2*r^2 + c3*r^3
-     * potential = r^-p + c2/3*r^3 + c3/4*r^4 + cpot
-     */
-    sc->c2   = ((p + 1) * rsw - (p + 4) * rc) / (pow(rc, p + 2) * gmx::square(rc - rsw));
-    sc->c3   = -((p + 1) * rsw - (p + 3) * rc) / (pow(rc, p + 2) * gmx::power3(rc - rsw));
-    sc->cpot = -pow(rc, -p) + p * sc->c2 / 3 * gmx::power3(rc - rsw)
-               + p * sc->c3 / 4 * gmx::power4(rc - rsw);
-}
-
-static void potential_switch_constants(real rsw, real rc, switch_consts_t* sc)
-{
-    /* The switch function is 1 at rsw and 0 at rc.
-     * The derivative and second derivate are zero at both ends.
-     * rsw        = max(r - r_switch, 0)
-     * sw         = 1 + c3*rsw^3 + c4*rsw^4 + c5*rsw^5
-     * dsw        = 3*c3*rsw^2 + 4*c4*rsw^3 + 5*c5*rsw^4
-     * force      = force*dsw - potential*sw
-     * potential *= sw
-     */
-    sc->c3 = -10 / gmx::power3(rc - rsw);
-    sc->c4 = 15 / gmx::power4(rc - rsw);
-    sc->c5 = -6 / gmx::power5(rc - rsw);
-}
-
-/*! \brief Construct interaction constants
- *
- * This data is used (particularly) by search and force code for
- * short-range interactions. Many of these are constant for the whole
- * simulation; some are constant only after PME tuning completes.
- */
-static void init_interaction_const(FILE*                 fp,
-                                   interaction_const_t** interaction_const,
-                                   const t_inputrec*     ir,
-                                   const gmx_mtop_t*     mtop,
-                                   bool                  systemHasNetCharge)
-{
-    interaction_const_t* ic = new interaction_const_t;
-
-    ic->coulombEwaldTables = std::make_unique<EwaldCorrectionTables>();
-    ic->vdwEwaldTables     = std::make_unique<EwaldCorrectionTables>();
-
-    /* Lennard-Jones */
-    ic->vdwtype         = ir->vdwtype;
-    ic->vdw_modifier    = ir->vdw_modifier;
-    ic->reppow          = mtop->ffparams.reppow;
-    ic->rvdw            = cutoff_inf(ir->rvdw);
-    ic->rvdw_switch     = ir->rvdw_switch;
-    ic->ljpme_comb_rule = ir->ljpme_combination_rule;
-    ic->useBuckingham   = (mtop->ffparams.functype[0] == F_BHAM);
-    if (ic->useBuckingham)
-    {
-        ic->buckinghamBMax = calcBuckinghamBMax(fp, mtop);
-    }
-
-    initVdwEwaldParameters(fp, ir, ic);
-
-    clear_force_switch_constants(&ic->dispersion_shift);
-    clear_force_switch_constants(&ic->repulsion_shift);
-
-    switch (ic->vdw_modifier)
-    {
-        case eintmodPOTSHIFT:
-            /* Only shift the potential, don't touch the force */
-            ic->dispersion_shift.cpot = -1.0 / gmx::power6(ic->rvdw);
-            ic->repulsion_shift.cpot  = -1.0 / gmx::power12(ic->rvdw);
-            break;
-        case eintmodFORCESWITCH:
-            /* Switch the force, switch and shift the potential */
-            force_switch_constants(6.0, ic->rvdw_switch, ic->rvdw, &ic->dispersion_shift);
-            force_switch_constants(12.0, ic->rvdw_switch, ic->rvdw, &ic->repulsion_shift);
-            break;
-        case eintmodPOTSWITCH:
-            /* Switch the potential and force */
-            potential_switch_constants(ic->rvdw_switch, ic->rvdw, &ic->vdw_switch);
-            break;
-        case eintmodNONE:
-        case eintmodEXACTCUTOFF:
-            /* Nothing to do here */
-            break;
-        default: gmx_incons("unimplemented potential modifier");
-    }
-
-    /* Electrostatics */
-    ic->eeltype          = ir->coulombtype;
-    ic->coulomb_modifier = ir->coulomb_modifier;
-    ic->rcoulomb         = cutoff_inf(ir->rcoulomb);
-    ic->rcoulomb_switch  = ir->rcoulomb_switch;
-    ic->epsilon_r        = ir->epsilon_r;
-
-    /* Set the Coulomb energy conversion factor */
-    if (ic->epsilon_r != 0)
-    {
-        ic->epsfac = ONE_4PI_EPS0 / ic->epsilon_r;
-    }
-    else
-    {
-        /* eps = 0 is infinite dieletric: no Coulomb interactions */
-        ic->epsfac = 0;
-    }
-
-    /* Reaction-field */
-    if (EEL_RF(ic->eeltype))
-    {
-        GMX_RELEASE_ASSERT(ic->eeltype != eelGRF_NOTUSED, "GRF is no longer supported");
-        ic->epsilon_rf = ir->epsilon_rf;
-
-        calc_rffac(fp, ic->epsilon_r, ic->epsilon_rf, ic->rcoulomb, &ic->k_rf, &ic->c_rf);
-    }
-    else
-    {
-        /* For plain cut-off we might use the reaction-field kernels */
-        ic->epsilon_rf = ic->epsilon_r;
-        ic->k_rf       = 0;
-        if (ir->coulomb_modifier == eintmodPOTSHIFT)
-        {
-            ic->c_rf = 1 / ic->rcoulomb;
-        }
-        else
-        {
-            ic->c_rf = 0;
-        }
-    }
-
-    initCoulombEwaldParameters(fp, ir, systemHasNetCharge, ic);
-
-    if (fp != nullptr)
-    {
-        real dispersion_shift;
-
-        dispersion_shift = ic->dispersion_shift.cpot;
-        if (EVDW_PME(ic->vdwtype))
-        {
-            dispersion_shift -= ic->sh_lj_ewald;
-        }
-        fprintf(fp, "Potential shift: LJ r^-12: %.3e r^-6: %.3e", ic->repulsion_shift.cpot, dispersion_shift);
-
-        if (ic->eeltype == eelCUT)
-        {
-            fprintf(fp, ", Coulomb %.e", -ic->c_rf);
-        }
-        else if (EEL_PME(ic->eeltype))
-        {
-            fprintf(fp, ", Ewald %.3e", -ic->sh_ewald);
-        }
-        fprintf(fp, "\n");
-    }
-
-    if (ir->efep != efepNO)
-    {
-        GMX_RELEASE_ASSERT(ir->fepvals, "ir->fepvals should be set wth free-energy");
-        ic->softCoreParameters = std::make_unique<interaction_const_t::SoftCoreParameters>(*ir->fepvals);
-    }
-
-    *interaction_const = ic;
-}
-
-void init_forcerec(FILE*                            fp,
+void init_forcerec(FILE*                            fplog,
                    const gmx::MDLogger&             mdlog,
-                   t_forcerec*                      fr,
-                   const t_inputrec*                ir,
-                   const gmx_mtop_t*                mtop,
-                   const t_commrec*                 cr,
+                   const gmx::SimulationWorkload&   simulationWork,
+                   t_forcerec*                      forcerec,
+                   const t_inputrec&                inputrec,
+                   const gmx_mtop_t&                mtop,
+                   const t_commrec*                 commrec,
                    matrix                           box,
                    const char*                      tabfn,
                    const char*                      tabpfn,
@@ -961,100 +666,93 @@ void init_forcerec(FILE*                            fp,
                    real                             print_force)
 {
     /* The CMake default turns SIMD kernels on, but it might be turned off further down... */
-    fr->use_simd_kernels = GMX_USE_SIMD_KERNELS;
+    forcerec->use_simd_kernels = GMX_USE_SIMD_KERNELS;
 
-    if (check_box(ir->pbcType, box))
+    if (check_box(inputrec.pbcType, box))
     {
-        gmx_fatal(FARGS, "%s", check_box(ir->pbcType, box));
+        gmx_fatal(FARGS, "%s", check_box(inputrec.pbcType, box));
     }
 
     /* Test particle insertion ? */
-    if (EI_TPI(ir->eI))
+    if (EI_TPI(inputrec.eI))
     {
         /* Set to the size of the molecule to be inserted (the last one) */
-        gmx::RangePartitioning molecules = gmx_mtop_molecules(*mtop);
-        fr->n_tpi                        = molecules.block(molecules.numBlocks() - 1).size();
+        gmx::RangePartitioning molecules = gmx_mtop_molecules(mtop);
+        forcerec->n_tpi                  = molecules.block(molecules.numBlocks() - 1).size();
     }
     else
     {
-        fr->n_tpi = 0;
+        forcerec->n_tpi = 0;
     }
 
-    if (ir->coulombtype == eelRF_NEC_UNSUPPORTED || ir->coulombtype == eelGRF_NOTUSED)
+    if (inputrec.coulombtype == CoulombInteractionType::RFNecUnsupported
+        || inputrec.coulombtype == CoulombInteractionType::GRFNotused)
     {
-        gmx_fatal(FARGS, "%s electrostatics is no longer supported", eel_names[ir->coulombtype]);
+        gmx_fatal(FARGS, "%s electrostatics is no longer supported", enumValueToString(inputrec.coulombtype));
     }
 
-    if (ir->bAdress)
+    if (inputrec.bAdress)
     {
         gmx_fatal(FARGS, "AdResS simulations are no longer supported");
     }
-    if (ir->useTwinRange)
+    if (inputrec.useTwinRange)
     {
         gmx_fatal(FARGS, "Twin-range simulations are no longer supported");
     }
     /* Copy the user determined parameters */
-    fr->userint1  = ir->userint1;
-    fr->userint2  = ir->userint2;
-    fr->userint3  = ir->userint3;
-    fr->userint4  = ir->userint4;
-    fr->userreal1 = ir->userreal1;
-    fr->userreal2 = ir->userreal2;
-    fr->userreal3 = ir->userreal3;
-    fr->userreal4 = ir->userreal4;
+    forcerec->userint1  = inputrec.userint1;
+    forcerec->userint2  = inputrec.userint2;
+    forcerec->userint3  = inputrec.userint3;
+    forcerec->userint4  = inputrec.userint4;
+    forcerec->userreal1 = inputrec.userreal1;
+    forcerec->userreal2 = inputrec.userreal2;
+    forcerec->userreal3 = inputrec.userreal3;
+    forcerec->userreal4 = inputrec.userreal4;
 
     /* Shell stuff */
-    fr->fc_stepsize = ir->fc_stepsize;
+    forcerec->fc_stepsize = inputrec.fc_stepsize;
 
     /* Free energy */
-    fr->efep = ir->efep;
+    forcerec->efep = inputrec.efep;
 
     if ((getenv("GMX_DISABLE_SIMD_KERNELS") != nullptr) || (getenv("GMX_NOOPTIMIZEDKERNELS") != nullptr))
     {
-        fr->use_simd_kernels = FALSE;
-        if (fp != nullptr)
+        forcerec->use_simd_kernels = FALSE;
+        if (fplog != nullptr)
         {
-            fprintf(fp,
+            fprintf(fplog,
                     "\nFound environment variable GMX_DISABLE_SIMD_KERNELS.\n"
                     "Disabling the usage of any SIMD-specific non-bonded & bonded kernel routines\n"
                     "(e.g. SSE2/SSE4.1/AVX).\n\n");
         }
     }
 
-    fr->bBHAM = (mtop->ffparams.functype[0] == F_BHAM);
+    forcerec->haveBuckingham = (mtop.ffparams.functype[0] == F_BHAM);
 
     /* Neighbour searching stuff */
-    fr->pbcType = ir->pbcType;
+    forcerec->pbcType = inputrec.pbcType;
 
     /* Determine if we will do PBC for distances in bonded interactions */
-    if (fr->pbcType == PbcType::No)
+    if (forcerec->pbcType == PbcType::No)
     {
-        fr->bMolPBC = FALSE;
+        forcerec->bMolPBC = FALSE;
     }
     else
     {
+        forcerec->bMolPBC =
+                (!haveDDAtomOrdering(*commrec) || dd_bonded_molpbc(*commrec->dd, forcerec->pbcType));
+
+        // Check and set up PBC for Ewald surface corrections or orientation restraints
         const bool useEwaldSurfaceCorrection =
-                (EEL_PME_EWALD(ir->coulombtype) && ir->epsilon_surface != 0);
+                (EEL_PME_EWALD(inputrec.coulombtype) && inputrec.epsilon_surface != 0);
         const bool haveOrientationRestraints = (gmx_mtop_ftype_count(mtop, F_ORIRES) > 0);
-        if (!DOMAINDECOMP(cr))
+        const bool moleculesAreAlwaysWhole =
+                (haveDDAtomOrdering(*commrec) && dd_moleculesAreAlwaysWhole(*commrec->dd));
+        // WholeMoleculeTransform is only supported with a single PP rank
+        if (!moleculesAreAlwaysWhole && !havePPDomainDecomposition(commrec)
+            && (useEwaldSurfaceCorrection || haveOrientationRestraints))
         {
-            fr->bMolPBC = true;
-
-            if (useEwaldSurfaceCorrection || haveOrientationRestraints)
-            {
-                fr->wholeMoleculeTransform =
-                        std::make_unique<gmx::WholeMoleculeTransform>(*mtop, ir->pbcType);
-            }
-        }
-        else
-        {
-            fr->bMolPBC = dd_bonded_molpbc(cr->dd, fr->pbcType);
-
-            /* With Ewald surface correction it is useful to support e.g. running water
-             * in parallel with update groups.
-             * With orientation restraints there is no sensible use case supported with DD.
-             */
-            if ((useEwaldSurfaceCorrection && !dd_moleculesAreAlwaysWhole(*cr->dd)) || haveOrientationRestraints)
+            if (havePPDomainDecomposition(commrec))
             {
                 gmx_fatal(FARGS,
                           "You requested Ewald surface correction or orientation restraints, "
@@ -1062,172 +760,193 @@ void init_forcerec(FILE*                            fp,
                           "over periodic boundary conditions by the domain decomposition. "
                           "Run without domain decomposition instead.");
             }
+
+            forcerec->wholeMoleculeTransform = std::make_unique<gmx::WholeMoleculeTransform>(
+                    mtop, inputrec.pbcType, haveDDAtomOrdering(*commrec));
         }
+
+        forcerec->bMolPBC =
+                !haveDDAtomOrdering(*commrec) || dd_bonded_molpbc(*commrec->dd, forcerec->pbcType);
 
         if (useEwaldSurfaceCorrection)
         {
-            GMX_RELEASE_ASSERT(!DOMAINDECOMP(cr) || dd_moleculesAreAlwaysWhole(*cr->dd),
+            GMX_RELEASE_ASSERT(moleculesAreAlwaysWhole || forcerec->wholeMoleculeTransform,
                                "Molecules can not be broken by PBC with epsilon_surface > 0");
         }
     }
 
-    fr->rc_scaling = ir->refcoord_scaling;
-    copy_rvec(ir->posres_com, fr->posres_com);
-    copy_rvec(ir->posres_comB, fr->posres_comB);
-    fr->rlist                  = cutoff_inf(ir->rlist);
-    fr->ljpme_combination_rule = ir->ljpme_combination_rule;
+    forcerec->rc_scaling = inputrec.refcoord_scaling;
+    copy_rvec(inputrec.posres_com, forcerec->posres_com);
+    copy_rvec(inputrec.posres_comB, forcerec->posres_comB);
+    forcerec->rlist                  = cutoff_inf(inputrec.rlist);
+    forcerec->ljpme_combination_rule = inputrec.ljpme_combination_rule;
 
     /* This now calculates sum for q and c6*/
-    bool systemHasNetCharge = set_chargesum(fp, fr, mtop);
+    bool systemHasNetCharge = set_chargesum(fplog, forcerec, mtop);
 
-    /* fr->ic is used both by verlet and group kernels (to some extent) now */
-    init_interaction_const(fp, &fr->ic, ir, mtop, systemHasNetCharge);
-    init_interaction_const_tables(fp, fr->ic, fr->rlist, ir->tabext);
+    /* Make data structure used by kernels */
+    forcerec->ic = std::make_unique<interaction_const_t>(
+            init_interaction_const(fplog, inputrec, mtop, systemHasNetCharge));
+    init_interaction_const_tables(fplog, forcerec->ic.get(), forcerec->rlist, inputrec.tabext);
 
-    const interaction_const_t* ic = fr->ic;
-
-    /* TODO: Replace this Ewald table or move it into interaction_const_t */
-    if (ir->coulombtype == eelEWALD)
-    {
-        init_ewald_tab(&(fr->ewald_table), ir, fp);
-    }
+    const interaction_const_t* interactionConst = forcerec->ic.get();
 
     /* Electrostatics: Translate from interaction-setting-in-mdp-file to kernel interaction format */
-    switch (ic->eeltype)
+    switch (interactionConst->eeltype)
     {
-        case eelCUT: fr->nbkernel_elec_interaction = GMX_NBKERNEL_ELEC_COULOMB; break;
-
-        case eelRF:
-        case eelRF_ZERO: fr->nbkernel_elec_interaction = GMX_NBKERNEL_ELEC_REACTIONFIELD; break;
-
-        case eelSWITCH:
-        case eelSHIFT:
-        case eelUSER:
-        case eelPMESWITCH:
-        case eelPMEUSER:
-        case eelPMEUSERSWITCH:
-            fr->nbkernel_elec_interaction = GMX_NBKERNEL_ELEC_CUBICSPLINETABLE;
+        case CoulombInteractionType::Cut:
+            forcerec->nbkernel_elec_interaction = NbkernelElecType::Coulomb;
             break;
 
-        case eelPME:
-        case eelP3M_AD:
-        case eelEWALD: fr->nbkernel_elec_interaction = GMX_NBKERNEL_ELEC_EWALD; break;
+        case CoulombInteractionType::RF:
+        case CoulombInteractionType::RFZero:
+            forcerec->nbkernel_elec_interaction = NbkernelElecType::ReactionField;
+            break;
+
+        case CoulombInteractionType::Switch:
+        case CoulombInteractionType::Shift:
+        case CoulombInteractionType::User:
+        case CoulombInteractionType::PmeSwitch:
+        case CoulombInteractionType::PmeUser:
+        case CoulombInteractionType::PmeUserSwitch:
+            forcerec->nbkernel_elec_interaction = NbkernelElecType::CubicSplineTable;
+            break;
+
+        case CoulombInteractionType::Pme:
+        case CoulombInteractionType::P3mAD:
+        case CoulombInteractionType::Ewald:
+            forcerec->nbkernel_elec_interaction = NbkernelElecType::Ewald;
+            break;
 
         default:
-            gmx_fatal(FARGS, "Unsupported electrostatic interaction: %s", eel_names[ic->eeltype]);
+            gmx_fatal(FARGS,
+                      "Unsupported electrostatic interaction: %s",
+                      enumValueToString(interactionConst->eeltype));
     }
-    fr->nbkernel_elec_modifier = ic->coulomb_modifier;
+    forcerec->nbkernel_elec_modifier = interactionConst->coulomb_modifier;
 
     /* Vdw: Translate from mdp settings to kernel format */
-    switch (ic->vdwtype)
+    switch (interactionConst->vdwtype)
     {
-        case evdwCUT:
-            if (fr->bBHAM)
+        case VanDerWaalsType::Cut:
+            if (forcerec->haveBuckingham)
             {
-                fr->nbkernel_vdw_interaction = GMX_NBKERNEL_VDW_BUCKINGHAM;
+                forcerec->nbkernel_vdw_interaction = NbkernelVdwType::Buckingham;
             }
             else
             {
-                fr->nbkernel_vdw_interaction = GMX_NBKERNEL_VDW_LENNARDJONES;
+                forcerec->nbkernel_vdw_interaction = NbkernelVdwType::LennardJones;
             }
             break;
-        case evdwPME: fr->nbkernel_vdw_interaction = GMX_NBKERNEL_VDW_LJEWALD; break;
+        case VanDerWaalsType::Pme:
+            forcerec->nbkernel_vdw_interaction = NbkernelVdwType::LJEwald;
+            break;
 
-        case evdwSWITCH:
-        case evdwSHIFT:
-        case evdwUSER: fr->nbkernel_vdw_interaction = GMX_NBKERNEL_VDW_CUBICSPLINETABLE; break;
+        case VanDerWaalsType::Switch:
+        case VanDerWaalsType::Shift:
+        case VanDerWaalsType::User:
+            forcerec->nbkernel_vdw_interaction = NbkernelVdwType::CubicSplineTable;
+            break;
 
-        default: gmx_fatal(FARGS, "Unsupported vdw interaction: %s", evdw_names[ic->vdwtype]);
+        default:
+            gmx_fatal(FARGS, "Unsupported vdw interaction: %s", enumValueToString(interactionConst->vdwtype));
     }
-    fr->nbkernel_vdw_modifier = ic->vdw_modifier;
+    forcerec->nbkernel_vdw_modifier = interactionConst->vdw_modifier;
 
-    if (!gmx_within_tol(ic->reppow, 12.0, 10 * GMX_DOUBLE_EPS))
+    if (!gmx_within_tol(interactionConst->reppow, 12.0, 10 * GMX_DOUBLE_EPS))
     {
         gmx_fatal(FARGS, "Only LJ repulsion power 12 is supported");
     }
     /* Older tpr files can contain Coulomb user tables with the Verlet cutoff-scheme,
      * while mdrun does not (and never did) support this.
      */
-    if (EEL_USER(fr->ic->eeltype))
+    if (EEL_USER(forcerec->ic->eeltype))
     {
-        gmx_fatal(FARGS, "Electrostatics type %s is currently not supported", eel_names[ir->coulombtype]);
+        gmx_fatal(FARGS,
+                  "Electrostatics type %s is currently not supported",
+                  enumValueToString(inputrec.coulombtype));
     }
 
-    fr->bvdwtab  = FALSE;
-    fr->bcoultab = FALSE;
-
     /* 1-4 interaction electrostatics */
-    fr->fudgeQQ = mtop->ffparams.fudgeQQ;
+    forcerec->fudgeQQ = mtop.ffparams.fudgeQQ;
 
-    // Multiple time stepping
-    fr->useMts = ir->useMts;
-
-    if (fr->useMts)
+    if (simulationWork.useMts)
     {
-        gmx::assertMtsRequirements(*ir);
+        GMX_ASSERT(gmx::checkMtsRequirements(inputrec).empty(),
+                   "All MTS requirements should be met here");
     }
 
     const bool haveDirectVirialContributionsFast =
-            fr->forceProviders->hasForceProvider() || gmx_mtop_ftype_count(mtop, F_POSRES) > 0
-            || gmx_mtop_ftype_count(mtop, F_FBPOSRES) > 0 || ir->nwall > 0 || ir->bPull || ir->bRot
-            || ir->bIMD;
-    const bool haveDirectVirialContributionsSlow = EEL_FULL(ic->eeltype) || EVDW_PME(ic->vdwtype);
-    for (int i = 0; i < (fr->useMts ? 2 : 1); i++)
+            forcerec->forceProviders->hasForceProvider() || gmx_mtop_ftype_count(mtop, F_POSRES) > 0
+            || gmx_mtop_ftype_count(mtop, F_FBPOSRES) > 0 || inputrec.nwall > 0 || inputrec.bPull
+            || inputrec.bRot || inputrec.bIMD;
+    const bool haveDirectVirialContributionsSlow =
+            EEL_FULL(interactionConst->eeltype) || EVDW_PME(interactionConst->vdwtype);
+    for (int i = 0; i < (simulationWork.useMts ? 2 : 1); i++)
     {
         bool haveDirectVirialContributions =
-                (((!fr->useMts || i == 0) && haveDirectVirialContributionsFast)
-                 || ((!fr->useMts || i == 1) && haveDirectVirialContributionsSlow));
-        fr->forceHelperBuffers.emplace_back(haveDirectVirialContributions);
+                (((!simulationWork.useMts || i == 0) && haveDirectVirialContributionsFast)
+                 || ((!simulationWork.useMts || i == 1) && haveDirectVirialContributionsSlow));
+        forcerec->forceHelperBuffers.emplace_back(haveDirectVirialContributions);
     }
 
-    if (fr->shift_vec == nullptr)
+    if (forcerec->shift_vec.empty())
     {
-        snew(fr->shift_vec, SHIFTS);
+        forcerec->shift_vec.resize(gmx::c_numShiftVectors);
     }
 
-    if (fr->nbfp.empty())
+    GMX_ASSERT(forcerec->nbfp.empty(), "The nonbonded force parameters should not be set up yet.");
+    forcerec->ntype = mtop.ffparams.atnr;
+    forcerec->nbfp  = makeNonBondedParameterLists(
+            mtop.ffparams.atnr, mtop.ffparams.iparams, forcerec->haveBuckingham);
+    if (EVDW_PME(interactionConst->vdwtype))
     {
-        fr->ntype = mtop->ffparams.atnr;
-        fr->nbfp  = mk_nbfp(&mtop->ffparams, fr->bBHAM);
-        if (EVDW_PME(ic->vdwtype))
-        {
-            fr->ljpme_c6grid = make_ljpme_c6grid(&mtop->ffparams, fr);
-        }
+        forcerec->ljpme_c6grid = makeLJPmeC6GridCorrectionParameters(
+                mtop.ffparams.atnr, mtop.ffparams.iparams, forcerec->ljpme_combination_rule);
     }
 
     /* Copy the energy group exclusions */
-    fr->egp_flags = ir->opts.egp_flags;
+    forcerec->egp_flags = inputrec.opts.egp_flags;
 
     /* Van der Waals stuff */
-    if ((ic->vdwtype != evdwCUT) && (ic->vdwtype != evdwUSER) && !fr->bBHAM)
+    if ((interactionConst->vdwtype != VanDerWaalsType::Cut)
+        && (interactionConst->vdwtype != VanDerWaalsType::User) && !forcerec->haveBuckingham)
     {
-        if (ic->rvdw_switch >= ic->rvdw)
+        if (interactionConst->rvdw_switch >= interactionConst->rvdw)
         {
-            gmx_fatal(FARGS, "rvdw_switch (%f) must be < rvdw (%f)", ic->rvdw_switch, ic->rvdw);
+            gmx_fatal(FARGS,
+                      "rvdw_switch (%f) must be < rvdw (%f)",
+                      interactionConst->rvdw_switch,
+                      interactionConst->rvdw);
         }
-        if (fp)
+        if (fplog)
         {
-            fprintf(fp, "Using %s Lennard-Jones, switch between %g and %g nm\n",
-                    (ic->eeltype == eelSWITCH) ? "switched" : "shifted", ic->rvdw_switch, ic->rvdw);
+            fprintf(fplog,
+                    "Using %s Lennard-Jones, switch between %g and %g nm\n",
+                    (interactionConst->eeltype == CoulombInteractionType::Switch) ? "switched" : "shifted",
+                    interactionConst->rvdw_switch,
+                    interactionConst->rvdw);
         }
     }
 
-    if (fr->bBHAM && EVDW_PME(ic->vdwtype))
+    if (forcerec->haveBuckingham && EVDW_PME(interactionConst->vdwtype))
     {
         gmx_fatal(FARGS, "LJ PME not supported with Buckingham");
     }
 
-    if (fr->bBHAM && (ic->vdwtype == evdwSHIFT || ic->vdwtype == evdwSWITCH))
+    if (forcerec->haveBuckingham
+        && (interactionConst->vdwtype == VanDerWaalsType::Shift
+            || interactionConst->vdwtype == VanDerWaalsType::Switch))
     {
         gmx_fatal(FARGS, "Switch/shift interaction not supported with Buckingham");
     }
 
-    if (fr->bBHAM)
+    if (forcerec->haveBuckingham)
     {
         gmx_fatal(FARGS, "The Verlet cutoff-scheme does not (yet) support Buckingham");
     }
 
-    if (ir->implicit_solvent)
+    if (inputrec.implicit_solvent)
     {
         gmx_fatal(FARGS, "Implict solvation is no longer supported.");
     }
@@ -1237,7 +956,7 @@ void init_forcerec(FILE*                            fp,
      * in that case grompp should already have checked that we do not need
      * normal tables and we only generate tables for 1-4 interactions.
      */
-    real rtab = ir->rlist + ir->tabext;
+    real rtab = inputrec.rlist + inputrec.tabext;
 
     /* We want to use unmodified tables for 1-4 coulombic
      * interactions, so we must in general have an extra set of
@@ -1245,29 +964,29 @@ void init_forcerec(FILE*                            fp,
     if (gmx_mtop_ftype_count(mtop, F_LJ14) > 0 || gmx_mtop_ftype_count(mtop, F_LJC14_Q) > 0
         || gmx_mtop_ftype_count(mtop, F_LJC_PAIRS_NB) > 0)
     {
-        fr->pairsTable = make_tables(fp, ic, tabpfn, rtab, GMX_MAKETABLES_14ONLY);
+        forcerec->pairsTable = make_tables(fplog, interactionConst, tabpfn, rtab, GMX_MAKETABLES_14ONLY);
     }
 
     /* Wall stuff */
-    fr->nwall = ir->nwall;
-    if (ir->nwall && ir->wall_type == ewtTABLE)
+    forcerec->nwall = inputrec.nwall;
+    if (inputrec.nwall && inputrec.wall_type == WallType::Table)
     {
-        make_wall_tables(fp, ir, tabfn, &mtop->groups, fr);
+        make_wall_tables(fplog, inputrec, tabfn, &mtop.groups, forcerec);
     }
 
-    fr->fcdata = std::make_unique<t_fcdata>();
+    forcerec->fcdata = std::make_unique<t_fcdata>();
 
     if (!tabbfnm.empty())
     {
-        t_fcdata& fcdata = *fr->fcdata;
+        t_fcdata& fcdata = *forcerec->fcdata;
         // Need to catch std::bad_alloc
         // TODO Don't need to catch this here, when merging with master branch
         try
         {
             // TODO move these tables into a separate struct and store reference in ListedForces
-            fcdata.bondtab  = make_bonded_tables(fp, F_TABBONDS, F_TABBONDSNC, mtop, tabbfnm, "b");
-            fcdata.angletab = make_bonded_tables(fp, F_TABANGLES, -1, mtop, tabbfnm, "a");
-            fcdata.dihtab   = make_bonded_tables(fp, F_TABDIHS, -1, mtop, tabbfnm, "d");
+            fcdata.bondtab = make_bonded_tables(fplog, F_TABBONDS, F_TABBONDSNC, mtop, tabbfnm, "b");
+            fcdata.angletab = make_bonded_tables(fplog, F_TABANGLES, -1, mtop, tabbfnm, "a");
+            fcdata.dihtab   = make_bonded_tables(fplog, F_TABDIHS, -1, mtop, tabbfnm, "d");
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
     }
@@ -1282,11 +1001,11 @@ void init_forcerec(FILE*                            fp,
     }
 
     /* Initialize the thread working data for bonded interactions */
-    if (fr->useMts)
+    if (simulationWork.useMts)
     {
         // Add one ListedForces object for each MTS level
         bool isFirstLevel = true;
-        for (const auto& mtsLevel : ir->mtsLevels)
+        for (const auto& mtsLevel : inputrec.mtsLevels)
         {
             ListedForces::InteractionSelection interactionSelection;
             const auto&                        forceGroups = mtsLevel.forceGroups;
@@ -1307,64 +1026,62 @@ void init_forcerec(FILE*                            fp,
                 interactionSelection.set(static_cast<int>(ListedForces::InteractionGroup::Rest));
                 isFirstLevel = false;
             }
-            fr->listedForces.emplace_back(
-                    mtop->ffparams, mtop->groups.groups[SimulationAtomGroupType::EnergyOutput].size(),
-                    gmx_omp_nthreads_get(emntBonded), interactionSelection, fp);
+            forcerec->listedForces.emplace_back(
+                    mtop.ffparams,
+                    mtop.groups.groups[SimulationAtomGroupType::EnergyOutput].size(),
+                    gmx_omp_nthreads_get(ModuleMultiThread::Bonded),
+                    interactionSelection,
+                    fplog);
         }
     }
     else
     {
         // Add one ListedForces object with all listed interactions
-        fr->listedForces.emplace_back(
-                mtop->ffparams, mtop->groups.groups[SimulationAtomGroupType::EnergyOutput].size(),
-                gmx_omp_nthreads_get(emntBonded), ListedForces::interactionSelectionAll(), fp);
+        forcerec->listedForces.emplace_back(
+                mtop.ffparams,
+                mtop.groups.groups[SimulationAtomGroupType::EnergyOutput].size(),
+                gmx_omp_nthreads_get(ModuleMultiThread::Bonded),
+                ListedForces::interactionSelectionAll(),
+                fplog);
     }
 
     // QM/MM initialization if requested
-    if (ir->bQMMM)
+    if (inputrec.bQMMM)
     {
         gmx_incons("QM/MM was requested, but is no longer available in GROMACS");
     }
 
     /* Set all the static charge group info */
-    fr->cginfo_mb = init_cginfo_mb(mtop, fr);
-    if (!DOMAINDECOMP(cr))
+    forcerec->atomInfoForEachMoleculeBlock = makeAtomInfoForEachMoleculeBlock(mtop, forcerec);
+    if (!haveDDAtomOrdering(*commrec))
     {
-        fr->cginfo = cginfo_expand(mtop->molblock.size(), fr->cginfo_mb);
+        forcerec->atomInfo = expandAtomInfo(mtop.molblock.size(), forcerec->atomInfoForEachMoleculeBlock);
     }
 
-    if (!DOMAINDECOMP(cr))
+    if (!haveDDAtomOrdering(*commrec))
     {
-        forcerec_set_ranges(fr, mtop->natoms, mtop->natoms, mtop->natoms);
+        forcerec_set_ranges(forcerec, mtop.natoms, mtop.natoms, mtop.natoms);
     }
 
-    fr->print_force = print_force;
+    forcerec->print_force = print_force;
 
-    fr->nthread_ewc = gmx_omp_nthreads_get(emntBonded);
-    snew(fr->ewc_t, fr->nthread_ewc);
-
-    if (ir->eDispCorr != edispcNO)
+    if (inputrec.eDispCorr != DispersionCorrectionType::No)
     {
-        fr->dispersionCorrection = std::make_unique<DispersionCorrection>(
-                *mtop, *ir, fr->bBHAM, fr->ntype, fr->nbfp, *fr->ic, tabfn);
-        fr->dispersionCorrection->print(mdlog);
+        forcerec->dispersionCorrection = std::make_unique<DispersionCorrection>(
+                mtop, inputrec, forcerec->haveBuckingham, forcerec->ntype, forcerec->nbfp, *forcerec->ic, tabfn);
+        forcerec->dispersionCorrection->print(mdlog);
     }
 
-    if (fp != nullptr)
+    if (fplog != nullptr)
     {
         /* Here we switch from using mdlog, which prints the newline before
          * the paragraph, to our old fprintf logging, which prints the newline
          * after the paragraph, so we should add a newline here.
          */
-        fprintf(fp, "\n");
+        fprintf(fplog, "\n");
     }
 }
 
 t_forcerec::t_forcerec() = default;
 
-t_forcerec::~t_forcerec()
-{
-    /* Note: This code will disappear when types are converted to C++ */
-    sfree(shift_vec);
-    sfree(ewc_t);
-}
+t_forcerec::~t_forcerec() = default;

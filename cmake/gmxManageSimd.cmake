@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2012- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 include(gmxDetectCpu)
 include(gmxSimdFlags)
@@ -177,11 +175,6 @@ elseif(GMX_SIMD_ACTIVE MATCHES "AVX2_")
         set(SIMD_STATUS_MESSAGE "Enabling 256-bit AVX2 SIMD instructions using CXX flags: ${SIMD_AVX2_CXX_FLAGS}")
     endif()
 
-elseif(GMX_SIMD_ACTIVE STREQUAL "MIC")
-    # No flags needed. Not testing.
-    set(GMX_SIMD_X86_MIC 1)
-    set(SIMD_STATUS_MESSAGE "Enabling MIC (Xeon Phi) SIMD instructions without special flags. This SIMD support is deprecated.")
-
 elseif(GMX_SIMD_ACTIVE STREQUAL "AVX_512")
 
     gmx_find_simd_avx_512_flags(SIMD_AVX_512_C_SUPPORTED SIMD_AVX_512_CXX_SUPPORTED
@@ -212,25 +205,6 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "AVX_512_KNL")
     set(GMX_SIMD_X86_${GMX_SIMD_ACTIVE} 1)
     set(SIMD_STATUS_MESSAGE "Enabling 512-bit AVX-512-KNL SIMD instructions using CXX flags: ${SIMD_AVX_512_KNL_CXX_FLAGS}")
 
-elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_NEON")
-
-    if (GMX_DOUBLE)
-        message(FATAL_ERROR "ARM_NEON SIMD support is not available for a double precision build because the architecture lacks double-precision support")
-    endif()
-
-    gmx_find_simd_arm_neon_flags(SIMD_ARM_NEON_C_SUPPORTED SIMD_ARM_NEON_CXX_SUPPORTED
-                                 SIMD_ARM_NEON_C_FLAGS SIMD_ARM_NEON_CXX_FLAGS)
-
-    if(NOT SIMD_ARM_NEON_C_SUPPORTED OR NOT SIMD_ARM_NEON_CXX_SUPPORTED)
-        gmx_give_fatal_error_when_simd_support_not_found("ARM NEON" "disable SIMD support (slower)" "${SUGGEST_BINUTILS_UPDATE}")
-    endif()
-
-    # If multiple flags are neeed, make them into a list
-    string(REPLACE " " ";" SIMD_C_FLAGS ${SIMD_ARM_NEON_C_FLAGS})
-    string(REPLACE " " ";" SIMD_CXX_FLAGS ${SIMD_ARM_NEON_CXX_FLAGS})
-    set(GMX_SIMD_${GMX_SIMD_ACTIVE} 1)
-    set(SIMD_STATUS_MESSAGE "Enabling 32-bit ARM NEON SIMD instructions using CXX flags: ${SIMD_ARM_NEON_CXX_FLAGS}. This SIMD support is deprecated.")
-
 elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_NEON_ASIMD")
 
     gmx_find_simd_arm_neon_asimd_flags(SIMD_ARM_NEON_ASIMD_C_SUPPORTED SIMD_ARM_NEON_ASIMD_CXX_SUPPORTED
@@ -248,12 +222,11 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_NEON_ASIMD")
 
 elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_SVE")
 
-    # Note that GMX_RELAXED_DOUBLE_PRECISION is enabled by default in the top-level CMakeLists.txt
     gmx_option_multichoice(
         GMX_SIMD_ARM_SVE_LENGTH
-	"SVE vector length in bits"
-	"auto"
-	auto 128 256 512 1024 2048)
+        "SVE vector length in bits"
+        "auto"
+        auto 128 256 512 1024 2048)
 
     if (GMX_SIMD_ARM_SVE_LENGTH STREQUAL "AUTO")
         if (NOT GMX_SIMD_ARM_SVE_DETECTED_LENGTH)
@@ -262,12 +235,12 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_SVE")
                 message(FATAL_ERROR "cannot automatically determine the SVE vector length, please explicitly set it via -DGMX_SIMD_ARM_SVE_LENGTH=<bits>")
             endif()
             file(READ "/proc/sys/abi/sve_default_vector_length" GMX_SIMD_ARM_SVE_DETECTED_LENGTH_IN_BYTES)
-	    message(STATUS "Detected SVE vector length in bytes : ${GMX_SIMD_ARM_SVE_DETECTED_LENGTH_IN_BYTES}")
-	    math(EXPR GMX_SIMD_ARM_SVE_DETECTED_LENGTH "${GMX_SIMD_ARM_SVE_DETECTED_LENGTH_IN_BYTES} * 8")
+            message(STATUS "Detected SVE vector length in bytes : ${GMX_SIMD_ARM_SVE_DETECTED_LENGTH_IN_BYTES}")
+            math(EXPR GMX_SIMD_ARM_SVE_DETECTED_LENGTH "${GMX_SIMD_ARM_SVE_DETECTED_LENGTH_IN_BYTES} * 8")
             set(GMX_SIMD_ARM_SVE_DETECTED_LENGTH ${GMX_SIMD_ARM_SVE_DETECTED_LENGTH} CACHE STRING "Detected length in bits for SVE vectors")
             message(STATUS "Detected SVE vector length of ${GMX_SIMD_ARM_SVE_DETECTED_LENGTH} bits")
         endif()
-	set(GMX_SIMD_ARM_SVE_LENGTH_VALUE ${GMX_SIMD_ARM_SVE_DETECTED_LENGTH})
+        set(GMX_SIMD_ARM_SVE_LENGTH_VALUE ${GMX_SIMD_ARM_SVE_DETECTED_LENGTH})
     else()
         set(GMX_SIMD_ARM_SVE_LENGTH_VALUE ${GMX_SIMD_ARM_SVE_LENGTH})
     endif()
@@ -276,7 +249,7 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_SVE")
                                 SIMD_ARM_SVE_C_FLAGS SIMD_ARM_SVE_CXX_FLAGS)
 
     if(NOT SIMD_ARM_SVE_C_SUPPORTED OR NOT SIMD_ARM_SVE_CXX_SUPPORTED)
-        gmx_give_fatal_error_when_simd_support_not_found("ARM (AArch64) SVE SIMD" "particularly gcc version 10.1 or later, or disable SIMD support (slower)" "${SUGGEST_BINUTILS_UPDATE}")
+        gmx_give_fatal_error_when_simd_support_not_found("ARM (AArch64) SVE SIMD" "particularly gcc version 10.1 or later, or clang version 14 or later (when available), or disable SIMD support (slower)" "${SUGGEST_BINUTILS_UPDATE}")
     endif()
 
     # If multiple flags are neeed, make them into a list
@@ -285,29 +258,7 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "ARM_SVE")
     set(GMX_SIMD_${GMX_SIMD_ACTIVE} 1)
     set(SIMD_STATUS_MESSAGE "Enabling ARM (AArch64) SVE Advanced SIMD instructions using CXX flags: ${SIMD_ARM_SVE_CXX_FLAGS}")
 
-elseif(GMX_SIMD_ACTIVE STREQUAL "IBM_VMX")
-
-    gmx_find_simd_ibm_vmx_flags(SIMD_IBM_VMX_C_SUPPORTED SIMD_IBM_VMX_CXX_SUPPORTED
-                                SIMD_IBM_VMX_C_FLAGS SIMD_IBM_VMX_CXX_FLAGS)
-
-    if(NOT SIMD_IBM_VMX_C_SUPPORTED OR NOT SIMD_IBM_VMX_CXX_SUPPORTED)
-        gmx_give_fatal_error_when_simd_support_not_found("IBM VMX" "disable SIMD support (slower)" "${SUGGEST_BINUTILS_UPDATE}")
-    endif()
-
-    # If multiple flags are neeed, make them into a list
-    string(REPLACE " " ";" SIMD_C_FLAGS ${SIMD_IBM_VMX_C_FLAGS})
-    string(REPLACE " " ";" SIMD_CXX_FLAGS ${SIMD_IBM_VMX_CXX_FLAGS})
-    set(GMX_SIMD_${GMX_SIMD_ACTIVE} 1)
-    set(SIMD_STATUS_MESSAGE "Enabling IBM VMX SIMD instructions using CXX flags: ${SIMD_IBM_VMX_CXX_FLAGS}. This SIMD support is deprecated.")
-
 elseif(GMX_SIMD_ACTIVE STREQUAL "IBM_VSX")
-
-    # IBM_VSX and gcc > 9 do not work together, so we need to prevent people from
-    # choosing a combination that might fail. Issue #3380.
-    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10)
-        message(FATAL_ERROR "IBM_VSX does not work together with gcc > 9. Disable SIMD support (slower), or use an older version of the GNU compiler")
-    endif()
-
 
     gmx_find_simd_ibm_vsx_flags(SIMD_IBM_VSX_C_SUPPORTED SIMD_IBM_VSX_CXX_SUPPORTED
                                 SIMD_IBM_VSX_C_FLAGS SIMD_IBM_VSX_CXX_FLAGS)
@@ -327,13 +278,6 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "IBM_VSX")
     set(GMX_SIMD_${GMX_SIMD_ACTIVE} 1)
     set(SIMD_STATUS_MESSAGE "Enabling IBM VSX SIMD instructions using CXX flags: ${SIMD_IBM_VSX_CXX_FLAGS}")
 
-elseif(GMX_SIMD_ACTIVE STREQUAL "SPARC64_HPC_ACE")
-
-    # Note that GMX_RELAXED_DOUBLE_PRECISION is enabled by default in the top-level CMakeLists.txt
-
-    set(GMX_SIMD_${GMX_SIMD_ACTIVE} 1)
-    set(SIMD_STATUS_MESSAGE "Enabling Sparc64 HPC-ACE SIMD instructions without special flags. This SIMD support is deprecated.")
-
 elseif(GMX_SIMD_ACTIVE STREQUAL "REFERENCE")
 
     # NB: This file handles settings for the SIMD module, so in the interest 
@@ -343,7 +287,7 @@ elseif(GMX_SIMD_ACTIVE STREQUAL "REFERENCE")
         add_definitions(-DGMX_SIMD_REF_FLOAT_WIDTH=${GMX_SIMD_REF_FLOAT_WIDTH})
     endif()
     if(GMX_SIMD_REF_DOUBLE_WIDTH)
-      	add_definitions(-DGMX_SIMD_REF_DOUBLE_WIDTH=${GMX_SIMD_REF_DOUBLE_WIDTH})
+        add_definitions(-DGMX_SIMD_REF_DOUBLE_WIDTH=${GMX_SIMD_REF_DOUBLE_WIDTH})
     endif()
 
     set(GMX_SIMD_${GMX_SIMD_ACTIVE} 1)
@@ -403,8 +347,8 @@ endif()
 
 # By default, 32-bit windows cannot pass SIMD (SSE/AVX) arguments in registers,
 # and even on 64-bit (all platforms) it is only used for a handful of arguments.
-# The __vectorcall (MSVC, from MSVC2013) or __regcall (ICC) calling conventions
-# enable this, which is critical to enable 32-bit SIMD and improves performance
+# The __vectorcall (MSVC, from MSVC2013) calling convention
+# enables this, which is critical to enable 32-bit SIMD and improves performance
 # for 64-bit SIMD.
 # Check if the compiler supports one of these, and in that case set gmx_simdcall
 # to that string. If we do not have any such calling convention modifier, set it

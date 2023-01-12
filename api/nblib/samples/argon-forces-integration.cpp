@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -49,9 +48,6 @@
 // The entire nblib public API can be included with a single header or individual components
 // can be included via their respective headers.
 #include "nblib/nblib.h"
-
-// Main function to write the MD program.
-int main(); // Keep the compiler happy
 
 int main()
 {
@@ -110,26 +106,34 @@ int main()
     // Some performance flags can be set a run time
     options.nbnxmSimd = nblib::SimdKernels::SimdNo;
     // The force calculator contains all the data needed to compute forces.
-    nblib::ForceCalculator forceCalculator(simState, options);
+    auto forceCalculator = nblib::setupGmxForceCalculatorCpu(simState.topology(), options);
+    // build the pairlist
+    forceCalculator->updatePairlist(simState.coordinates(), simState.box());
     // Integration requires masses, positions, and forces
     nblib::LeapFrog integrator(simState.topology(), simState.box());
     // Print some diagnostic info
     printf("initial forces on particle 0: x %4f y %4f z %4f\n", forces[0][0], forces[0][1], forces[0][2]);
     // The forces are computed for the user
     gmx::ArrayRef<nblib::Vec3> userForces(simState.forces());
-    forceCalculator.compute(simState.coordinates(), userForces);
+    forceCalculator->compute(simState.coordinates(), simState.box(), userForces);
     // Print some diagnostic info
-    printf("  final forces on particle 0: x %4f y %4f z %4f\n", userForces[0][0], userForces[0][1],
+    printf("  final forces on particle 0: x %4f y %4f z %4f\n",
+           userForces[0][0],
+           userForces[0][1],
            userForces[0][2]);
     // User may modify forces stored in simState.forces() if needed
     // Print some diagnostic info
-    printf("initial position of particle 0: x %4f y %4f z %4f\n", simState.coordinates()[0][0],
-           simState.coordinates()[0][1], simState.coordinates()[0][2]);
+    printf("initial position of particle 0: x %4f y %4f z %4f\n",
+           simState.coordinates()[0][0],
+           simState.coordinates()[0][1],
+           simState.coordinates()[0][2]);
     // Integrate with a time step of 1 fs
     integrator.integrate(1.0, simState.coordinates(), simState.velocities(), simState.forces());
     // Print some diagnostic info
 
-    printf("  final position of particle 0: x %4f y %4f z %4f\n", simState.coordinates()[0][0],
-           simState.coordinates()[0][1], simState.coordinates()[0][2]);
+    printf("  final position of particle 0: x %4f y %4f z %4f\n",
+           simState.coordinates()[0][0],
+           simState.coordinates()[0][1],
+           simState.coordinates()[0][2]);
     return 0;
 }

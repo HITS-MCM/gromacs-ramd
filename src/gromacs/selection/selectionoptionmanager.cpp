@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -176,7 +174,10 @@ void SelectionOptionManager::Impl::placeSelectionsInRequests(const SelectionList
                         formatString("Too few selections provided for '%s': "
                                      "Expected %d selections, but only %d left "
                                      "after assigning the first %d to other selections.",
-                                     request.name().c_str(), request.count(), remaining, assigned)));
+                                     request.name().c_str(),
+                                     request.count(),
+                                     remaining,
+                                     assigned)));
             }
             last = first + request.count();
         }
@@ -195,7 +196,10 @@ void SelectionOptionManager::Impl::placeSelectionsInRequests(const SelectionList
                                      "selections to be assigned to '%s'. "
                                      "Resolution for such cases is not implemented, "
                                      "and may be impossible.",
-                                     name, conflictName, name, conflictName)));
+                                     name,
+                                     conflictName,
+                                     name,
+                                     conflictName)));
             }
             last = selections.end();
         }
@@ -212,7 +216,9 @@ void SelectionOptionManager::Impl::placeSelectionsInRequests(const SelectionList
                 formatString("Too many selections provided: "
                              "Expected %d selections, but %d provided. "
                              "Last %d selections could not be assigned to any option.",
-                             assigned, count, remaining)));
+                             assigned,
+                             count,
+                             remaining)));
     }
 }
 
@@ -291,8 +297,8 @@ void SelectionOptionManager::parseRequestedFromStdin(bool bInteractive)
     for (i = impl_->requests_.begin(); i != impl_->requests_.end(); ++i)
     {
         const Impl::SelectionRequest& request = *i;
-        std::string   context = formatString("for option '%s'\n(%s)", request.name().c_str(),
-                                           request.description().c_str());
+        std::string                   context = formatString(
+                "for option '%s'\n(%s)", request.name().c_str(), request.description().c_str());
         SelectionList selections =
                 impl_->collection_.parseFromStdin(request.count(), bInteractive, context);
         request.storage_->addSelections(selections, true);

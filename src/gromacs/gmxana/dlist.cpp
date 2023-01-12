@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,40 +26,40 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include <cstdlib>
 #include <cstring>
 
+#include <vector>
+
 #include "gromacs/gmxana/gstat.h"
-#include "gromacs/topology/residuetypes.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/smalloc.h"
 
-t_dlist* mk_dlist(FILE*          log,
-                  const t_atoms* atoms,
-                  int*           nlist,
-                  gmx_bool       bPhi,
-                  gmx_bool       bPsi,
-                  gmx_bool       bChi,
-                  gmx_bool       bHChi,
-                  int            maxchi,
-                  int            r0,
-                  ResidueType*   rt)
+std::vector<t_dlist> mk_dlist(FILE*          log,
+                              const t_atoms* atoms,
+                              gmx_bool       bPhi,
+                              gmx_bool       bPsi,
+                              gmx_bool       bChi,
+                              gmx_bool       bHChi,
+                              int            maxchi,
+                              int            r0)
 {
     int       i, j, ii;
     t_dihatms atm, prev;
     int       nl = 0, nc[edMax];
     char*     thisres;
-    t_dlist*  dl;
+    // Initially, size this to all possible residues. Later it might
+    // be reduced to only handle those residues identified to contain
+    // dihedrals.
+    std::vector<t_dlist> dl(atoms->nres + 1);
 
-    snew(dl, atoms->nres + 1);
     prev.C = prev.Cn[1] = -1; /* Keep the compiler quiet */
     for (i = 0; (i < edMax); i++)
     {
@@ -225,18 +221,8 @@ t_dlist* mk_dlist(FILE*          log,
             {
                 nc[6]++;
             }
-            dl[nl].index = rt->indexFromResidueName(thisres);
 
-            /* Prevent seg fault from unknown residues. If one adds a custom residue to
-             * residuetypes.dat but somehow loses it, changes it, or does analysis on
-             * another machine, the residue type will be unknown. */
-            if (dl[nl].index == -1)
-            {
-                gmx_fatal(FARGS,
-                          "Unknown residue %s when searching for residue type.\n"
-                          "Maybe you need to add a custom residue in residuetypes.dat.",
-                          thisres);
-            }
+            dl[nl].residueName = thisres;
 
             sprintf(dl[nl].name, "%s%d", thisres, ires + r0);
             nl++;
@@ -246,9 +232,13 @@ t_dlist* mk_dlist(FILE*          log,
             fprintf(debug,
                     "Could not find N atom but could find other atoms"
                     " in residue %s%d\n",
-                    thisres, ires + r0);
+                    thisres,
+                    ires + r0);
         }
     }
+    // Leave only the residues that were recognized to contain dihedrals
+    dl.resize(nl);
+
     fprintf(stderr, "\n");
     fprintf(log, "\n");
     fprintf(log, "There are %d residues with dihedrals\n", nl);
@@ -303,12 +293,10 @@ t_dlist* mk_dlist(FILE*          log,
     }
     fprintf(log, "\n");
 
-    *nlist = nl;
-
     return dl;
 }
 
-gmx_bool has_dihedral(int Dih, t_dlist* dl)
+gmx_bool has_dihedral(int Dih, const t_dlist& dl)
 {
     gmx_bool b = FALSE;
     int      ddd;
@@ -316,14 +304,14 @@ gmx_bool has_dihedral(int Dih, t_dlist* dl)
     switch (Dih)
     {
         case edPhi:
-            b = ((dl->atm.H != -1) && (dl->atm.N != -1) && (dl->atm.Cn[1] != -1) && (dl->atm.C != -1));
+            b = ((dl.atm.H != -1) && (dl.atm.N != -1) && (dl.atm.Cn[1] != -1) && (dl.atm.C != -1));
             break;
         case edPsi:
-            b = ((dl->atm.N != -1) && (dl->atm.Cn[1] != -1) && (dl->atm.C != -1) && (dl->atm.O != -1));
+            b = ((dl.atm.N != -1) && (dl.atm.Cn[1] != -1) && (dl.atm.C != -1) && (dl.atm.O != -1));
             break;
         case edOmega:
-            b = ((dl->atm.minCalpha != -1) && (dl->atm.minC != -1) && (dl->atm.N != -1)
-                 && (dl->atm.Cn[1] != -1));
+            b = ((dl.atm.minCalpha != -1) && (dl.atm.minC != -1) && (dl.atm.N != -1)
+                 && (dl.atm.Cn[1] != -1));
             break;
         case edChi1:
         case edChi2:
@@ -332,45 +320,42 @@ gmx_bool has_dihedral(int Dih, t_dlist* dl)
         case edChi5:
         case edChi6:
             ddd = Dih - edChi1;
-            b   = ((dl->atm.Cn[ddd] != -1) && (dl->atm.Cn[ddd + 1] != -1)
-                 && (dl->atm.Cn[ddd + 2] != -1) && (dl->atm.Cn[ddd + 3] != -1));
+            b = ((dl.atm.Cn[ddd] != -1) && (dl.atm.Cn[ddd + 1] != -1) && (dl.atm.Cn[ddd + 2] != -1)
+                 && (dl.atm.Cn[ddd + 3] != -1));
             break;
         default:
-            pr_dlist(stdout, 1, dl, 1, 0, TRUE, TRUE, TRUE, TRUE, MAXCHI);
+            pr_dlist(stdout, gmx::constArrayRefFromArray(&dl, 1), 1, 0, TRUE, TRUE, TRUE, TRUE, MAXCHI);
             gmx_fatal(FARGS, "Non existent dihedral %d in file %s, line %d", Dih, __FILE__, __LINE__);
     }
     return b;
 }
 
-static void pr_one_ro(FILE* fp, t_dlist* dl, int nDih, real gmx_unused dt)
+static void pr_one_ro(FILE* fp, const t_dlist& dl, int nDih, real gmx_unused dt)
 {
     int k;
     for (k = 0; k < NROT; k++)
     {
-        fprintf(fp, "  %6.2f", dl->rot_occ[nDih][k]);
+        fprintf(fp, "  %6.2f", dl.rot_occ[nDih][k]);
     }
     fprintf(fp, "\n");
 }
 
-static void pr_ntr_s2(FILE* fp, t_dlist* dl, int nDih, real dt)
+static void pr_ntr_s2(FILE* fp, const t_dlist& dl, int nDih, real dt)
 {
-    fprintf(fp, "  %6.2f  %6.2f\n", (dt == 0) ? 0 : dl->ntr[nDih] / dt, dl->S2[nDih]);
+    fprintf(fp, "  %6.2f  %6.2f\n", (dt == 0) ? 0 : dl.ntr[nDih] / dt, dl.S2[nDih]);
 }
 
-void pr_dlist(FILE*    fp,
-              int      nl,
-              t_dlist  dl[],
-              real     dt,
-              int      printtype,
-              gmx_bool bPhi,
-              gmx_bool bPsi,
-              gmx_bool bChi,
-              gmx_bool bOmega,
-              int      maxchi)
+void pr_dlist(FILE*                        fp,
+              gmx::ArrayRef<const t_dlist> dlist,
+              real                         dt,
+              int                          printtype,
+              gmx_bool                     bPhi,
+              gmx_bool                     bPsi,
+              gmx_bool                     bChi,
+              gmx_bool                     bOmega,
+              int                          maxchi)
 {
-    int i, Xi;
-
-    void (*pr_props)(FILE*, t_dlist*, int, real);
+    void (*pr_props)(FILE*, const t_dlist&, int, real);
 
     /* Analysis of dihedral transitions etc */
 
@@ -387,9 +372,9 @@ void pr_dlist(FILE*    fp,
     }
 
     /* change atom numbers from 0 based to 1 based */
-    for (i = 0; (i < nl); i++)
+    for (const auto& dihedral : dlist)
     {
-        fprintf(fp, "Residue %s\n", dl[i].name);
+        fprintf(fp, "Residue %s\n", dihedral.name);
         if (printtype == edPrintST)
         {
             fprintf(fp,
@@ -404,66 +389,48 @@ void pr_dlist(FILE*    fp,
         }
         if (bPhi)
         {
-            fprintf(fp, "   Phi [%5d,%5d,%5d,%5d]",
-                    (dl[i].atm.H == -1) ? 1 + dl[i].atm.minC : 1 + dl[i].atm.H, 1 + dl[i].atm.N,
-                    1 + dl[i].atm.Cn[1], 1 + dl[i].atm.C);
-            pr_props(fp, &dl[i], edPhi, dt);
+            fprintf(fp,
+                    "   Phi [%5d,%5d,%5d,%5d]",
+                    (dihedral.atm.H == -1) ? 1 + dihedral.atm.minC : 1 + dihedral.atm.H,
+                    1 + dihedral.atm.N,
+                    1 + dihedral.atm.Cn[1],
+                    1 + dihedral.atm.C);
+            pr_props(fp, dihedral, edPhi, dt);
         }
         if (bPsi)
         {
-            fprintf(fp, "   Psi [%5d,%5d,%5d,%5d]", 1 + dl[i].atm.N, 1 + dl[i].atm.Cn[1],
-                    1 + dl[i].atm.C, 1 + dl[i].atm.O);
-            pr_props(fp, &dl[i], edPsi, dt);
+            fprintf(fp,
+                    "   Psi [%5d,%5d,%5d,%5d]",
+                    1 + dihedral.atm.N,
+                    1 + dihedral.atm.Cn[1],
+                    1 + dihedral.atm.C,
+                    1 + dihedral.atm.O);
+            pr_props(fp, dihedral, edPsi, dt);
         }
-        if (bOmega && has_dihedral(edOmega, &(dl[i])))
+        if (bOmega && has_dihedral(edOmega, dihedral))
         {
-            fprintf(fp, " Omega [%5d,%5d,%5d,%5d]", 1 + dl[i].atm.minCalpha, 1 + dl[i].atm.minC,
-                    1 + dl[i].atm.N, 1 + dl[i].atm.Cn[1]);
-            pr_props(fp, &dl[i], edOmega, dt);
+            fprintf(fp,
+                    " Omega [%5d,%5d,%5d,%5d]",
+                    1 + dihedral.atm.minCalpha,
+                    1 + dihedral.atm.minC,
+                    1 + dihedral.atm.N,
+                    1 + dihedral.atm.Cn[1]);
+            pr_props(fp, dihedral, edOmega, dt);
         }
-        for (Xi = 0; Xi < MAXCHI; Xi++)
+        for (int Xi = 0; Xi < MAXCHI; Xi++)
         {
-            if (bChi && (Xi < maxchi) && (dl[i].atm.Cn[Xi + 3] != -1))
+            if (bChi && (Xi < maxchi) && (dihedral.atm.Cn[Xi + 3] != -1))
             {
-                fprintf(fp, "   Chi%d[%5d,%5d,%5d,%5d]", Xi + 1, 1 + dl[i].atm.Cn[Xi],
-                        1 + dl[i].atm.Cn[Xi + 1], 1 + dl[i].atm.Cn[Xi + 2], 1 + dl[i].atm.Cn[Xi + 3]);
-                pr_props(fp, &dl[i], Xi + edChi1, dt); /* Xi+2 was wrong here */
+                fprintf(fp,
+                        "   Chi%d[%5d,%5d,%5d,%5d]",
+                        Xi + 1,
+                        1 + dihedral.atm.Cn[Xi],
+                        1 + dihedral.atm.Cn[Xi + 1],
+                        1 + dihedral.atm.Cn[Xi + 2],
+                        1 + dihedral.atm.Cn[Xi + 3]);
+                pr_props(fp, dihedral, Xi + edChi1, dt); /* Xi+2 was wrong here */
             }
         }
         fprintf(fp, "\n");
     }
-}
-
-
-int pr_trans(FILE* fp, int nl, t_dlist dl[], real dt, int Xi)
-{
-    /* never called at the moment */
-
-    int i, nn, nz;
-
-    nz = 0;
-    fprintf(fp, "\\begin{table}[h]\n");
-    fprintf(fp, "\\caption{Number of dihedral transitions per nanosecond}\n");
-    fprintf(fp, "\\begin{tabular}{|l|l|}\n");
-    fprintf(fp, "\\hline\n");
-    fprintf(fp, "Residue\t&$\\chi_%d$\t\\\\\n", Xi + 1);
-    for (i = 0; (i < nl); i++)
-    {
-        nn = static_cast<int>(dl[i].ntr[Xi] / dt);
-
-        if (nn == 0)
-        {
-            fprintf(fp, "%s\t&\\HL{%d}\t\\\\\n", dl[i].name, nn);
-            nz++;
-        }
-        else if (nn > 0)
-        {
-            fprintf(fp, "%s\t&\\%d\t\\\\\n", dl[i].name, nn);
-        }
-    }
-    fprintf(fp, "\\hline\n");
-    fprintf(fp, "\\end{tabular}\n");
-    fprintf(fp, "\\end{table}\n\n");
-
-    return nz;
 }

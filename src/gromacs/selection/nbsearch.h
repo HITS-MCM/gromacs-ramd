@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \brief API for neighborhood searching for analysis.
@@ -55,7 +53,7 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/classhelpers.h"
+#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/real.h"
 
@@ -111,33 +109,21 @@ public:
      * to methods that accept positions.
      */
     AnalysisNeighborhoodPositions(const rvec& x) :
-        count_(1),
-        index_(-1),
-        x_(&x),
-        exclusionIds_(nullptr),
-        indices_(nullptr)
+        count_(1), index_(-1), x_(&x), exclusionIds_(nullptr), indices_(nullptr)
     {
     }
     /*! \brief
      * Initializes positions from an array of position vectors.
      */
     AnalysisNeighborhoodPositions(const rvec x[], int count) :
-        count_(count),
-        index_(-1),
-        x_(x),
-        exclusionIds_(nullptr),
-        indices_(nullptr)
+        count_(count), index_(-1), x_(x), exclusionIds_(nullptr), indices_(nullptr)
     {
     }
     /*! \brief
      * Initializes positions from a vector of position vectors.
      */
     AnalysisNeighborhoodPositions(const std::vector<RVec>& x) :
-        count_(ssize(x)),
-        index_(-1),
-        x_(as_rvec_array(x.data())),
-        exclusionIds_(nullptr),
-        indices_(nullptr)
+        count_(ssize(x)), index_(-1), x_(as_rvec_array(x.data())), exclusionIds_(nullptr), indices_(nullptr)
     {
     }
 
@@ -317,7 +303,7 @@ public:
 private:
     class Impl;
 
-    PrivateImplPointer<Impl> impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 /*! \brief
@@ -335,10 +321,7 @@ public:
     AnalysisNeighborhoodPair() : refIndex_(-1), testIndex_(0), distance2_(0.0), dx_() {}
     //! Initializes a pair object with the given data.
     AnalysisNeighborhoodPair(int refIndex, int testIndex, real distance2, const rvec dx) :
-        refIndex_(refIndex),
-        testIndex_(testIndex),
-        distance2_(distance2),
-        dx_()
+        refIndex_(refIndex), testIndex_(testIndex), distance2_(distance2), dx_()
     {
         copy_rvec(dx, dx_);
     }

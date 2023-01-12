@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *
@@ -44,11 +43,12 @@
 #ifndef GMX_MDLIB_UPDATE_CONSTRAIN_GPU_H
 #define GMX_MDLIB_UPDATE_CONSTRAIN_GPU_H
 
+#include <memory>
+
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/mdtypes/group.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/classhelpers.h"
 
 class DeviceContext;
 class DeviceStream;
@@ -70,27 +70,23 @@ public:
     /*! \brief Create Update-Constrain object.
      *
      * The constructor is given a non-nullptr \p deviceStream, in which all the update and constrain
-     * routines are executed. \p xUpdatedOnDevice should mark the completion of all kernels that
-     * modify coordinates. The event is maintained outside this class and also passed to all (if
-     * any) consumers of the updated coordinates. The \p xUpdatedOnDevice also can not be a nullptr
-     * because the markEvent(...) method is called unconditionally.
+     * routines are executed.
      *
-     * \param[in] ir                Input record data: LINCS takes number of iterations and order of
-     *                              projection from it.
-     * \param[in] mtop              Topology of the system: SETTLE gets the masses for O and H atoms
-     *                              and target O-H and H-H distances from this object.
-     * \param[in] deviceContext     GPU device context.
-     * \param[in] deviceStream      GPU stream to use.
-     * \param[in] xUpdatedOnDevice  The event synchronizer to use to mark that update is done
-     *                              on the GPU.
-     * \param[in] wcycle            The wallclock counter
+     * \param[in] ir                  Input record data: LINCS takes number of iterations and order of
+     *                                projection from it.
+     * \param[in] mtop                Topology of the system: SETTLE gets the masses for O and H atoms
+     *                                and target O-H and H-H distances from this object.
+     * \param[in] numTempScaleValues  Number of temperature scaling groups. Zero for no temperature scaling.
+     * \param[in] deviceContext       GPU device context.
+     * \param[in] deviceStream        GPU stream to use.
+     * \param[in] wcycle              The wallclock counter
      */
-    UpdateConstrainGpu(const t_inputrec&     ir,
-                       const gmx_mtop_t&     mtop,
-                       const DeviceContext&  deviceContext,
-                       const DeviceStream&   deviceStream,
-                       GpuEventSynchronizer* xUpdatedOnDevice,
-                       gmx_wallcycle*        wcycle);
+    UpdateConstrainGpu(const t_inputrec&    ir,
+                       const gmx_mtop_t&    mtop,
+                       int                  numTempScaleValues,
+                       const DeviceContext& deviceContext,
+                       const DeviceStream&  deviceStream,
+                       gmx_wallcycle*       wcycle);
 
     ~UpdateConstrainGpu();
 
@@ -146,14 +142,12 @@ public:
      * \param[in]      d_f                 Device buffer with forces.
      * \param[in]      idef                System topology
      * \param[in]      md                  Atoms data.
-     * \param[in]      numTempScaleValues  Number of temperature scaling groups. Zero for no temperature scaling.
      */
     void set(DeviceBuffer<RVec>            d_x,
              DeviceBuffer<RVec>            d_v,
              DeviceBuffer<RVec>            d_f,
              const InteractionDefinitions& idef,
-             const t_mdatoms&              md,
-             int                           numTempScaleValues);
+             const t_mdatoms&              md);
 
     /*! \brief
      * Update PBC data.
@@ -165,9 +159,10 @@ public:
      */
     void setPbc(PbcType pbcType, const matrix box);
 
-    /*! \brief Return the synchronizer associated with the event indicated that the coordinates are ready on the device.
+    /*! \brief Return the synchronizer associated with the event that indicates
+     * that the coordinates are ready on the device.
      */
-    GpuEventSynchronizer* getCoordinatesReadySync();
+    GpuEventSynchronizer* xUpdatedOnDeviceEvent();
 
     /*! \brief
      * Returns whether the maximum number of coupled constraints is supported
@@ -177,9 +172,16 @@ public:
      */
     static bool isNumCoupledConstraintsSupported(const gmx_mtop_t& mtop);
 
+    /*! \brief
+     * Returns whether the constraints are supported by the GPU code.
+     *
+     * Currently true for CUDA, false for others.
+     */
+    static bool areConstraintsSupported();
+
 private:
     class Impl;
-    gmx::PrivateImplPointer<Impl> impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 } // namespace gmx

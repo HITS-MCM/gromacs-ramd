@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -63,6 +59,7 @@ typedef struct
     real d2;
 } t_order;
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static t_order* order;
 
 static int ocomp(const void* a, const void* b)
@@ -151,8 +148,8 @@ int gmx_trjorder(int argc, char* argv[])
                        { efXVG, "-nshell", "nshell", ffOPTWR } };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME, NFILE, fnm, asize(pa), pa, asize(desc), desc,
-                           0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -183,7 +180,7 @@ int gmx_trjorder(int argc, char* argv[])
     natoms = read_first_x(oenv, &status, ftp2fn(efTRX, NFILE, fnm), &t, &x, box);
     if (natoms > top.atoms.nr)
     {
-        gmx_fatal(FARGS, "Number of atoms in the run input file is larger than in the trjactory");
+        gmx_fatal(FARGS, "Number of atoms in the run input file is larger than in the trajectory");
     }
     for (i = 0; (i < 2); i++)
     {
@@ -201,11 +198,29 @@ int gmx_trjorder(int argc, char* argv[])
 
     if ((isize_sol % na) != 0)
     {
-        gmx_fatal(FARGS, "Number of atoms in the molecule group (%d) is not a multiple of na (%d)",
-                  isize[1], na);
+        gmx_fatal(FARGS,
+                  "Number of atoms in the molecule group (%d) is not a multiple of na (%d)",
+                  isize[1],
+                  na);
     }
 
     nwat = isize_sol / na;
+    for (i = 0; i < nwat; i++)
+    {
+        const int residueIndex = top.atoms.atom[ind_sol[i * na]].resind;
+        for (j = 1; j < na; j++)
+        {
+            if (top.atoms.atom[ind_sol[i * na + j]].resind != residueIndex)
+            {
+                gmx_fatal(FARGS,
+                          "Atom %d and %d should belong to the same solvent residue, but they do "
+                          "not. Did you set -na correctly?",
+                          ind_sol[i * na],
+                          ind_sol[i * na + j]);
+            }
+        }
+    }
+
     if (ref_a > na)
     {
         gmx_fatal(FARGS,
@@ -235,7 +250,7 @@ int gmx_trjorder(int argc, char* argv[])
         bPDBout = (fn2ftp(opt2fn("-o", NFILE, fnm)) == efPDB);
         if (bPDBout && !top.atoms.pdbinfo)
         {
-            fprintf(stderr, "Creating pdbfino records\n");
+            fprintf(stderr, "Creating pdbinfo records\n");
             snew(top.atoms.pdbinfo, top.atoms.nr);
         }
         out = open_trx(opt2fn("-o", NFILE, fnm), "w");

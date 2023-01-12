@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """Tests the interfaces defined in operation.py and behavior of simple operations.
 
@@ -41,93 +40,121 @@ import os
 import shutil
 import stat
 import tempfile
-import unittest
+from typing import NamedTuple
 
 import gmxapi as gmx
 from gmxapi import commandline_operation
+from gmxapi.operation import ResultDescription
 
 
-class ImmediateResultTestCase(unittest.TestCase):
-    """Test data model and data flow for basic operations."""
+def test_comparison():
+    int_array_description = ResultDescription(
+        dtype=int,
+        width=3
+    )
+    same_description = ResultDescription(
+        dtype=int,
+        width=3
+    )
+    different_type_description = ResultDescription(
+        dtype=float,
+        width=3
+    )
+    different_width_description = ResultDescription(
+        dtype=int,
+        width=1
+    )
+    assert int_array_description == same_description
+    assert int_array_description != different_width_description
+    assert int_array_description != different_type_description
 
-    def test_scalar(self):
-        operation = gmx.make_constant(42)
-        assert isinstance(operation.dtype, type)
-        assert operation.dtype == int
-        assert operation.result() == 42
+    class CompatibleRepresentation(NamedTuple):
+        dtype: type
+        width: int
 
-    def test_list(self):
-        list_a = [1, 2, 3]
-
-        # TODO: test input validation
-        list_result = gmx.concatenate_lists(sublists=[list_a])
-        assert list_result.dtype == gmx.datamodel.NDArray
-        # Note: this is specifically for the built-in tuple type.
-        # Equality comparison may work differently for different sequence types.
-        assert tuple(list_result.result()) == tuple(list_a)
-        assert len(list_result.result()) == len(list_a)
-
-        list_result = gmx.concatenate_lists([list_a, list_a])
-        assert len(list_result.result()) == len(list_a) * 2
-        assert tuple(list_result.result()) == tuple(list_a + list_a)
-
-        list_b = gmx.ndarray([42])
-
-        list_result = gmx.concatenate_lists(sublists=[list_b])
-        assert list_result.result()[0] == 42
-
-        list_result = gmx.join_arrays(front=list_a, back=list_b)
-        assert len(list_result.result()) == len(list_a) + 1
-        assert tuple(list_result.result()) == tuple(list(list_a) + [42])
-
-
-class OperationPipelineTestCase(unittest.TestCase):
-    """Test dependent sequence of operations."""
-
-    def test_data_dependence(self):
-        """Confirm that data dependencies correctly establish resolvable execution dependencies.
-
-        In a sequence of two operations, write a two-line file one line at a time.
-        Use the output of one operation as the input of another.
-        """
-        with tempfile.TemporaryDirectory() as directory:
-            file1 = os.path.join(directory, 'input')
-            file2 = os.path.join(directory, 'output')
-
-            # Make a shell script that acts like the type of tool we are wrapping.
-            scriptname = os.path.join(directory, 'clicommand.sh')
-            with open(scriptname, 'w') as fh:
-                fh.write('\n'.join(['#!' + shutil.which('bash'),
-                                    '# Concatenate an input file and a string argument to an output file.',
-                                    '# Mock a utility with the tested syntax.',
-                                    '#     clicommand.sh "some words" -i inputfile -o outputfile',
-                                    'echo $1 | cat $3 - > $5\n']))
-            os.chmod(scriptname, stat.S_IRWXU)
-
-            line1 = 'first line'
-            filewriter1 = commandline_operation(scriptname,
-                                                arguments=[line1],
-                                                input_files={'-i': os.devnull},
-                                                output_files={'-o': file1})
-
-            line2 = 'second line'
-            filewriter2 = commandline_operation(scriptname,
-                                                arguments=[line2],
-                                                input_files={'-i': filewriter1.output.file['-o']},
-                                                output_files={'-o': file2})
-
-            filewriter2.run()
-            # Check that the files have the expected lines
-            with open(file1, 'r') as fh:
-                lines = [text.rstrip() for text in fh]
-            assert len(lines) == 1
-            assert lines[0] == line1
-            with open(file2, 'r') as fh:
-                lines = [text.rstrip() for text in fh]
-            assert len(lines) == 2
-            assert lines[0] == line1
-            assert lines[1] == line2
+    equivalent_description = CompatibleRepresentation(dtype=int, width=3)
+    assert int_array_description == equivalent_description
+    assert equivalent_description == int_array_description
+    assert equivalent_description != different_type_description
+    assert different_type_description != equivalent_description
+    assert equivalent_description != different_width_description
+    assert different_width_description != equivalent_description
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_scalar():
+    operation = gmx.make_constant(42)
+    assert isinstance(operation.dtype, type)
+    assert operation.dtype == int
+    assert operation.result() == 42
+
+
+def test_list():
+    list_a = [1, 2, 3]
+
+    # TODO: test input validation
+    list_result = gmx.concatenate_lists(sublists=[list_a])
+    assert list_result.dtype == gmx.datamodel.NDArray
+    # Note: this is specifically for the built-in tuple type.
+    # Equality comparison may work differently for different sequence types.
+    assert tuple(list_result.result()) == tuple(list_a)
+    assert len(list_result.result()) == len(list_a)
+
+    list_result = gmx.concatenate_lists([list_a, list_a])
+    assert len(list_result.result()) == len(list_a) * 2
+    assert tuple(list_result.result()) == tuple(list_a + list_a)
+
+    list_b = gmx.ndarray([42])
+
+    list_result = gmx.concatenate_lists(sublists=[list_b])
+    assert list_result.result()[0] == 42
+
+    list_result = gmx.join_arrays(front=list_a, back=list_b)
+    assert len(list_result.result()) == len(list_a) + 1
+    assert tuple(list_result.result()) == tuple(list(list_a) + [42])
+
+
+def test_data_dependence(cleandir):
+    """Test dependent sequence of operations.
+
+    Confirm that data dependencies correctly establish resolvable execution dependencies.
+
+    In a sequence of two operations, write a two-line file one line at a time.
+    Use the output of one operation as the input of another.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        file1 = os.path.join(directory, 'input')
+        file2 = os.path.join(directory, 'output')
+
+        # Make a shell script that acts like the type of tool we are wrapping.
+        scriptname = os.path.join(directory, 'clicommand.sh')
+        with open(scriptname, 'w') as fh:
+            fh.write('\n'.join(['#!' + shutil.which('bash'),
+                                '# Concatenate an input file and a string argument to an output file.',
+                                '# Mock a utility with the tested syntax.',
+                                '#     clicommand.sh "some words" -i inputfile -o outputfile',
+                                'echo $1 | cat $3 - > $5\n']))
+        os.chmod(scriptname, stat.S_IRWXU)
+
+        line1 = 'first line'
+        filewriter1 = commandline_operation(scriptname,
+                                            arguments=[line1],
+                                            input_files={'-i': os.devnull},
+                                            output_files={'-o': file1})
+
+        line2 = 'second line'
+        filewriter2 = commandline_operation(scriptname,
+                                            arguments=[line2],
+                                            input_files={'-i': filewriter1.output.file['-o']},
+                                            output_files={'-o': file2})
+
+        filewriter2.run()
+        # Check that the files have the expected lines
+        with open(filewriter1.output.file['-o'].result(), 'r') as fh:
+            lines = [text.rstrip() for text in fh]
+        assert len(lines) == 1
+        assert lines[0] == line1
+        with open(filewriter2.output.file['-o'].result(), 'r') as fh:
+            lines = [text.rstrip() for text in fh]
+        assert len(lines) == 2
+        assert lines[0] == line1
+        assert lines[1] == line2

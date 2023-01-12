@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,15 +26,16 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include "xvgr.h"
 
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cstring>
@@ -88,7 +85,8 @@ static char* xvgrstr(const std::string& gmx, const gmx_output_env_t* oenv, char*
             gmx_fatal(FARGS,
                       "Output buffer length in xvgstr (%d) too small to process xvg input string "
                       "'%s'",
-                      buflen, gmx.c_str());
+                      buflen,
+                      gmx.c_str());
         }
         if (gmx[g] == '\\')
         {
@@ -318,7 +316,10 @@ void xvgr_world(FILE* out, real xmin, real ymin, real xmax, real ymax, const gmx
                 "@ world ymin %g\n"
                 "@ world xmax %g\n"
                 "@ world ymax %g\n",
-                xmin, ymin, xmax, ymax);
+                xmin,
+                ymin,
+                xmax,
+                ymax);
     }
 }
 
@@ -386,13 +387,14 @@ void xvgr_new_dataset(FILE* out, int nr_first, int nsets, const char** setname, 
             {
                 if (output_env_get_xvg_format(oenv) == XvgFormat::Xmgr)
                 {
-                    fprintf(out, "@ legend string %d \"%s\"\n", i + nr_first,
+                    fprintf(out,
+                            "@ legend string %d \"%s\"\n",
+                            i + nr_first,
                             xvgrstr(setname[i], oenv, buf, STRLEN));
                 }
                 else
                 {
-                    fprintf(out, "@ s%d legend \"%s\"\n", i + nr_first,
-                            xvgrstr(setname[i], oenv, buf, STRLEN));
+                    fprintf(out, "@ s%d legend \"%s\"\n", i + nr_first, xvgrstr(setname[i], oenv, buf, STRLEN));
                 }
             }
         }
@@ -413,8 +415,8 @@ void xvgr_line_props(FILE* out, int NrSet, int LineStyle, int LineColor, const g
     }
 }
 
-static const char* LocTypeStr[] = { "view", "world" };
-static const char* BoxFillStr[] = { "none", "color", "pattern" };
+static constexpr std::array<const char*, 2> LocTypeStr = { "view", "world" };
+static constexpr std::array<const char*, 3> BoxFillStr = { "none", "color", "pattern" };
 
 void xvgr_box(FILE*                   out,
               int                     LocType,
@@ -1001,7 +1003,9 @@ real** read_xvg_time(const char* fn,
                             fprintf(stderr,
                                     "Invalid line in %s:\n%s"
                                     "Using zeros for the last %d sets\n",
-                                    fn, line0, narg - a);
+                                    fn,
+                                    line0,
+                                    narg - a);
                         }
                         n++;
                     }

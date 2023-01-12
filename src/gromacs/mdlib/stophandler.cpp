@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines StopHandler, a helper class and two stop conditions.
@@ -67,7 +66,7 @@ StopHandler::StopHandler(compat::not_null<SimulationSignal*>      signal,
 }
 
 StopConditionSignal::StopConditionSignal(int nstList, bool makeBinaryReproducibleSimulation, int nstSignalComm) :
-    handledStopCondition_(gmx_stop_cond_none),
+    handledStopCondition_(StopCondition::None),
     makeBinaryReproducibleSimulation_(makeBinaryReproducibleSimulation),
     nstSignalComm_(nstSignalComm),
     nstList_(nstList)
@@ -79,15 +78,15 @@ StopSignal StopConditionSignal::getSignal(FILE* fplog)
     StopSignal signal = StopSignal::noSignal;
 
     /* Check whether everything is still alright */
-    if (static_cast<int>(gmx_get_stop_condition()) > handledStopCondition_)
+    if (gmx_get_stop_condition() > handledStopCondition_)
     {
         int nsteps_stop = -1;
 
         /* this just makes signals[].sig compatible with the hack
            of sending signals around by MPI_Reduce together with
            other floats */
-        if ((gmx_get_stop_condition() == gmx_stop_cond_next_ns)
-            || (makeBinaryReproducibleSimulation_ && gmx_get_stop_condition() == gmx_stop_cond_next))
+        if ((gmx_get_stop_condition() == StopCondition::NextNS)
+            || (makeBinaryReproducibleSimulation_ && gmx_get_stop_condition() == StopCondition::Next))
         {
             /* We need at least two global communication steps to pass
              * around the signal. We stop at a pair-list creation step
@@ -96,7 +95,7 @@ StopSignal StopConditionSignal::getSignal(FILE* fplog)
             signal      = StopSignal::stopAtNextNSStep;
             nsteps_stop = std::max(nstList_, 2 * nstSignalComm_);
         }
-        else if (gmx_get_stop_condition() == gmx_stop_cond_next)
+        else if (gmx_get_stop_condition() == StopCondition::Next)
         {
             /* Stop directly after the next global communication step.
              * This breaks exact continuation.
@@ -106,14 +105,18 @@ StopSignal StopConditionSignal::getSignal(FILE* fplog)
         }
         if (fplog)
         {
-            fprintf(fplog, "\n\nReceived the %s signal, stopping within %d steps\n\n",
-                    gmx_get_signal_name(), nsteps_stop);
+            fprintf(fplog,
+                    "\n\nReceived the %s signal, stopping within %d steps\n\n",
+                    gmx_get_signal_name(),
+                    nsteps_stop);
             fflush(fplog);
         }
-        fprintf(stderr, "\n\nReceived the %s signal, stopping within %d steps\n\n",
-                gmx_get_signal_name(), nsteps_stop);
+        fprintf(stderr,
+                "\n\nReceived the %s signal, stopping within %d steps\n\n",
+                gmx_get_signal_name(),
+                nsteps_stop);
         fflush(stderr);
-        handledStopCondition_ = static_cast<int>(gmx_get_stop_condition());
+        handledStopCondition_ = gmx_get_stop_condition();
     }
 
     return signal;
@@ -147,12 +150,16 @@ StopSignal StopConditionTime::getSignal(bool bNS, int64_t step, FILE* fplog, gmx
             fprintf(fplog,
                     "\nStep %s: Run time exceeded %.3f hours, "
                     "will terminate the run within %d steps\n",
-                    gmx_step_str(step, sbuf), maximumHoursToRun_ * 0.99, nsteps_stop);
+                    gmx_step_str(step, sbuf),
+                    maximumHoursToRun_ * 0.99,
+                    nsteps_stop);
         }
         fprintf(stderr,
                 "\nStep %s: Run time exceeded %.3f hours, "
                 "will terminate the run within %d steps\n",
-                gmx_step_str(step, sbuf), maximumHoursToRun_ * 0.99, nsteps_stop);
+                gmx_step_str(step, sbuf),
+                maximumHoursToRun_ * 0.99,
+                nsteps_stop);
         signalSent_ = true;
         return StopSignal::stopAtNextNSStep;
     }
@@ -196,8 +203,8 @@ std::unique_ptr<StopHandler> StopHandlerBuilder::getStopHandlerMD(compat::not_nu
         });
     }
 
-    return std::make_unique<StopHandler>(signal, simulationShareState, stopConditions_,
-                                         neverUpdateNeighborList);
+    return std::make_unique<StopHandler>(
+            signal, simulationShareState, stopConditions_, neverUpdateNeighborList);
 }
 
 } // namespace gmx

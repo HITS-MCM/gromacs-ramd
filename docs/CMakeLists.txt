@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
-# Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2014- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 # This directory provides a unified place for building all kinds of
 # GROMACS documentation. This includes some "static" content (Doxygen
@@ -218,6 +216,7 @@ if (SPHINX_FOUND)
         reference-manual/special/free-energy-pmf.rst
         reference-manual/special/remove-fast-dgf.rst
         reference-manual/special/viscosity-calculation.rst
+        reference-manual/special/shearing.rst
         reference-manual/special/tabulated-interaction-functions.rst
         reference-manual/special/qmmm.rst
         reference-manual/special/vmd-imd.rst
@@ -290,6 +289,7 @@ if (SPHINX_FOUND)
         reference-manual/functions/plots/f-rbs.pdf
         reference-manual/functions/plots/ring-imp.pdf
         reference-manual/functions/plots/softcore.pdf
+        reference-manual/functions/plots/gapsys-sc.pdf
         reference-manual/functions/plots/subst-im.pdf
         reference-manual/functions/plots/tetra-im.pdf
         reference-manual/functions/plots/vcrf.pdf
@@ -338,7 +338,7 @@ if (SPHINX_FOUND)
         dev-manual/doxygen.rst
         dev-manual/error-handling.rst
         dev-manual/formatting.rst
-        dev-manual/gitlab.rst
+        dev-manual/gitlab-ci.rst
         dev-manual/gmxtree.rst
         dev-manual/includestyle.rst
         dev-manual/index.rst
@@ -364,6 +364,18 @@ if (SPHINX_FOUND)
         how-to/visualize.rst
         install-guide/index.rst
         release-notes/index.rst
+        release-notes/2022/major/highlights.rst
+        release-notes/2022/major/features.rst
+        release-notes/2022/major/performance.rst
+        release-notes/2022/major/tools.rst
+        release-notes/2022/major/bugs-fixed.rst
+        release-notes/2022/major/removed-functionality.rst
+        release-notes/2022/major/deprecated-functionality.rst
+        release-notes/2022/major/portability.rst
+        release-notes/2022/major/miscellaneous.rst
+        release-notes/2022/major/api.rst
+        release-notes/2021/2021.5.rst
+        release-notes/2021/2021.4.rst
         release-notes/2021/2021.3.rst
         release-notes/2021/2021.2.rst
         release-notes/2021/2021.1.rst
@@ -382,6 +394,7 @@ if (SPHINX_FOUND)
         release-notes/2020/2020.4.rst
         release-notes/2020/2020.5.rst
         release-notes/2020/2020.6.rst
+        release-notes/2020/2020.7.rst
         release-notes/2020/major/highlights.rst
         release-notes/2020/major/features.rst
         release-notes/2020/major/performance.rst
@@ -776,7 +789,7 @@ if (HTML_BUILD_IS_POSSIBLE)
     # to).
 
     # Add a top-level target that builds everything related to the webpage,
-    # for Jenkins (and possibly others) to use
+    # for CI (and possibly others) to use
     add_custom_target(webpage ${_webpage_target_properties}
         COMMENT "Building webpage"
         VERBATIM)

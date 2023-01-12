@@ -1,4 +1,18 @@
-# Build documentation and web page.
+# Test goal: Build documentation and web page.
+# Test intents (should change rarely and conservatively):
+#   OS: Ubuntu oldest supported
+#   Compiler: Clang oldest supported
+#   GPU: no
+#   MPI: no
+#   Features: python package, documentation
+#   Scope: configure, build, documentation
+# Test implementation choices (free to change as needed):
+#   OS: Ubuntu 20.04
+#   Build type: Debug
+#   Compiler: Clang 7
+#   MPI: non
+#   SIMD: none
+#   FFT: FFTW3
 
 .docs:configure:
   extends:
@@ -6,7 +20,7 @@
     - .gromacs:base:configure
     - .before_script:default
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs
   stage: configure-build
   cache: {}
   variables:
@@ -42,6 +56,11 @@
       mkdir $BUILD_DIR ;
       fi
     - cd $BUILD_DIR
+    # Running CMake with the venv activated should not be strictly necessary,
+    # but helps to find and cache self-consistent Python and Sphinx details
+    # without additional hinting. Once CMakeCache.txt exists, the later stages
+    # should work fine without reactivating the venv.
+    - source /root/venv/py3.7/bin/activate
     - cmake ..
       -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       $CMAKE_COMPILER_SCRIPT
@@ -72,7 +91,7 @@
     - .before_script:default
     - .rules:nightly-only-for-release
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs
   stage: release-configure
   cache: {}
   variables:
@@ -104,13 +123,11 @@
     - echo $CMAKE_BUILD_TYPE_OPTIONS
     - echo $CMAKE_GMXAPI_OPTIONS
     - echo $REL_OPTION
-    - VERSION=`cat version.json |
-      python3 -c "import json,sys; print(json.load(sys.stdin)['version'])"`
+    - VERSION=`sed -n -e '/GMX_VERSION_STRING\b/ s/.*"\(.*\)")/\1/p' VersionInfo-partial.cmake.cmakein`
     - if [[ $GROMACS_RELEASE != "true" ]] ; then
       VERSION=$VERSION-dev ;
       fi
-    - REGTEST_COMPARE=`cat version.json |
-      python3 -c "import json,sys; print(json.load(sys.stdin)['regressiontest-md5sum'])"`
+    - REGTEST_COMPARE=`sed -n -e '/REGRESSIONTEST_MD5SUM/ s/.*"\(.*\)")/\1/p' VersionInfo-partial.cmake.cmakein`
     - SOURCENAME=gromacs-$VERSION
     - SOURCETARBALL=$SOURCENAME.tar.gz
     - REGTESTNAME=regressiontests-$VERSION
@@ -145,6 +162,7 @@
       mkdir $RELEASE_BUILD_DIR ;
       fi
     - cd $RELEASE_BUILD_DIR
+    - source /root/venv/py3.7/bin/activate
     - cmake ../$RELEASE_SOURCE/
       -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       $CMAKE_COMPILER_SCRIPT
@@ -175,14 +193,14 @@
 docs:configure:
   extends:
     - .docs:configure
-    - .rules:basic-push
+    - .rules:merge-requests
   variables:
     BUILD_DIR: build-docs
     CMAKE_EXTRA_OPTIONS: -DGMX_BUILD_HELP=on -DGMX_BUILD_MANUAL=on -DGMX_USE_SIMD_KERNELS=off
 
 .docs:build:
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs
   script:
     - cd $BUILD_DIR
     - cmake --build . --target gmx -- -j8
@@ -201,7 +219,7 @@ docs:build:
     - .use-ccache
     - .docs:build
     - .before_script:default
-    - .rules:basic-push
+    - .rules:merge-requests
   stage: documentation
   needs:
     - job: docs:configure
@@ -222,7 +240,7 @@ docs:build:
     - .gromacs:base:build
     - .before_script:default
   # TODO (#3480) this should be organized more like the current documentation.py script
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-18.04-llvm-7-docs:release-2021
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs
   cache: {}
   variables:
     KUBERNETES_CPU_LIMIT: 4
@@ -257,7 +275,7 @@ docs:build:
 webpage:build:
   extends:
     - .webpage:build
-    - .rules:basic-push
+    - .rules:merge-requests
   stage: post-test
   needs:
     - job: docs:build

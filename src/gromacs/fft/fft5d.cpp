@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -86,11 +84,14 @@ FILE* debug = 0;
 
 #if GMX_FFT_FFTW3
 
+#    include <mutex>
+
 #    include "gromacs/utility/exceptions.h"
-#    include "gromacs/utility/mutex.h"
+
 /* none of the fftw3 calls, except execute(), are thread-safe, so
    we need to serialize them with this mutex. */
-static gmx::Mutex big_fftw_mutex;
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static std::mutex big_fftw_mutex;
 #    define FFTW_LOCK              \
         try                        \
         {                          \
@@ -223,8 +224,14 @@ fft5d_plan fft5d_plan_3d(int                NG,
             fprintf(debug,
                     "FFT5D: N: %d, M: %d, K: %d, P: %dx%d, real2complex: %d, backward: %d, order "
                     "yz: %d, debug %d\n",
-                    NG, MG, KG, P[0], P[1], int((flags & FFT5D_REALCOMPLEX) > 0),
-                    int((flags & FFT5D_BACKWARD) > 0), int((flags & FFT5D_ORDER_YZ) > 0),
+                    NG,
+                    MG,
+                    KG,
+                    P[0],
+                    P[1],
+                    int((flags & FFT5D_REALCOMPLEX) > 0),
+                    int((flags & FFT5D_BACKWARD) > 0),
+                    int((flags & FFT5D_ORDER_YZ) > 0),
                     int((flags & FFT5D_DEBUG) > 0));
         }
         /* The check below is not correct, one prime factor 11 or 13 is ok.
@@ -582,16 +589,20 @@ fft5d_plan fft5d_plan_3d(int                NG,
 #    endif
         if ((flags & FFT5D_REALCOMPLEX) && !(flags & FFT5D_BACKWARD))
         {
-            plan->p3d = FFTW(plan_guru_dft_r2c)(/*rank*/ 3, dims,
-                                                /*howmany*/ 0, /*howmany_dims*/ nullptr,
+            plan->p3d = FFTW(plan_guru_dft_r2c)(/*rank*/ 3,
+                                                dims,
+                                                /*howmany*/ 0,
+                                                /*howmany_dims*/ nullptr,
                                                 reinterpret_cast<real*>(lin),
                                                 reinterpret_cast<FFTW(complex)*>(lout),
                                                 /*flags*/ fftwflags);
         }
         else if ((flags & FFT5D_REALCOMPLEX) && (flags & FFT5D_BACKWARD))
         {
-            plan->p3d = FFTW(plan_guru_dft_c2r)(/*rank*/ 3, dims,
-                                                /*howmany*/ 0, /*howmany_dims*/ nullptr,
+            plan->p3d = FFTW(plan_guru_dft_c2r)(/*rank*/ 3,
+                                                dims,
+                                                /*howmany*/ 0,
+                                                /*howmany_dims*/ nullptr,
                                                 reinterpret_cast<FFTW(complex)*>(lin),
                                                 reinterpret_cast<real*>(lout),
                                                 /*flags*/ fftwflags);
@@ -599,10 +610,14 @@ fft5d_plan fft5d_plan_3d(int                NG,
         else
         {
             plan->p3d = FFTW(plan_guru_dft)(
-                    /*rank*/ 3, dims,
-                    /*howmany*/ 0, /*howmany_dims*/ nullptr, reinterpret_cast<FFTW(complex)*>(lin),
+                    /*rank*/ 3,
+                    dims,
+                    /*howmany*/ 0,
+                    /*howmany_dims*/ nullptr,
+                    reinterpret_cast<FFTW(complex)*>(lin),
                     reinterpret_cast<FFTW(complex)*>(lout),
-                    /*sign*/ (flags & FFT5D_BACKWARD) ? 1 : -1, /*flags*/ fftwflags);
+                    /*sign*/ (flags & FFT5D_BACKWARD) ? 1 : -1,
+                    /*flags*/ fftwflags);
         }
 #    ifdef FFT5D_THREADS
 #        ifdef FFT5D_FFTW_THREADS
@@ -618,8 +633,7 @@ fft5d_plan fft5d_plan_3d(int                NG,
         {
             if (debug)
             {
-                fprintf(debug, "FFT5D: Plan s %d rC %d M %d pK %d C %d lsize %d\n", s, rC[s], M[s],
-                        pK[s], C[s], lsize);
+                fprintf(debug, "FFT5D: Plan s %d rC %d M %d pK %d C %d lsize %d\n", s, rC[s], M[s], pK[s], C[s], lsize);
             }
             plan->p1d[s] = static_cast<gmx_fft_t*>(malloc(sizeof(gmx_fft_t) * nthreads));
 
@@ -640,12 +654,16 @@ fft5d_plan fft5d_plan_3d(int                NG,
                                 || ((flags & FFT5D_BACKWARD) && s == 2)))
                         {
                             gmx_fft_init_many_1d_real(
-                                    &plan->p1d[s][t], rC[s], tsize,
+                                    &plan->p1d[s][t],
+                                    rC[s],
+                                    tsize,
                                     (flags & FFT5D_NOMEASURE) ? GMX_FFT_FLAG_CONSERVATIVE : 0);
                         }
                         else
                         {
-                            gmx_fft_init_many_1d(&plan->p1d[s][t], C[s], tsize,
+                            gmx_fft_init_many_1d(&plan->p1d[s][t],
+                                                 C[s],
+                                                 tsize,
                                                  (flags & FFT5D_NOMEASURE) ? GMX_FFT_FLAG_CONSERVATIVE : 0);
                         }
                     }
@@ -673,15 +691,13 @@ fft5d_plan fft5d_plan_3d(int                NG,
     {
         if ((s == 0 && !(flags & FFT5D_ORDER_YZ)) || (s == 1 && (flags & FFT5D_ORDER_YZ)))
         {
-            plan->mpip[s] = FFTW(mpi_plan_many_transpose)(nP[s], nP[s], N[s] * K[s] * pM[s] * 2, 1,
-                                                          1, (real*)lout2, (real*)lout3,
-                                                          plan->cart[s], FFTW_PATIENT);
+            plan->mpip[s] = FFTW(mpi_plan_many_transpose)(
+                    nP[s], nP[s], N[s] * K[s] * pM[s] * 2, 1, 1, (real*)lout2, (real*)lout3, plan->cart[s], FFTW_PATIENT);
         }
         else
         {
-            plan->mpip[s] = FFTW(mpi_plan_many_transpose)(nP[s], nP[s], N[s] * pK[s] * M[s] * 2, 1,
-                                                          1, (real*)lout2, (real*)lout3,
-                                                          plan->cart[s], FFTW_PATIENT);
+            plan->mpip[s] = FFTW(mpi_plan_many_transpose)(
+                    nP[s], nP[s], N[s] * pK[s] * M[s] * 2, 1, 1, (real*)lout2, (real*)lout3, plan->cart[s], FFTW_PATIENT);
         }
     }
     FFTW_UNLOCK;
@@ -1085,7 +1101,8 @@ static void print_localdata(const t_complex* lin, const char* txt, int s, fft5d_
             {
                 for (l = 0; l < ll; l++)
                 {
-                    fprintf(debug, "%f ",
+                    fprintf(debug,
+                            "%f ",
                             reinterpret_cast<const real*>(
                                     lin)[(z * xs[2] + y * xs[1]) * 2 + (x * xs[0]) * ll + l]);
                 }
@@ -1195,13 +1212,15 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
             gmx_fft_many_1d_real(p1d[s][thread],
                                  (plan->flags & FFT5D_BACKWARD) ? GMX_FFT_COMPLEX_TO_REAL
                                                                 : GMX_FFT_REAL_TO_COMPLEX,
-                                 lin + tstart, fftout + tstart);
+                                 lin + tstart,
+                                 fftout + tstart);
         }
         else
         {
             gmx_fft_many_1d(p1d[s][thread],
                             (plan->flags & FFT5D_BACKWARD) ? GMX_FFT_BACKWARD : GMX_FFT_FORWARD,
-                            lin + tstart, fftout + tstart);
+                            lin + tstart,
+                            fftout + tstart);
         }
 
 #ifdef NOGMX
@@ -1233,8 +1252,20 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
             {
                 tend = ((thread + 1) * pM[s] * pK[s] / plan->nthreads);
                 tstart /= C[s];
-                splitaxes(lout2, lout, N[s], M[s], K[s], pM[s], P[s], C[s], iNout[s], oNout[s],
-                          tstart % pM[s], tstart / pM[s], tend % pM[s], tend / pM[s]);
+                splitaxes(lout2,
+                          lout,
+                          N[s],
+                          M[s],
+                          K[s],
+                          pM[s],
+                          P[s],
+                          C[s],
+                          iNout[s],
+                          oNout[s],
+                          tstart % pM[s],
+                          tstart / pM[s],
+                          tend % pM[s],
+                          tend / pM[s]);
             }
 #pragma omp barrier /*barrier required before AllToAll (all input has to be their) - before timing to make timing more acurate*/
 #ifdef NOGMX
@@ -1254,7 +1285,7 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
                     time = MPI_Wtime();
                 }
 #else
-                wallcycle_start(times, ewcPME_FFTCOMM);
+                wallcycle_start(times, WallCycleCounter::PmeFftComm);
 #endif
 #ifdef FFT5D_MPI_TRANSPOSE
                 FFTW(execute)(mpip[s]);
@@ -1265,17 +1296,21 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
                 {
                     MPI_Alltoall(reinterpret_cast<real*>(lout2),
                                  N[s] * pM[s] * K[s] * sizeof(t_complex) / sizeof(real),
-                                 GMX_MPI_REAL, reinterpret_cast<real*>(lout3),
+                                 GMX_MPI_REAL,
+                                 reinterpret_cast<real*>(lout3),
                                  N[s] * pM[s] * K[s] * sizeof(t_complex) / sizeof(real),
-                                 GMX_MPI_REAL, cart[s]);
+                                 GMX_MPI_REAL,
+                                 cart[s]);
                 }
                 else
                 {
                     MPI_Alltoall(reinterpret_cast<real*>(lout2),
                                  N[s] * M[s] * pK[s] * sizeof(t_complex) / sizeof(real),
-                                 GMX_MPI_REAL, reinterpret_cast<real*>(lout3),
+                                 GMX_MPI_REAL,
+                                 reinterpret_cast<real*>(lout3),
                                  N[s] * M[s] * pK[s] * sizeof(t_complex) / sizeof(real),
-                                 GMX_MPI_REAL, cart[s]);
+                                 GMX_MPI_REAL,
+                                 cart[s]);
                 }
 #    else
                 GMX_RELEASE_ASSERT(false, "Invalid call to fft5d_execute");
@@ -1287,7 +1322,7 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
                     time_mpi[s] = MPI_Wtime() - time;
                 }
 #else
-                wallcycle_stop(times, ewcPME_FFTCOMM);
+                wallcycle_stop(times, WallCycleCounter::PmeFftComm);
 #endif
             }       /*master*/
         }           /* bPrallelDim */
@@ -1322,8 +1357,20 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
             {
                 tstart = (thread * pM[s] * pN[s] / plan->nthreads);
                 tend   = ((thread + 1) * pM[s] * pN[s] / plan->nthreads);
-                joinAxesTrans13(lin, joinin, N[s], pM[s], K[s], pM[s], P[s], C[s + 1], iNin[s + 1],
-                                oNin[s + 1], tstart % pM[s], tstart / pM[s], tend % pM[s], tend / pM[s]);
+                joinAxesTrans13(lin,
+                                joinin,
+                                N[s],
+                                pM[s],
+                                K[s],
+                                pM[s],
+                                P[s],
+                                C[s + 1],
+                                iNin[s + 1],
+                                oNin[s + 1],
+                                tstart % pM[s],
+                                tstart / pM[s],
+                                tend % pM[s],
+                                tend / pM[s]);
             }
         }
         else
@@ -1332,8 +1379,20 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
             {
                 tstart = (thread * pK[s] * pN[s] / plan->nthreads);
                 tend   = ((thread + 1) * pK[s] * pN[s] / plan->nthreads);
-                joinAxesTrans12(lin, joinin, N[s], M[s], pK[s], pN[s], P[s], C[s + 1], iNin[s + 1],
-                                oNin[s + 1], tstart % pN[s], tstart / pN[s], tend % pN[s], tend / pN[s]);
+                joinAxesTrans12(lin,
+                                joinin,
+                                N[s],
+                                M[s],
+                                pK[s],
+                                pN[s],
+                                P[s],
+                                C[s + 1],
+                                iNin[s + 1],
+                                oNin[s + 1],
+                                tstart % pN[s],
+                                tstart / pN[s],
+                                tend % pN[s],
+                                tend / pN[s]);
             }
         }
 
@@ -1368,12 +1427,15 @@ void fft5d_execute(fft5d_plan plan, int thread, fft5d_time times)
     {
         gmx_fft_many_1d_real(p1d[s][thread],
                              (plan->flags & FFT5D_BACKWARD) ? GMX_FFT_COMPLEX_TO_REAL : GMX_FFT_REAL_TO_COMPLEX,
-                             lin + tstart, lout + tstart);
+                             lin + tstart,
+                             lout + tstart);
     }
     else
     {
-        gmx_fft_many_1d(p1d[s][thread], (plan->flags & FFT5D_BACKWARD) ? GMX_FFT_BACKWARD : GMX_FFT_FORWARD,
-                        lin + tstart, lout + tstart);
+        gmx_fft_many_1d(p1d[s][thread],
+                        (plan->flags & FFT5D_BACKWARD) ? GMX_FFT_BACKWARD : GMX_FFT_FORWARD,
+                        lin + tstart,
+                        lout + tstart);
     }
     /* ------------ END FFT ---------*/
 
@@ -1594,7 +1656,13 @@ void fft5d_compare_data(const t_complex* lin, const t_complex* in, fft5d_plan pl
                         if (std::fabs(a - b) > 2 * NG[0] * NG[1] * NG[2] * GMX_REAL_EPS)
                         {
                             printf("result incorrect on %d,%d at %d,%d,%d: FFT5D:%f reference:%f\n",
-                                   coor[0], coor[1], x, y, z, a, b);
+                                   coor[0],
+                                   coor[1],
+                                   x,
+                                   y,
+                                   z,
+                                   a,
+                                   b);
                         }
                         /*                        assert(fabs(a-b)<2*NG[0]*NG[1]*NG[2]*GMX_REAL_EPS);*/
                     }

@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2005, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2005- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -327,8 +324,7 @@ void gmx_espresso_read_conf(const char* infile, t_symtab* symtab, char** name, t
                         }
                         else
                         {
-                            sprintf(buf, "T%c%c", 'A' + atoms->atom[i].type / 26,
-                                    'A' + atoms->atom[i].type % 26);
+                            sprintf(buf, "T%c%c", 'A' + atoms->atom[i].type / 26, 'A' + atoms->atom[i].type % 26);
                         }
                         t_atoms_set_resinfo(atoms, i, symtab, buf, i, ' ', 0, ' ');
                     }
@@ -347,7 +343,8 @@ void gmx_espresso_read_conf(const char* infile, t_symtab* symtab, char** name, t
                 gmx_fatal(FARGS,
                           "Internal inconsistency in Espresso routines, read %d atoms, expected %d "
                           "atoms",
-                          i, atoms->nr);
+                          i,
+                          atoms->nr);
             }
         }
         else if (level == 1 && std::strcmp(word, "variable") == 0 && !bFoundVariable)
@@ -469,7 +466,13 @@ void write_espresso_conf_indexed(FILE*          out,
         {
             j = i;
         }
-        fprintf(out, "\t{%d %f %f %f %hu %g", j, x[j][XX], x[j][YY], x[j][ZZ], atoms->atom[j].type,
+        fprintf(out,
+                "\t{%d %f %f %f %hu %g",
+                j,
+                x[j][XX],
+                x[j][YY],
+                x[j][ZZ],
+                atoms->atom[j].type,
                 atoms->atom[j].q);
         if (v)
         {

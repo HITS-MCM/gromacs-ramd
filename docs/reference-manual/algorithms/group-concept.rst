@@ -44,10 +44,9 @@ accelerate group
 
     On each atom in an “accelerate group” an acceleration
     :math:`\mathbf{a}^g` is imposed. This is equivalent to
-    an external force. This feature makes it possible to drive the
-    system into a non-equilibrium state and enables the performance of
-    non-equilibrium MD and hence to obtain transport properties.
-    (Deprecated)
+    a mass-weighted external force. This feature makes it possible to
+    drive the system into a non-equilibrium state to compute,
+    for example, transport properties.
 
 energy-monitor group
 

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -53,7 +49,6 @@
 #include <cstring>
 
 #include <algorithm>
-#include <sstream>
 
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/fileio/tpxio.h"
@@ -96,14 +91,13 @@ enum
     enNr
 };
 /*! \brief
- * enum for type of input files (pdos, tpr, or pullf)
+ * enum for type of input files (tpr or pullx/pullf)
  */
 enum
 {
     whamin_unknown,
     whamin_tpr,
     whamin_pullxf,
-    whamin_pdo
 };
 
 /*! \brief enum for bootstrapping method
@@ -135,17 +129,17 @@ enum
     bsMethod_trajGauss
 };
 
-//! Parameters of one pull coodinate
+//! Parameters of one pull coordinate
 typedef struct
 {
-    int  pull_type;       //!< such as constraint, umbrella, ...
-    int  geometry;        //!< such as distance, direction, cylinder
-    int  ngroup;          //!< the number of pull groups involved
-    ivec dim;             //!< pull dimension with geometry distance
-    int  ndim;            //!< nr of pull_dim != 0
-    real k;               //!< force constants in tpr file
-    real init_dist;       //!< reference displacement
-    char coord_unit[256]; //!< unit of the displacement
+    PullingAlgorithm  pull_type;       //!< such as constraint, umbrella, ...
+    PullGroupGeometry geometry;        //!< such as distance, direction, cylinder
+    int               ngroup;          //!< the number of pull groups involved
+    ivec              dim;             //!< pull dimension with geometry distance
+    int               ndim;            //!< nr of pull_dim != 0
+    real              k;               //!< force constants in tpr file
+    real              init_dist;       //!< reference displacement
+    char              coord_unit[256]; //!< unit of the displacement
 } t_pullcoord;
 
 //! Parameters of the umbrella potentials
@@ -162,33 +156,20 @@ typedef struct
     gmx_bool     bPrintComp;     //!< Components of pull distance written to pullx.xvg ?
 
     /*!\}*/
-    /*!
-     * \name Using PDO files common until gromacs 3.x
-     */
-    /*!\{*/
-    int    nSkip;
-    char   Reference[256];
-    int    nPull;
-    int    nDim;
-    ivec   Dims;
-    char   PullName[4][256];
-    double UmbPos[4][3];
-    double UmbCons[4][3];
-    /*!\}*/
 } t_UmbrellaHeader;
 
 //! Data in the umbrella histograms
 typedef struct
 {
-    int      nPull; //!< nr of pull groups in this pdo or pullf/x file
+    int      nPull; //!< nr of pull groups in this pullf/pullx file
     double** Histo; //!< nPull histograms
     double** cum;   //!< nPull cumulative distribution functions
     int      nBin;  //!< nr of bins. identical to opt->bins
     double*  k;     //!< force constants for the nPull coords
     double*  pos;   //!< umbrella positions for the nPull coords
     double* z; //!< z=(-Fi/kT) for the nPull coords. These values are iteratively computed during wham
-    int* N;    //!< nr of data points in nPull histograms.
-    int* Ntot; //!< also nr of data points. N and Ntot only differ if bHistEq==TRUE
+    int*    N;    //!< nr of data points in nPull histograms.
+    int*    Ntot; //!< also nr of data points. N and Ntot only differ if bHistEq==TRUE
 
     /*! \brief  g = 1 + 2*tau[int]/dt where tau is the integrated autocorrelation time.
      *
@@ -231,9 +212,9 @@ typedef struct UmbrellaOptions // NOLINT(clang-analyzer-optin.performance.Paddin
      */
     /*!\{*/
     const char *fnTpr, *fnPullf, *fnCoordSel;
-    const char *fnPdo, *fnPullx;            //!< file names of input
-    gmx_bool    bTpr, bPullf, bPdo, bPullx; //!< input file types given?
-    real        tmin, tmax, dt;             //!< only read input within tmin and tmax with dt
+    const char* fnPullx;              //!< file names of input
+    gmx_bool    bTpr, bPullf, bPullx; //!< input file types given?
+    real        tmin, tmax, dt;       //!< only read input within tmin and tmax with dt
 
     gmx_bool bInitPotByIntegration; //!< before WHAM, guess potential by force integration. Yields 1.5 to 2 times faster convergence
     int stepUpdateContrib; //!< update contribution table every ... iterations. Accelerates WHAM.
@@ -244,10 +225,10 @@ typedef struct UmbrellaOptions // NOLINT(clang-analyzer-optin.performance.Paddin
      * \name Basic WHAM options
      */
     /*!\{*/
-    int      bins; //!< nr of bins, min, max, and dz of profile
-    real     min, max, dz;
-    real     Temperature, Tolerance; //!< temperature, converged when probability changes less than Tolerance
-    gmx_bool bCycl;                  //!< generate cyclic (periodic) PMF
+    int  bins; //!< nr of bins, min, max, and dz of profile
+    real min, max, dz;
+    real Temperature, Tolerance; //!< temperature, converged when probability changes less than Tolerance
+    gmx_bool bCycl;              //!< generate cyclic (periodic) PMF
     /*!\}*/
     /*!
      * \name Output control
@@ -444,109 +425,10 @@ static void setup_tab(const char* fn, t_UmbrellaOptions* opt)
         opt->tabX[i] = y[0][i];
         opt->tabY[i] = y[1][i];
     }
-    printf("Found equally spaced tabulated potential from %g to %g, spacing %g\n", opt->tabMin,
-           opt->tabMax, opt->tabDz);
-}
-
-//! Read the header of an PDO file (position, force const, nr of groups)
-static void read_pdo_header(FILE* file, t_UmbrellaHeader* header, t_UmbrellaOptions* opt)
-{
-    char               line[2048];
-    char               Buffer0[256], Buffer1[256], Buffer2[256], Buffer3[256], Buffer4[256];
-    int                i;
-    std::istringstream ist;
-
-    /*  line 1 */
-    if (fgets(line, 2048, file) == nullptr)
-    {
-        gmx_fatal(FARGS, "Error reading header from pdo file\n");
-    }
-    ist.str(line);
-    ist >> Buffer0 >> Buffer1 >> Buffer2;
-    if (std::strcmp(Buffer1, "UMBRELLA") != 0)
-    {
-        gmx_fatal(FARGS,
-                  "This does not appear to be a valid pdo file. Found %s, expected %s\n"
-                  "(Found in first line: `%s')\n",
-                  Buffer1, "UMBRELLA", line);
-    }
-    if (std::strcmp(Buffer2, "3.0") != 0)
-    {
-        gmx_fatal(FARGS, "This does not appear to be a version 3.0 pdo file");
-    }
-
-    /*  line 2 */
-    if (fgets(line, 2048, file) == nullptr)
-    {
-        gmx_fatal(FARGS, "Error reading header from pdo file\n");
-    }
-    ist.str(line);
-    ist >> Buffer0 >> Buffer1 >> Buffer2 >> header->Dims[0] >> header->Dims[1] >> header->Dims[2];
-    /* printf("%d %d %d\n", header->Dims[0],header->Dims[1],header->Dims[2]); */
-
-    header->nDim = header->Dims[0] + header->Dims[1] + header->Dims[2];
-    if (header->nDim != 1)
-    {
-        gmx_fatal(FARGS, "Currently only supports one dimension");
-    }
-
-    /* line3 */
-    if (fgets(line, 2048, file) == nullptr)
-    {
-        gmx_fatal(FARGS, "Error reading header from pdo file\n");
-    }
-    ist.str(line);
-    ist >> Buffer0 >> Buffer1 >> header->nSkip;
-
-    /* line 4 */
-    if (fgets(line, 2048, file) == nullptr)
-    {
-        gmx_fatal(FARGS, "Error reading header from pdo file\n");
-    }
-    ist.str(line);
-    ist >> Buffer0 >> Buffer1 >> Buffer2 >> header->Reference;
-
-    /* line 5 */
-    if (fgets(line, 2048, file) == nullptr)
-    {
-        gmx_fatal(FARGS, "Error reading header from pdo file\n");
-    }
-    ist.str(line);
-    ist >> Buffer0 >> Buffer1 >> Buffer2 >> Buffer3 >> Buffer4 >> header->nPull;
-
-    if (opt->verbose)
-    {
-        printf("\tFound nPull=%d , nSkip=%d, ref=%s\n", header->nPull, header->nSkip, header->Reference);
-    }
-
-    for (i = 0; i < header->nPull; ++i)
-    {
-        if (fgets(line, 2048, file) == nullptr)
-        {
-            gmx_fatal(FARGS, "Error reading header from pdo file\n");
-        }
-        ist.str(line);
-        ist >> Buffer0 >> Buffer1 >> Buffer2 >> header->PullName[i];
-        ist >> Buffer0 >> Buffer1 >> header->UmbPos[i][0];
-        ist >> Buffer0 >> Buffer1 >> header->UmbCons[i][0];
-
-        if (opt->verbose)
-        {
-            printf("\tpullgroup %d, pullname = %s, UmbPos = %g, UmbConst = %g\n", i,
-                   header->PullName[i], header->UmbPos[i][0], header->UmbCons[i][0]);
-        }
-    }
-
-    if (fgets(line, 2048, file) == nullptr)
-    {
-        gmx_fatal(FARGS, "Cannot read from file\n");
-    }
-    ist.str(line);
-    ist >> Buffer3;
-    if (std::strcmp(Buffer3, "#####") != 0)
-    {
-        gmx_fatal(FARGS, "Expected '#####', found %s. Hick.\n", Buffer3);
-    }
+    printf("Found equally spaced tabulated potential from %g to %g, spacing %g\n",
+           opt->tabMin,
+           opt->tabMax,
+           opt->tabDz);
 }
 
 //! smarter fgets
@@ -578,220 +460,6 @@ static char* fgets3(FILE* fp, char ptr[], int* len)
     }
 
     return ptr;
-}
-
-/*! \brief Read the data columns of and PDO file.
- *
- *  TO DO: Get rid of the scanf function to avoid the clang warning.
- *         At the moment, this warning is avoided by hiding the format string
- *         the variable fmtlf.
- */
-static void read_pdo_data(FILE*              file,
-                          t_UmbrellaHeader*  header,
-                          int                fileno,
-                          t_UmbrellaWindow*  win,
-                          t_UmbrellaOptions* opt,
-                          gmx_bool           bGetMinMax,
-                          real*              mintmp,
-                          real*              maxtmp)
-{
-    int               i, inttemp, bins, count, ntot;
-    real              minval, maxval, minfound = 1e20, maxfound = -1e20;
-    double            temp, time, time0 = 0, dt;
-    char*             ptr    = nullptr;
-    t_UmbrellaWindow* window = nullptr;
-    gmx_bool          timeok, dt_ok = true;
-    char *            tmpbuf = nullptr, fmt[256], fmtign[256], fmtlf[5] = "%lf";
-    int               len = STRLEN, dstep = 1;
-    const int         blocklen = 4096;
-    int*              lennow   = nullptr;
-
-    if (!bGetMinMax)
-    {
-        bins   = opt->bins;
-        minval = opt->min;
-        maxval = opt->max;
-
-        window = win + fileno;
-        /* Need to alocate memory and set up structure */
-        window->nPull = header->nPull;
-        window->nBin  = bins;
-
-        snew(window->Histo, window->nPull);
-        snew(window->z, window->nPull);
-        snew(window->k, window->nPull);
-        snew(window->pos, window->nPull);
-        snew(window->N, window->nPull);
-        snew(window->Ntot, window->nPull);
-        snew(window->g, window->nPull);
-        snew(window->bsWeight, window->nPull);
-
-        window->bContrib = nullptr;
-
-        if (opt->bCalcTauInt)
-        {
-            snew(window->ztime, window->nPull);
-        }
-        else
-        {
-            window->ztime = nullptr;
-        }
-        snew(lennow, window->nPull);
-
-        for (i = 0; i < window->nPull; ++i)
-        {
-            window->z[i]        = 1;
-            window->bsWeight[i] = 1.;
-            snew(window->Histo[i], bins);
-            window->k[i]    = header->UmbCons[i][0];
-            window->pos[i]  = header->UmbPos[i][0];
-            window->N[i]    = 0;
-            window->Ntot[i] = 0;
-            window->g[i]    = 1.;
-            if (opt->bCalcTauInt)
-            {
-                window->ztime[i] = nullptr;
-            }
-        }
-
-        /* Done with setup */
-    }
-    else
-    {
-        minfound = 1e20;
-        maxfound = -1e20;
-        minval = maxval = bins = 0; /* Get rid of warnings */
-    }
-
-    count = 0;
-    snew(tmpbuf, len);
-    while ((ptr = fgets3(file, tmpbuf, &len)) != nullptr)
-    {
-        trim(ptr);
-
-        if (ptr[0] == '#' || std::strlen(ptr) < 2)
-        {
-            continue;
-        }
-
-        /* Initiate format string */
-        fmtign[0] = '\0';
-        std::strcat(fmtign, "%*s");
-
-        sscanf(ptr, fmtlf, &time); /* printf("Time %f\n",time); */
-        /* Round time to fs */
-        time = 1.0 / 1000 * (gmx::roundToInt64(time * 1000));
-
-        /* get time step of pdo file */
-        if (count == 0)
-        {
-            time0 = time;
-        }
-        else if (count == 1)
-        {
-            dt = time - time0;
-            if (opt->dt > 0.0)
-            {
-                dstep = gmx::roundToInt(opt->dt / dt);
-                if (dstep == 0)
-                {
-                    dstep = 1;
-                }
-            }
-            if (!bGetMinMax)
-            {
-                window->dt = dt * dstep;
-            }
-        }
-        count++;
-
-        dt_ok  = ((count - 1) % dstep == 0);
-        timeok = (dt_ok && time >= opt->tmin && time <= opt->tmax);
-        /* if (opt->verbose)
-           printf(" time = %f, (tmin,tmax)=(%e,%e), dt_ok=%d timeok=%d\n",
-           time,opt->tmin, opt->tmax, dt_ok,timeok); */
-
-        if (timeok)
-        {
-            for (i = 0; i < header->nPull; ++i)
-            {
-                std::strcpy(fmt, fmtign);
-                std::strcat(fmt, "%lf");    /* Creating a format stings such as "%*s...%*s%lf" */
-                std::strcat(fmtign, "%*s"); /* ignoring one more entry in the next loop */
-                if (sscanf(ptr, fmt, &temp))
-                {
-                    temp += header->UmbPos[i][0];
-                    if (bGetMinMax)
-                    {
-                        if (temp < minfound)
-                        {
-                            minfound = temp;
-                        }
-                        if (temp > maxfound)
-                        {
-                            maxfound = temp;
-                        }
-                    }
-                    else
-                    {
-                        if (opt->bCalcTauInt)
-                        {
-                            /* save time series for autocorrelation analysis */
-                            ntot = window->Ntot[i];
-                            if (ntot >= lennow[i])
-                            {
-                                lennow[i] += blocklen;
-                                srenew(window->ztime[i], lennow[i]);
-                            }
-                            window->ztime[i][ntot] = temp;
-                        }
-
-                        temp -= minval;
-                        temp /= (maxval - minval);
-                        temp *= bins;
-                        temp = std::floor(temp);
-
-                        inttemp = static_cast<int>(temp);
-                        if (opt->bCycl)
-                        {
-                            if (inttemp < 0)
-                            {
-                                inttemp += bins;
-                            }
-                            else if (inttemp >= bins)
-                            {
-                                inttemp -= bins;
-                            }
-                        }
-
-                        if (inttemp >= 0 && inttemp < bins)
-                        {
-                            window->Histo[i][inttemp] += 1.;
-                            window->N[i]++;
-                        }
-                        window->Ntot[i]++;
-                    }
-                }
-            }
-        }
-        if (time > opt->tmax)
-        {
-            if (opt->verbose)
-            {
-                printf("time %f larger than tmax %f, stop reading pdo file\n", time, opt->tmax);
-            }
-            break;
-        }
-    }
-
-    if (bGetMinMax)
-    {
-        *mintmp = minfound;
-        *maxtmp = maxfound;
-    }
-
-    sfree(lennow);
-    sfree(tmpbuf);
 }
 
 /*! \brief Set identical weights for all histograms
@@ -840,7 +508,9 @@ static double tabulated_pot(double dist, t_UmbrellaOptions* opt)
         gmx_fatal(FARGS,
                   "Distance %f out of bounds of tabulated potential (jl=%d, ju=%d).\n"
                   "Provide an extended table.",
-                  dist, jl, ju);
+                  dist,
+                  jl,
+                  ju);
     }
     pl = opt->tabY[jl];
     pu = opt->tabY[ju];
@@ -906,8 +576,8 @@ static void setup_acc_wham(const double* profile, t_UmbrellaWindow* window, int 
                     }
                 }
                 /* Note: there are two contributions to bin k in the wham equations:
-                   i)  N[j]*exp(- U/(BOLTZ*opt->Temperature) + window[i].z[j])
-                   ii) exp(- U/(BOLTZ*opt->Temperature))
+                   i)  N[j]*exp(- U/(c_boltz*opt->Temperature) + window[i].z[j])
+                   ii) exp(- U/(c_boltz*opt->Temperature))
                    where U is the umbrella potential
                    If any of these number is larger wham_contrib_lim, I set contrib=TRUE
                  */
@@ -920,8 +590,9 @@ static void setup_acc_wham(const double* profile, t_UmbrellaWindow* window, int 
                 {
                     U = tabulated_pot(distance, opt); /* Use tabulated potential     */
                 }
-                contrib1 = profile[k] * std::exp(-U / (BOLTZ * opt->Temperature));
-                contrib2 = window[i].N[j] * std::exp(-U / (BOLTZ * opt->Temperature) + window[i].z[j]);
+                contrib1 = profile[k] * std::exp(-U / (gmx::c_boltz * opt->Temperature));
+                contrib2 = window[i].N[j]
+                           * std::exp(-U / (gmx::c_boltz * opt->Temperature) + window[i].z[j]);
                 window[i].bContrib[j][k] = (contrib1 > wham_contrib_lim || contrib2 > wham_contrib_lim);
                 bAnyContrib              = bAnyContrib || window[i].bContrib[j][k];
                 if (window[i].bContrib[j][k])
@@ -946,7 +617,9 @@ static void setup_acc_wham(const double* profile, t_UmbrellaWindow* window, int 
     {
         printf("Initialized rapid wham stuff (contrib tolerance %g)\n"
                "Evaluating only %d of %d expressions.\n\n",
-               wham_contrib_lim, nContrib, nTot);
+               wham_contrib_lim,
+               nContrib,
+               nTot);
     }
 
     if (opt->verbose)
@@ -1013,7 +686,7 @@ static void calc_profile(double* profile, t_UmbrellaWindow* window, int nWindows
                             U = tabulated_pot(distance, opt); /* Use tabulated potential     */
                         }
                         denom += invg * window[j].N[k]
-                                 * std::exp(-U / (BOLTZ * opt->Temperature) + window[j].z[k]);
+                                 * std::exp(-U / (gmx::c_boltz * opt->Temperature) + window[j].z[k]);
                     }
                 }
                 profile[i] = num / denom;
@@ -1079,7 +752,7 @@ static double calc_z(const double* profile, t_UmbrellaWindow* window, int nWindo
                         {
                             U = tabulated_pot(distance, opt); /* Use tabulated potential     */
                         }
-                        total += profile[k] * std::exp(-U / (BOLTZ * opt->Temperature));
+                        total += profile[k] * std::exp(-U / (gmx::c_boltz * opt->Temperature));
                     }
                     /* Avoid floating point exception if window is far outside min and max */
                     if (total != 0.0)
@@ -1125,8 +798,7 @@ static void symmetrizeProfile(double* profile, t_UmbrellaOptions* opt)
 
     if (min > 0. || max < 0.)
     {
-        gmx_fatal(FARGS, "Cannot symmetrize profile around z=0 with min=%f and max=%f\n", opt->min,
-                  opt->max);
+        gmx_fatal(FARGS, "Cannot symmetrize profile around z=0 with min=%f and max=%f\n", opt->min, opt->max);
     }
 
     snew(prof2, bins);
@@ -1177,11 +849,11 @@ static void prof_normalization_and_unit(double* profile, t_UmbrellaOptions* opt)
     }
     else if (opt->unit == en_kJ)
     {
-        unit_factor = BOLTZ * opt->Temperature;
+        unit_factor = gmx::c_boltz * opt->Temperature;
     }
     else if (opt->unit == en_kCal)
     {
-        unit_factor = (BOLTZ / CAL2JOULE) * opt->Temperature;
+        unit_factor = (gmx::c_boltz / gmx::c_cal2Joule) * opt->Temperature;
     }
     else
     {
@@ -1249,7 +921,11 @@ static void getRandomIntArray(int nPull, int blockLength, int* randomArray, gmx:
             gmx_fatal(FARGS,
                       "Ups, random iWin = %d, nPull = %d, nr = %d, "
                       "blockLength = %d, blockBase = %d\n",
-                      ipullRandom, nPull, nr, blockLength, blockBase);
+                      ipullRandom,
+                      nPull,
+                      nr,
+                      blockLength,
+                      blockBase);
         }
         randomArray[ipull] = ipullRandom;
     }
@@ -1796,7 +1472,7 @@ static void do_bootstrapping(const char*        fnres,
     printf("Wrote boot strap result to %s\n", fnres);
 }
 
-//! Return type of input file based on file extension (xvg, pdo, or tpr)
+//! Return type of input file based on file extension (xvg or tpr)
 static int whaminFileType(char* fn)
 {
     int len;
@@ -1809,17 +1485,16 @@ static int whaminFileType(char* fn)
     {
         return whamin_pullxf;
     }
-    else if (std::strcmp(fn + len - 3, "pdo") == 0 || std::strcmp(fn + len - 6, "pdo.gz") == 0)
-    {
-        return whamin_pdo;
-    }
     else
     {
-        gmx_fatal(FARGS, "Unknown file type of %s. Should be tpr, xvg, or pdo.\n", fn);
+        gmx_fatal(FARGS,
+                  "Unknown file type of %s. Should be tpr or xvg. Use GROMACS 2021 or earlier to "
+                  "read pdo files.\n",
+                  fn);
     }
 }
 
-//! Read the files names in pdo-files.dat, pullf/x-files.dat, tpr-files.dat
+//! Read the files names in pullf/pullx-files.dat, tpr-files.dat
 static void read_wham_in(const char* fn, char*** filenamesRet, int* nfilesRet, t_UmbrellaOptions* opt)
 {
     char **filename = nullptr, tmp[WHAM_MAXFILELEN + 2];
@@ -1858,188 +1533,6 @@ static void read_wham_in(const char* fn, char*** filenamesRet, int* nfilesRet, t
     }
     *filenamesRet = filename;
     *nfilesRet    = nread;
-}
-
-//! Open a file or a pipe to a gzipped file
-static FILE* open_pdo_pipe(const char* fn, t_UmbrellaOptions* opt, gmx_bool* bPipeOpen)
-{
-    char            Buffer[2048], gunzip[1024], *Path = nullptr;
-    FILE*           pipe   = nullptr;
-    static gmx_bool bFirst = true;
-
-    /* gzipped pdo file? */
-    if ((std::strcmp(fn + std::strlen(fn) - 3, ".gz") == 0))
-    {
-        /* search gunzip executable */
-        if (!(Path = getenv("GMX_PATH_GZIP")))
-        {
-            if (gmx_fexist("/bin/gunzip"))
-            {
-                sprintf(gunzip, "%s", "/bin/gunzip");
-            }
-            else if (gmx_fexist("/usr/bin/gunzip"))
-            {
-                sprintf(gunzip, "%s", "/usr/bin/gunzip");
-            }
-            else
-            {
-                gmx_fatal(FARGS,
-                          "Cannot find executable gunzip in /bin or /usr/bin.\n"
-                          "You may want to define the path to gunzip "
-                          "with the environment variable GMX_PATH_GZIP.");
-            }
-        }
-        else
-        {
-            sprintf(gunzip, "%s/gunzip", Path);
-            if (!gmx_fexist(gunzip))
-            {
-                gmx_fatal(FARGS,
-                          "Cannot find executable %s. Please define the path to gunzip"
-                          " in the environmental varialbe GMX_PATH_GZIP.",
-                          gunzip);
-            }
-        }
-        if (bFirst)
-        {
-            printf("Using gunzip executable %s\n", gunzip);
-            bFirst = false;
-        }
-        if (!gmx_fexist(fn))
-        {
-            gmx_fatal(FARGS, "File %s does not exist.\n", fn);
-        }
-        sprintf(Buffer, "%s -c < %s", gunzip, fn);
-        if (opt->verbose)
-        {
-            printf("Executing command '%s'\n", Buffer);
-        }
-#if HAVE_PIPES
-        if ((pipe = popen(Buffer, "r")) == nullptr)
-        {
-            gmx_fatal(FARGS, "Unable to open pipe to `%s'\n", Buffer);
-        }
-#else
-        gmx_fatal(FARGS, "Cannot open a compressed file on platform without pipe support");
-#endif
-        *bPipeOpen = TRUE;
-    }
-    else
-    {
-        pipe       = gmx_ffopen(fn, "r");
-        *bPipeOpen = FALSE;
-    }
-
-    return pipe;
-}
-
-//! Close file or pipe
-static void pdo_close_file(FILE* fp)
-{
-#if HAVE_PIPES
-    pclose(fp);
-#else
-    gmx_ffclose(fp);
-#endif
-}
-
-//! Reading all pdo files
-static void read_pdo_files(char** fn, int nfiles, t_UmbrellaHeader* header, t_UmbrellaWindow* window, t_UmbrellaOptions* opt)
-{
-    FILE*    file;
-    real     mintmp, maxtmp, done = 0.;
-    int      i;
-    gmx_bool bPipeOpen;
-    /* char Buffer0[1000]; */
-
-    if (nfiles < 1)
-    {
-        gmx_fatal(FARGS, "No files found. Hick.");
-    }
-
-    /* if min and max are not given, get min and max from the input files */
-    if (opt->bAuto)
-    {
-        printf("Automatic determination of boundaries from %d pdo files...\n", nfiles);
-        opt->min = 1e20;
-        opt->max = -1e20;
-        for (i = 0; i < nfiles; ++i)
-        {
-            file = open_pdo_pipe(fn[i], opt, &bPipeOpen);
-            /*fgets(Buffer0,999,file);
-               fprintf(stderr,"First line '%s'\n",Buffer0); */
-            done = 100.0 * (i + 1) / nfiles;
-            fprintf(stdout, "\rOpening %s ... [%2.0f%%]", fn[i], done);
-            fflush(stdout);
-            if (opt->verbose)
-            {
-                printf("\n");
-            }
-            read_pdo_header(file, header, opt);
-            /* here only determine min and max of this window */
-            read_pdo_data(file, header, i, nullptr, opt, TRUE, &mintmp, &maxtmp);
-            if (maxtmp > opt->max)
-            {
-                opt->max = maxtmp;
-            }
-            if (mintmp < opt->min)
-            {
-                opt->min = mintmp;
-            }
-            if (bPipeOpen)
-            {
-                pdo_close_file(file);
-            }
-            else
-            {
-                gmx_ffclose(file);
-            }
-        }
-        printf("\n");
-        printf("\nDetermined boundaries to %f and %f\n\n", opt->min, opt->max);
-        if (opt->bBoundsOnly)
-        {
-            printf("Found option -boundsonly, now exiting.\n");
-            exit(0);
-        }
-    }
-    /* store stepsize in profile */
-    opt->dz = (opt->max - opt->min) / opt->bins;
-
-    /* Having min and max, we read in all files */
-    /* Loop over all files */
-    for (i = 0; i < nfiles; ++i)
-    {
-        done = 100.0 * (i + 1) / nfiles;
-        fprintf(stdout, "\rOpening %s ... [%2.0f%%]", fn[i], done);
-        fflush(stdout);
-        if (opt->verbose)
-        {
-            printf("\n");
-        }
-        file = open_pdo_pipe(fn[i], opt, &bPipeOpen);
-        read_pdo_header(file, header, opt);
-        /* load data into window */
-        read_pdo_data(file, header, i, window, opt, FALSE, nullptr, nullptr);
-        if ((window + i)->Ntot[0] == 0)
-        {
-            fprintf(stderr, "\nWARNING, no data points read from file %s (check -b option)\n", fn[i]);
-        }
-        if (bPipeOpen)
-        {
-            pdo_close_file(file);
-        }
-        else
-        {
-            gmx_ffclose(file);
-        }
-    }
-    printf("\n");
-    for (i = 0; i < nfiles; ++i)
-    {
-        sfree(fn[i]);
-    }
-    sfree(fn);
 }
 
 //! translate 0/1 to N/Y to write pull dimensions
@@ -2083,18 +1576,17 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
          * so we need to multiply with the internal units (radians for angle)
          * to user units (degrees for an angle) with the same power.
          */
-        header->pcrd[i].k =
-                ir->pull->coord[i].k
-                / gmx::square(pull_conversion_factor_internal2userinput(&ir->pull->coord[i]));
+        header->pcrd[i].k = ir->pull->coord[i].k
+                            / gmx::square(pull_conversion_factor_internal2userinput(ir->pull->coord[i]));
         header->pcrd[i].init_dist = ir->pull->coord[i].init;
 
         copy_ivec(ir->pull->coord[i].dim, header->pcrd[i].dim);
         header->pcrd[i].ndim =
                 header->pcrd[i].dim[XX] + header->pcrd[i].dim[YY] + header->pcrd[i].dim[ZZ];
 
-        std::strcpy(header->pcrd[i].coord_unit, pull_coordinate_units(&ir->pull->coord[i]));
+        std::strcpy(header->pcrd[i].coord_unit, pull_coordinate_units(ir->pull->coord[i]));
 
-        if (ir->efep != efepNO && ir->pull->coord[i].k != ir->pull->coord[i].kB)
+        if (ir->efep != FreeEnergyPerturbationType::No && ir->pull->coord[i].k != ir->pull->coord[i].kB)
         {
             gmx_fatal(FARGS,
                       "Seems like you did free-energy perturbation, and you perturbed the force "
@@ -2106,26 +1598,30 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
             gmx_fatal(FARGS,
                       "Found %d pull coordinates in %s, but %d columns in the respective line\n"
                       "coordinate selection file (option -is)\n",
-                      ir->pull->ncoord, fn, coordsel->n);
+                      ir->pull->ncoord,
+                      fn,
+                      coordsel->n);
         }
     }
 
     /* Check pull coords for consistency */
-    int  geom          = -1;
-    ivec thedim        = { 0, 0, 0 };
-    bool geometryIsSet = false;
+    PullGroupGeometry geom          = PullGroupGeometry::Count;
+    ivec              thedim        = { 0, 0, 0 };
+    bool              geometryIsSet = false;
     for (int i = 0; i < ir->pull->ncoord; i++)
     {
         if (coordsel == nullptr || coordsel->bUse[i])
         {
-            if (header->pcrd[i].pull_type != epullUMBRELLA)
+            if (header->pcrd[i].pull_type != PullingAlgorithm::Umbrella)
             {
                 gmx_fatal(FARGS,
                           "%s: Pull coordinate %d is of type \"%s\", expected \"umbrella\". Only "
                           "umbrella coodinates can enter WHAM.\n"
-                          "If you have umrella and non-umbrella coordinates, you can select the "
+                          "If you have umbrella and non-umbrella coordinates, you can select the "
                           "umbrella coordinates with gmx wham -is\n",
-                          fn, i + 1, epull_names[header->pcrd[i].pull_type]);
+                          fn,
+                          i + 1,
+                          enumValueToString(header->pcrd[i].pull_type));
             }
             if (!geometryIsSet)
             {
@@ -2140,7 +1636,10 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
                           "%s, coordinate %d: %s)\n"
                           "If you want to use only some pull coordinates in WHAM, please select "
                           "them with option gmx wham -is\n",
-                          fn, epullg_names[geom], i + 1, epullg_names[header->pcrd[i].geometry]);
+                          fn,
+                          enumValueToString(geom),
+                          i + 1,
+                          enumValueToString(header->pcrd[i].geometry));
             }
             if (thedim[XX] != header->pcrd[i].dim[XX] || thedim[YY] != header->pcrd[i].dim[YY]
                 || thedim[ZZ] != header->pcrd[i].dim[ZZ])
@@ -2150,11 +1649,16 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
                           "%s %s %s, coordinate %d: %s %s %s)\n"
                           "If you want to use only some pull coordinates in WHAM, please select "
                           "them with option gmx wham -is\n",
-                          fn, int2YN(thedim[XX]), int2YN(thedim[YY]), int2YN(thedim[ZZ]), i + 1,
-                          int2YN(header->pcrd[i].dim[XX]), int2YN(header->pcrd[i].dim[YY]),
+                          fn,
+                          int2YN(thedim[XX]),
+                          int2YN(thedim[YY]),
+                          int2YN(thedim[ZZ]),
+                          i + 1,
+                          int2YN(header->pcrd[i].dim[XX]),
+                          int2YN(header->pcrd[i].dim[YY]),
                           int2YN(header->pcrd[i].dim[ZZ]));
             }
-            if (header->pcrd[i].geometry == epullgCYL)
+            if (header->pcrd[i].geometry == PullGroupGeometry::Cylinder)
             {
                 if (header->pcrd[i].dim[XX] || header->pcrd[i].dim[YY] || (!header->pcrd[i].dim[ZZ]))
                 {
@@ -2162,7 +1666,8 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
                             FARGS,
                             "With pull geometry 'cylinder', expected pulling in Z direction only.\n"
                             "However, found dimensions [%s %s %s]\n",
-                            int2YN(header->pcrd[i].dim[XX]), int2YN(header->pcrd[i].dim[YY]),
+                            int2YN(header->pcrd[i].dim[XX]),
+                            int2YN(header->pcrd[i].dim[YY]),
                             int2YN(header->pcrd[i].dim[ZZ]));
                 }
             }
@@ -2171,7 +1676,9 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
                 gmx_fatal(FARGS,
                           "%s: Pull coordinate %d has force constant of of %g.\n"
                           "That doesn't seem to be an Umbrella tpr.\n",
-                          fn, i + 1, header->pcrd[i].k);
+                          fn,
+                          i + 1,
+                          header->pcrd[i].k);
             }
         }
     }
@@ -2182,7 +1689,7 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
         int maxlen = 0;
         for (int i = 0; i < ir->pull->ncoord; i++)
         {
-            int lentmp = strlen(epullg_names[header->pcrd[i].geometry]);
+            int lentmp = strlen(enumValueToString(header->pcrd[i].geometry));
             maxlen     = (lentmp > maxlen) ? lentmp : maxlen;
         }
         char fmt[STRLEN];
@@ -2193,9 +1700,15 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
         for (int i = 0; i < ir->pull->ncoord; i++)
         {
             bool use = (coordsel == nullptr || coordsel->bUse[i]);
-            printf(fmt, epullg_names[header->pcrd[i].geometry], header->pcrd[i].k, header->pcrd[i].init_dist,
-                   int2YN(header->pcrd[i].dim[XX]), int2YN(header->pcrd[i].dim[YY]),
-                   int2YN(header->pcrd[i].dim[ZZ]), header->pcrd[i].ndim, use ? "Yes" : "No");
+            printf(fmt,
+                   enumValueToString(header->pcrd[i].geometry),
+                   header->pcrd[i].k,
+                   header->pcrd[i].init_dist,
+                   int2YN(header->pcrd[i].dim[XX]),
+                   int2YN(header->pcrd[i].dim[YY]),
+                   int2YN(header->pcrd[i].dim[ZZ]),
+                   header->pcrd[i].ndim,
+                   use ? "Yes" : "No");
             printf("\tPull group coordinates of %d groups expected in pullx files.\n",
                    ir->pull->bPrintCOM ? header->pcrd[i].ngroup : 0);
         }
@@ -2294,14 +1807,43 @@ static void read_pull_xf(const char*        fn,
     }
     if (bFirst || opt->verbose)
     {
+        // Note the comment above about the pull file column format!
         printf("\nReading pull %s file %s, expecting %d columns:\n", quantity, fn, nColExpect);
+        printf("\tColumn for time: 1\n");
+        int nextColumn = 2;
         for (i = 0; i < header->npullcrds; i++)
         {
-            printf("\tColumns for pull coordinate %d\n", i + 1);
-            printf("\t\treaction coordinate:             %d\n"
-                   "\t\tcenter-of-mass of groups:        %d\n"
-                   "\t\treference position column:       %s\n",
-                   1, nColCOMCrd[i], (header->bPrintRefValue ? "Yes" : "No"));
+            printf("\tColumn(s) with data for pull coordinate %d are\n", i + 1);
+            if (nColCOMCrd[i] > 0)
+            {
+                const int firstColumnForCOM       = nextColumn;
+                const int lastColumnForCOM        = firstColumnForCOM + nColCOMCrd[i] - 1;
+                const int columnForThisCoordinate = lastColumnForCOM + 1;
+                printf("\t\treaction coordinate:             %d\n"
+                       "\t\tcenter-of-mass of groups:        %d through %d\n",
+                       columnForThisCoordinate,
+                       firstColumnForCOM,
+                       lastColumnForCOM);
+                nextColumn = columnForThisCoordinate + 1;
+            }
+            else
+            {
+                const int columnForThisCoordinate = nextColumn;
+                printf("\t\treaction coordinate:             %d\n"
+                       "\t\tcenter-of-mass of groups:        No\n",
+                       columnForThisCoordinate);
+                ++nextColumn;
+            }
+            if (header->bPrintRefValue)
+            {
+                const int columnForRefValue = nextColumn;
+                printf("\t\treference position column:       %d\n", columnForRefValue);
+                ++nextColumn;
+            }
+            else
+            {
+                printf("\t\treference position column:       No\n");
+            }
         }
         printf("\tFound %d times in %s\n", nt, fn);
         bFirst = FALSE;
@@ -2311,7 +1853,9 @@ static void read_pull_xf(const char*        fn,
         gmx_fatal(FARGS,
                   "Expected %d columns (including time column) in %s, but found %d."
                   " Maybe you confused options -if and -ix ?",
-                  nColExpect, fn, ny);
+                  nColExpect,
+                  fn,
+                  ny);
     }
 
     if (!bGetMinMax)
@@ -2338,7 +1882,8 @@ static void read_pull_xf(const char*        fn,
                 gmx_fatal(FARGS,
                           "tpr file contains %d pull groups, but expected %d from group selection "
                           "file\n",
-                          header->npullcrds, coordsel->n);
+                          header->npullcrds,
+                          coordsel->n);
             }
             window->nPull = coordsel->nUse;
         }
@@ -2409,7 +1954,7 @@ static void read_pull_xf(const char*        fn,
         /* Do you want that time frame? */
         t = 1.0 / 1000 * (gmx::roundToInt64((y[0][i] * 1000))); /* round time to fs */
 
-        /* get time step of pdo file and get dstep from opt->dt */
+        /* get time step and get dstep from opt->dt */
         if (i == 0)
         {
             time0 = t;
@@ -2491,7 +2036,8 @@ static void read_pull_xf(const char*        fn,
                         gmx_fatal(FARGS,
                                   "gUsed too large (%d, nPull=%d). This error should have been "
                                   "caught before.\n",
-                                  gUsed, window->nPull);
+                                  gUsed,
+                                  window->nPull);
                     }
 
                     if (opt->bCalcTauInt && !bGetMinMax)
@@ -2561,7 +2107,7 @@ static void read_tpr_pullxf_files(char**             fnTprs,
     int  i;
     real mintmp, maxtmp;
 
-    printf("Reading %d tpr and pullf files\n", nfiles);
+    printf("Reading %d tpr and pullx/pullf files\n", nfiles);
 
     /* min and max not given? */
     if (opt->bAuto)
@@ -2579,9 +2125,16 @@ static void read_tpr_pullxf_files(char**             fnTprs,
             if (whaminFileType(fnPull[i]) != whamin_pullxf)
             {
                 gmx_fatal(FARGS,
-                          "Expected the %d'th file in input file to be a xvg (pullx/pullf) file\n", i);
+                          "Expected the %d'th file in input file to be a xvg (pullx/pullf) file\n",
+                          i);
             }
-            read_pull_xf(fnPull[i], header, nullptr, opt, TRUE, &mintmp, &maxtmp,
+            read_pull_xf(fnPull[i],
+                         header,
+                         nullptr,
+                         opt,
+                         TRUE,
+                         &mintmp,
+                         &maxtmp,
                          (opt->nCoordsel > 0) ? &opt->coordsel[i] : nullptr);
             if (maxtmp > opt->max)
             {
@@ -2612,10 +2165,16 @@ static void read_tpr_pullxf_files(char**             fnTprs,
         read_tpr_header(fnTprs[i], header, opt, (opt->nCoordsel > 0) ? &opt->coordsel[i] : nullptr);
         if (whaminFileType(fnPull[i]) != whamin_pullxf)
         {
-            gmx_fatal(FARGS,
-                      "Expected the %d'th file in input file to be a xvg (pullx/pullf) file\n", i);
+            gmx_fatal(
+                    FARGS, "Expected the %d'th file in input file to be a xvg (pullx/pullf) file\n", i);
         }
-        read_pull_xf(fnPull[i], header, window + i, opt, FALSE, nullptr, nullptr,
+        read_pull_xf(fnPull[i],
+                     header,
+                     window + i,
+                     opt,
+                     FALSE,
+                     nullptr,
+                     nullptr,
                      (opt->nCoordsel > 0) ? &opt->coordsel[i] : nullptr);
         if (window[i].Ntot[0] == 0)
         {
@@ -2656,8 +2215,11 @@ static void readIntegratedAutocorrelationTimes(t_UmbrellaWindow* window, int nwi
     nlines = read_xvg(fn, &iact, &ny);
     if (nlines != nwins)
     {
-        gmx_fatal(FARGS, "Found %d lines with integrated autocorrelation times in %s.\nExpected %d",
-                  nlines, fn, nwins);
+        gmx_fatal(FARGS,
+                  "Found %d lines with integrated autocorrelation times in %s.\nExpected %d",
+                  nlines,
+                  fn,
+                  nwins);
     }
     for (i = 0; i < nlines; i++)
     {
@@ -2758,14 +2320,18 @@ static void calcIntegratedAutocorrelationTimes(t_UmbrellaWindow*  window,
 
     if (opt->verbose)
     {
-        fpcorr = xvgropen("hist_autocorr.xvg", "Autocorrelation functions of umbrella windows",
-                          "time [ps]", "autocorrelation function", opt->oenv);
+        fpcorr = xvgropen("hist_autocorr.xvg",
+                          "Autocorrelation functions of umbrella windows",
+                          "time [ps]",
+                          "autocorrelation function",
+                          opt->oenv);
     }
 
     printf("\n");
     for (i = 0; i < nwins; i++)
     {
-        fprintf(stdout, "\rEstimating integrated autocorrelation times ... [%2.0f%%] ...",
+        fprintf(stdout,
+                "\rEstimating integrated autocorrelation times ... [%2.0f%%] ...",
                 100. * (i + 1) / nwins);
         fflush(stdout);
         ntot = window[i].Ntot[0];
@@ -2797,7 +2363,8 @@ static void calcIntegratedAutocorrelationTimes(t_UmbrellaWindow*  window,
                 gmx_fatal(FARGS,
                           "Encountered different nr of frames in different pull groups.\n"
                           "That should not happen. (%d and %d)\n",
-                          ntot, window[i].Ntot[ig]);
+                          ntot,
+                          window[i].Ntot[ig]);
             }
             ztime = window[i].ztime[ig];
 
@@ -3064,7 +2631,8 @@ static void checkReactionCoordinateCovered(t_UmbrellaWindow* window, int nwins, 
             fprintf(stderr,
                     "\nWARNING, no data point in bin %d (z=%g) !\n"
                     "You may not get a reasonable profile. Check your histograms!\n",
-                    j, z);
+                    j,
+                    z);
         }
         /* and check for poor sampling */
         else if (relcount < 0.005 && !bBoundary)
@@ -3166,7 +2734,7 @@ static void guessPotByIntegration(t_UmbrellaWindow* window, int nWindows, t_Umbr
      */
     for (j = 0; j < opt->bins; ++j)
     {
-        pot[j] = std::exp(-pot[j] / (BOLTZ * opt->Temperature));
+        pot[j] = std::exp(-pot[j] / (gmx::c_boltz * opt->Temperature));
     }
     calc_z(pot, window, nWindows, opt, TRUE);
 
@@ -3256,7 +2824,9 @@ static void readPullCoordSelection(t_UmbrellaOptions* opt, char** fnTpr, int nTp
     printf("\nUse only these pull coordinates:\n");
     for (iline = 0; iline < nTpr; iline++)
     {
-        printf("%s (%d of %d coordinates):", fnTpr[iline], opt->coordsel[iline].nUse,
+        printf("%s (%d of %d coordinates):",
+               fnTpr[iline],
+               opt->coordsel[iline].nUse,
                opt->coordsel[iline].n);
         for (i = 0; i < opt->coordsel[iline].n; i++)
         {
@@ -3303,27 +2873,7 @@ int gmx_wham(int argc, char* argv[])
         "  provides the pull force output file names ([TT]pullf.xvg[tt]) with option [TT]-if[tt].",
         "  From the pull force the position in the umbrella potential is",
         "  computed. This does not work with tabulated umbrella potentials.",
-        "* With option [TT]-ip[tt], the user provides file names of (gzipped) [REF].pdo[ref] ",
-        "  files, i.e.",
-        "  the GROMACS 3.3 umbrella output files. If you have some unusual",
-        "  reaction coordinate you may also generate your own [REF].pdo[ref] files and",
-        "  feed them with the [TT]-ip[tt] option into to [THISMODULE]. The [REF].pdo[ref] file ",
-        "  header must be similar to the following::",
         "",
-        "  # UMBRELLA      3.0",
-        "  # Component selection: 0 0 1",
-        "  # nSkip 1",
-        "  # Ref. Group 'TestAtom'",
-        "  # Nr. of pull groups 2",
-        "  # Group 1 'GR1'  Umb. Pos. 5.0 Umb. Cons. 1000.0",
-        "  # Group 2 'GR2'  Umb. Pos. 2.0 Umb. Cons. 500.0",
-        "  #####",
-        "",
-        "  The number of pull groups, umbrella positions, force constants, and names ",
-        "  may (of course) differ. Following the header, a time column and ",
-        "  a data column for each pull group follows (i.e. the displacement",
-        "  with respect to the umbrella center). Up to four pull groups are possible ",
-        "  per [REF].pdo[ref] file at present.[PAR]",
         "By default, all pull coordinates found in all pullx/pullf files are used in WHAM. If ",
         "only ",
         "some of the pull coordinates should be used, a pull coordinate selection file (option ",
@@ -3348,7 +2898,7 @@ int gmx_wham(int argc, char* argv[])
         "",
         "Always check whether the histograms sufficiently overlap.[PAR]",
         "The umbrella potential is assumed to be harmonic and the force constants are ",
-        "read from the [REF].tpr[ref] or [REF].pdo[ref] files. If a non-harmonic umbrella force ",
+        "read from the [REF].tpr[ref] files. If a non-harmonic umbrella force ",
         "was applied ",
         "a tabulated potential can be provided with [TT]-tab[tt].",
         "",
@@ -3401,7 +2951,7 @@ int gmx_wham(int argc, char* argv[])
         "less robust) method such as fitting to a double exponential, you can ",
         "compute the IACTs with [gmx-analyze] and provide them to [THISMODULE] with the file ",
         "[TT]iact-in.dat[tt] (option [TT]-iiact[tt]), which should contain one line per ",
-        "input file ([REF].pdo[ref] or pullx/f file) and one column per pull coordinate in the ",
+        "input file (pullx/pullf file) and one column per pull coordinate in the ",
         "respective file.",
         "",
         "Error analysis",
@@ -3553,7 +3103,6 @@ int gmx_wham(int argc, char* argv[])
         { efDAT, "-ix", "pullx-files", ffOPTRD }, /* wham input: pullf.xvg's and tprs           */
         { efDAT, "-if", "pullf-files", ffOPTRD }, /* wham input: pullf.xvg's and tprs           */
         { efDAT, "-it", "tpr-files", ffOPTRD },   /* wham input: tprs                           */
-        { efDAT, "-ip", "pdo-files", ffOPTRD },   /* wham input: pdo files (gmx3 style)         */
         { efDAT, "-is", "coordsel", ffOPTRD },    /* input: select pull coords to use           */
         { efXVG, "-o", "profile", ffWRITE },      /* output file for profile                     */
         { efXVG, "-hist", "histo", ffWRITE },     /* output file for histograms                  */
@@ -3569,7 +3118,7 @@ int gmx_wham(int argc, char* argv[])
     t_UmbrellaWindow* window = nullptr;
     double *          profile, maxchange = 1e20;
     gmx_bool          bMinSet, bMaxSet, bAutoSet, bExact = FALSE;
-    char **           fninTpr, **fninPull, **fninPdo;
+    char **           fninTpr, **fninPull;
     const char*       fnPull;
     FILE *            histout, *profout;
     char              xlabel[STRLEN], ylabel[256], title[256];
@@ -3610,8 +3159,8 @@ int gmx_wham(int argc, char* argv[])
     opt.stepchange            = 100;
     opt.stepUpdateContrib     = 100;
 
-    if (!parse_common_args(&argc, argv, 0, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr,
-                           &opt.oenv))
+    if (!parse_common_args(
+                &argc, argv, 0, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &opt.oenv))
     {
         return 0;
     }
@@ -3622,7 +3171,6 @@ int gmx_wham(int argc, char* argv[])
     opt.bProf0Set = opt2parg_bSet("-zprof0", asize(pa), pa);
 
     opt.bTab         = opt2bSet("-tab", NFILE, fnm);
-    opt.bPdo         = opt2bSet("-ip", NFILE, fnm);
     opt.bTpr         = opt2bSet("-it", NFILE, fnm);
     opt.bPullx       = opt2bSet("-ix", NFILE, fnm);
     opt.bPullf       = opt2bSet("-if", NFILE, fnm);
@@ -3631,21 +3179,14 @@ int gmx_wham(int argc, char* argv[])
     {
         gmx_fatal(FARGS,
                   "Force input does not work with tabulated potentials. "
-                  "Provide pullx.xvg or pdo files!");
+                  "Provide pullx.xvg files!");
     }
 
-    if (!opt.bPdo && !WHAMBOOLXOR(opt.bPullx, opt.bPullf))
+    if (!WHAMBOOLXOR(opt.bPullx, opt.bPullf))
     {
         gmx_fatal(FARGS, "Give either pullx (-ix) OR pullf (-if) data. Not both.");
     }
-    if (!opt.bPdo && !(opt.bTpr || opt.bPullf || opt.bPullx))
-    {
-        gmx_fatal(FARGS,
-                  "gmx wham supports three input modes, pullx, pullf, or pdo file input."
-                  "\n\n Check gmx wham -h !");
-    }
 
-    opt.fnPdo      = opt2fn("-ip", NFILE, fnm);
     opt.fnTpr      = opt2fn("-it", NFILE, fnm);
     opt.fnPullf    = opt2fn("-if", NFILE, fnm);
     opt.fnPullx    = opt2fn("-ix", NFILE, fnm);
@@ -3691,42 +3232,29 @@ int gmx_wham(int argc, char* argv[])
     }
 
     /* Reading gmx4/gmx5 pull output and tpr files */
-    if (opt.bTpr || opt.bPullf || opt.bPullx)
+    read_wham_in(opt.fnTpr, &fninTpr, &nfiles, &opt);
+
+    fnPull = opt.bPullf ? opt.fnPullf : opt.fnPullx;
+    read_wham_in(fnPull, &fninPull, &nfiles2, &opt);
+    printf("Found %d tpr and %d pull %s files in %s and %s, respectively\n",
+           nfiles,
+           nfiles2,
+           opt.bPullf ? "force" : "position",
+           opt.fnTpr,
+           fnPull);
+    if (nfiles != nfiles2)
     {
-        read_wham_in(opt.fnTpr, &fninTpr, &nfiles, &opt);
-
-        fnPull = opt.bPullf ? opt.fnPullf : opt.fnPullx;
-        read_wham_in(fnPull, &fninPull, &nfiles2, &opt);
-        printf("Found %d tpr and %d pull %s files in %s and %s, respectively\n", nfiles, nfiles2,
-               opt.bPullf ? "force" : "position", opt.fnTpr, fnPull);
-        if (nfiles != nfiles2)
-        {
-            gmx_fatal(FARGS, "Found %d file names in %s, but %d in %s\n", nfiles, opt.fnTpr, nfiles2, fnPull);
-        }
-
-        /* Read file that selects the pull group to be used */
-        if (opt.fnCoordSel != nullptr)
-        {
-            readPullCoordSelection(&opt, fninTpr, nfiles);
-        }
-
-        window = initUmbrellaWindows(nfiles);
-        read_tpr_pullxf_files(fninTpr, fninPull, nfiles, &header, window, &opt);
+        gmx_fatal(FARGS, "Found %d file names in %s, but %d in %s\n", nfiles, opt.fnTpr, nfiles2, fnPull);
     }
-    else
-    { /* reading pdo files */
-        if (opt.fnCoordSel != nullptr)
-        {
-            gmx_fatal(FARGS,
-                      "Reading a -is file is not supported with PDO input files.\n"
-                      "Use awk or a similar tool to pick the required pull groups from your PDO "
-                      "files\n");
-        }
-        read_wham_in(opt.fnPdo, &fninPdo, &nfiles, &opt);
-        printf("Found %d pdo files in %s\n", nfiles, opt.fnPdo);
-        window = initUmbrellaWindows(nfiles);
-        read_pdo_files(fninPdo, nfiles, &header, window, &opt);
+
+    /* Read file that selects the pull group to be used */
+    if (opt.fnCoordSel != nullptr)
+    {
+        readPullCoordSelection(&opt, fninTpr, nfiles);
     }
+
+    window = initUmbrellaWindows(nfiles);
+    read_tpr_pullxf_files(fninTpr, fninPull, nfiles, &header, window, &opt);
 
     /* It is currently assumed that all pull coordinates have the same geometry, so they also have the same coordinate units.
        We can therefore get the units for the xlabel from the first coordinate. */
@@ -3860,8 +3388,15 @@ int gmx_wham(int argc, char* argv[])
     /* Bootstrap Method */
     if (opt.nBootStrap)
     {
-        do_bootstrapping(opt2fn("-bsres", NFILE, fnm), opt2fn("-bsprof", NFILE, fnm),
-                         opt2fn("-hist", NFILE, fnm), xlabel, ylabel, profile, window, nwins, &opt);
+        do_bootstrapping(opt2fn("-bsres", NFILE, fnm),
+                         opt2fn("-bsprof", NFILE, fnm),
+                         opt2fn("-hist", NFILE, fnm),
+                         xlabel,
+                         ylabel,
+                         profile,
+                         window,
+                         nwins,
+                         &opt);
     }
 
     sfree(profile);

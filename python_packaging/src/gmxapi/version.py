@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """
 gmxapi version and release information.
@@ -68,10 +67,10 @@ import warnings
 
 from .exceptions import FeatureNotAvailableError
 
-# TODO: Version management policy and procedures.
+# TODO(#3851): Version management policy and procedures.
 _major = 0
-_minor = 2
-_micro = 1
+_minor = 3
+_micro = 0
 _suffix = ''
 
 # Reference https://www.python.org/dev/peps/pep-0440/
@@ -122,6 +121,12 @@ _named_features_0_1 = []
 # fr22 MPI-based ensemble management from Python
 # fr23 Ensemble simulations can themselves use MPI
 
+_named_features_0_2 = [
+    'container_futures',
+    'mdrun_checkpoint_output',
+    'mdrun_runtime_args',
+]
+
 
 def api_is_at_least(major_version, minor_version=0, patch_version=0):
     """Allow client to check whether installed module supports the requested API level.
@@ -137,7 +142,9 @@ def api_is_at_least(major_version, minor_version=0, patch_version=0):
     Note that if gmxapi.version.release is False, the package is not guaranteed to correctly or
     fully support the reported API level.
     """
-    if not isinstance(major_version, int) or not isinstance(minor_version, int) or not isinstance(patch_version, int):
+    if not isinstance(major_version, int) or not isinstance(minor_version, int) or not isinstance(
+            patch_version,
+            int):
         raise TypeError('Version levels must be provided as integers.')
     if _major > major_version:
         return True
@@ -184,20 +191,20 @@ def has_feature(name='', enable_exception=False) -> bool:
     """
     # First, issue a warning if the feature name is subject to removal because
     # of the history of the API specification.
-    if api_is_at_least(0, 2):
+    if api_is_at_least(0, 3):
         # For sufficiently advanced API versions, we want to warn that old
         # feature checks lose meaning and should no longer be checked.
         # We provide a suggestion with the API version that absorbed their
         # specification.
         if name in _named_features_0_0:
             warnings.warn(
-                'Old feature name. Use `api_is_at_least(0, 1)` instead of `has_feature({})`.'.format(name),
+                f'Old feature name. Use `api_is_at_least(0, 1)` instead of `has_feature({name})`.',
                 category=DeprecationWarning,
                 stacklevel=2
             )
 
     # Check whether the feature is listed in the API specification amendments.
-    if name in _named_features_0_0 + _named_features_0_1:
+    if name in _named_features_0_0 + _named_features_0_1 + _named_features_0_2:
         return True
     else:
         if enable_exception:

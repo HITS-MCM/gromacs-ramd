@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -50,6 +49,7 @@
 
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/dispersioncorrection.h"
+#include "gromacs/mdtypes/atominfo.h"
 #include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/nbnxm/nbnxm.h"
 #include "gromacs/pbcutil/ishift.h"
@@ -89,7 +89,7 @@ constexpr real c12Oxygen = 2.634129e-06;
 // A fatal error is generated when this is not the case.
 static void generateCoordinates(int multiplicationFactor, std::vector<gmx::RVec>* coordinates, matrix box)
 {
-    if (multiplicationFactor < 1 || (multiplicationFactor & (multiplicationFactor - 1)) != 0)
+    if (!gmx::isPowerOfTwo(multiplicationFactor))
     {
         gmx_fatal(FARGS, "The size factor has to be a power of 2");
     }
@@ -115,8 +115,11 @@ static void generateCoordinates(int multiplicationFactor, std::vector<gmx::RVec>
             dim = 0;
         }
     }
-    printf("Stacking a box of %zu atoms %d x %d x %d times\n", coordinates1000.size(), factors[XX],
-           factors[YY], factors[ZZ]);
+    printf("Stacking a box of %zu atoms %d x %d x %d times\n",
+           coordinates1000.size(),
+           factors[XX],
+           factors[YY],
+           factors[ZZ]);
 
     coordinates->resize(factors[XX] * factors[YY] * factors[ZZ] * coordinates1000.size());
 
@@ -176,18 +179,18 @@ BenchmarkSystem::BenchmarkSystem(const int multiplicationFactor, const std::stri
             // Oxgygen
             atomTypes[a] = typeOxygen;
             charges[a]   = chargeOxygen;
-            SET_CGINFO_HAS_VDW(atomInfoAllVdw[a]);
-            SET_CGINFO_HAS_VDW(atomInfoOxygenVdw[a]);
+            atomInfoAllVdw[a] |= gmx::sc_atomInfo_HasVdw;
+            atomInfoOxygenVdw[a] |= gmx::sc_atomInfo_HasVdw;
         }
         else
         {
             // Hydrogen
             atomTypes[a] = typeHydrogen;
             charges[a]   = chargeHydrogen;
-            SET_CGINFO_HAS_VDW(atomInfoAllVdw[a]);
+            atomInfoAllVdw[a] |= gmx::sc_atomInfo_HasVdw;
         }
-        SET_CGINFO_HAS_Q(atomInfoAllVdw[a]);
-        SET_CGINFO_HAS_Q(atomInfoOxygenVdw[a]);
+        atomInfoAllVdw[a] |= gmx::sc_atomInfo_HasCharge;
+        atomInfoOxygenVdw[a] |= gmx::sc_atomInfo_HasCharge;
 
         excls.pushBackListOfSize(numAtomsInMolecule);
         gmx::ArrayRef<int> exclusionsForAtom   = excls.back();
@@ -197,7 +200,7 @@ BenchmarkSystem::BenchmarkSystem(const int multiplicationFactor, const std::stri
 
     forceRec.ntype = numAtomTypes;
     forceRec.nbfp  = nonbondedParameters;
-    snew(forceRec.shift_vec, SHIFTS);
+    forceRec.shift_vec.resize(gmx::c_numShiftVectors);
     calc_shifts(box, forceRec.shift_vec);
     if (!outputFile.empty())
     {

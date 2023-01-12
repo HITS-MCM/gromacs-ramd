@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -120,11 +116,15 @@ static void constr_recur(const ListOfLists<int>&        at2con,
                 if (debug)
                 {
                     fprintf(debug,
-                            "Found longer constraint distance: r0 %5.3f r1 %5.3f rmax %5.3f\n", rn0,
-                            rn1, sqrt(*r2max));
+                            "Found longer constraint distance: r0 %5.3f r1 %5.3f rmax %5.3f\n",
+                            rn0,
+                            rn1,
+                            sqrt(*r2max));
                     for (int a1 = 0; a1 < depth; a1++)
                     {
-                        fprintf(debug, " %d %5.3f", path[a1],
+                        fprintf(debug,
+                                " %d %5.3f",
+                                path[a1],
                                 iparams[constr_iatomptr(ia1, ia2, con)[0]].constr.dA);
                     }
                     fprintf(debug, " %d %5.3f\n", con, len);
@@ -185,10 +185,10 @@ static real constr_r_max_moltype(const gmx_moltype_t*           molt,
         r1 = 0;
 
         count = 0;
-        constr_recur(at2con, molt->ilist, iparams, FALSE, at, 0, 1 + ir->nProjOrder, path, r0, r1,
-                     &r2maxA, &count);
+        constr_recur(
+                at2con, molt->ilist, iparams, FALSE, at, 0, 1 + ir->nProjOrder, path, r0, r1, &r2maxA, &count);
     }
-    if (ir->efep == efepNO)
+    if (ir->efep == FreeEnergyPerturbationType::No)
     {
         rmax = sqrt(r2maxA);
     }
@@ -200,8 +200,8 @@ static real constr_r_max_moltype(const gmx_moltype_t*           molt,
             r0    = 0;
             r1    = 0;
             count = 0;
-            constr_recur(at2con, molt->ilist, iparams, TRUE, at, 0, 1 + ir->nProjOrder, path, r0,
-                         r1, &r2maxB, &count);
+            constr_recur(
+                    at2con, molt->ilist, iparams, TRUE, at, 0, 1 + ir->nProjOrder, path, r0, r1, &r2maxB, &count);
         }
         lam0 = ir->fepvals->init_lambda;
         if (EI_DYNAMICS(ir->eI))
@@ -230,7 +230,8 @@ real constr_r_max(const MDLogger& mdlog, const gmx_mtop_t* mtop, const t_inputre
     GMX_LOG(mdlog.info)
             .appendTextFormatted(
                     "Maximum distance for %d constraints, at 120 deg. angles, all-trans: %.3f nm",
-                    1 + ir->nProjOrder, rmax);
+                    1 + ir->nProjOrder,
+                    rmax);
 
     return rmax;
 }

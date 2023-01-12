@@ -44,13 +44,6 @@
 
 #if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 
-/* C99 says to define __STDC_LIMIT_MACROS before including stdint.h,
- * if you want the limit (max/min) macros for int types. 
- */
-#ifndef __STDC_LIMIT_MACROS
-#define __STDC_LIMIT_MACROS 1
-#endif
-
 #include <inttypes.h>
 typedef int8_t flex_int8_t;
 typedef uint8_t flex_uint8_t;
@@ -571,10 +564,6 @@ static yyconst flex_int16_t yy_chk[151] =
 // manually.
 #define YY_BREAK
 
-#ifdef __INTEL_COMPILER
-// Ignore unused variables in generated code.
-#pragma warning(disable:593)
-#endif
 #define YY_NO_UNISTD_H 1
 
 

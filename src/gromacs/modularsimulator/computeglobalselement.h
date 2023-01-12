@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Declares the global reduction element for the modular simulator
@@ -62,6 +61,7 @@ class FreeEnergyPerturbationData;
 class LegacySimulatorData;
 class MDAtoms;
 class MDLogger;
+class ObservablesReducer;
 
 //! \addtogroup module_modularsimulator
 //! \{
@@ -97,11 +97,7 @@ typedef std::function<void()> CheckBondedInteractionsCallback;
  * \tparam algorithm  The global reduction scheme
  */
 template<ComputeGlobalsAlgorithm algorithm>
-class ComputeGlobalsElement final :
-    public ISimulatorElement,
-    public IEnergySignallerClient,
-    public ITrajectorySignallerClient,
-    public ITopologyHolderClient
+class ComputeGlobalsElement final : public ISimulatorElement, public IEnergySignallerClient, public ITrajectorySignallerClient
 {
 public:
     //! Constructor
@@ -118,8 +114,9 @@ public:
                           t_nrnb*                     nrnb,
                           gmx_wallcycle*              wcycle,
                           t_forcerec*                 fr,
-                          const gmx_mtop_t*           global_top,
-                          Constraints*                constr);
+                          const gmx_mtop_t&           global_top,
+                          Constraints*                constr,
+                          ObservablesReducer*         observablesReducer);
 
     //! Destructor
     ~ComputeGlobalsElement() override;
@@ -139,9 +136,6 @@ public:
      */
     void scheduleTask(Step step, Time time, const RegisterRunFunction& registerRunFunction) override;
 
-    //! Get callback to request checking of bonded interactions
-    CheckBondedInteractionsCallback getCheckNumberOfBondedInteractionsCallback();
-
     //! No element teardown needed
     void elementTeardown() override {}
 
@@ -152,7 +146,8 @@ public:
      * \param statePropagatorData  Pointer to the \c StatePropagatorData object
      * \param energyData  Pointer to the \c EnergyData object
      * \param freeEnergyPerturbationData  Pointer to the \c FreeEnergyPerturbationData object
-     * \param globalCommunicationHelper  Pointer to the \c GlobalCommunicationHelper object
+     * \param globalCommunicationHelper   Pointer to the \c GlobalCommunicationHelper object
+     * \param observablesReducer          Pointer to the \c ObservablesReducer object
      *
      * \throws std::bad_any_cast  on internal error in VelocityVerlet algorithm builder.
      * \throws std::bad_alloc  when out of memory.
@@ -164,11 +159,10 @@ public:
                                                     StatePropagatorData*        statePropagatorData,
                                                     EnergyData*                 energyData,
                                                     FreeEnergyPerturbationData* freeEnergyPerturbationData,
-                                                    GlobalCommunicationHelper* globalCommunicationHelper);
+                                                    GlobalCommunicationHelper* globalCommunicationHelper,
+                                                    ObservablesReducer*        observablesReducer);
 
 private:
-    //! ITopologyClient implementation
-    void setTopology(const gmx_localtop_t* top) override;
     //! IEnergySignallerClient implementation
     std::optional<SignallerCallback> registerEnergyCallback(EnergySignallerEvent event) override;
     //! ITrajectorySignallerClient implementation
@@ -197,33 +191,6 @@ private:
     //! A dummy signaller (used for setup and VV)
     std::unique_ptr<SimulationSignaller> nullSignaller_;
 
-    /*! \brief Check that DD doesn't miss bonded interactions
-     *
-     * Domain decomposition could incorrectly miss a bonded
-     * interaction, but checking for that requires a global
-     * communication stage, which does not otherwise happen in DD
-     * code. So we do that alongside the first global energy reduction
-     * after a new DD is made. These variables handle whether the
-     * check happens, and the result it returns.
-     */
-    //! \{
-    int  totalNumberOfBondedInteractions_;
-    bool shouldCheckNumberOfBondedInteractions_;
-    //! \}
-
-    /*! \brief Signal to ComputeGlobalsElement that it should check for DD errors
-     *
-     * Note that this should really be the responsibility of the DD element.
-     * MDLogger, global and local topology are only needed due to the call to
-     * checkNumberOfBondedInteractions(...).
-     *
-     * The DD element should have a single variable which gets reduced, and then
-     * be responsible for the checking after a global reduction has happened.
-     * This would, however, require a new approach for the compute_globals calls,
-     * which is not yet implemented. So for now, we're leaving this here.
-     */
-    void needToCheckNumberOfBondedInteractions();
-
     //! Global reduction struct
     gmx_global_stat* gstat_;
 
@@ -232,8 +199,6 @@ private:
     StatePropagatorData* statePropagatorData_;
     //! Pointer to the energy data (needed for the tensors and mu_tot)
     EnergyData* energyData_;
-    //! Pointer to the local topology (only needed for checkNumberOfBondedInteractions)
-    const gmx_localtop_t* localTopology_;
     //! Pointer to the free energy perturbation data
     FreeEnergyPerturbationData* freeEnergyPerturbationData_;
 
@@ -252,7 +217,7 @@ private:
     //! Contains user input mdp options.
     const t_inputrec* inputrec_;
     //! Full system topology - only needed for checkNumberOfBondedInteractions.
-    const gmx_mtop_t* top_global_;
+    const gmx_mtop_t& top_global_;
     //! Atom parameters for this domain.
     const MDAtoms* mdAtoms_;
     //! Handles constraints.
@@ -263,6 +228,8 @@ private:
     gmx_wallcycle* wcycle_;
     //! Parameters for force calculations.
     t_forcerec* fr_;
+    //! Coordinates reduction for observables
+    ObservablesReducer* observablesReducer_;
 };
 
 //! \}

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief Declares functionality for deciding whether tasks will run on GPUs.
@@ -84,10 +83,10 @@ struct DevelopmentFeatureFlags
     bool enableGpuBufferOps = false;
     //! If true, forces 'mdrun -update auto' default to 'gpu'
     bool forceGpuUpdateDefault = false;
-    //! True if the GPU halo exchange development feature is enabled
-    bool enableGpuHaloExchange = false;
-    //! True if the PME PP direct communication GPU development feature is enabled
-    bool enableGpuPmePPComm = false;
+    //! True if the GPU-aware MPI can be used for GPU direct communication feature
+    bool canUseGpuAwareMpi = false;
+    //! True if GPU PME-decomposition is enabled
+    bool enableGpuPmeDecomposition = false;
 };
 
 
@@ -103,8 +102,7 @@ class MDAtoms;
  *
  * \param[in] nonbondedTarget              The user's choice for mdrun -nb for where to assign
  *                                         short-ranged nonbonded interaction tasks.
- * \param[in] numDevicesToUse              Number of compatible GPUs that the user permitted
- *                                         us to use.
+ * \param[in] haveAvailableDevices         Whether there are available devices.
  * \param[in] userGpuTaskAssignment        The user-specified assignment of GPU tasks to device IDs.
  * \param[in] emulateGpuNonbonded          Whether we will emulate GPU calculation of nonbonded
  *                                         interactions.
@@ -118,7 +116,7 @@ class MDAtoms;
  * \throws     std::bad_alloc          If out of memory
  *             InconsistentInputError  If the user requirements are inconsistent. */
 bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              nonbondedTarget,
-                                                     int                     numDevicesToUse,
+                                                     bool                    haveAvailableDevices,
                                                      const std::vector<int>& userGpuTaskAssignment,
                                                      EmulateGpuNonbonded     emulateGpuNonbonded,
                                                      bool buildSupportsNonbondedOnGpu,
@@ -136,6 +134,7 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              non
  * \param[in]  useGpuForNonbonded        Whether GPUs will be used for nonbonded interactions.
  * \param[in]  pmeTarget                 The user's choice for mdrun -pme for where to assign
  *                                       long-ranged PME nonbonded interaction tasks.
+ * \param[in]  pmeFftTarget              The user's choice for mdrun -pmefft for where to run FFT.
  * \param[in]  numDevicesToUse           The number of compatible GPUs that the user permitted us to use.
  * \param[in]  userGpuTaskAssignment     The user-specified assignment of GPU tasks to device IDs.
  * \param[in]  hardwareInfo              Hardware information
@@ -149,6 +148,7 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              non
  *             InconsistentInputError  If the user requirements are inconsistent. */
 bool decideWhetherToUseGpusForPmeWithThreadMpi(bool                    useGpuForNonbonded,
                                                TaskTarget              pmeTarget,
+                                               TaskTarget              pmeFftTarget,
                                                int                     numDevicesToUse,
                                                const std::vector<int>& userGpuTaskAssignment,
                                                const gmx_hw_info_t&    hardwareInfo,
@@ -208,6 +208,7 @@ bool decideWhetherToUseGpusForNonbonded(TaskTarget              nonbondedTarget,
  *
  * \param[in]  useGpuForNonbonded        Whether GPUs will be used for nonbonded interactions.
  * \param[in]  pmeTarget                 The user's choice for mdrun -pme for where to assign long-ranged PME nonbonded interaction tasks.
+ * \param[in]  pmeFftTarget              The user's choice for mdrun -pmefft for where to do FFT for PME.
  * \param[in]  userGpuTaskAssignment     The user-specified assignment of GPU tasks to device IDs.
  * \param[in]  hardwareInfo              Hardware information
  * \param[in]  inputrec                  The user input
@@ -221,6 +222,7 @@ bool decideWhetherToUseGpusForNonbonded(TaskTarget              nonbondedTarget,
  *             InconsistentInputError  If the user requirements are inconsistent. */
 bool decideWhetherToUseGpusForPme(bool                    useGpuForNonbonded,
                                   TaskTarget              pmeTarget,
+                                  TaskTarget              pmeFftTarget,
                                   const std::vector<int>& userGpuTaskAssignment,
                                   const gmx_hw_info_t&    hardwareInfo,
                                   const t_inputrec&       inputrec,
@@ -238,7 +240,8 @@ bool decideWhetherToUseGpusForPme(bool                    useGpuForNonbonded,
  *
  * \param[in]  useGpuForPme              PME task assignment, true if PME task is mapped to the GPU.
  * \param[in]  pmeFftTarget              The user's choice for -pmefft for where to assign the FFT
- * work of the PME task. \param[in]  inputrec                  The user input record
+ *                                       work of the PME task.
+ * \param[in]  inputrec                  The user input record
  * */
 PmeRunMode determinePmeRunMode(bool useGpuForPme, const TaskTarget& pmeFftTarget, const t_inputrec& inputrec);
 
@@ -277,7 +280,6 @@ bool decideWhetherToUseGpusForBonded(bool              useGpuForNonbonded,
  * \param[in]  mtop                         The global topology.
  * \param[in]  useEssentialDynamics         If essential dynamics is active.
  * \param[in]  doOrientationRestraints      If orientation restraints are enabled.
- * \param[in]  useReplicaExchange           If this is a REMD simulation.
  * \param[in]  haveFrozenAtoms              If this simulation has frozen atoms (see Issue #3920).
  * \param[in]  doRerun                      It this is a rerun.
  * \param[in]  devFlags                     GPU development / experimental feature flags.
@@ -298,30 +300,49 @@ bool decideWhetherToUseGpuForUpdate(bool                           isDomainDecom
                                     const gmx_mtop_t&              mtop,
                                     bool                           useEssentialDynamics,
                                     bool                           doOrientationRestraints,
-                                    bool                           useReplicaExchange,
                                     bool                           haveFrozenAtoms,
                                     bool                           doRerun,
                                     const DevelopmentFeatureFlags& devFlags,
                                     const gmx::MDLogger&           mdlog);
 
+/*! \brief Decide whether direct GPU communication can be used.
+ *
+ * Takes into account the build type which determines feature support as well as GPU
+ * development feature flags, determines whether this run can use direct GPU communication.
+ * The final decision whether the run will use direct communication for either of the features
+ * which rely on it is made during task assignment / simulationWorkload initialization.
+ *
+ * \param[in]  devFlags                     GPU development / experimental feature flags.
+ * \param[in]  haveMts                      Whether the simulation uses multiple time stepping
+ * \param[in]  haveSwapCoords               Whether the swap-coords functionality is active
+ * \param[in]  mdlog                        MD logger.
+ *
+ * \returns    Whether the MPI-parallel runs can use direct GPU communication.
+ */
+bool decideWhetherDirectGpuCommunicationCanBeUsed(const DevelopmentFeatureFlags& devFlags,
+                                                  bool                           haveMts,
+                                                  bool                           haveSwapCoords,
+                                                  const gmx::MDLogger&           mdlog);
 
 /*! \brief Decide whether to use GPU for halo exchange.
  *
- * \param[in]  devFlags                     GPU development / experimental feature flags.
  * \param[in]  havePPDomainDecomposition    Whether PP domain decomposition is in use.
  * \param[in]  useGpuForNonbonded           Whether GPUs will be used for nonbonded interactions.
+ * \param[in]  canUseDirectGpuComm          Whether direct GPU communication can be used.
  * \param[in]  useModularSimulator          Whether modularsimulator is in use.
  * \param[in]  doRerun                      Whether this is a rerun.
  * \param[in]  haveEnergyMinimization       Whether energy minimization is in use.
+ * \param[in]  mdlog                        MD logger.
  *
  * \returns    Whether halo exchange can be run on GPU.
  */
-bool decideWhetherToUseGpuForHalo(const DevelopmentFeatureFlags& devFlags,
-                                  bool                           havePPDomainDecomposition,
-                                  bool                           useGpuForNonbonded,
-                                  bool                           useModularSimulator,
-                                  bool                           doRerun,
-                                  bool                           haveEnergyMinimization);
+bool decideWhetherToUseGpuForHalo(bool                 havePPDomainDecomposition,
+                                  bool                 useGpuForNonbonded,
+                                  bool                 canUseDirectGpuComm,
+                                  bool                 useModularSimulator,
+                                  bool                 doRerun,
+                                  bool                 haveEnergyMinimization,
+                                  const gmx::MDLogger& mdlog);
 
 } // namespace gmx
 

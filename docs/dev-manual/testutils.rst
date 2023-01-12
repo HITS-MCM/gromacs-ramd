@@ -18,13 +18,14 @@ make sense to test that individual file in isolation.  Focus of the tests is on
 functionality exposed outside the module.  Some of the tests, in particular for
 higher-level modules, are more like integration tests, and test the
 functionality of multiple modules.
-Shared code used to implement the tests is in ``src/external/gmock-1.7.0/`` and
+Shared code used to implement the tests is in ``src/external/googletest/`` and
 ``src/testutils/`` (see below).
 
 The tests are built if ``BUILD_TESTING=ON`` (the default) and
-``GMX_BUILD_UNITTESTS=ON`` (the default) in CMake.
-Each module produces a separate unit test binary (:file:`{module}-test`) under
-``bin/``, which can execute all the tests for that module.
+``GMX_BUILD_UNITTESTS=ON`` (the default) in CMake. Each module
+produces at least one separate unit test binary
+(:file:`{module}-test`) under ``bin/``, which can execute tests for
+that module.
 
 The tests can be executed in a few different ways:
 
@@ -47,19 +48,26 @@ The tests can be executed in a few different ways:
   3. If unit tests and/or regression tests are not available, a message is
      printed.
 
-- Directly executing a test binary.  This provides the most useful output for
-  diagnosing failures, and allows debugging test failures.  The output
-  identifies the individual test(s) that fail, and shows the results of all
-  failing assertions.  Some tests also add extra information to failing
-  assertions to make it easier to identify the reason.  It is possible to
-  control which tests are run using command line options.  Execute the binary
-  with ``-h`` to get additional information.
+- The implementation of ``make check`` calls CTest via the ``ctest`` binary
+  to run all the individual test binaries. More fine-grained control is available
+  there, e.g. filtering by test name or label, or increasing verbosity.
+- Directly executing a test binary.  This provides the most useful
+  output for diagnosing failures, and allows debugging test failures.
+  The output identifies the individual test(s) that fail, and shows
+  the results of all failing assertions.  Some tests also add extra
+  information to failing assertions to make it easier to identify the
+  reason. Some tests are skipped because they cannot run with the
+  number of MPI ranks or GPU devices detected.  Explicit information
+  about such cases can be obtained by using the ``-echo-reasons`` flag
+  to the test binary.  It is possible to control which tests are run
+  using command line options.  Execute the binary with ``--help`` to
+  get additional information.
 
 When executed using CTest, the tests produce XML output in
 ``Testing/Temporary/``, containing the result of each test as well as failure
-messages.  This XML is used by Jenkins for reporting the test status for
+messages.  This XML is used by GitLab CI for reporting the test status for
 individual tests.  Note that if a test crashes or fails because of an assert or
-a gmx_fatal() call, no XML is produced for the binary, and Jenkins does not
+a gmx_fatal() call, no XML is produced for the binary, and CI does not
 report anything for the test binary.  The actual error is only visible in the
 console output.
 
@@ -72,7 +80,7 @@ line options provided by the test binaries are implemented by Google Test.  See
 the `Google Test Primer`_ for an introduction.
 Some tests also use `Google Mock`_, which provides a framework for creating
 mock implementations of C++ classes.  Both components are included in the
-source tree under ``src/external/gmock-1.7.0/``, and are compiled as part of the
+source tree under ``src/external/googletest/``, and are compiled as part of the
 unit test build.
 
 ``src/testutils/`` contains |Gromacs|-specific shared test code.  This includes
@@ -142,7 +150,7 @@ some pointers to find tests that use certain functionality:
   following it, plus headers required to make them compile.
 - The same file contains also simple tests using the reference framework to
   check line wrapping (the tests for ``gmx::TextLineWrapper``).  The test fixture
-  for these tests is in ``src/testutils/stringtest.h``/``.cpp``.  The string test
+  for these tests is in ``src/testutils/include/testutils/stringtest.h``/``.cpp``.  The string test
   fixture also demonstrates how to add a custom command line option to the
   test binary to influence the test execution.
 - ``src/gromacs/selection/tests/`` contains more complex use of the
@@ -163,8 +171,9 @@ Here are some things to keep in mind when working with the unit tests:
   should take seconds instead of minutes to run, so that no one needs to
   hesitate before running the tests after they have done some changes.
   Long-running tests should go somewhere else than in the unit test set.
-  Note that Jenkins runs many of the tests under Valgrind, so heavy tests are
-  going to slow down also that part of the verification.
+  Note that CI will run the tests in several build configuration and
+  slow tests will significantly slow down the pipelines and can even cause
+  them to timeout.
 - Try to produce useful messages when a test assertion fails.  The assertion
   message should tell what went wrong, with no need to run the *test itself*
   under a debugger (e.g., if the assertion is within a loop, and the loop
@@ -178,3 +187,14 @@ Here are some things to keep in mind when working with the unit tests:
 .. _Google Mock: http://code.google.com/p/googlemock/
 
 .. include:: /fragments/doxygen-links.rst
+
+MPI tests
+---------
+
+If your test makes specific requirements on the number of MPI ranks,
+or needs a communicator as part of its implementation, then there are
+GROMACS-specific extensions that make normal-looking GoogleTests work
+well in these cases. Use ``GMX_TEST_MPI(RankRequirement)`` and declare
+the test with ``gmx_add_mpi_unit_test`` to teach ``CTest`` how to run
+the test regardless of whether the build is with thread-MPI or real
+MPI. See ``src/testutils/include/mpitest.h`` for details.

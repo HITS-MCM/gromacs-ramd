@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -42,6 +38,7 @@
 #include <cmath>
 
 #include "gromacs/math/functions.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdtypes/commrec.h"
@@ -166,7 +163,8 @@ void count_bonded_distances(const gmx_mtop_t& mtop, const t_inputrec& ir, double
     gmx_bool   bSimdBondeds        = FALSE;
 #endif
 
-    bExcl = (ir.cutoff_scheme == ecutsGROUP && inputrecExclForces(&ir) && !EEL_FULL(ir.coulombtype));
+    bExcl = (ir.cutoff_scheme == CutoffScheme::Group && inputrecExclForces(&ir)
+             && !EEL_FULL(ir.coulombtype));
 
     if (bSimdBondeds)
     {
@@ -181,7 +179,7 @@ void count_bonded_distances(const gmx_mtop_t& mtop, const t_inputrec& ir, double
         {
             nonsimd_step_frac = 0;
         }
-        if (ir.epc != epcNO && 1.0 / ir.nstpcouple > nonsimd_step_frac)
+        if (ir.epc != PressureCoupling::No && 1.0 / ir.nstpcouple > nonsimd_step_frac)
         {
             nonsimd_step_frac = 1.0 / ir.nstpcouple;
         }
@@ -277,7 +275,7 @@ static void pp_verlet_load(const gmx_mtop_t& mtop,
     const real nbnxn_refkernel_fac = 8.0;
 #endif
 
-    bQRF = (EEL_RF(ir.coulombtype) || ir.coulombtype == eelCUT);
+    bQRF = (EEL_RF(ir.coulombtype) || ir.coulombtype == CoulombInteractionType::Cut);
 
     gmx::ArrayRef<const t_iparams> iparams = mtop.ffparams.iparams;
     atnr                                   = mtop.ffparams.atnr;
@@ -336,20 +334,26 @@ static void pp_verlet_load(const gmx_mtop_t& mtop,
 
     if (debug)
     {
-        fprintf(debug, "nqlj %d nq %d nlj %d rlist %.3f r_eff %.3f pairs per atom %.1f\n", nqlj, nq,
-                nlj, ir.rlist, r_eff, nppa);
+        fprintf(debug,
+                "nqlj %d nq %d nlj %d rlist %.3f r_eff %.3f pairs per atom %.1f\n",
+                nqlj,
+                nq,
+                nlj,
+                ir.rlist,
+                r_eff,
+                nppa);
     }
 
     /* Determine the cost per pair interaction */
     c_qlj = (bQRF ? c_nbnxn_qrf_lj : c_nbnxn_qexp_lj);
     c_q   = (bQRF ? c_nbnxn_qrf : c_nbnxn_qexp);
     c_lj  = c_nbnxn_lj;
-    if (ir.vdw_modifier == eintmodPOTSWITCH || EVDW_PME(ir.vdwtype))
+    if (ir.vdw_modifier == InteractionModifiers::PotSwitch || EVDW_PME(ir.vdwtype))
     {
         c_qlj += c_nbnxn_ljexp_add;
         c_lj += c_nbnxn_ljexp_add;
     }
-    if (EVDW_PME(ir.vdwtype) && ir.ljpme_combination_rule == eljpmeLB)
+    if (EVDW_PME(ir.vdwtype) && ir.ljpme_combination_rule == LongRangeVdW::LB)
     {
         /* We don't have LJ-PME LB comb. rule kernels, we use slow kernels */
         c_qlj *= nbnxn_refkernel_fac;
@@ -400,7 +404,7 @@ float pme_load_estimate(const gmx_mtop_t& mtop, const t_inputrec& ir, const matr
     {
         double grid = ir.nkx * ir.nky * gridNkzFactor;
 
-        int f = ((ir.efep != efepNO && bChargePerturbed) ? 2 : 1);
+        int f = ((ir.efep != FreeEnergyPerturbationType::No && bChargePerturbed) ? 2 : 1);
         cost_redist += c_pme_redist * nq_tot;
         cost_spread += f * c_pme_spread * nq_tot * gmx::power3(ir.pme_order);
         cost_fft += f * c_pme_fft * grid * std::log(grid) / std::log(2.0);
@@ -411,8 +415,8 @@ float pme_load_estimate(const gmx_mtop_t& mtop, const t_inputrec& ir, const matr
     {
         double grid = ir.nkx * ir.nky * gridNkzFactor;
 
-        int f = ((ir.efep != efepNO && bTypePerturbed) ? 2 : 1);
-        if (ir.ljpme_combination_rule == eljpmeLB)
+        int f = ((ir.efep != FreeEnergyPerturbationType::No && bTypePerturbed) ? 2 : 1);
+        if (ir.ljpme_combination_rule == LongRangeVdW::LB)
         {
             /* LB combination rule: we have 7 mesh terms */
             f *= 7;
@@ -436,7 +440,12 @@ float pme_load_estimate(const gmx_mtop_t& mtop, const t_inputrec& ir, const matr
                 "cost_spread %f\n"
                 "cost_fft    %f\n"
                 "cost_solve  %f\n",
-                cost_bond, cost_pp, cost_redist, cost_spread, cost_fft, cost_solve);
+                cost_bond,
+                cost_pp,
+                cost_redist,
+                cost_spread,
+                cost_fft,
+                cost_solve);
 
         fprintf(debug, "Estimate for relative PME load: %.3f\n", ratio);
     }

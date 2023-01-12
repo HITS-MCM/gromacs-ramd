@@ -67,7 +67,7 @@ packaging for distribution (CPack)
 
 unit testing (CTest)
   |Gromacs| uses a unit testing framework based on Google C++ Testing
-  Framework (gtest) and CTest.  All unit tests are automatically run on Jenkins
+  Framework (gtest) and CTest.  All unit tests are automatically run in GitLab CI
   for each commit.
   Details can be found on a separate page on :doc:`testutils`.
 
@@ -76,6 +76,20 @@ clang static analyzer
 coverage
 
 regression tests
+
+floating-point exceptions
+  In debug builds, floating-point exceptions (FPEs) are generated whenever one of the
+  following operations is encountered: division by zero, floating-point overflow,
+  invalid operation (e.g., taking sqrt of a negative number).
+  Such checks are *not* performed in the following configurations:
+
+  - release build,
+  - any build by GCC 7.x or Clang with optimizations,
+  - build with SYCL support.
+
+  In these configurations, FPEs can be enabled by adding ``-fpexcept`` flag to ``gmx``
+  invocation. However, FPEs are not supported on Windows and non-x86 Apple hardware.
+  See ``api/legacy/include/gromacs/math/utilities.h`` for more details.
 
 .. _dev-formatting-tools:
 

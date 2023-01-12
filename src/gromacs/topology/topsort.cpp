@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -41,6 +37,7 @@
 
 #include <cstdio>
 
+#include "gromacs/mdtypes/atominfo.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/arrayref.h"
@@ -49,14 +46,12 @@
 
 static gmx_bool ip_pert(int ftype, const t_iparams* ip)
 {
-    gmx_bool bPert;
-    int      i;
-
     if (NRFPB(ftype) == 0)
     {
         return FALSE;
     }
 
+    bool bPert = false;
     switch (ftype)
     {
         case F_BONDS:
@@ -80,15 +75,20 @@ static gmx_bool ip_pert(int ftype, const t_iparams* ip)
             bPert = (ip->u_b.thetaA != ip->u_b.thetaB || ip->u_b.kthetaA != ip->u_b.kthetaB
                      || ip->u_b.r13A != ip->u_b.r13B || ip->u_b.kUBA != ip->u_b.kUBB);
             break;
+        case F_LINEAR_ANGLES:
+            bPert = (ip->linangle.klinA != ip->linangle.klinB || ip->linangle.aA != ip->linangle.aB);
+            break;
         case F_PDIHS:
         case F_PIDIHS:
         case F_ANGRES:
         case F_ANGRESZ:
             bPert = (ip->pdihs.phiA != ip->pdihs.phiB || ip->pdihs.cpA != ip->pdihs.cpB);
             break;
+        /* Fourier dihedrals have been converted to Ryckaert-Bellemans by now. Treat them the same way. */
         case F_RBDIHS:
+        case F_FOURDIHS:
             bPert = FALSE;
-            for (i = 0; i < NR_RBDIHS; i++)
+            for (int i = 0; i < NR_RBDIHS; i++)
             {
                 if (ip->rbdihs.rbcA[i] != ip->rbdihs.rbcB[i])
                 {
@@ -102,7 +102,7 @@ static gmx_bool ip_pert(int ftype, const t_iparams* ip)
         case F_TABDIHS: bPert = (ip->tab.kA != ip->tab.kB); break;
         case F_POSRES:
             bPert = FALSE;
-            for (i = 0; i < DIM; i++)
+            for (int i = 0; i < DIM; i++)
             {
                 if (ip->posres.pos0A[i] != ip->posres.pos0B[i] || ip->posres.fcA[i] != ip->posres.fcB[i])
                 {
@@ -119,25 +119,40 @@ static gmx_bool ip_pert(int ftype, const t_iparams* ip)
             break;
         case F_CMAP: bPert = FALSE; break;
         case F_RESTRANGLES:
+            bPert = (ip->harmonic.rA != ip->harmonic.rB) || (ip->harmonic.krA != ip->harmonic.krB);
+            break;
         case F_RESTRDIHS:
+            bPert = (ip->pdihs.phiA != ip->pdihs.phiB) || (ip->pdihs.cpA != ip->pdihs.cpB);
+            break;
         case F_CBTDIHS:
-            gmx_fatal(FARGS, "Function type %s does not support currentely free energy calculations",
-                      interaction_function[ftype].longname);
+            bPert = false;
+            for (int i = 0; i < NR_CBTDIHS && !bPert; i++)
+            {
+                bPert = ip->cbtdihs.cbtcA[i] != ip->cbtdihs.cbtcB[i];
+            }
+            break;
         default:
-            gmx_fatal(FARGS, "Function type %s not implemented in ip_pert",
+            gmx_fatal(FARGS,
+                      "Function type %s not implemented in ip_pert",
                       interaction_function[ftype].longname);
     }
 
+    if (bPert && (ftype == F_RESTRANGLES || ftype == F_RESTRDIHS || ftype == F_CBTDIHS))
+    {
+        gmx_fatal(FARGS,
+                  "Function type %s does not currently support being perturbed in free energy "
+                  "calculations",
+                  interaction_function[ftype].longname);
+    }
     return bPert;
 }
 
-static gmx_bool ip_q_pert(int ftype, const t_iatom* ia, const t_iparams* ip, const real* qA, const real* qB)
+
+//! Return whether the two atom indices in a 1-4 interaction have perturbed charges per \c atomInfo
+static bool hasPerturbedChargeIn14Interaction(int atom0, int atom1, gmx::ArrayRef<const int64_t> atomInfo)
 {
-    /* 1-4 interactions do not have the charges stored in the iparams list,
-     * so we need a separate check for those.
-     */
-    return (ip_pert(ftype, ip + ia[0])
-            || (ftype == F_LJ14 && (qA[ia[1]] != qB[ia[1]] || qA[ia[2]] != qB[ia[2]])));
+    return (bool(atomInfo[atom0] & gmx::sc_atomInfo_HasPerturbedChargeIn14Interaction)
+            || bool(atomInfo[atom1] & gmx::sc_atomInfo_HasPerturbedChargeIn14Interaction));
 }
 
 gmx_bool gmx_mtop_bondeds_free_energy(const gmx_mtop_t* mtop)
@@ -176,36 +191,29 @@ gmx_bool gmx_mtop_bondeds_free_energy(const gmx_mtop_t* mtop)
     return bPert;
 }
 
-void gmx_sort_ilist_fe(InteractionDefinitions* idef, const real* qA, const real* qB)
+void gmx_sort_ilist_fe(InteractionDefinitions* idef, gmx::ArrayRef<const int64_t> atomInfo)
 {
-    int      ftype, nral, i, ic, ib, a;
-    t_iatom* iabuf;
-    int      iabuf_nalloc;
-
-    if (qB == nullptr)
-    {
-        qB = qA;
-    }
-
     bool havePerturbedInteractions = false;
 
-    iabuf_nalloc = 0;
-    iabuf        = nullptr;
+    int      iabuf_nalloc = 0;
+    t_iatom* iabuf        = nullptr;
 
-    for (ftype = 0; ftype < F_NRE; ftype++)
+    for (int ftype = 0; ftype < F_NRE; ftype++)
     {
         if (interaction_function[ftype].flags & IF_BOND)
         {
             InteractionList* ilist  = &idef->il[ftype];
             int*             iatoms = ilist->iatoms.data();
-            nral                    = NRAL(ftype);
-            ic                      = 0;
-            ib                      = 0;
-            i                       = 0;
+            const int        nral   = NRAL(ftype);
+            int              ic     = 0;
+            int              ib     = 0;
+            int              i      = 0;
             while (i < ilist->size())
             {
                 /* Check if this interaction is perturbed */
-                if (ip_q_pert(ftype, iatoms + i, idef->iparams.data(), qA, qB))
+                if (ip_pert(ftype, idef->iparams.data() + iatoms[i])
+                    || (ftype == F_LJ14
+                        && hasPerturbedChargeIn14Interaction(iatoms[i + 1], iatoms[i + 2], atomInfo)))
                 {
                     /* Copy to the perturbed buffer */
                     if (ib + 1 + nral > iabuf_nalloc)
@@ -213,7 +221,7 @@ void gmx_sort_ilist_fe(InteractionDefinitions* idef, const real* qA, const real*
                         iabuf_nalloc = over_alloc_large(ib + 1 + nral);
                         srenew(iabuf, iabuf_nalloc);
                     }
-                    for (a = 0; a < 1 + nral; a++)
+                    for (int a = 0; a < 1 + nral; a++)
                     {
                         iabuf[ib++] = iatoms[i++];
                     }
@@ -223,7 +231,7 @@ void gmx_sort_ilist_fe(InteractionDefinitions* idef, const real* qA, const real*
                 else
                 {
                     /* Copy in place */
-                    for (a = 0; a < 1 + nral; a++)
+                    for (int a = 0; a < 1 + nral; a++)
                     {
                         iatoms[ic++] = iatoms[i++];
                     }
@@ -233,7 +241,7 @@ void gmx_sort_ilist_fe(InteractionDefinitions* idef, const real* qA, const real*
             idef->numNonperturbedInteractions[ftype] = ic;
 
             /* Copy the buffer with perturbed interactions to the ilist */
-            for (a = 0; a < ib; a++)
+            for (int a = 0; a < ib; a++)
             {
                 iatoms[ic++] = iabuf[a];
             }
@@ -241,8 +249,11 @@ void gmx_sort_ilist_fe(InteractionDefinitions* idef, const real* qA, const real*
             if (debug)
             {
                 const int numNonperturbed = idef->numNonperturbedInteractions[ftype];
-                fprintf(debug, "%s non-pert %d pert %d\n", interaction_function[ftype].longname,
-                        numNonperturbed, ilist->size() - numNonperturbed);
+                fprintf(debug,
+                        "%s non-pert %d pert %d\n",
+                        interaction_function[ftype].longname,
+                        numNonperturbed,
+                        ilist->size() - numNonperturbed);
             }
         }
     }

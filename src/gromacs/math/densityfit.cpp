@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -98,14 +97,14 @@ private:
 };
 
 DensitySimilarityInnerProduct::DensitySimilarityInnerProduct(density referenceDensity) :
-    referenceDensity_{ referenceDensity },
-    gradient_{ referenceDensity.extents() }
+    referenceDensity_{ referenceDensity }, gradient_{ referenceDensity.extents() }
 {
     const auto numVoxels = gradient_.asConstView().mapping().required_span_size();
     /* the gradient for the inner product measure of fit is constant and does not
      * depend on the compared density, so it is pre-computed here */
-    std::transform(begin(referenceDensity_), end(referenceDensity_), begin(gradient_),
-                   [numVoxels](float x) { return x / numVoxels; });
+    std::transform(begin(referenceDensity_), end(referenceDensity_), begin(gradient_), [numVoxels](float x) {
+        return x / numVoxels;
+    });
 }
 
 real DensitySimilarityInnerProduct::similarity(density comparedDensity)
@@ -183,8 +182,7 @@ private:
 };
 
 DensitySimilarityRelativeEntropy::DensitySimilarityRelativeEntropy(density referenceDensity) :
-    referenceDensity_{ referenceDensity },
-    gradient_(referenceDensity.extents())
+    referenceDensity_{ referenceDensity }, gradient_(referenceDensity.extents())
 {
 }
 
@@ -194,8 +192,12 @@ real DensitySimilarityRelativeEntropy::similarity(density comparedDensity)
     {
         GMX_THROW(RangeError("Reference density and compared density need to have same extents."));
     }
-    return std::inner_product(begin(referenceDensity_), end(referenceDensity_),
-                              begin(comparedDensity), 0., std::plus<>(), relativeEntropyAtVoxel);
+    return std::inner_product(begin(referenceDensity_),
+                              end(referenceDensity_),
+                              begin(comparedDensity),
+                              0.,
+                              std::plus<>(),
+                              relativeEntropyAtVoxel);
 }
 
 DensitySimilarityMeasure::density DensitySimilarityRelativeEntropy::gradient(density comparedDensity)
@@ -204,8 +206,11 @@ DensitySimilarityMeasure::density DensitySimilarityRelativeEntropy::gradient(den
     {
         GMX_THROW(RangeError("Reference density and compared density need to have same extents."));
     }
-    std::transform(begin(referenceDensity_), end(referenceDensity_), begin(comparedDensity),
-                   begin(gradient_), relativeEntropyGradientAtVoxel);
+    std::transform(begin(referenceDensity_),
+                   end(referenceDensity_),
+                   begin(comparedDensity),
+                   begin(gradient_),
+                   relativeEntropyGradientAtVoxel);
     return gradient_.asConstView();
 }
 
@@ -245,7 +250,7 @@ CrossCorrelationEvaluationHelperValues evaluateHelperValues(DensitySimilarityMea
 
     index i = 0;
 
-    auto referenceIterator = begin(reference);
+    const auto* referenceIterator = begin(reference);
     for (const real comp : compared)
     {
         const real refHelper        = *referenceIterator - helperValues.meanReference;
@@ -276,7 +281,7 @@ public:
     {
     }
     //! Evaluate the cross correlation gradient at a voxel
-    real operator()(real reference, real comparison)
+    real operator()(real reference, real comparison) const
     {
         return prefactor_
                * (reference - meanReference_ - comparisonPrefactor_ * (comparison - meanComparison_));
@@ -322,8 +327,7 @@ private:
 };
 
 DensitySimilarityCrossCorrelation::DensitySimilarityCrossCorrelation(density referenceDensity) :
-    referenceDensity_{ referenceDensity },
-    gradient_(referenceDensity.extents())
+    referenceDensity_{ referenceDensity }, gradient_(referenceDensity.extents())
 {
 }
 
@@ -361,8 +365,11 @@ DensitySimilarityMeasure::density DensitySimilarityCrossCorrelation::gradient(de
     CrossCorrelationEvaluationHelperValues helperValues =
             evaluateHelperValues(referenceDensity_, comparedDensity);
 
-    std::transform(begin(referenceDensity_), end(referenceDensity_), begin(comparedDensity),
-                   begin(gradient_), CrossCorrelationGradientAtVoxel(helperValues));
+    std::transform(begin(referenceDensity_),
+                   end(referenceDensity_),
+                   begin(comparedDensity),
+                   begin(gradient_),
+                   CrossCorrelationGradientAtVoxel(helperValues));
 
     return gradient_.asConstView();
 }

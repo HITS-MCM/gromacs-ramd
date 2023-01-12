@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2017- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 include(gmxFindFlagsForSource)
 
@@ -219,27 +218,12 @@ endfunction()
 # AVX2
 function(gmx_find_simd_avx2_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VARIABLE CXX_FLAGS_VARIABLE)
     find_x86_toolchain_flags(TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS)
-    # For our "AVX2_256" support we would ideally want to enable the instructions
-    # we want to use, '-mavx2 -mfma'. icc (v16-18) does not allow doing that and
-    # instead, it requires the '-march=core-avx2' flag to be used. Annoyingly, it does
-    # however accept the former flags but it is not silent about it issuing warnings
-    # that can't be disabled.
-    # At the same time Intel's -march=core-avx2 flag is not rejected by gcc/clang either
-    # (though they're at least silent). However, -march=core-avx2 is an undocumented
-    # flag with unclear behavior in gcc/clang (and might enable some arch-specific optimizations).
-    # For this reason, and because we can't distinguish compilers just based on checking flag
-    # compatibility, we need to treat the Intel and gcc/clang separately.
-    if (CMAKE_C_COMPILER_ID MATCHES "Intel")
-        set(TOOLCHAIN_FLAG_FOR_AVX2 "-march=core-avx2")
-    else()
-        set(TOOLCHAIN_FLAG_FOR_AVX2 "-mavx2 -mfma")
-    endif()
     gmx_find_flags(SIMD_AVX2_C_FLAGS_RESULT SIMD_AVX2_CXX_FLAGS_RESULT
         "#include<immintrin.h>
 int main(){__m256i x=_mm256_set1_epi32(5);x=_mm256_add_epi32(x,x);return _mm256_movemask_epi8(x);}"
         TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS
         SIMD_AVX2_C_FLAGS SIMD_AVX2_CXX_FLAGS
-        "${TOOLCHAIN_FLAG_FOR_AVX2}" "-mavx2" "/arch:AVX2" "-hgnu") 
+        "-mavx2 -mfma" "-mavx2" "/arch:AVX2" "-hgnu")
 
     if(${SIMD_AVX2_C_FLAGS_RESULT})
         set(${C_FLAGS_VARIABLE} "${TOOLCHAIN_C_FLAGS} ${SIMD_AVX2_C_FLAGS}" CACHE INTERNAL "C flags required for AVX2 instructions")
@@ -266,7 +250,7 @@ function(gmx_find_simd_avx_512_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VAR
           return idata[0]*(int)(_mm512_cmp_ps_mask(x,y,_CMP_LT_OS));}"
         TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS
         SIMD_AVX_512_C_FLAGS SIMD_AVX_512_CXX_FLAGS
-        "-xCORE-AVX512 -qopt-zmm-usage=high" "-xCORE-AVX512" "-mavx512f -mfma" "-mavx512f" "/arch:AVX512" "-hgnu") #ICC should use ZMM if code anyhow uses ZMM
+        "-xCORE-AVX512 -qopt-zmm-usage=high" "-xCORE-AVX512" "-mavx512f -mfma -mavx512vl -mavx512dq -mavx512bw" "-mavx512f -mfma" "-mavx512f" "/arch:AVX512" "-hgnu")
 
     if(${SIMD_AVX_512_C_FLAGS_RESULT})
         set(${C_FLAGS_VARIABLE} "${TOOLCHAIN_C_FLAGS} ${SIMD_AVX_512_C_FLAGS}" CACHE INTERNAL "C flags required for AVX-512 instructions")
@@ -301,26 +285,6 @@ function(gmx_find_simd_avx_512_knl_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS
 endfunction()
 
 
-# Arm Neon (32-bit ARM)
-function(gmx_find_simd_arm_neon_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VARIABLE CXX_FLAGS_VARIABLE)
-
-    gmx_find_flags(SIMD_ARM_NEON_C_FLAGS_RESULT SIMD_ARM_NEON_CXX_FLAGS_RESULT
-        "#include<arm_neon.h>
-         int main(){float32x4_t x=vdupq_n_f32(0.5);x=vmlaq_f32(x,x,x);return vgetq_lane_f32(x,0)>0;}"
-        TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS
-        SIMD_ARM_NEON_C_FLAGS SIMD_ARM_NEON_CXX_FLAGS
-        "-mfpu=neon-vfpv4" "-mfpu=neon" "")
-
-    if(${SIMD_ARM_NEON_C_FLAGS_RESULT})
-        set(${C_FLAGS_VARIABLE} "${TOOLCHAIN_C_FLAGS} ${SIMD_ARM_NEON_C_FLAGS}" CACHE INTERNAL "C flags required for Arm Neon instructions")
-    endif()
-    if(${SIMD_ARM_NEON_CXX_FLAGS_RESULT})
-        set(${CXX_FLAGS_VARIABLE} "${TOOLCHAIN_CXX_FLAGS} ${SIMD_ARM_NEON_CXX_FLAGS}" CACHE INTERNAL "C++ flags required for Arm Neon instructions")
-    endif()
-    set(${C_FLAGS_RESULT} ${SIMD_ARM_NEON_C_FLAGS_RESULT} CACHE INTERNAL "Result of test for Arm Neon C flags" FORCE)
-    set(${CXX_FLAGS_RESULT} ${SIMD_ARM_NEON_CXX_FLAGS_RESULT} CACHE INTERNAL "Result of test for Arm Neon C++ flags" FORCE)
-endfunction()
-
 # Arm Neon Asimd (64-bit ARM)
 function(gmx_find_simd_arm_neon_asimd_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VARIABLE CXX_FLAGS_VARIABLE)
 
@@ -345,8 +309,12 @@ endfunction()
 function(gmx_find_simd_arm_sve_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VARIABLE CXX_FLAGS_VARIABLE)
 
     gmx_find_flags(SIMD_ARM_SVE_C_FLAGS_RESULT SIMD_ARM_SVE_CXX_FLAGS_RESULT
-        "#include<arm_sve.h>
-         int main(){float32_t x __attribute((vector_size(${GMX_SIMD_ARM_SVE_LENGTH_VALUE}/8))) = svdup_f32(0.5f); return 0;}"
+        "#include <stdbool.h>
+         #include<arm_sve.h>
+         typedef svfloat32_t float32_vec_t __attribute__((arm_sve_vector_bits(${GMX_SIMD_ARM_SVE_LENGTH_VALUE})));
+	 /* check the existence of the svdup_n_b32() intrinsic - currently not implemented by LLVM 12 */
+	 svbool_t duplicate(const bool b) { return svdup_n_b32(b); }
+         int main(){float32_vec_t x = svdup_f32(0.5f); return 0;}"
         TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS
         SIMD_ARM_SVE_C_FLAGS SIMD_ARM_SVE_CXX_FLAGS
         "-msve-vector-bits=${GMX_SIMD_ARM_SVE_LENGTH_VALUE}"
@@ -363,32 +331,12 @@ function(gmx_find_simd_arm_sve_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VAR
     set(${CXX_FLAGS_RESULT} ${SIMD_ARM_SVE_CXX_FLAGS_RESULT} CACHE INTERNAL "Result of test for Arm SVE C++ flags" FORCE)
 endfunction()
 
-# IBM VMX (power6)
-function(gmx_find_simd_ibm_vmx_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VARIABLE CXX_FLAGS_VARIABLE)
-
-    gmx_find_flags(SIMD_IBM_VMX_C_FLAGS_RESULT SIMD_IBM_VMX_CXX_FLAGS_RESULT
-        "#include<altivec.h>
-         int main(){vector float x,y=vec_ctf(vec_splat_s32(1),0);x=vec_madd(y,y,y);return vec_all_ge(y,x);}"
-        TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS
-        SIMD_IBM_VMX_C_FLAGS SIMD_IBM_VMX_CXX_FLAGS
-        "-maltivec -mabi=altivec" "-qarch=auto -qaltivec")
-
-    if(${SIMD_IBM_VMX_C_FLAGS_RESULT})
-        set(${C_FLAGS_VARIABLE} "${TOOLCHAIN_C_FLAGS} ${SIMD_IBM_VMX_C_FLAGS}" CACHE INTERNAL "C flags required for IBM VMX instructions")
-    endif()
-    if(${SIMD_IBM_VMX_CXX_FLAGS_RESULT})
-        set(${CXX_FLAGS_VARIABLE} "${TOOLCHAIN_CXX_FLAGS} ${SIMD_IBM_VMX_CXX_FLAGS}" CACHE INTERNAL "C++ flags required for IBM VMX instructions")
-    endif()
-    set(${C_FLAGS_RESULT} ${SIMD_IBM_VMX_C_FLAGS_RESULT} CACHE INTERNAL "Result of test for IBM VMX C flags" FORCE)
-    set(${CXX_FLAGS_RESULT} ${SIMD_IBM_VMX_CXX_FLAGS_RESULT} CACHE INTERNAL "Result of test for IBM VMX C++ flags" FORCE)
-endfunction()
-
 # IBM VSX (power7 and later)
 function(gmx_find_simd_ibm_vsx_flags C_FLAGS_RESULT CXX_FLAGS_RESULT C_FLAGS_VARIABLE CXX_FLAGS_VARIABLE)
     find_power_vsx_toolchain_flags(TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS)
     gmx_find_flags(SIMD_IBM_VSX_C_FLAGS_RESULT SIMD_IBM_VSX_CXX_FLAGS_RESULT
         "#include<altivec.h>
-         int main(){vector double x,y=vec_splats(1.0);x=vec_madd(y,y,y);return vec_all_ge(y,x);}"
+         int main(){__vector double x,y=vec_splats(1.0);x=vec_madd(y,y,y);return vec_all_ge(y,x);}"
         TOOLCHAIN_C_FLAGS TOOLCHAIN_CXX_FLAGS
         SIMD_IBM_VSX_C_FLAGS SIMD_IBM_VSX_CXX_FLAGS
         "-mvsx" "-maltivec -mabi=altivec" "-qarch=auto -qaltivec")

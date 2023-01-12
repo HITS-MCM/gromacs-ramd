@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -47,6 +46,8 @@
 
 #include "gromacs/mdtypes/inputrec.h"
 
+#include "gromacs/utility/arrayref.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "testutils/testasserts.h"
 #include "testutils/testmatchers.h"
 
@@ -76,7 +77,9 @@ struct FreeEnergyParameterTestParameters
     //! the current simulation step
     int64_t step = 0;
     //! the expected lambda at the current simulation step
-    std::array<real, efptNR> expectedLambdas = { -1, -1, -1, -1, -1, -1, -1 };
+    gmx::EnumerationArray<FreeEnergyPerturbationCouplingType, real> expectedLambdas = { -1, -1, -1,
+                                                                                        -1, -1, -1,
+                                                                                        -1 };
 };
 
 
@@ -133,28 +136,14 @@ public:
         fepvals.init_fep_state = GetParam().initFepState;
         fepvals.init_lambda    = GetParam().initLambda;
         fepvals.delta_lambda   = GetParam().deltaLambda;
-        fepvals.all_lambda     = getLambdaMatrix(GetParam().nLambda);
-        fepvals.n_lambda       = GetParam().nLambda;
+        std::fill(fepvals.all_lambda.begin(),
+                  fepvals.all_lambda.end(),
+                  defaultLambdaArrayForTest_[GetParam().nLambda]);
+        fepvals.n_lambda = GetParam().nLambda;
         return fepvals;
     }
 
-    /*! \brief construct a lambda matrix
-     *
-     * \param[in] nLambda
-     * \returns nLambda * eftpNR matrix with pre-defined values
-     */
-    double** getLambdaMatrix(int nLambda)
-    {
-        for (int i = 0; i < efptNR; ++i)
-        {
-            allLambda_[i] = defaultLambdaArrayForTest_[nLambda].data();
-        }
-        return allLambda_.data();
-    }
-
 private:
-    //! Construction aide for double ** matrix without snew
-    std::array<double*, efptNR> allLambda_;
     //! a set of default lambda arrays for different lengths
     std::vector<std::vector<double>> defaultLambdaArrayForTest_ = { {}, { 0.8 }, { 0.2, 0.8 }, { 0.2, 0.8, 0.8 } };
 };
@@ -166,7 +155,7 @@ TEST_P(FreeEnergyParameterTest, CorrectLambdas)
                           currentLambdas(GetParam().step, getFepVals(), GetParam().currentLambdaState)));
 }
 
-INSTANTIATE_TEST_CASE_P(WithParameters, FreeEnergyParameterTest, ::testing::ValuesIn(freeEnergyParameterSets));
+INSTANTIATE_TEST_SUITE_P(WithParameters, FreeEnergyParameterTest, ::testing::ValuesIn(freeEnergyParameterSets));
 
 } // namespace
 

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -45,6 +44,7 @@
 #include <utility>
 #include <vector>
 
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/options/basicoptions.h"
 #include "gromacs/simd/simd.h"
@@ -114,10 +114,10 @@ public:
         MatchRule    matchRule; //!< Decide what we consider a match
     };
 
-    ::testing::AssertionResult compareSimdMathFunction(const char* refFuncExpr,
-                                                       const char* simdFuncExpr,
-                                                       const char* compareSettingsExpr,
-                                                       real        refFunc(real x),
+    ::testing::AssertionResult compareSimdMathFunction(const char*            refFuncExpr,
+                                                       const char*            simdFuncExpr,
+                                                       const char*            compareSettingsExpr,
+                                                       real                   refFunc(real x),
                                                        SimdReal gmx_simdcall  simdFunc(SimdReal x),
                                                        const CompareSettings& compareSettings);
 
@@ -207,7 +207,8 @@ std::vector<real> SimdMathTest::generateTestPoints(Range inputRange, std::size_t
             points--; // Used one point
         }
 
-        union {
+        union
+        {
             real                                                                               r;
             std::conditional<sizeof(real) == sizeof(double), std::int64_t, std::int32_t>::type i;
         } low, high, x;
@@ -281,7 +282,8 @@ std::vector<real> SimdMathTest::generateTestPoints(Range inputRange, std::size_t
     real              refValMaxUlpDiff, simdValMaxUlpDiff;
     const int         niter = s_nPoints / GMX_SIMD_REAL_WIDTH;
 
-    union {
+    union
+    {
         real                                                                               r;
         std::conditional<sizeof(real) == sizeof(double), std::int64_t, std::int32_t>::type i;
     } conv0, conv1;
@@ -712,13 +714,17 @@ TEST_F(SimdMathTest, exp2)
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2, settings);
 
     // Subnormal range, require matching, but DTZ is fine
-    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Dtz };
+    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Dtz };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2, settings);
 
     // Normal range, standard result expected
-    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Normal };
+    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2, settings);
 }
 
@@ -733,7 +739,9 @@ TEST_F(SimdMathTest, exp2Unsafe)
             - 1; // adding the significant corresponds to one more unit in exponent
 
     CompareSettings settings{ Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
-                              ulpTol_, absTol_, MatchRule::Normal };
+                              ulpTol_,
+                              absTol_,
+                              MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2<MathOptimization::Unsafe>, settings);
 }
 
@@ -744,7 +752,7 @@ TEST_F(SimdMathTest, exp)
     const real lowestReal = -std::numeric_limits<real>::max();
     // In theory the smallest value should be (min_exponent-1)*log(2), but rounding after the multiplication will cause this
     // value to be a single ulp too low. This might cause failed tests on CPUs that use different DTZ modes for SIMD vs.
-    // non-SIMD arithmetics (ARM v7), so multiply by (1.0-eps) to increase it by a single ulp.
+    // non-SIMD arithmetics (e.g. ARM v7), so multiply by (1.0-eps) to increase it by a single ulp.
     const real lowestRealThatProducesNormal = (std::numeric_limits<real>::min_exponent - 1)
                                               * std::log(2.0)
                                               * (1 - std::numeric_limits<real>::epsilon());
@@ -759,13 +767,17 @@ TEST_F(SimdMathTest, exp)
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, exp, settings);
 
     // Subnormal range, require matching, but DTZ is fine
-    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Dtz };
+    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Dtz };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, exp, settings);
 
     // Normal range, standard result expected
-    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Normal };
+    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, exp, settings);
 }
 
@@ -779,7 +791,9 @@ TEST_F(SimdMathTest, expUnsafe)
             (std::numeric_limits<real>::max_exponent - 1) * std::log(2.0);
 
     CompareSettings settings{ Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
-                              ulpTol_, absTol_, MatchRule::Normal };
+                              ulpTol_,
+                              absTol_,
+                              MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, exp<MathOptimization::Unsafe>, settings);
 }
 
@@ -842,8 +856,7 @@ real refErfc(real x)
 TEST_F(SimdMathTest, erfc)
 {
     // Our erfc algorithm has 4 ulp accuracy, so relax tolerance a bit to 4*ulpTol
-    CompareSettings settings{ Range(-9, 9), 4 * ulpTol_, std::numeric_limits<real>::min(),
-                              MatchRule::Normal };
+    CompareSettings settings{ Range(-9, 9), 4 * ulpTol_, std::numeric_limits<real>::min(), MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(refErfc, erfc, settings);
 }
 
@@ -1183,13 +1196,17 @@ TEST_F(SimdMathTest, exp2SingleAccuracy)
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2SingleAccuracy, settings);
 
     // Subnormal range, require matching, but DTZ is fine
-    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Dtz };
+    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Dtz };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2SingleAccuracy, settings);
 
     // Normal range, standard result expected
-    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Normal };
+    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2SingleAccuracy, settings);
 }
 
@@ -1207,7 +1224,9 @@ TEST_F(SimdMathTest, exp2SingleAccuracyUnsafe)
     setUlpTolSingleAccuracy(ulpTol_);
 
     CompareSettings settings{ Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
-                              ulpTol_, absTol_, MatchRule::Normal };
+                              ulpTol_,
+                              absTol_,
+                              MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp2, exp2SingleAccuracy<MathOptimization::Unsafe>, settings);
 }
 
@@ -1217,7 +1236,7 @@ TEST_F(SimdMathTest, expSingleAccuracy)
     const real lowestReal = -std::numeric_limits<real>::max();
     // In theory the smallest value should be (min_exponent-1)*log(2), but rounding after the multiplication will cause this
     // value to be a single ulp too low. This might cause failed tests on CPUs that use different DTZ modes for SIMD vs.
-    // non-SIMD arithmetics (ARM v7), so multiply by (1.0-eps) to increase it by a single ulp.
+    // non-SIMD arithmetics (e.g. ARM v7), so multiply by (1.0-eps) to increase it by a single ulp.
     const real lowestRealThatProducesNormal = (std::numeric_limits<real>::min_exponent - 1)
                                               * std::log(2.0)
                                               * (1.0 - std::numeric_limits<real>::epsilon());
@@ -1235,13 +1254,17 @@ TEST_F(SimdMathTest, expSingleAccuracy)
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, expSingleAccuracy, settings);
 
     // Subnormal range, require matching, but DTZ is fine
-    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Dtz };
+    settings = { Range(lowestRealThatProducesDenormal, lowestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Dtz };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, expSingleAccuracy, settings);
 
     // Normal range, standard result expected
-    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal), ulpTol_,
-                 absTol_, MatchRule::Normal };
+    settings = { Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
+                 ulpTol_,
+                 absTol_,
+                 MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, expSingleAccuracy, settings);
 }
 
@@ -1258,7 +1281,9 @@ TEST_F(SimdMathTest, expSingleAccuracyUnsafe)
     setUlpTolSingleAccuracy(ulpTol_);
 
     CompareSettings settings{ Range(lowestRealThatProducesNormal, highestRealThatProducesNormal),
-                              ulpTol_, absTol_, MatchRule::Normal };
+                              ulpTol_,
+                              absTol_,
+                              MatchRule::Normal };
     GMX_EXPECT_SIMD_FUNC_NEAR(std::exp, expSingleAccuracy<MathOptimization::Unsafe>, settings);
 }
 

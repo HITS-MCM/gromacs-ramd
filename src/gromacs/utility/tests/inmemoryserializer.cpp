@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -53,12 +52,14 @@ namespace test
 {
 namespace
 {
-union IntAndFloat32 {
+union IntAndFloat32
+{
     std::int32_t int32Value_;
     float        floatValue_;
 };
 
-union IntAndFloat64 {
+union IntAndFloat64
+{
     std::int64_t int64Value_;
     double       doubleValue_;
 };
@@ -88,8 +89,9 @@ constexpr int integerSizeDependentTestingValue()
 //! Return the endianess-swapped integer used for testing, depending on the size of int.
 constexpr int integerSizeDependentTestingValueEndianessSwapped()
 {
-    return sizeof(int) == 4 ? c_int32ValueSwapped
-                            : sizeof(int) == 8 ? c_int64ValueSwapped : c_int16ValueSwapped;
+    return sizeof(int) == 4   ? c_int32ValueSwapped
+           : sizeof(int) == 8 ? c_int64ValueSwapped
+                              : c_int16ValueSwapped;
 }
 
 class InMemorySerializerTest : public ::testing::Test
@@ -204,8 +206,8 @@ TEST_F(InMemorySerializerTest, RoundtripWithEndianessSwap)
 
     auto buffer = serializerWithSwap.finishAndGetBuffer();
 
-    InMemoryDeserializer deserializerWithSwap(buffer, std::is_same_v<real, double>,
-                                              EndianSwapBehavior::Swap);
+    InMemoryDeserializer deserializerWithSwap(
+            buffer, std::is_same_v<real, double>, EndianSwapBehavior::Swap);
 
     SerializerValues deserialisedValues = deserialize(&deserializerWithSwap);
 
@@ -234,8 +236,8 @@ TEST_F(InMemorySerializerTest, DeserializerExplicitEndianessSwap)
 
     auto buffer = serializer.finishAndGetBuffer();
 
-    InMemoryDeserializer deserializerWithSwap(buffer, std::is_same_v<real, double>,
-                                              EndianSwapBehavior::Swap);
+    InMemoryDeserializer deserializerWithSwap(
+            buffer, std::is_same_v<real, double>, EndianSwapBehavior::Swap);
 
     SerializerValues deserialisedValues = deserialize(&deserializerWithSwap);
     checkSerializerValuesforEquality(endianessSwappedValues_, deserialisedValues);

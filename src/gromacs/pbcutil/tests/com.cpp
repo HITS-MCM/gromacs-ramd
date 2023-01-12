@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -144,8 +143,7 @@ private:
 };
 
 COMInPlaceTest::COMInPlaceTest() :
-    testCoordinates_(initialCoordinates()),
-    checker_(data_.rootChecker())
+    testCoordinates_(initialCoordinates()), checker_(data_.rootChecker())
 {
     auto& moltype = testTopology_.moltype.emplace_back();
     populateMoleculeType(&moltype);
@@ -165,8 +163,8 @@ void COMInPlaceTest::runTestMolecule(const matrix box)
     auto unitcell = std::get<0>(params);
     auto center   = std::get<1>(params);
     auto pbcType  = std::get<2>(params);
-    placeCoordinatesWithCOMInBox(pbcType, unitcell, center, box, testCoordinates_, testTopology_,
-                                 COMShiftType::Molecule);
+    placeCoordinatesWithCOMInBox(
+            pbcType, unitcell, center, box, testCoordinates_, testTopology_, COMShiftType::Molecule);
     std::string testString = "Molecule " + std::string(unitCellTypeNames(unitcell))
                              + std::string(centerTypeNames(center)) + c_pbcTypeNames[pbcType]
                              + c_pbcTypeNames[guessPbcType(box)];
@@ -179,8 +177,8 @@ void COMInPlaceTest::runTestResidue(const matrix box)
     auto unitcell = std::get<0>(params);
     auto center   = std::get<1>(params);
     auto pbcType  = std::get<2>(params);
-    placeCoordinatesWithCOMInBox(pbcType, unitcell, center, box, testCoordinates_, testTopology_,
-                                 COMShiftType::Residue);
+    placeCoordinatesWithCOMInBox(
+            pbcType, unitcell, center, box, testCoordinates_, testTopology_, COMShiftType::Residue);
     std::string testString = "Residue " + std::string(unitCellTypeNames(unitcell))
                              + std::string(centerTypeNames(center)) + c_pbcTypeNames[pbcType]
                              + c_pbcTypeNames[guessPbcType(box)];
@@ -207,15 +205,15 @@ TEST_P(COMInPlaceTest, MatrixDefault)
     runTestResidue(box);
 }
 
-INSTANTIATE_TEST_CASE_P(CorrectCoordinates,
-                        COMInPlaceTest,
-                        testing::Combine(::testing::Values(UnitCellType::Compact,
-                                                           UnitCellType::Rectangular,
-                                                           UnitCellType::Triclinic),
-                                         ::testing::Values(CenteringType::Rectangular,
-                                                           CenteringType::Triclinic,
-                                                           CenteringType::Zero),
-                                         ::testing::Values(PbcType::No, PbcType::Xyz, PbcType::XY)));
+INSTANTIATE_TEST_SUITE_P(CorrectCoordinates,
+                         COMInPlaceTest,
+                         testing::Combine(::testing::Values(UnitCellType::Compact,
+                                                            UnitCellType::Rectangular,
+                                                            UnitCellType::Triclinic),
+                                          ::testing::Values(CenteringType::Rectangular,
+                                                            CenteringType::Triclinic,
+                                                            CenteringType::Zero),
+                                          ::testing::Values(PbcType::No, PbcType::Xyz, PbcType::XY)));
 
 // TODO add PbcType::Screw once it is fully supported.
 

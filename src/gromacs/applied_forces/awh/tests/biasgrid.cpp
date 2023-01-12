@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -46,7 +45,9 @@
 
 #include "gromacs/mdtypes/awh_params.h"
 #include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/inmemoryserializer.h"
 
+#include "gromacs/applied_forces/awh/tests/awh_setup.h"
 #include "testutils/testasserts.h"
 
 namespace gmx
@@ -71,15 +72,29 @@ TEST(biasGridTest, neighborhood)
      */
 
     const int                 numDim = 2;
-    std::vector<AwhDimParams> awhDimParams(numDim);
-
-    awhDimParams[0].origin = -5;
-    awhDimParams[0].end    = 5;
-    awhDimParams[0].period = 10;
-
-    awhDimParams[1].origin = 0.5;
-    awhDimParams[1].end    = 2.0;
-    awhDimParams[1].period = 0;
+    std::vector<AwhDimParams> awhDimParams;
+    AwhCoordinateProviderType coordinateProvider = AwhCoordinateProviderType::Pull;
+    double                    diffusion          = 0.1;
+    {
+        int    coordIndex = 0;
+        double origin     = -5;
+        double end        = 5;
+        double period     = 10;
+        auto   awhDimBuffer =
+                awhDimParamSerialized(coordinateProvider, coordIndex, origin, end, period, diffusion);
+        gmx::InMemoryDeserializer serializer(awhDimBuffer, false);
+        awhDimParams.emplace_back(AwhDimParams(&serializer));
+    }
+    {
+        int    coordIndex = 1;
+        double origin     = 0.5;
+        double end        = 2;
+        double period     = 0;
+        auto   awhDimBuffer =
+                awhDimParamSerialized(coordinateProvider, coordIndex, origin, end, period, diffusion);
+        gmx::InMemoryDeserializer serializer(awhDimBuffer, false);
+        awhDimParams.emplace_back(AwhDimParams(&serializer));
+    }
 
     const real conversionFactor = 1;
     const real beta             = 3.0;
@@ -89,7 +104,7 @@ TEST(biasGridTest, neighborhood)
     dimParams.push_back(DimParams::pullDimParams(conversionFactor, 1 / (beta * 0.7 * 0.7), beta));
     dimParams.push_back(DimParams::pullDimParams(conversionFactor, 1 / (beta * 0.1 * 0.1), beta));
 
-    BiasGrid grid(dimParams, awhDimParams.data());
+    BiasGrid grid(dimParams, awhDimParams);
 
     const int numPoints = grid.numPoints();
 
@@ -133,7 +148,7 @@ TEST(biasGridTest, neighborhood)
             haveCorrectNumNeighbors = false;
         }
 
-        for (auto& j : point.neighbor)
+        for (const auto& j : point.neighbor)
         {
             if (j >= 0 && j < numPoints)
             {
@@ -171,7 +186,7 @@ TEST(biasGridTest, neighborhood)
         }
 
         /* Clear the marked points in the checking grid */
-        for (auto& neighbor : point.neighbor)
+        for (const auto& neighbor : point.neighbor)
         {
             if (neighbor >= 0 && neighbor < numPoints)
             {

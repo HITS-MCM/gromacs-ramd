@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -44,6 +41,7 @@
 #include "gromacs/fileio/matio.h"
 #include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/units.h"
+#include "gromacs/math/utilities.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/gmxassert.h"
@@ -119,13 +117,13 @@ static void dump_sd(const char* fn, t_shiftdata* sd)
     {
         snew(newdata[i], nny);
         phi      = i * 2 * M_PI / (nnx - 1);
-        x_phi[i] = phi * RAD2DEG - 180;
+        x_phi[i] = phi * gmx::c_rad2Deg - 180;
         for (j = 0; (j < nny); j++)
         {
             psi = j * 2 * M_PI / (nny - 1);
             if (i == 0)
             {
-                y_psi[j] = psi * RAD2DEG - 180;
+                y_psi[j] = psi * gmx::c_rad2Deg - 180;
             }
             /*if (((i % nfac) == 0) && ((j % nfac) == 0))
                newdata[i][j] = sd->data[i/nfac][j/nfac];
@@ -207,42 +205,41 @@ static void done_shifts(t_shiftdata* sd)
     sfree(sd);
 }
 
-void do_pp2shifts(FILE* fp, int nf, int nlist, t_dlist dlist[], real** dih)
+void do_pp2shifts(FILE* fp, int nf, gmx::ArrayRef<const t_dlist> dlist, real** dih)
 {
-    t_shiftdata *ca_sd, *co_sd, *ha_sd, *cb_sd;
-    int          i, j, Phi, Psi;
-    real         phi, psi;
-    real         ca, co, ha, cb;
-
     /* Read the shift files */
-    ca_sd = read_shifts("ca-shift.dat");
-    cb_sd = read_shifts("cb-shift.dat");
-    ha_sd = read_shifts("ha-shift.dat");
-    co_sd = read_shifts("co-shift.dat");
+    t_shiftdata* ca_sd = read_shifts("ca-shift.dat");
+    t_shiftdata* cb_sd = read_shifts("cb-shift.dat");
+    t_shiftdata* ha_sd = read_shifts("ha-shift.dat");
+    t_shiftdata* co_sd = read_shifts("co-shift.dat");
 
     fprintf(fp, "\n *** Chemical shifts from the chemical shift index ***\n");
     please_cite(fp, "Wishart98a");
-    fprintf(fp, "%12s  %10s  %10s  %10s  %10s\n", "Residue", "delta Ca", "delta Ha", "delta CO",
+    fprintf(fp,
+            "%12s  %10s  %10s  %10s  %10s\n",
+            "Residue",
+            "delta Ca",
+            "delta Ha",
+            "delta CO",
             "delta Cb");
-    for (i = 0; (i < nlist); i++)
+    for (const auto& dihedral : dlist)
     {
-        if ((has_dihedral(edPhi, &(dlist[i]))) && (has_dihedral(edPsi, &(dlist[i]))))
+        if ((has_dihedral(edPhi, dihedral)) && (has_dihedral(edPsi, dihedral)))
         {
-            Phi = dlist[i].j0[edPhi];
-            Psi = dlist[i].j0[edPsi];
-            ca = cb = co = ha = 0;
-            for (j = 0; (j < nf); j++)
+            int  Phi = dihedral.j0[edPhi];
+            int  Psi = dihedral.j0[edPsi];
+            real ca = 0, cb = 0, co = 0, ha = 0;
+            for (int j = 0; (j < nf); j++)
             {
-                phi = dih[Phi][j];
-                psi = dih[Psi][j];
+                real phi = dih[Phi][j];
+                real psi = dih[Psi][j];
 
                 ca += interpolate(phi, psi, ca_sd);
                 cb += interpolate(phi, psi, cb_sd);
                 co += interpolate(phi, psi, co_sd);
                 ha += interpolate(phi, psi, ha_sd);
             }
-            fprintf(fp, "%12s  %10g  %10g  %10g  %10g\n", dlist[i].name, ca / nf, ha / nf, co / nf,
-                    cb / nf);
+            fprintf(fp, "%12s  %10g  %10g  %10g  %10g\n", dihedral.name, ca / nf, ha / nf, co / nf, cb / nf);
         }
     }
     fprintf(fp, "\n");

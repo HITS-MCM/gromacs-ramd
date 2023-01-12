@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* \internal \file
  *
@@ -50,12 +49,16 @@
 
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
+#include "gromacs/math/utilities.h"
 #include "gromacs/mdlib/constr.h"
-#include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/ifunc.h"
+#include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/listoflists.h"
+#include "gromacs/utility/logger.h"
+#include "gromacs/utility/message_string_collector.h"
 
 namespace gmx
 {
@@ -337,7 +340,8 @@ static int detectGroup(int                     firstAtom,
 }
 
 /*! \brief Returns a list of update groups for \p moltype */
-static RangePartitioning makeUpdateGroups(const gmx_moltype_t& moltype, gmx::ArrayRef<const t_iparams> iparams)
+static RangePartitioning makeUpdateGroupingsPerMoleculeType(const gmx_moltype_t&           moltype,
+                                                            gmx::ArrayRef<const t_iparams> iparams)
 {
     RangePartitioning groups;
 
@@ -355,8 +359,8 @@ static RangePartitioning makeUpdateGroups(const gmx_moltype_t& moltype, gmx::Arr
     std::array<InteractionList, F_NRE> ilistsCombined;
     ilistsCombined[F_CONSTR] = jointConstraintList(moltype);
     /* We "include" flexible constraints, but none are present (checked above) */
-    const ListOfLists<int> at2con = make_at2con(moltype.atoms.nr, ilistsCombined, iparams,
-                                                FlexibleConstraintTreatment::Include);
+    const ListOfLists<int> at2con = make_at2con(
+            moltype.atoms.nr, ilistsCombined, iparams, FlexibleConstraintTreatment::Include);
 
     bool satisfiesCriteria = true;
 
@@ -385,16 +389,17 @@ static RangePartitioning makeUpdateGroups(const gmx_moltype_t& moltype, gmx::Arr
     return groups;
 }
 
-std::vector<RangePartitioning> makeUpdateGroups(const gmx_mtop_t& mtop)
+std::vector<RangePartitioning> makeUpdateGroupingsPerMoleculeType(const gmx_mtop_t& mtop)
 {
-    std::vector<RangePartitioning> updateGroups;
+    std::vector<RangePartitioning> updateGroupingsPerMoleculeType;
 
     bool systemSatisfiesCriteria = true;
     for (const gmx_moltype_t& moltype : mtop.moltype)
     {
-        updateGroups.push_back(makeUpdateGroups(moltype, mtop.ffparams.iparams));
+        updateGroupingsPerMoleculeType.push_back(
+                makeUpdateGroupingsPerMoleculeType(moltype, mtop.ffparams.iparams));
 
-        if (updateGroups.back().numBlocks() == 0)
+        if (updateGroupingsPerMoleculeType.back().numBlocks() == 0)
         {
             systemSatisfiesCriteria = false;
         }
@@ -402,10 +407,10 @@ std::vector<RangePartitioning> makeUpdateGroups(const gmx_mtop_t& mtop)
 
     if (!systemSatisfiesCriteria)
     {
-        updateGroups.clear();
+        updateGroupingsPerMoleculeType.clear();
     }
 
-    return updateGroups;
+    return updateGroupingsPerMoleculeType;
 }
 
 /*! \brief Returns a map of angles ilist.iatoms indices with the middle atom as key */
@@ -522,9 +527,10 @@ static real constraintGroupRadius(const gmx_moltype_t&                     molty
         /* Set number of stddevs such that change of exceeding < 10^-9 */
         constexpr real c_numSigma = 6.0;
         /* Compute the maximally stretched angle */
-        const real eqAngle = angleParams.harmonic.rA * DEG2RAD;
+        const real eqAngle = angleParams.harmonic.rA * gmx::c_deg2Rad;
         const real fc      = angleParams.harmonic.krA;
-        const real maxAngle = eqAngle + c_numSigma * BOLTZ * temperature / ((numPartnerAtoms - 1) * fc);
+        const real maxAngle =
+                eqAngle + c_numSigma * gmx::c_boltz * temperature / ((numPartnerAtoms - 1) * fc);
         if (maxAngle >= M_PI)
         {
             return -1;
@@ -586,7 +592,7 @@ static real constraintGroupRadius(const gmx_moltype_t&                     molty
 /*! \brief Returns the maximum update group radius for \p moltype */
 static real computeMaxUpdateGroupRadius(const gmx_moltype_t&           moltype,
                                         gmx::ArrayRef<const t_iparams> iparams,
-                                        const RangePartitioning&       updateGroups,
+                                        const RangePartitioning&       updateGrouping,
                                         real                           temperature)
 {
     GMX_RELEASE_ASSERT(!hasFlexibleConstraints(moltype, iparams),
@@ -599,9 +605,9 @@ static real computeMaxUpdateGroupRadius(const gmx_moltype_t&           moltype,
     const auto angleIndices = getAngleIndices(moltype);
 
     real maxRadius = 0;
-    for (int group = 0; group < updateGroups.numBlocks(); group++)
+    for (int group = 0; group < updateGrouping.numBlocks(); group++)
     {
-        if (updateGroups.block(group).size() == 1)
+        if (updateGrouping.block(group).size() == 1)
         {
             /* Single atom group, radius is zero */
             continue;
@@ -610,7 +616,7 @@ static real computeMaxUpdateGroupRadius(const gmx_moltype_t&           moltype,
         /* Find the atom maxAtom with the maximum number of constraints */
         int maxNumConstraints = 0;
         int maxAtom           = -1;
-        for (int a : updateGroups.block(group))
+        for (int a : updateGrouping.block(group))
         {
             const int numConstraints = at2con[a].ssize();
             if (numConstraints > maxNumConstraints)
@@ -679,8 +685,8 @@ static real computeMaxUpdateGroupRadius(const gmx_moltype_t&           moltype,
              */
             if (numConstraints == 2 && allTypesAreEqual && temperature > 0)
             {
-                radius = constraintGroupRadius<2>(moltype, iparams, maxAtom, at2con, angleIndices,
-                                                  maxConstraintLength, temperature);
+                radius = constraintGroupRadius<2>(
+                        moltype, iparams, maxAtom, at2con, angleIndices, maxConstraintLength, temperature);
             }
             /* With 3 constraints the maximum possible radius is 1.4 times
              * the constraint length, so it is worth computing a smaller
@@ -688,8 +694,8 @@ static real computeMaxUpdateGroupRadius(const gmx_moltype_t&           moltype,
              */
             if (numConstraints == 3 && allTypesAreEqual && temperature >= 0)
             {
-                radius = constraintGroupRadius<3>(moltype, iparams, maxAtom, at2con, angleIndices,
-                                                  maxConstraintLength, temperature);
+                radius = constraintGroupRadius<3>(
+                        moltype, iparams, maxAtom, at2con, angleIndices, maxConstraintLength, temperature);
                 if (temperature == 0 && radius >= 0)
                 {
                     /* Add a 10% margin for deviation at 0 K */
@@ -724,27 +730,92 @@ static real computeMaxUpdateGroupRadius(const gmx_moltype_t&           moltype,
 }
 
 real computeMaxUpdateGroupRadius(const gmx_mtop_t&                      mtop,
-                                 gmx::ArrayRef<const RangePartitioning> updateGroups,
+                                 gmx::ArrayRef<const RangePartitioning> updateGroupingsPerMoleculeType,
                                  real                                   temperature)
 {
-    if (updateGroups.empty())
+    if (updateGroupingsPerMoleculeType.empty())
     {
         return 0;
     }
 
-    GMX_RELEASE_ASSERT(updateGroups.size() == mtop.moltype.size(),
+    GMX_RELEASE_ASSERT(updateGroupingsPerMoleculeType.size() == mtop.moltype.size(),
                        "We need one update group entry per moleculetype");
 
     real maxRadius = 0;
 
     for (size_t moltype = 0; moltype < mtop.moltype.size(); moltype++)
     {
-        maxRadius = std::max(
-                maxRadius, computeMaxUpdateGroupRadius(mtop.moltype[moltype], mtop.ffparams.iparams,
-                                                       updateGroups[moltype], temperature));
+        const real radiusOfThisMoleculeType = computeMaxUpdateGroupRadius(
+                mtop.moltype[moltype], mtop.ffparams.iparams, updateGroupingsPerMoleculeType[moltype], temperature);
+        maxRadius = std::max(maxRadius, radiusOfThisMoleculeType);
     }
 
     return maxRadius;
 }
+
+real computeCutoffMargin(PbcType pbcType, matrix box, const real rlist)
+{
+    return std::sqrt(max_cutoff2(pbcType, box)) - rlist;
+}
+
+UpdateGroups::UpdateGroups(std::vector<RangePartitioning>&& updateGroupingPerMoleculeType,
+                           const real                       maxUpdateGroupRadius) :
+    useUpdateGroups_(true),
+    updateGroupingPerMoleculeType_(std::move(updateGroupingPerMoleculeType)),
+    maxUpdateGroupRadius_(maxUpdateGroupRadius)
+{
+}
+
+bool systemHasConstraintsOrVsites(const gmx_mtop_t& mtop)
+{
+    IListRange ilistRange(mtop);
+    return std::any_of(ilistRange.begin(), ilistRange.end(), [](const auto& ilists) {
+        return !extractILists(ilists.list(), IF_CONSTRAINT | IF_VSITE).empty();
+    });
+}
+
+UpdateGroups makeUpdateGroups(const gmx::MDLogger&             mdlog,
+                              std::vector<RangePartitioning>&& updateGroupingPerMoleculeType,
+                              const real                       maxUpdateGroupRadius,
+                              const bool                       useDomainDecomposition,
+                              const bool                       systemHasConstraintsOrVsites,
+                              const real                       cutoffMargin)
+{
+    MessageStringCollector messages;
+
+    messages.startContext("When checking whether update groups are usable:");
+
+    messages.appendIf(!useDomainDecomposition,
+                      "Domain decomposition is not active, so there is no need for update groups");
+
+    messages.appendIf(!systemHasConstraintsOrVsites,
+                      "No constraints or virtual sites are in use, so it is best not to use update "
+                      "groups");
+
+    messages.appendIf(
+            updateGroupingPerMoleculeType.empty(),
+            "At least one moleculetype does not conform to the requirements for using update "
+            "groups");
+
+    messages.appendIf(
+            getenv("GMX_NO_UPDATEGROUPS") != nullptr,
+            "Environment variable GMX_NO_UPDATEGROUPS prohibited the use of update groups");
+
+    // To use update groups, the large domain-to-domain cutoff
+    // distance should be compatible with the box size.
+    messages.appendIf(2 * maxUpdateGroupRadius >= cutoffMargin,
+                      "The combination of rlist and box size prohibits the use of update groups");
+
+    if (!messages.isEmpty())
+    {
+        // Log why we can't use update groups
+        GMX_LOG(mdlog.info).appendText(messages.toString());
+        return UpdateGroups();
+    }
+
+    // Success!
+    return UpdateGroups(std::move(updateGroupingPerMoleculeType), maxUpdateGroupRadius);
+}
+
 
 } // namespace gmx

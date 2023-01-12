@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -43,13 +42,16 @@
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 
 #include "gromacs/applied_forces/awh/correlationgrid.h"
 #include "gromacs/applied_forces/awh/pointstate.h"
 #include "gromacs/mdtypes/awh_params.h"
+#include "gromacs/utility/inmemoryserializer.h"
 #include "gromacs/utility/stringutil.h"
 
+#include "gromacs/applied_forces/awh/tests/awh_setup.h"
 #include "testutils/refdata.h"
 #include "testutils/testasserts.h"
 
@@ -59,98 +61,24 @@ namespace gmx
 namespace test
 {
 
-/*! \internal \brief
- * Struct that gathers all input for setting up and using a Bias
- */
-struct AwhTestParameters
-{
-    AwhTestParameters() = default;
-    //! Move constructor
-    AwhTestParameters(AwhTestParameters&& o) noexcept :
-        beta(o.beta),
-        awhDimParams(o.awhDimParams),
-        awhBiasParams(o.awhBiasParams),
-        awhParams(o.awhParams),
-        dimParams(std::move(o.dimParams))
-    {
-        awhBiasParams.dimParams = &awhDimParams;
-        awhParams.awhBiasParams = &awhBiasParams;
-    }
-    double beta; //!< 1/(kB*T)
-
-    AwhDimParams  awhDimParams;  //!< Dimension parameters pointed to by \p awhBiasParams
-    AwhBiasParams awhBiasParams; //!< Bias parameters pointed to by \[ awhParams
-    AwhParams     awhParams;     //!< AWH parameters, this is the struct to actually use
-
-    std::vector<DimParams> dimParams; //!< Dimension parameters for setting up Bias
-};
-
-//! Helper function to set up the C-style AWH parameters for the test
-static AwhTestParameters getAwhTestParameters(int eawhgrowth, int eawhpotential)
-{
-    AwhTestParameters params;
-
-    params.beta = 0.4;
-
-    AwhDimParams& awhDimParams = params.awhDimParams;
-
-    awhDimParams.period = 0;
-    // Correction for removal of GaussianGeometryFactor/2 in histogram size
-    awhDimParams.diffusion      = 0.1 / (0.144129616073222 * 2);
-    awhDimParams.origin         = 0.5;
-    awhDimParams.end            = 1.5;
-    awhDimParams.coordValueInit = awhDimParams.origin;
-    awhDimParams.coverDiameter  = 0;
-    awhDimParams.eCoordProvider = eawhcoordproviderPULL;
-
-    AwhBiasParams& awhBiasParams = params.awhBiasParams;
-
-    awhBiasParams.ndim                 = 1;
-    awhBiasParams.dimParams            = &awhDimParams;
-    awhBiasParams.eTarget              = eawhtargetCONSTANT;
-    awhBiasParams.targetBetaScaling    = 0;
-    awhBiasParams.targetCutoff         = 0;
-    awhBiasParams.eGrowth              = eawhgrowth;
-    awhBiasParams.bUserData            = FALSE;
-    awhBiasParams.errorInitial         = 0.5 / params.beta;
-    awhBiasParams.shareGroup           = 0;
-    awhBiasParams.equilibrateHistogram = FALSE;
-
-    double  convFactor = 1;
-    double  k          = 1000;
-    int64_t seed       = 93471803;
-
-    params.dimParams.push_back(DimParams::pullDimParams(convFactor, k, params.beta));
-
-    AwhParams& awhParams = params.awhParams;
-
-    awhParams.numBias                    = 1;
-    awhParams.awhBiasParams              = &awhBiasParams;
-    awhParams.seed                       = seed;
-    awhParams.nstOut                     = 0;
-    awhParams.nstSampleCoord             = 1;
-    awhParams.numSamplesUpdateFreeEnergy = 10;
-    awhParams.ePotential                 = eawhpotential;
-    awhParams.shareBiasMultisim          = FALSE;
-
-    return params;
-}
-
 //! Database of 21 test coordinates that represent a trajectory */
-const double g_coords[] = { 0.62, 0.70, 0.68, 0.80, 0.93, 0.87, 1.16, 1.14, 0.95, 0.89, 0.91,
-                            0.86, 0.88, 0.79, 0.75, 0.82, 0.74, 0.70, 0.68, 0.71, 0.73 };
+constexpr double g_coords[] = { 0.62, 0.70, 0.68, 0.80, 0.93, 0.87, 1.16, 1.14, 0.95, 0.89, 0.91,
+                                0.86, 0.88, 0.79, 0.75, 0.82, 0.74, 0.70, 0.68, 0.71, 0.73 };
 
 //! Convenience typedef: growth type enum, potential type enum, disable update skips
-typedef std::tuple<int, int, BiasParams::DisableUpdateSkips> BiasTestParameters;
+typedef std::tuple<AwhHistogramGrowthType, AwhPotentialType, BiasParams::DisableUpdateSkips> BiasTestParameters;
 
 /*! \brief Test fixture for testing Bias updates
  */
 class BiasTest : public ::testing::TestWithParam<BiasTestParameters>
 {
+private:
+    //! Storage for test parameters.
+    std::unique_ptr<AwhTestParameters> params_;
+
 public:
     //! Random seed for AWH MC sampling
     int64_t seed_;
-
     //! Coordinates representing a trajectory in time
     std::vector<double> coordinates_;
     //! The awh Bias
@@ -173,8 +101,8 @@ public:
          *       and disableUpdateSkips do not affect the point state.
          *       But the reference data will also ensure this.
          */
-        int                            eawhgrowth;
-        int                            eawhpotential;
+        AwhHistogramGrowthType         eawhgrowth;
+        AwhPotentialType               eawhpotential;
         BiasParams::DisableUpdateSkips disableUpdateSkips;
         std::tie(eawhgrowth, eawhpotential, disableUpdateSkips) = GetParam();
 
@@ -183,21 +111,31 @@ public:
          * The idea is to, among other things, have part of the interval
          * not covered by samples.
          */
-        const AwhTestParameters params = getAwhTestParameters(eawhgrowth, eawhpotential);
+        auto awhDimBuffer   = awhDimParamSerialized();
+        auto awhDimArrayRef = gmx::arrayRefFromArray(&awhDimBuffer, 1);
+        params_             = std::make_unique<AwhTestParameters>(getAwhTestParameters(
+                eawhgrowth, eawhpotential, awhDimArrayRef, false, 0.4, false, 0.5, 0));
 
-        seed_ = params.awhParams.seed;
+        seed_ = params_->awhParams.seed();
 
-        double mdTimeStep = 0.1;
+        constexpr double mdTimeStep = 0.1;
 
         int numSamples = coordinates_.size() - 1; // No sample taken at step 0
-        GMX_RELEASE_ASSERT(numSamples % params.awhParams.numSamplesUpdateFreeEnergy == 0,
+        GMX_RELEASE_ASSERT(numSamples % params_->awhParams.numSamplesUpdateFreeEnergy() == 0,
                            "This test is intended to reproduce the situation when the might need "
                            "to write output during a normal AWH run, therefore the number of "
                            "samples should be a multiple of the free-energy update interval (but "
                            "the test should also runs fine without this condition).");
 
-        bias_ = std::make_unique<Bias>(-1, params.awhParams, params.awhBiasParams, params.dimParams,
-                                       params.beta, mdTimeStep, 1, "", Bias::ThisRankWillDoIO::No,
+        bias_ = std::make_unique<Bias>(-1,
+                                       params_->awhParams,
+                                       params_->awhParams.awhBiasParams()[0],
+                                       params_->dimParams,
+                                       params_->beta,
+                                       mdTimeStep,
+                                       nullptr,
+                                       "",
+                                       Bias::ThisRankWillDoIO::No,
                                        disableUpdateSkips);
     }
 };
@@ -230,9 +168,8 @@ TEST_P(BiasTest, ForcesBiasPmf)
 
         awh_dvec                    coordValue = { coord, 0, 0, 0 };
         double                      potential  = 0;
-        gmx::ArrayRef<const double> biasForce =
-                bias.calcForceAndUpdateBias(coordValue, {}, {}, &potential, &potentialJump, nullptr,
-                                            nullptr, step, step, seed_, nullptr);
+        gmx::ArrayRef<const double> biasForce  = bias.calcForceAndUpdateBias(
+                coordValue, {}, {}, &potential, &potentialJump, step, step, seed_, nullptr);
 
         force.push_back(biasForce[0]);
         pot.push_back(potential);
@@ -250,7 +187,7 @@ TEST_P(BiasTest, ForcesBiasPmf)
     }
 
     std::vector<double> pointBias, logPmfsum;
-    for (auto& point : bias.state().points())
+    for (const auto& point : bias.state().points())
     {
         pointBias.push_back(point.bias());
         logPmfsum.push_back(point.logPmfSum());
@@ -279,31 +216,49 @@ TEST_P(BiasTest, ForcesBiasPmf)
  * It would be nice if the test would explicitly check for this.
  * Currently this is tested through identical reference data.
  */
-INSTANTIATE_TEST_CASE_P(WithParameters,
-                        BiasTest,
-                        ::testing::Combine(::testing::Values(eawhgrowthLINEAR, eawhgrowthEXP_LINEAR),
-                                           ::testing::Values(eawhpotentialUMBRELLA, eawhpotentialCONVOLVED),
-                                           ::testing::Values(BiasParams::DisableUpdateSkips::yes,
-                                                             BiasParams::DisableUpdateSkips::no)));
+INSTANTIATE_TEST_SUITE_P(WithParameters,
+                         BiasTest,
+                         ::testing::Combine(::testing::Values(AwhHistogramGrowthType::Linear,
+                                                              AwhHistogramGrowthType::ExponentialLinear),
+                                            ::testing::Values(AwhPotentialType::Umbrella,
+                                                              AwhPotentialType::Convolved),
+                                            ::testing::Values(BiasParams::DisableUpdateSkips::yes,
+                                                              BiasParams::DisableUpdateSkips::no)));
 
 // Test that we detect coverings and exit the initial stage at the correct step
 TEST(BiasTest, DetectsCovering)
 {
-    const AwhTestParameters params = getAwhTestParameters(eawhgrowthEXP_LINEAR, eawhpotentialCONVOLVED);
-    const AwhDimParams&     awhDimParams = params.awhParams.awhBiasParams[0].dimParams[0];
+    const std::vector<char> serializedAwhParametersPerDim = awhDimParamSerialized();
+    auto awhDimArrayRef            = gmx::arrayRefFromArray(&serializedAwhParametersPerDim, 1);
+    const AwhTestParameters params = getAwhTestParameters(AwhHistogramGrowthType::ExponentialLinear,
+                                                          AwhPotentialType::Convolved,
+                                                          awhDimArrayRef,
+                                                          false,
+                                                          0.4,
+                                                          false,
+                                                          0.5,
+                                                          0);
+    const AwhDimParams&     awhDimParams = params.awhParams.awhBiasParams()[0].dimParams()[0];
 
-    const double mdTimeStep = 0.1;
+    constexpr double mdTimeStep = 0.1;
 
-    Bias bias(-1, params.awhParams, params.awhBiasParams, params.dimParams, params.beta, mdTimeStep,
-              1, "", Bias::ThisRankWillDoIO::No);
+    Bias bias(-1,
+              params.awhParams,
+              params.awhParams.awhBiasParams()[0],
+              params.dimParams,
+              params.beta,
+              mdTimeStep,
+              nullptr,
+              "",
+              Bias::ThisRankWillDoIO::No);
 
     /* We use a trajectory of the sum of two sines to cover the reaction
      * coordinate range in a semi-realistic way. The period is 4*pi=12.57.
      * We get out of the initial stage after 4 coverings at step 300.
      */
-    const int64_t exitStepRef = 300;
-    const double  midPoint    = 0.5 * (awhDimParams.end + awhDimParams.origin);
-    const double  halfWidth   = 0.5 * (awhDimParams.end - awhDimParams.origin);
+    constexpr int64_t exitStepRef = 300;
+    const double      midPoint    = 0.5 * (awhDimParams.end() + awhDimParams.origin());
+    const double      halfWidth   = 0.5 * (awhDimParams.end() - awhDimParams.origin());
 
     bool inInitialStage = bias.state().inInitialStage();
     /* Normally this loop exits at exitStepRef, but we extend with failure */
@@ -316,8 +271,8 @@ TEST(BiasTest, DetectsCovering)
         awh_dvec coordValue    = { coord, 0, 0, 0 };
         double   potential     = 0;
         double   potentialJump = 0;
-        bias.calcForceAndUpdateBias(coordValue, {}, {}, &potential, &potentialJump, nullptr,
-                                    nullptr, step, step, params.awhParams.seed, nullptr);
+        bias.calcForceAndUpdateBias(
+                coordValue, {}, {}, &potential, &potentialJump, step, step, params.awhParams.seed(), nullptr);
 
         inInitialStage = bias.state().inInitialStage();
         if (!inInitialStage)

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2010,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief
@@ -56,7 +52,10 @@ struct t_inputrec;
 struct t_pbc;
 struct t_commrec;
 struct t_oriresdata;
+struct t_disresdata;
+struct t_fcdata;
 class t_state;
+struct t_mdatoms;
 
 namespace gmx
 {
@@ -64,21 +63,10 @@ template<typename>
 class ArrayRef;
 } // namespace gmx
 
-/*! \brief
- * Decides whether orientation restraints can work, and initializes
- * all the orientation restraint stuff in *od (and assumes *od is
- * already allocated.
- * If orientation restraint are used, globalState is read and modified
- * on the master rank (which is the only rank, since orientation
- * restraints can not run in parallel).
+/*! \brief Extends \p globalState with orientation restraint history
+ * when there are restraints and time averaging is used.
  */
-void init_orires(FILE*                 fplog,
-                 const gmx_mtop_t*     mtop,
-                 const t_inputrec*     ir,
-                 const t_commrec*      cr,
-                 const gmx_multisim_t* ms,
-                 t_state*              globalState,
-                 t_oriresdata*         od);
+void extendStateWithOriresHistory(const gmx_mtop_t& mtop, const t_inputrec& ir, t_state* globalState);
 
 /*! \brief
  * Calculates the time averaged D matrices, the S matrix for each experiment.
@@ -89,12 +77,10 @@ real calc_orires_dev(const gmx_multisim_t*          ms,
                      int                            nfa,
                      const t_iatom                  fa[],
                      const t_iparams                ip[],
-                     const t_mdatoms*               md,
                      gmx::ArrayRef<const gmx::RVec> xWholeMolecules,
                      const rvec                     x[],
                      const t_pbc*                   pbc,
-                     t_oriresdata*                  oriresdata,
-                     history_t*                     hist);
+                     t_oriresdata*                  oriresdata);
 
 /*! \brief
  * Diagonalizes the order tensor(s) of the orienation restraints.
@@ -108,18 +94,20 @@ void diagonalize_orires_tensors(t_oriresdata* od);
 void print_orires_log(FILE* log, t_oriresdata* od);
 
 //! Calculates the orientation restraint forces.
-real orires(int              nfa,
-            const t_iatom    forceatoms[],
-            const t_iparams  ip[],
-            const rvec       x[],
-            rvec4            f[],
-            rvec             fshift[],
-            const t_pbc*     pbc,
-            real             lambda,
-            real*            dvdlambda,
-            const t_mdatoms* md,
-            t_fcdata*        fcd,
-            int*             global_atom_index);
+real orires(int                       nfa,
+            const t_iatom             forceatoms[],
+            const t_iparams           ip[],
+            const rvec                x[],
+            rvec4                     f[],
+            rvec                      fshift[],
+            const t_pbc*              pbc,
+            real                      lambda,
+            real*                     dvdlambda,
+            gmx::ArrayRef<const real> charge,
+            t_fcdata*                 fcd,
+            t_disresdata*             disresdata,
+            t_oriresdata*             oriresdata,
+            int*                      global_atom_index);
 
 //! Copies the new time averages that have been calculated in calc_orires_dev.
 void update_orires_history(const t_oriresdata& oriresdata, history_t* hist);

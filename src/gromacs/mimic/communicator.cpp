@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -41,71 +40,23 @@
 #include <unordered_set>
 
 #include "gromacs/math/units.h"
-#include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/arrayref.h"
 
-#if GMX_MIMIC
-#    include <DataTypes.h>
-#    include <MessageApi.h>
-#endif
+// Include headers from MiMiC library
+#include <DataTypes.h>
+#include <MessageApi.h>
 
-// When not built in a configuration with QMMM support, much of this
-// code is unreachable by design. Tell clang not to warn about it.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-noreturn"
-
-#if !GMX_MIMIC
-//! \brief Definitions to stub the ones defined in DataTypes.h
-constexpr int TYPE_INT = 0, TYPE_DOUBLE = 0;
-
-/*! \brief Stub communication library function to call in case if
- * GROMACS is compiled without MiMiC. Calling causes GROMACS to exit!
- */
-static void MCL_init_client(const char*) // NOLINT(readability-named-parameter)
+namespace gmx
 {
-    GMX_RELEASE_ASSERT(
-            GMX_MIMIC,
-            "GROMACS is compiled without MiMiC support! Please, recompile with -DGMX_MIMIC=ON");
-}
 
-/*! \brief Stub communication library function to call in case if
- * GROMACS is compiled without MiMiC. Calling causes GROMACS to exit!
- */
-static void MCL_send(void*, int, int, int) // NOLINT(readability-named-parameter)
-{
-    GMX_RELEASE_ASSERT(
-            GMX_MIMIC,
-            "GROMACS is compiled without MiMiC support! Please, recompile with -DGMX_MIMIC=ON");
-}
-
-/*! \brief Stub communication library function to call in case if
- * GROMACS is compiled without MiMiC. Calling causes GROMACS to exit!
- */
-static void MCL_receive(void*, int, int, int) // NOLINT(readability-named-parameter)
-{
-    GMX_RELEASE_ASSERT(
-            GMX_MIMIC,
-            "GROMACS is compiled without MiMiC support! Please, recompile with -DGMX_MIMIC=ON");
-}
-
-/*! \brief Stub communication library function to call in case if
- * GROMACS is compiled without MiMiC. Calling causes GROMACS to exit!
- */
-static void MCL_destroy()
-{
-    GMX_RELEASE_ASSERT(
-            GMX_MIMIC,
-            "GROMACS is compiled without MiMiC support! Please, recompile with -DGMX_MIMIC=ON");
-}
-#endif
-
-void gmx::MimicCommunicator::init()
+void MimicCommunicator::init()
 {
     char path[GMX_PATH_MAX];
     gmx_getcwd(path, GMX_PATH_MAX);
     MCL_init_client(path);
 }
 
-void gmx::MimicCommunicator::sendInitData(gmx_mtop_t* mtop, PaddedHostVector<gmx::RVec> coords)
+void MimicCommunicator::sendInitData(gmx_mtop_t* mtop, ArrayRef<const RVec> coords)
 {
     MCL_send(&mtop->natoms, 1, TYPE_INT, 0);
     MCL_send(&mtop->atomtypes.nr, 1, TYPE_INT, 0);
@@ -141,7 +92,7 @@ void gmx::MimicCommunicator::sendInitData(gmx_mtop_t* mtop, PaddedHostVector<gmx
                 bonds.push_back(offset + at1 + 1);
                 bonds.push_back(offset + at2 + 1);
                 bondLengths.push_back(static_cast<double>(mtop->ffparams.iparams[contype].constr.dA)
-                                      / BOHR2NM);
+                                      / c_bohr2Nm);
             }
 
             for (int ncon = 0; ncon < nsettle; ++ncon)
@@ -165,11 +116,11 @@ void gmx::MimicCommunicator::sendInitData(gmx_mtop_t* mtop, PaddedHostVector<gmx
                 bonds.push_back(offset + h1 + 1);
                 bonds.push_back(offset + h2 + 1);
                 bondLengths.push_back(static_cast<double>(mtop->ffparams.iparams[contype].constr.dA)
-                                      / BOHR2NM);
+                                      / gmx::c_bohr2Nm);
                 bondLengths.push_back(static_cast<double>(mtop->ffparams.iparams[contype].constr.dA)
-                                      / BOHR2NM);
+                                      / gmx::c_bohr2Nm);
                 bondLengths.push_back(static_cast<double>(mtop->ffparams.iparams[contype].constr.dB)
-                                      / BOHR2NM);
+                                      / gmx::c_bohr2Nm);
             }
 
             nAtomsMol.push_back(type->atoms.nr);
@@ -234,55 +185,55 @@ void gmx::MimicCommunicator::sendInitData(gmx_mtop_t* mtop, PaddedHostVector<gmx
     std::vector<double> convertedCoords;
     for (auto& coord : coords)
     {
-        convertedCoords.push_back(static_cast<double>(coord[0]) / BOHR2NM);
-        convertedCoords.push_back(static_cast<double>(coord[1]) / BOHR2NM);
-        convertedCoords.push_back(static_cast<double>(coord[2]) / BOHR2NM);
+        convertedCoords.push_back(static_cast<double>(coord[0]) / gmx::c_bohr2Nm);
+        convertedCoords.push_back(static_cast<double>(coord[1]) / gmx::c_bohr2Nm);
+        convertedCoords.push_back(static_cast<double>(coord[2]) / gmx::c_bohr2Nm);
     }
 
     // sending array of coordinates
     MCL_send(&*convertedCoords.begin(), 3 * mtop->natoms, TYPE_DOUBLE, 0);
 }
 
-int64_t gmx::MimicCommunicator::getStepNumber()
+int64_t MimicCommunicator::getStepNumber()
 {
     int steps;
     MCL_receive(&steps, 1, TYPE_INT, 0);
     return steps;
 }
 
-void gmx::MimicCommunicator::getCoords(PaddedHostVector<RVec>* x, const int natoms)
+void MimicCommunicator::getCoords(ArrayRef<RVec> x, const int natoms)
 {
     std::vector<double> coords(natoms * 3);
     MCL_receive(&*coords.begin(), 3 * natoms, TYPE_DOUBLE, 0);
     for (int j = 0; j < natoms; ++j)
     {
-        (*x)[j][0] = static_cast<real>(coords[j * 3] * BOHR2NM);
-        (*x)[j][1] = static_cast<real>(coords[j * 3 + 1] * BOHR2NM);
-        (*x)[j][2] = static_cast<real>(coords[j * 3 + 2] * BOHR2NM);
+        x[j][0] = static_cast<real>(coords[j * 3] * gmx::c_bohr2Nm);
+        x[j][1] = static_cast<real>(coords[j * 3 + 1] * gmx::c_bohr2Nm);
+        x[j][2] = static_cast<real>(coords[j * 3 + 2] * gmx::c_bohr2Nm);
     }
 }
 
-void gmx::MimicCommunicator::sendEnergies(real energy)
+void MimicCommunicator::sendEnergies(real energy)
 {
-    double convertedEnergy = energy / (HARTREE2KJ * AVOGADRO);
+    double convertedEnergy = energy / (gmx::c_hartree2Kj * gmx::c_avogadro);
     MCL_send(&convertedEnergy, 1, TYPE_DOUBLE, 0);
 }
 
-void gmx::MimicCommunicator::sendForces(gmx::ArrayRef<gmx::RVec> forces, int natoms)
+void MimicCommunicator::sendForces(ArrayRef<RVec> forces, int natoms)
 {
     std::vector<double> convertedForce;
     for (int j = 0; j < natoms; ++j)
     {
-        convertedForce.push_back(static_cast<real>(forces[j][0]) / HARTREE_BOHR2MD);
-        convertedForce.push_back(static_cast<real>(forces[j][1]) / HARTREE_BOHR2MD);
-        convertedForce.push_back(static_cast<real>(forces[j][2]) / HARTREE_BOHR2MD);
+        convertedForce.push_back(static_cast<real>(forces[j][0]) / gmx::c_hartreeBohr2Md);
+        convertedForce.push_back(static_cast<real>(forces[j][1]) / gmx::c_hartreeBohr2Md);
+        convertedForce.push_back(static_cast<real>(forces[j][2]) / gmx::c_hartreeBohr2Md);
     }
     MCL_send(&*convertedForce.begin(), convertedForce.size(), TYPE_DOUBLE, 0);
 }
 
-void gmx::MimicCommunicator::finalize()
+void MimicCommunicator::finalize()
 {
     MCL_destroy();
 }
 
-#pragma GCC diagnostic pop
+} // namespace gmx

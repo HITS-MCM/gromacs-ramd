@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #include "gmxpre.h"
@@ -366,8 +364,8 @@ static void calc_tetra_order_interface(const char*       fnNDX,
             }
         }
 
-        find_tetra_order_grid(top, pbcType, natoms, box, x, isize[0], index[0], &sg, &sk, *nslicex,
-                              *nslicey, nslicez, sg_grid, sk_grid);
+        find_tetra_order_grid(
+                top, pbcType, natoms, box, x, isize[0], index[0], &sg, &sk, *nslicex, *nslicey, nslicez, sg_grid, sk_grid);
         GMX_RELEASE_ASSERT(sk_fravg != nullptr, "Trying to dereference NULL sk_fravg pointer");
         for (i = 0; i < *nslicex; i++)
         {
@@ -401,10 +399,10 @@ static void calc_tetra_order_interface(const char*       fnNDX,
     /*Debugging for printing out the entire order parameter meshes.*/
     if (debug)
     {
-        fpsg = xvgropen("sg_ang_mesh", "S\\sg\\N Angle Order Parameter / Meshpoint", "(nm)",
-                        "S\\sg\\N", oenv);
-        fpsk = xvgropen("sk_dist_mesh", "S\\sk\\N Distance Order Parameter / Meshpoint", "(nm)",
-                        "S\\sk\\N", oenv);
+        fpsg = xvgropen(
+                "sg_ang_mesh", "S\\sg\\N Angle Order Parameter / Meshpoint", "(nm)", "S\\sg\\N", oenv);
+        fpsk = xvgropen(
+                "sk_dist_mesh", "S\\sk\\N Distance Order Parameter / Meshpoint", "(nm)", "S\\sk\\N", oenv);
         for (n = 0; n < (*nframes); n++)
         {
             fprintf(fpsg, "%i\n", n);
@@ -415,12 +413,18 @@ static void calc_tetra_order_interface(const char*       fnNDX,
                 {
                     for (k = 0; k < nslicez; k++)
                     {
-                        fprintf(fpsg, "%4f  %4f  %4f  %8f\n", (i + 0.5) * box[XX][XX] / (*nslicex),
+                        fprintf(fpsg,
+                                "%4f  %4f  %4f  %8f\n",
+                                (i + 0.5) * box[XX][XX] / (*nslicex),
                                 (j + 0.5) * box[YY][YY] / (*nslicey),
-                                (k + 0.5) * box[ZZ][ZZ] / nslicez, sg_4d[n][i][j][k]);
-                        fprintf(fpsk, "%4f  %4f  %4f  %8f\n", (i + 0.5) * box[XX][XX] / (*nslicex),
+                                (k + 0.5) * box[ZZ][ZZ] / nslicez,
+                                sg_4d[n][i][j][k]);
+                        fprintf(fpsk,
+                                "%4f  %4f  %4f  %8f\n",
+                                (i + 0.5) * box[XX][XX] / (*nslicex),
                                 (j + 0.5) * box[YY][YY] / (*nslicey),
-                                (k + 0.5) * box[ZZ][ZZ] / nslicez, sk_4d[n][i][j][k]);
+                                (k + 0.5) * box[ZZ][ZZ] / nslicez,
+                                sk_4d[n][i][j][k]);
                     }
                 }
             }
@@ -549,10 +553,8 @@ static void writesurftoxpms(real***                          surf,
             }
         }
 
-        write_xpm(xpmfile1, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks,
-                  profile1, min1, max1, lo, hi, &maplevels);
-        write_xpm(xpmfile2, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks,
-                  profile2, min2, max2, lo, hi, &maplevels);
+        write_xpm(xpmfile1, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks, profile1, min1, max1, lo, hi, &maplevels);
+        write_xpm(xpmfile2, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks, profile2, min2, max2, lo, hi, &maplevels);
     }
 
     gmx_ffclose(xpmfile1);
@@ -643,8 +645,8 @@ int gmx_hydorder(int argc, char* argv[])
     const char *      ndxfnm, *tpsfnm, *trxfnm;
     gmx_output_env_t* oenv;
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -694,8 +696,8 @@ int gmx_hydorder(int argc, char* argv[])
     {
         gmx_fatal(FARGS, "No or not correct number (2) of output-files: %td", intfn.ssize());
     }
-    calc_tetra_order_interface(ndxfnm, tpsfnm, trxfnm, binwidth, nsttblock, &frames, &xslices,
-                               &yslices, sg1, sg2, &intfpos, oenv);
+    calc_tetra_order_interface(
+            ndxfnm, tpsfnm, trxfnm, binwidth, nsttblock, &frames, &xslices, &yslices, sg1, sg2, &intfpos, oenv);
     writesurftoxpms(intfpos, frames, xslices, yslices, binwidth, intfn, nlevels);
 
     if (bFourier)

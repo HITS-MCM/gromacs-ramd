@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -138,7 +136,6 @@ void SelectionCollectionTest::loadIndexGroups(const char* filename)
     sc_.setIndexGroups(grps_);
 }
 
-
 /********************************************************************
  * Test fixture for interactive SelectionCollection tests
  */
@@ -160,7 +157,8 @@ void SelectionCollectionInteractiveTest::runTest(int  count,
 {
     helper_.setInputLines(inputLines);
     // TODO: Check something about the returned selections as well.
-    ASSERT_NO_THROW_GMX(sc_.parseInteractive(count, &helper_.inputStream(),
+    ASSERT_NO_THROW_GMX(sc_.parseInteractive(count,
+                                             &helper_.inputStream(),
                                              bInteractive ? &helper_.outputStream() : nullptr,
                                              "for test context"));
     helper_.checkSession();
@@ -199,12 +197,13 @@ public:
     void runTest(int natoms, const gmx::ArrayRef<const char* const>& selections);
     void runTest(const char* filename, const gmx::ArrayRef<const char* const>& selections);
 
+    void checkCompiled();
+
 private:
     static void checkSelection(gmx::test::TestReferenceChecker* checker,
                                const gmx::Selection&            sel,
                                TestFlags                        flags);
 
-    void checkCompiled();
 
     gmx::test::TestReferenceData    data_;
     gmx::test::TestReferenceChecker checker_;
@@ -635,6 +634,47 @@ TEST_F(SelectionCollectionTest, HandlesFramesWithTooSmallAtomSubsets4)
 
 // TODO: Tests for more evaluation errors
 
+
+/********************************************************************
+ * Tests for retrieving selections.
+ */
+TEST_F(SelectionCollectionTest, RetrieveValidSelection)
+{
+    ASSERT_NO_THROW_GMX(sel_ = sc_.parseFromString("atomnr 1 to 10; none"));
+    const std::optional<gmx::Selection> retrievedSel = sc_.selection(sel_[0].name());
+    ASSERT_TRUE(retrievedSel.has_value());
+    EXPECT_STREQ(sel_[0].name(), retrievedSel->name());
+}
+
+TEST_F(SelectionCollectionTest, RetrieveInvalidSelection)
+{
+    ASSERT_FALSE(sc_.selection("some invalid key").has_value());
+}
+
+/********************************************************************
+ * Tests for assignment/copying.
+ */
+TEST_F(SelectionCollectionTest, CanCopyEmptyCollection)
+{
+    EXPECT_NO_THROW_GMX(gmx::SelectionCollection sc2(sc_));
+}
+
+TEST_F(SelectionCollectionTest, CopiedSelectionListsAreHandledSeparately)
+{
+    ASSERT_NO_THROW_GMX(sel_ = sc_.parseFromString("atomnr 1 to 10; none"));
+    EXPECT_FALSE(sc_.requiredTopologyProperties().hasAny());
+    ASSERT_NO_FATAL_FAILURE(setAtomCount(10));
+    ASSERT_EQ(2U, sel_.size());
+    gmx::SelectionCollection sc2(sc_);
+    ASSERT_NO_THROW_GMX(sel_[1].setEvaluateVelocities(true));
+    ASSERT_NO_THROW_GMX(sel_[1].setEvaluateForces(true));
+    ASSERT_NO_THROW_GMX(sc2.compile());
+    // These would only be populated if sc_.compile() was called
+    EXPECT_FALSE(sel_[1].hasVelocities());
+    EXPECT_FALSE(sel_[1].hasForces());
+}
+
+
 /********************************************************************
  * Tests for interactive selection input
  */
@@ -742,7 +782,8 @@ TEST_F(SelectionCollectionDataTest, HandlesAllNone)
 
 TEST_F(SelectionCollectionDataTest, HandlesAtomnr)
 {
-    static const char* const selections[] = { "atomnr 1 to 3 6 to 8", "atomnr 4 2 5 to 7",
+    static const char* const selections[] = { "atomnr 1 to 3 6 to 8",
+                                              "atomnr 4 2 5 to 7",
                                               "atomnr <= 5" };
     runTest(10, selections);
 }
@@ -777,8 +818,9 @@ TEST_F(SelectionCollectionDataTest, HandlesAtomname)
 
 TEST_F(SelectionCollectionDataTest, HandlesPdbAtomname)
 {
-    static const char* const selections[] = { "name HG21", "name 1HG2", "pdbname HG21 CB",
-                                              "pdbatomname 1HG2" };
+    static const char* const selections[] = {
+        "name HG21", "name 1HG2", "pdbname HG21 CB", "pdbatomname 1HG2"
+    };
     runTest("simple.pdb", selections);
 }
 
@@ -888,9 +930,11 @@ TEST_F(SelectionCollectionDataTest, HandlesSameResidueName)
 
 TEST_F(SelectionCollectionDataTest, HandlesPositionKeywords)
 {
-    static const char* const selections[] = { "cog of resnr 1 3", "res_cog of name CB and resnr 1 3",
+    static const char* const selections[] = { "cog of resnr 1 3",
+                                              "res_cog of name CB and resnr 1 3",
                                               "whole_res_cog of name CB and resnr 1 3",
-                                              "part_res_cog of x < 3", "dyn_res_cog of x < 3" };
+                                              "part_res_cog of x < 3",
+                                              "dyn_res_cog of x < 3" };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates | efTestPositionAtoms);
     runTest("simple.gro", selections);
 }
@@ -946,7 +990,8 @@ TEST_F(SelectionCollectionDataTest, HandlesPermuteModifier)
 TEST_F(SelectionCollectionDataTest, HandlesPlusModifier)
 {
     static const char* const selections[] = {
-        "name S2 plus name S1", "res_cog of resnr 2 plus res_cog of resnr 1 plus res_cog of resnr 3",
+        "name S2 plus name S1",
+        "res_cog of resnr 2 plus res_cog of resnr 1 plus res_cog of resnr 3",
         "name S1 and y < 3 plus res_cog of x < 2.5"
     };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates | efTestPositionAtoms
@@ -1003,7 +1048,8 @@ TEST_F(SelectionCollectionDataTest, ComputesMassesAndChargesWithoutTopology)
 TEST_F(SelectionCollectionDataTest, HandlesFramesWithAtomSubsets)
 {
     const int         index[]      = { 0, 1, 2, 3, 4, 5, 9, 10, 11 };
-    const char* const selections[] = { "resnr 1 4", "atomnr 1 2 5 11 and y > 2",
+    const char* const selections[] = { "resnr 1 4",
+                                       "atomnr 1 2 5 11 and y > 2",
                                        "res_cog of atomnr 2 5 11" };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionAtoms);
     ASSERT_NO_FATAL_FAILURE(runParser(selections));
@@ -1022,7 +1068,8 @@ TEST_F(SelectionCollectionDataTest, HandlesFramesWithAtomSubsets)
 TEST_F(SelectionCollectionDataTest, HandlesSelectionNames)
 {
     static const char* const selections[] = { "\"GroupSelection\" group \"GrpA\"",
-                                              "\"DynamicSelection\" x < 5", "y < 3" };
+                                              "\"DynamicSelection\" x < 5",
+                                              "y < 3" };
     setFlags(TestFlags() | efTestSelectionNames);
     ASSERT_NO_THROW_GMX(loadIndexGroups("simple.ndx"));
     runTest(10, selections);
@@ -1030,7 +1077,9 @@ TEST_F(SelectionCollectionDataTest, HandlesSelectionNames)
 
 TEST_F(SelectionCollectionDataTest, HandlesIndexGroupsInSelections)
 {
-    static const char* const selections[] = { "group \"GrpA\"", "GrpB", "1",
+    static const char* const selections[] = { "group \"GrpA\"",
+                                              "GrpB",
+                                              "1",
                                               // These test that the name of the group is not too
                                               // eagerly promoted to the name of the selection.
                                               "group \"GrpB\" and resname RB",
@@ -1044,8 +1093,9 @@ TEST_F(SelectionCollectionDataTest, HandlesIndexGroupsInSelections)
 
 TEST_F(SelectionCollectionDataTest, HandlesIndexGroupsInSelectionsDelayed)
 {
-    static const char* const selections[] = { "group \"GrpA\"", "GrpB", "1",
-                                              "group \"GrpB\" and resname RB" };
+    static const char* const selections[] = {
+        "group \"GrpA\"", "GrpB", "1", "group \"GrpB\" and resname RB"
+    };
     setFlags(TestFlags() | efTestSelectionNames);
     ASSERT_NO_FATAL_FAILURE(runParser(selections));
     ASSERT_NO_FATAL_FAILURE(loadTopology("simple.gro"));
@@ -1155,7 +1205,8 @@ TEST_F(SelectionCollectionDataTest, HandlesRegexMatching)
 TEST_F(SelectionCollectionDataTest, HandlesBasicBoolean)
 {
     static const char* const selections[] = {
-        "atomnr 1 to 5 and atomnr 2 to 7", "atomnr 1 to 5 or not atomnr 3 to 8",
+        "atomnr 1 to 5 and atomnr 2 to 7",
+        "atomnr 1 to 5 or not atomnr 3 to 8",
         "not not atomnr 1 to 5 and atomnr 2 to 6 and not not atomnr 3 to 7",
         "atomnr 1 to 5 and (atomnr 2 to 7 and atomnr 3 to 6)",
         "x < 5 and atomnr 1 to 5 and y < 3 and atomnr 2 to 4"
@@ -1177,8 +1228,7 @@ TEST_F(SelectionCollectionDataTest, HandlesDynamicAtomValuedParameters)
 
 TEST_F(SelectionCollectionDataTest, HandlesEmptySelectionWithUnevaluatedExpressions)
 {
-    static const char* const selections[] = { "none and x > 2",
-                                              "none and same resname as resnr 2" };
+    static const char* const selections[] = { "none and x > 2", "none and same resname as resnr 2" };
     runTest("simple.gro", selections);
 }
 
@@ -1224,8 +1274,9 @@ TEST_F(SelectionCollectionDataTest, HandlesKeywordOfPositionsInArithmetic)
 
 TEST_F(SelectionCollectionDataTest, HandlesNumericComparisons)
 {
-    static const char* const selections[] = { "x > 2", "2 < x", "y > resnr", "resnr < 2.5",
-                                              "2.5 > resnr" };
+    static const char* const selections[] = {
+        "x > 2", "2 < x", "y > resnr", "resnr < 2.5", "2.5 > resnr"
+    };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
     runTest("simple.gro", selections);
 }
@@ -1241,8 +1292,9 @@ TEST_F(SelectionCollectionDataTest, HandlesArithmeticExpressions)
 
 TEST_F(SelectionCollectionDataTest, HandlesNumericVariables)
 {
-    static const char* const selections[] = { "value = x + y", "value <= 4", "index = resnr",
-                                              "index < 3" };
+    static const char* const selections[] = {
+        "value = x + y", "value <= 4", "index = resnr", "index < 3"
+    };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
     runTest("simple.gro", selections);
 }
@@ -1272,7 +1324,8 @@ TEST_F(SelectionCollectionDataTest, HandlesPositionVariables)
 
 TEST_F(SelectionCollectionDataTest, HandlesPositionVariableInModifier)
 {
-    static const char* const selections[] = { "foo = cog of resnr 1", "cog of resnr 2 plus foo",
+    static const char* const selections[] = { "foo = cog of resnr 1",
+                                              "cog of resnr 2 plus foo",
                                               "cog of resnr 3 plus foo" };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
     runTest("simple.gro", selections);
@@ -1281,7 +1334,8 @@ TEST_F(SelectionCollectionDataTest, HandlesPositionVariableInModifier)
 
 TEST_F(SelectionCollectionDataTest, HandlesConstantPositionInVariable)
 {
-    static const char* const selections[] = { "constpos = [1.0, 2.5, 0.5]", "constpos",
+    static const char* const selections[] = { "constpos = [1.0, 2.5, 0.5]",
+                                              "constpos",
                                               "within 2 of constpos" };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates | efTestPositionAtoms);
     runTest("simple.gro", selections);
@@ -1290,8 +1344,11 @@ TEST_F(SelectionCollectionDataTest, HandlesConstantPositionInVariable)
 
 TEST_F(SelectionCollectionDataTest, HandlesNumericConstantsInVariables)
 {
-    static const char* const selections[] = { "constint = 4", "constreal1 = 0.5", "constreal2 = 2.7",
-                                              "resnr < constint", "x + constreal1 < constreal2" };
+    static const char* const selections[] = { "constint = 4",
+                                              "constreal1 = 0.5",
+                                              "constreal2 = 2.7",
+                                              "resnr < constint",
+                                              "x + constreal1 < constreal2" };
     setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
     runTest("simple.gro", selections);
 }
@@ -1304,7 +1361,8 @@ TEST_F(SelectionCollectionDataTest, HandlesNumericConstantsInVariables)
 TEST_F(SelectionCollectionDataTest, HandlesBooleanStaticAnalysis)
 {
     static const char* const selections[] = {
-        "atomnr 1 to 5 and atomnr 2 to 7 and x < 2", "atomnr 1 to 5 and (atomnr 4 to 7 or x < 2)",
+        "atomnr 1 to 5 and atomnr 2 to 7 and x < 2",
+        "atomnr 1 to 5 and (atomnr 4 to 7 or x < 2)",
         "atomnr 1 to 5 and y < 3 and (atomnr 4 to 7 or x < 2)",
         "atomnr 1 to 5 and not (atomnr 4 to 7 or x < 2)",
         "atomnr 1 to 5 or (atomnr 4 to 6 and (atomnr 5 to 7 or x < 2))"
@@ -1344,8 +1402,10 @@ TEST_F(SelectionCollectionDataTest, HandlesBooleanStaticAnalysisWithMoreVariable
 
 TEST_F(SelectionCollectionDataTest, HandlesUnusedVariables)
 {
-    static const char* const selections[] = { "unused1 = atomnr 1 to 3", "foo = atomnr 4 to 7",
-                                              "atomnr 1 to 6 and foo", "unused2 = atomnr 3 to 5" };
+    static const char* const selections[] = { "unused1 = atomnr 1 to 3",
+                                              "foo = atomnr 4 to 7",
+                                              "atomnr 1 to 6 and foo",
+                                              "unused2 = atomnr 3 to 5" };
     runTest(10, selections);
 }
 
@@ -1353,15 +1413,17 @@ TEST_F(SelectionCollectionDataTest, HandlesUnusedVariables)
 TEST_F(SelectionCollectionDataTest, HandlesVariablesWithStaticEvaluationGroups)
 {
     static const char* const selections[] = { "foo = atomnr 4 to 7 and x < 2",
-                                              "atomnr 1 to 5 and foo", "atomnr 3 to 7 and foo" };
+                                              "atomnr 1 to 5 and foo",
+                                              "atomnr 3 to 7 and foo" };
     runTest(10, selections);
 }
 
 
 TEST_F(SelectionCollectionDataTest, HandlesVariablesWithMixedEvaluationGroups)
 {
-    static const char* const selections[] = { "foo = atomnr 4 to 7 and x < 2",
-                                              "atomnr 1 to 6 and foo", "within 1 of foo", "foo" };
+    static const char* const selections[] = {
+        "foo = atomnr 4 to 7 and x < 2", "atomnr 1 to 6 and foo", "within 1 of foo", "foo"
+    };
     runTest(10, selections);
 }
 
@@ -1369,10 +1431,127 @@ TEST_F(SelectionCollectionDataTest, HandlesVariablesWithMixedEvaluationGroups)
 TEST_F(SelectionCollectionDataTest, HandlesVariablesWithMixedEvaluationGroups2)
 {
     static const char* const selections[] = { "foo = atomnr 1 to 8 and x < 10",
-                                              "atomnr 1 to 5 and y < 10 and foo", "foo" };
+                                              "atomnr 1 to 5 and y < 10 and foo",
+                                              "foo" };
     setFlags(TestFlags() | efTestEvaluation);
     runTest("simple.gro", selections);
 }
 
+/*******************************************************************
+ * Tests for copy validation.
+ *
+ * These tests ensure that copies of a SelectionCollection behave as the original while being
+ * independently evaluated.
+ */
+TEST_F(SelectionCollectionDataTest, CopiedSelectionWorksPreCompilation)
+{
+    static const char* const selections[] = {
+        "x > 2", "2 < x", "y > resnr", "resnr < 2.5", "2.5 > resnr"
+    };
+    setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
+    ASSERT_NO_FATAL_FAILURE(runParser(selections));
+    ASSERT_NO_FATAL_FAILURE(loadTopology("simple.gro"));
+    std::vector<std::string> selNames;
+    for (const auto& sel : sel_)
+    {
+        selNames.emplace_back(sel.name());
+    }
+    // Swap copied selection with original and update selections, to reuse the testing machinery.
+    gmx::SelectionCollection sc2(sc_);
+    sc_ = sc2;
+    std::vector<gmx::Selection> sel2;
+    for (const std::string_view selName : selNames)
+    {
+        std::optional<gmx::Selection> maybeSel = sc_.selection(selName);
+        ASSERT_TRUE(maybeSel.has_value());
+        sel2.push_back(*maybeSel);
+    }
+    sel_ = std::move(sel2);
+
+    ASSERT_NO_FATAL_FAILURE(runCompiler());
+    ASSERT_NO_FATAL_FAILURE(runEvaluate());
+    ASSERT_NO_FATAL_FAILURE(runEvaluateFinal());
+}
+
+TEST_F(SelectionCollectionDataTest, CopiedSelectionWorksPostCompilation)
+{
+    static const char* const selections[] = {
+        "x > 2", "2 < x", "y > resnr", "resnr < 2.5", "2.5 > resnr"
+    };
+    setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
+    ASSERT_NO_FATAL_FAILURE(runParser(selections));
+    ASSERT_NO_FATAL_FAILURE(loadTopology("simple.gro"));
+
+    ASSERT_NO_FATAL_FAILURE(runCompiler());
+    // Note the copy is made post-compilation.
+    std::vector<std::string> selNames;
+    for (const auto& sel : sel_)
+    {
+        selNames.emplace_back(sel.name());
+    }
+    gmx::SelectionCollection sc2(sc_);
+    sc_ = sc2;
+    std::vector<gmx::Selection> sel2;
+    for (const std::string_view selName : selNames)
+    {
+        std::optional<gmx::Selection> maybeSel = sc_.selection(selName);
+        ASSERT_TRUE(maybeSel.has_value());
+        sel2.push_back(*maybeSel);
+    }
+    sel_ = std::move(sel2);
+
+    ASSERT_NO_FATAL_FAILURE(runEvaluate());
+    ASSERT_NO_FATAL_FAILURE(runEvaluateFinal());
+}
+
+TEST_F(SelectionCollectionDataTest, CopiedSelectionsAreIndependent)
+{
+    static const char* const selections[] = {
+        "x > 2", "2 < x", "y > resnr", "resnr < 2.5", "2.5 > resnr"
+    };
+    setFlags(TestFlags() | efTestEvaluation | efTestPositionCoordinates);
+    ASSERT_NO_FATAL_FAILURE(runParser(selections));
+    ASSERT_NO_FATAL_FAILURE(loadTopology("simple.gro"));
+
+    ASSERT_NO_FATAL_FAILURE(runCompiler());
+    // Check that copy evaluation does not conflict with original.
+    gmx::SelectionCollection sc2(sc_);
+    ASSERT_NO_THROW_GMX(sc2.evaluate(topManager_.frame(), nullptr));
+
+    ASSERT_NO_FATAL_FAILURE(runEvaluate());
+    ASSERT_NO_FATAL_FAILURE(runEvaluateFinal());
+}
+
+TEST_F(SelectionCollectionDataTest, CopiedSelectionWithIndexPostCompilation)
+{
+    static const char* const selections[] = { "group \"GrpA\"",
+                                              "GrpB",
+                                              "1",
+                                              "group \"GrpB\" and resname RB",
+                                              "group \"GrpA\" permute 5 3 2 1 4",
+                                              "group \"GrpA\" plus group \"GrpB\"",
+                                              "res_cog of group \"GrpA\"" };
+    setFlags(TestFlags() | efTestSelectionNames);
+    ASSERT_NO_THROW_GMX(loadIndexGroups("simple.ndx"));
+    ASSERT_NO_FATAL_FAILURE(runParser(selections));
+    ASSERT_NO_FATAL_FAILURE(loadTopology("simple.gro"));
+    ASSERT_NO_FATAL_FAILURE(runCompiler());
+    std::vector<std::string> selNames;
+    for (const auto& sel : sel_)
+    {
+        selNames.emplace_back(sel.name());
+    }
+    gmx::SelectionCollection sc2(sc_);
+    sc_ = sc2;
+    std::vector<gmx::Selection> sel2;
+    for (const std::string_view selName : selNames)
+    {
+        std::optional<gmx::Selection> maybeSel = sc_.selection(selName);
+        ASSERT_TRUE(maybeSel.has_value());
+        sel2.push_back(*maybeSel);
+    }
+    sel_ = std::move(sel2);
+    checkCompiled();
+}
 
 } // namespace

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -91,11 +87,11 @@ static void addToPullxHistory(pull_t* pull)
             pcrdHistory.dr23[m] += pcrd.spatialData.dr23[m];
             pcrdHistory.dr45[m] += pcrd.spatialData.dr45[m];
         }
-        if (pcrd.params.eGeom == epullgCYL)
+        if (pcrd.params.eGeom == PullGroupGeometry::Cylinder)
         {
             for (int m = 0; m < DIM; m++)
             {
-                pcrdHistory.dynaX[m] += pull->dyna[c].x[m];
+                pcrdHistory.dynaX[m] += pcrd.dynamicGroup0->x[m];
             }
         }
     }
@@ -174,11 +170,11 @@ static void pull_print_coord_dr(FILE*                out,
                                 double               referenceValue,
                                 const int            numValuesInSum)
 {
-    const double unit_factor = pull_conversion_factor_internal2userinput(&coordParams);
+    const double unit_factor = pull_conversion_factor_internal2userinput(coordParams);
 
     fprintf(out, "\t%g", pcrdData.value * unit_factor / numValuesInSum);
 
-    if (pullParams.bPrintRefValue && coordParams.eType != epullEXTERNAL)
+    if (pullParams.bPrintRefValue && coordParams.eType != PullingAlgorithm::External)
     {
         fprintf(out, "\t%g", referenceValue * unit_factor / numValuesInSum);
     }
@@ -212,18 +208,18 @@ static void pull_print_x(FILE* out, pull_t* pull, double t)
             pcrdHistory = &pull->coordForceHistory->pullCoordinateSums[c];
 
             numValuesInSum = pull->coordForceHistory->numValuesInXSum;
-            pull_print_coord_dr(out, pull->params, pcrd.params, *pcrdHistory, pcrdHistory->valueRef,
-                                numValuesInSum);
+            pull_print_coord_dr(
+                    out, pull->params, pcrd.params, *pcrdHistory, pcrdHistory->valueRef, numValuesInSum);
         }
         else
         {
-            pull_print_coord_dr(out, pull->params, pcrd.params, pcrd.spatialData, pcrd.value_ref,
-                                numValuesInSum);
+            pull_print_coord_dr(
+                    out, pull->params, pcrd.params, pcrd.spatialData, pcrd.value_ref, numValuesInSum);
         }
 
         if (pull->params.bPrintCOM)
         {
-            if (pcrd.params.eGeom == epullgCYL)
+            if (pcrd.params.eGeom == PullGroupGeometry::Cylinder)
             {
                 for (int m = 0; m < DIM; m++)
                 {
@@ -236,7 +232,7 @@ static void pull_print_x(FILE* out, pull_t* pull, double t)
                         }
                         else
                         {
-                            fprintf(out, "\t%g", pull->dyna[c].x[m]);
+                            fprintf(out, "\t%g", pcrd.dynamicGroup0->x[m]);
                         }
                     }
                 }
@@ -249,7 +245,8 @@ static void pull_print_x(FILE* out, pull_t* pull, double t)
                     {
                         if (pull->bXOutAverage)
                         {
-                            fprintf(out, "\t%g",
+                            fprintf(out,
+                                    "\t%g",
                                     pull->coordForceHistory->pullGroupSums[pcrd.params.group[0]].x[m]
                                             / numValuesInSum);
                         }
@@ -268,7 +265,8 @@ static void pull_print_x(FILE* out, pull_t* pull, double t)
                     {
                         if (pull->bXOutAverage)
                         {
-                            fprintf(out, "\t%g",
+                            fprintf(out,
+                                    "\t%g",
                                     pull->coordForceHistory->pullGroupSums[pcrd.params.group[g]].x[m]
                                             / numValuesInSum);
                         }
@@ -298,7 +296,8 @@ static void pull_print_f(FILE* out, const pull_t* pull, double t)
     {
         for (size_t c = 0; c < pull->coord.size(); c++)
         {
-            fprintf(out, "\t%g",
+            fprintf(out,
+                    "\t%g",
                     pull->coordForceHistory->pullCoordinateSums[c].scalarForce
                             / pull->coordForceHistory->numValuesInFSum);
         }
@@ -440,8 +439,8 @@ static FILE* open_pull_out(const char*             fn,
          * the group COMs for all the groups (+ ngroups_max*DIM)
          * and the components of the distance vectors can be printed (+ (ngroups_max/2)*DIM).
          */
-        snew(setname, pull->coord.size()
-                              * (1 + 1 + c_pullCoordNgroupMax * DIM + c_pullCoordNgroupMax / 2 * DIM));
+        snew(setname,
+             pull->coord.size() * (1 + 1 + c_pullCoordNgroupMax * DIM + c_pullCoordNgroupMax / 2 * DIM));
 
         nsets = 0;
         for (size_t c = 0; c < pull->coord.size(); c++)
@@ -456,7 +455,7 @@ static FILE* open_pull_out(const char*             fn,
                 sprintf(buf, "%zu", c + 1);
                 setname[nsets] = gmx_strdup(buf);
                 nsets++;
-                if (pull->params.bPrintRefValue && pull->coord[c].params.eType != epullEXTERNAL)
+                if (pull->params.bPrintRefValue && pull->coord[c].params.eType != PullingAlgorithm::External)
                 {
                     sprintf(buf, "%zu ref", c + 1);
                     setname[nsets] = gmx_strdup(buf);

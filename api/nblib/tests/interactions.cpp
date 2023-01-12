@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -87,18 +86,22 @@ TEST(NBlibTest, NonBondedForceParamsCorrect)
     EXPECT_REAL_EQ_TOL(c12_1, nbfp.getC12(atom1.name(), atom1.name()), gmx::test::defaultRealTolerance());
 
     //! geometric comb rule for c6
-    EXPECT_REAL_EQ_TOL(std::sqrt(c6_1 * c6_2), nbfp.getC6(atom1.name(), atom2.name()),
+    EXPECT_REAL_EQ_TOL(std::sqrt(c6_1 * c6_2),
+                       nbfp.getC6(atom1.name(), atom2.name()),
                        gmx::test::defaultRealTolerance());
     //! + symmetric pair
-    EXPECT_REAL_EQ_TOL(std::sqrt(c6_1 * c6_2), nbfp.getC6(atom2.name(), atom1.name()),
+    EXPECT_REAL_EQ_TOL(std::sqrt(c6_1 * c6_2),
+                       nbfp.getC6(atom2.name(), atom1.name()),
                        gmx::test::defaultRealTolerance());
 
     //! geometric comb rule for c12
-    EXPECT_REAL_EQ_TOL(std::sqrt(c12_1 * c12_2), nbfp.getC12(atom1.name(), atom2.name()),
+    EXPECT_REAL_EQ_TOL(std::sqrt(c12_1 * c12_2),
+                       nbfp.getC12(atom1.name(), atom2.name()),
                        gmx::test::defaultRealTolerance());
 
     //! + symmetric par
-    EXPECT_REAL_EQ_TOL(std::sqrt(c12_1 * c12_2), nbfp.getC12(atom2.name(), atom1.name()),
+    EXPECT_REAL_EQ_TOL(std::sqrt(c12_1 * c12_2),
+                       nbfp.getC12(atom2.name(), atom1.name()),
                        gmx::test::defaultRealTolerance());
 
     //! explicit pairwise interaction c6
@@ -106,10 +109,10 @@ TEST(NBlibTest, NonBondedForceParamsCorrect)
     EXPECT_REAL_EQ_TOL(c6comb, nbfp.getC6(atom3.name(), atom2.name()), gmx::test::defaultRealTolerance());
 
     //! explicit pairwise interaction c12
-    EXPECT_REAL_EQ_TOL(c12comb, nbfp.getC12(atom2.name(), atom3.name()),
-                       gmx::test::defaultRealTolerance());
-    EXPECT_REAL_EQ_TOL(c12comb, nbfp.getC12(atom3.name(), atom2.name()),
-                       gmx::test::defaultRealTolerance());
+    EXPECT_REAL_EQ_TOL(
+            c12comb, nbfp.getC12(atom2.name(), atom3.name()), gmx::test::defaultRealTolerance());
+    EXPECT_REAL_EQ_TOL(
+            c12comb, nbfp.getC12(atom3.name(), atom2.name()), gmx::test::defaultRealTolerance());
 
     ParticleType atom4(ParticleTypeName("a4"), Mass(1));
     interactions.add(atom3.name(), atom4.name(), C6(1), C12(2));
@@ -160,14 +163,16 @@ TEST(NBlibTest, CanMergeInteractions)
 
     auto nbfp = interactions.generateTable();
 
-    EXPECT_REAL_EQ_TOL(std::sqrt(c6_3 * c6_4), nbfp.getC6(atom3.name(), atom4.name()),
+    EXPECT_REAL_EQ_TOL(std::sqrt(c6_3 * c6_4),
+                       nbfp.getC6(atom3.name(), atom4.name()),
                        gmx::test::defaultRealTolerance());
-    EXPECT_REAL_EQ_TOL(std::sqrt(c12_3 * c12_4), nbfp.getC12(atom3.name(), atom4.name()),
+    EXPECT_REAL_EQ_TOL(std::sqrt(c12_3 * c12_4),
+                       nbfp.getC12(atom3.name(), atom4.name()),
                        gmx::test::defaultRealTolerance());
-    EXPECT_REAL_EQ_TOL(c6_override, nbfp.getC6(atom4.name(), atom5.name()),
-                       gmx::test::defaultRealTolerance());
-    EXPECT_REAL_EQ_TOL(c12_override, nbfp.getC12(atom4.name(), atom5.name()),
-                       gmx::test::defaultRealTolerance());
+    EXPECT_REAL_EQ_TOL(
+            c6_override, nbfp.getC6(atom4.name(), atom5.name()), gmx::test::defaultRealTolerance());
+    EXPECT_REAL_EQ_TOL(
+            c12_override, nbfp.getC12(atom4.name(), atom5.name()), gmx::test::defaultRealTolerance());
 }
 
 } // namespace

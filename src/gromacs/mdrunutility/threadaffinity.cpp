@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -82,6 +80,7 @@ public:
 };
 
 //! Global instance of DefaultThreadAffinityAccess
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 DefaultThreadAffinityAccess g_defaultAffinityAccess;
 
 } // namespace
@@ -114,11 +113,11 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
                                        int** localityOrder,
                                        bool* issuedWarning)
 {
-    int  hwThreads;
-    int  hwThreadsPerCore = 0;
-    bool bPickPinStride;
-    bool haveTopology;
-    bool invalidValue;
+    bool        bPickPinStride;
+    bool        haveTopology;
+    bool        invalidValue;
+    int         hwMaxThreads  = hwTop.maxThreads();
+    std::size_t maxSmtPerCore = 1;
 
     haveTopology = (hwTop.supportLevel() >= gmx::HardwareTopology::SupportLevel::Basic);
 
@@ -133,18 +132,16 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
 
     if (haveTopology)
     {
-        hwThreads = hwTop.machine().logicalProcessorCount;
-        // Just use the value for the first core
-        hwThreadsPerCore = hwTop.machine().sockets[0].cores[0].hwThreads.size();
-        snew(*localityOrder, hwThreads);
+        snew(*localityOrder, hwTop.machine().logicalProcessors.size());
         int i = 0;
-        for (auto& s : hwTop.machine().sockets)
+        for (const auto& s : hwTop.machine().packages)
         {
-            for (auto& c : s.cores)
+            for (const auto& c : s.cores)
             {
-                for (auto& t : c.hwThreads)
+                maxSmtPerCore = std::max(maxSmtPerCore, c.processingUnits.size());
+                for (const auto& pu : c.processingUnits)
                 {
-                    (*localityOrder)[i++] = t.logicalProcessorId;
+                    (*localityOrder)[i++] = pu.osId;
                 }
             }
         }
@@ -152,7 +149,6 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
     else
     {
         /* topology information not available or invalid, ignore it */
-        hwThreads      = hwTop.machine().logicalProcessorCount;
         *localityOrder = nullptr;
     }
     // Only warn about the first problem per node.  Otherwise, the first test
@@ -161,30 +157,48 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
     // with this variable is important, since the MPI_Reduce() in
     // invalidWithinSimulation() needs to always happen.
     bool alreadyWarned = false;
-    invalidValue       = (hwThreads <= 0);
+    invalidValue       = (hwMaxThreads <= 0);
     if (invalidWithinSimulation(cr, invalidValue))
     {
         /* We don't know anything about the hardware, don't pin */
         GMX_LOG(mdlog.warning)
                 .asParagraph()
-                .appendText("NOTE: No information on available cores, thread pinning disabled.");
+                .appendText(
+                        "NOTE: No information on available logical cpus, thread pinning disabled.");
         alreadyWarned = true;
     }
     bool validLayout = !invalidValue;
 
+    if (haveTopology)
+    {
+        invalidValue = (hwMaxThreads < static_cast<int>(hwTop.machine().logicalProcessors.size()));
+        if (invalidWithinSimulation(cr, invalidValue) && !alreadyWarned)
+        {
+            // Don't pin on things that look like containers with shared resources
+            // where we are limited to only using a fraction of them
+            GMX_LOG(mdlog.warning)
+                    .asParagraph()
+                    .appendText(
+                            "NOTE: OS CPU limit is lower than logical cpu count, thread pinning "
+                            "disabled.");
+            alreadyWarned = true;
+        }
+        validLayout = validLayout && !invalidValue;
+    }
+
     if (affinityIsAutoAndNumThreadsIsNotAuto)
     {
-        invalidValue = (threads != hwThreads);
-        bool warn    = (invalidValue && threads > 1 && threads < hwThreads);
+        invalidValue = (threads != hwMaxThreads);
+        bool warn    = (invalidValue && threads > 1 && threads < hwMaxThreads);
         if (invalidWithinSimulation(cr, warn) && !alreadyWarned)
         {
             GMX_LOG(mdlog.warning)
                     .asParagraph()
                     .appendText(
                             "NOTE: The number of threads is not equal to the number of (logical) "
-                            "cores\n"
+                            "cpus\n"
                             "      and the -pin option is set to auto: will not pin threads to "
-                            "cores.\n"
+                            "cpus.\n"
                             "      This can lead to significant performance degradation.\n"
                             "      Consider using -pin on (and -pinoffset in case you run multiple "
                             "jobs).");
@@ -193,23 +207,24 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
         validLayout = validLayout && !invalidValue;
     }
 
-    invalidValue = (threads > hwThreads);
+    invalidValue = (threads > hwMaxThreads);
     if (invalidWithinSimulation(cr, invalidValue) && !alreadyWarned)
     {
         GMX_LOG(mdlog.warning)
                 .asParagraph()
-                .appendText("NOTE: Oversubscribing the CPU, will not pin threads");
+                .appendText("NOTE: Oversubscribing available/permitted CPUs, will not pin threads");
         alreadyWarned = true;
     }
     validLayout = validLayout && !invalidValue;
 
-    invalidValue = (pin_offset + threads > hwThreads);
+    invalidValue = (pin_offset + threads > hwMaxThreads);
     if (invalidWithinSimulation(cr, invalidValue) && !alreadyWarned)
     {
         GMX_LOG(mdlog.warning)
                 .asParagraph()
                 .appendText(
-                        "WARNING: Requested offset too large for available cores, thread pinning "
+                        "WARNING: Requested offset too large for available logical cpus, thread "
+                        "pinning "
                         "disabled.");
         alreadyWarned = true;
     }
@@ -221,10 +236,16 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
 
     if (bPickPinStride)
     {
-        if (haveTopology && pin_offset + threads * hwThreadsPerCore <= hwThreads)
+        // Strides get REALLY yucky on modern hybrid CPUs that might combine
+        // performance cores having SMT with efficiency ones that don't.
+        // For now we simply start by testing if we can stride it with the maxSmt
+        if (haveTopology && pin_offset + threads * static_cast<int>(maxSmtPerCore) <= hwMaxThreads)
         {
-            /* Put one thread on each physical core */
-            *pin_stride = hwThreadsPerCore;
+            // If all cores are uniform, this will get place one thread per core.
+            // If they are not, we hope the performance cores come first, which
+            // should get us one thread per those cores at least - and then we
+            // might waste some efficiency cores.
+            *pin_stride = maxSmtPerCore;
         }
         else
         {
@@ -237,14 +258,14 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
              * and probably threads are already pinned by the queuing system,
              * so we wouldn't end up here in the first place.
              */
-            *pin_stride = (hwThreads - pin_offset) / threads;
+            *pin_stride = (hwMaxThreads - pin_offset) / threads;
         }
     }
     else
     {
         /* Check the placement of the thread with the largest index to make sure
          * that the offset & stride doesn't cause pinning beyond the last hardware thread. */
-        invalidValue = (pin_offset + (threads - 1) * (*pin_stride) >= hwThreads);
+        invalidValue = (pin_offset + (threads - 1) * (*pin_stride) >= hwMaxThreads);
     }
     if (invalidWithinSimulation(cr, invalidValue) && !alreadyWarned)
     {
@@ -252,7 +273,8 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
         GMX_LOG(mdlog.warning)
                 .asParagraph()
                 .appendText(
-                        "WARNING: Requested stride too large for available cores, thread pinning "
+                        "WARNING: Requested stride too large for available logical cpus, thread "
+                        "pinning "
                         "disabled.");
         alreadyWarned = true;
     }
@@ -261,8 +283,9 @@ static bool get_thread_affinity_layout(const gmx::MDLogger&         mdlog,
     if (validLayout)
     {
         GMX_LOG(mdlog.info)
-                .appendTextFormatted("Pinning threads with a%s logical core stride of %d",
-                                     bPickPinStride ? "n auto-selected" : " user-specified", *pin_stride);
+                .appendTextFormatted("Pinning threads with a%s logical cpu stride of %d",
+                                     bPickPinStride ? "n auto-selected" : " user-specified",
+                                     *pin_stride);
     }
 
     *issuedWarning = alreadyWarned;
@@ -317,7 +340,11 @@ static bool set_affinity(const t_commrec*            cr,
                 fprintf(debug,
                         "On rank %2d, thread %2d, index %2d, core %2d the affinity setting "
                         "returned %d\n",
-                        cr->nodeid, gmx_omp_get_thread_num(), index, core, ret ? 1 : 0);
+                        cr->nodeid,
+                        gmx_omp_get_thread_num(),
+                        index,
+                        core,
+                        ret ? 1 : 0);
             }
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
@@ -330,7 +357,8 @@ static bool set_affinity(const t_commrec*            cr,
         sprintf(msg,
                 "Looks like we have set affinity for more threads than "
                 "we have (%d > %d)!\n",
-                nth_affinity_set, nthread_local);
+                nth_affinity_set,
+                nthread_local);
         gmx_incons(msg);
     }
 
@@ -356,7 +384,10 @@ static bool set_affinity(const t_commrec*            cr,
 
         if (nthread_local > 1)
         {
-            sprintf(sbuf2, "for %d/%d thread%s ", nthread_local - nth_affinity_set, nthread_local,
+            sprintf(sbuf2,
+                    "for %d/%d thread%s ",
+                    nthread_local - nth_affinity_set,
+                    nthread_local,
                     nthread_local > 1 ? "s" : "");
         }
 
@@ -382,8 +413,8 @@ void analyzeThreadsOnThisNode(const gmx::PhysicalNodeCommunicator& physicalNodeC
         /* MPI_Scan is inclusive, but here we need exclusive */
         *intraNodeThreadOffset -= numThreadsOnThisRank;
         /* Get the total number of threads on this physical node */
-        MPI_Allreduce(&numThreadsOnThisRank, numThreadsOnThisNode, 1, MPI_INT, MPI_SUM,
-                      physicalNodeComm.comm_);
+        MPI_Allreduce(
+                &numThreadsOnThisRank, numThreadsOnThisNode, 1, MPI_INT, MPI_SUM, physicalNodeComm.comm_);
     }
 #else
     GMX_UNUSED_VALUE(physicalNodeComm);
@@ -446,17 +477,23 @@ void gmx_set_thread_affinity(const gmx::MDLogger&         mdlog,
 
     bool affinityIsAutoAndNumThreadsIsNotAuto =
             (hw_opt->threadAffinity == ThreadAffinity::Auto && !hw_opt->totNumThreadsIsAuto);
-    bool issuedWarning;
-    bool validLayout = get_thread_affinity_layout(
-            mdlog, cr, hwTop, numThreadsOnThisNode, affinityIsAutoAndNumThreadsIsNotAuto, offset,
-            &core_pinning_stride, &localityOrder, &issuedWarning);
+    bool                   issuedWarning;
+    bool                   validLayout = get_thread_affinity_layout(mdlog,
+                                                  cr,
+                                                  hwTop,
+                                                  numThreadsOnThisNode,
+                                                  affinityIsAutoAndNumThreadsIsNotAuto,
+                                                  offset,
+                                                  &core_pinning_stride,
+                                                  &localityOrder,
+                                                  &issuedWarning);
     const gmx::sfree_guard localityOrderGuard(localityOrder);
 
     bool allAffinitiesSet;
     if (validLayout)
     {
-        allAffinitiesSet = set_affinity(cr, numThreadsOnThisRank, intraNodeThreadOffset, offset,
-                                        core_pinning_stride, localityOrder, affinityAccess);
+        allAffinitiesSet = set_affinity(
+                cr, numThreadsOnThisRank, intraNodeThreadOffset, offset, core_pinning_stride, localityOrder, affinityAccess);
     }
     else
     {
@@ -476,7 +513,7 @@ void gmx_set_thread_affinity(const gmx::MDLogger&         mdlog,
  *
  * Should be called simultaneously by all MPI ranks.
  */
-static bool detectDefaultAffinityMask(const int nthreads_hw_avail)
+static bool detectDefaultAffinityMask(const int maxThreads)
 {
     bool detectedDefaultAffinityMask = true;
 
@@ -494,21 +531,6 @@ static bool detectDefaultAffinityMask(const int nthreads_hw_avail)
         detectedDefaultAffinityMask = false;
     }
 
-    /* Before proceeding with the actual check, make sure that the number of
-     * detected CPUs is >= the CPUs in the current set.
-     * We need to check for CPU_COUNT as it was added only in glibc 2.6. */
-#    ifdef CPU_COUNT
-    if (detectedDefaultAffinityMask && nthreads_hw_avail < CPU_COUNT(&mask_current))
-    {
-        if (debug)
-        {
-            fprintf(debug, "%d hardware threads detected, but %d was returned by CPU_COUNT",
-                    nthreads_hw_avail, CPU_COUNT(&mask_current));
-        }
-        detectedDefaultAffinityMask = false;
-    }
-#    endif /* CPU_COUNT */
-
     if (detectedDefaultAffinityMask)
     {
         /* Here we check whether all bits of the affinity mask are set.
@@ -519,7 +541,7 @@ static bool detectDefaultAffinityMask(const int nthreads_hw_avail)
          * when running this code at different times.
          */
         bool allBitsAreSet = true;
-        for (int i = 0; (i < nthreads_hw_avail && i < CPU_SETSIZE); i++)
+        for (int i = 0; (i < maxThreads && i < CPU_SETSIZE); i++)
         {
             allBitsAreSet = allBitsAreSet && (CPU_ISSET(i, &mask_current) != 0);
         }
@@ -533,7 +555,7 @@ static bool detectDefaultAffinityMask(const int nthreads_hw_avail)
         }
     }
 #else
-    GMX_UNUSED_VALUE(nthreads_hw_avail);
+    GMX_UNUSED_VALUE(maxThreads);
 #endif /* HAVE_SCHED_AFFINITY */
 
 #if GMX_MPI
@@ -555,8 +577,8 @@ static bool detectDefaultAffinityMask(const int nthreads_hw_avail)
  */
 void gmx_check_thread_affinity_set(const gmx::MDLogger& mdlog,
                                    gmx_hw_opt_t*        hw_opt,
-                                   int gmx_unused nthreads_hw_avail,
-                                   gmx_bool       bAfterOpenmpInit)
+                                   int gmx_unused       maxThreads,
+                                   gmx_bool             bAfterOpenmpInit)
 {
     GMX_RELEASE_ASSERT(hw_opt, "hw_opt must be a non-NULL pointer");
 
@@ -583,7 +605,7 @@ void gmx_check_thread_affinity_set(const gmx::MDLogger& mdlog,
         }
     }
 
-    if (!detectDefaultAffinityMask(nthreads_hw_avail))
+    if (!detectDefaultAffinityMask(maxThreads))
     {
         if (hw_opt->threadAffinity == ThreadAffinity::Auto)
         {

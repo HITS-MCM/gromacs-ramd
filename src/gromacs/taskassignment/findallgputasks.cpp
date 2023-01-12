@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -138,8 +137,7 @@ std::vector<int> allgather(const int& input, int numRanks, MPI_Comm communicator
         // to compile warning-free with all versions of MPI headers.
         //
         // TODO Make an allgather template to deal with this nonsense.
-        MPI_Gather(const_cast<int*>(&input), 1, MPI_INT, const_cast<int*>(result.data()), 1,
-                   MPI_INT, root, communicator);
+        MPI_Gather(const_cast<int*>(&input), 1, MPI_INT, const_cast<int*>(result.data()), 1, MPI_INT, root, communicator);
         MPI_Bcast(const_cast<int*>(result.data()), result.size(), MPI_INT, root, communicator);
 #else
         GMX_UNUSED_VALUE(communicator);
@@ -158,8 +156,8 @@ std::vector<int> computeDisplacements(ArrayRef<const int> extentOnEachRank, int 
 {
     std::vector<int> displacements(numRanks + 1);
     displacements[0] = 0;
-    std::partial_sum(std::begin(extentOnEachRank), std::end(extentOnEachRank),
-                     std::begin(displacements) + 1);
+    std::partial_sum(
+            std::begin(extentOnEachRank), std::end(extentOnEachRank), std::begin(displacements) + 1);
     return displacements;
 }
 
@@ -185,9 +183,15 @@ std::vector<GpuTask> allgatherv(ArrayRef<const GpuTask> input,
         int root = 0;
         // Calling a C API with the const T * from data() doesn't seem to compile reliably.
         // TODO Make an allgatherv template to deal with this nonsense.
-        MPI_Gatherv(const_cast<GpuTask*>(input.data()), input.size(), MPI_INT,
-                    const_cast<GpuTask*>(result.data()), const_cast<int*>(extentOnEachRank.data()),
-                    const_cast<int*>(displacementForEachRank.data()), MPI_INT, root, communicator);
+        MPI_Gatherv(const_cast<GpuTask*>(input.data()),
+                    input.size(),
+                    MPI_INT,
+                    const_cast<GpuTask*>(result.data()),
+                    const_cast<int*>(extentOnEachRank.data()),
+                    const_cast<int*>(displacementForEachRank.data()),
+                    MPI_INT,
+                    root,
+                    communicator);
         MPI_Bcast(const_cast<GpuTask*>(result.data()), result.size(), MPI_INT, root, communicator);
 #else
         GMX_UNUSED_VALUE(communicator);
@@ -227,8 +231,8 @@ GpuTasksOnRanks findAllGpuTasksOnThisNode(ArrayRef<const GpuTask>         gpuTas
      * the vector. */
     auto displacementsForEachRank =
             computeDisplacements(numGpuTasksOnEachRankOfThisNode, numRanksOnThisNode);
-    auto gpuTasksOnThisNode = allgatherv(gpuTasksOnThisRank, numGpuTasksOnEachRankOfThisNode,
-                                         displacementsForEachRank, communicator);
+    auto gpuTasksOnThisNode = allgatherv(
+            gpuTasksOnThisRank, numGpuTasksOnEachRankOfThisNode, displacementsForEachRank, communicator);
 
     /* Next, we re-use the displacements to break up the vector
      * of GPU tasks into something that can be indexed like
@@ -245,8 +249,8 @@ GpuTasksOnRanks findAllGpuTasksOnThisNode(ArrayRef<const GpuTask>         gpuTas
     do
     {
         gpuTasksOnRanksOfThisNode.emplace_back(std::vector<GpuTask>());
-        for (auto taskOnThisRankIndex = *currentDisplacementIt;
-             taskOnThisRankIndex != *nextDisplacementIt; ++taskOnThisRankIndex)
+        for (auto taskOnThisRankIndex = *currentDisplacementIt; taskOnThisRankIndex != *nextDisplacementIt;
+             ++taskOnThisRankIndex)
         {
             gpuTasksOnRanksOfThisNode.back().push_back(gpuTasksOnThisNode[taskOnThisRankIndex]);
         }

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -93,9 +92,9 @@ void fillSingleQuadraticSplineTableData(const std::function<double(double)>& fun
 
     for (int i = endIndex - 1; i >= 0; i--)
     {
-        double x = i * spacing;
-        double tmpFunctionValue;
-        double tmpDerivativeValue;
+        double x                  = i * spacing;
+        double tmpFunctionValue   = 0;
+        double tmpDerivativeValue = 0;
 
         if (range.first > 0 && i == 0)
         {
@@ -247,8 +246,7 @@ void fillDdfzTableData(const std::vector<real>& functionTableData,
                        const std::vector<real>& derivativeTableData,
                        std::vector<real>*       ddfzTableData)
 {
-    GMX_ASSERT(functionTableData.size() == derivativeTableData.size(),
-               "Mismatching vector lengths");
+    GMX_ASSERT(functionTableData.size() == derivativeTableData.size(), "Mismatching vector lengths");
 
     std::size_t points = functionTableData.size();
 
@@ -275,8 +273,7 @@ const real QuadraticSplineTable::defaultTolerance = 10.0 * GMX_FLOAT_EPS;
 QuadraticSplineTable::QuadraticSplineTable(std::initializer_list<AnalyticalSplineTableInput> analyticalInputList,
                                            const std::pair<real, real>&                      range,
                                            real tolerance) :
-    numFuncInTable_(analyticalInputList.size()),
-    range_(range)
+    numFuncInTable_(analyticalInputList.size()), range_(range)
 {
     // Sanity check on input values
     if (range_.first < 0.0 || (range_.second - range_.first) < 0.001)
@@ -342,16 +339,20 @@ QuadraticSplineTable::QuadraticSplineTable(std::initializer_list<AnalyticalSplin
             std::vector<real> tmpDerTableData;
             std::vector<real> tmpDdfzTableData;
 
-            fillSingleQuadraticSplineTableData(thisFuncInput.function, thisFuncInput.derivative,
-                                               range_, spacing, &tmpFuncTableData, &tmpDerTableData);
+            fillSingleQuadraticSplineTableData(thisFuncInput.function,
+                                               thisFuncInput.derivative,
+                                               range_,
+                                               spacing,
+                                               &tmpFuncTableData,
+                                               &tmpDerTableData);
 
             fillDdfzTableData(tmpFuncTableData, tmpDerTableData, &tmpDdfzTableData);
 
-            internal::fillMultiplexedTableData(tmpDerTableData, &derivativeMultiTableData_, 1,
-                                               numFuncInTable_, funcIndex);
+            internal::fillMultiplexedTableData(
+                    tmpDerTableData, &derivativeMultiTableData_, 1, numFuncInTable_, funcIndex);
 
-            internal::fillMultiplexedTableData(tmpDdfzTableData, &ddfzMultiTableData_, 4,
-                                               numFuncInTable_, funcIndex);
+            internal::fillMultiplexedTableData(
+                    tmpDdfzTableData, &ddfzMultiTableData_, 4, numFuncInTable_, funcIndex);
 
             funcIndex++;
         }
@@ -368,8 +369,7 @@ QuadraticSplineTable::QuadraticSplineTable(std::initializer_list<AnalyticalSplin
 QuadraticSplineTable::QuadraticSplineTable(std::initializer_list<NumericalSplineTableInput> numericalInputList,
                                            const std::pair<real, real>&                     range,
                                            real tolerance) :
-    numFuncInTable_(numericalInputList.size()),
-    range_(range)
+    numFuncInTable_(numericalInputList.size()), range_(range)
 {
     // Sanity check on input values
     if (range.first < 0.0 || (range.second - range.first) < 0.001)
@@ -458,17 +458,21 @@ QuadraticSplineTable::QuadraticSplineTable(std::initializer_list<NumericalSpline
             std::vector<real> tmpDerTableData;
             std::vector<real> tmpDdfzTableData;
 
-            fillSingleQuadraticSplineTableData(thisFuncInput.function, thisFuncInput.derivative,
-                                               thisFuncInput.spacing, range, spacing,
-                                               &tmpFuncTableData, &tmpDerTableData);
+            fillSingleQuadraticSplineTableData(thisFuncInput.function,
+                                               thisFuncInput.derivative,
+                                               thisFuncInput.spacing,
+                                               range,
+                                               spacing,
+                                               &tmpFuncTableData,
+                                               &tmpDerTableData);
 
             fillDdfzTableData(tmpFuncTableData, tmpDerTableData, &tmpDdfzTableData);
 
-            internal::fillMultiplexedTableData(tmpDerTableData, &derivativeMultiTableData_, 1,
-                                               numFuncInTable_, funcIndex);
+            internal::fillMultiplexedTableData(
+                    tmpDerTableData, &derivativeMultiTableData_, 1, numFuncInTable_, funcIndex);
 
-            internal::fillMultiplexedTableData(tmpDdfzTableData, &ddfzMultiTableData_, 4,
-                                               numFuncInTable_, funcIndex);
+            internal::fillMultiplexedTableData(
+                    tmpDdfzTableData, &ddfzMultiTableData_, 4, numFuncInTable_, funcIndex);
 
             funcIndex++;
         }

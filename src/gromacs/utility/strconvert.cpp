@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -75,9 +74,9 @@ bool boolFromString(const char* value)
 
 int intFromString(const char* str)
 {
-    errno = 0;
-    char*          endptr;
-    const long int value = std::strtol(str, &endptr, 10);
+    errno                 = 0;
+    char*          endptr = nullptr;
+    const long int value  = std::strtol(str, &endptr, 10);
     if (errno == ERANGE || value < std::numeric_limits<int>::min()
         || value > std::numeric_limits<int>::max())
     {
@@ -93,9 +92,9 @@ int intFromString(const char* str)
 
 int64_t int64FromString(const char* str)
 {
-    errno = 0;
-    char*         endptr;
-    const int64_t value = str_to_int64_t(str, &endptr);
+    errno                = 0;
+    char*         endptr = nullptr;
+    const int64_t value  = str_to_int64_t(str, &endptr);
     if (errno == ERANGE)
     {
         GMX_THROW(InvalidInputError("Invalid value: '" + std::string(str)
@@ -110,9 +109,9 @@ int64_t int64FromString(const char* str)
 
 float floatFromString(const char* str)
 {
-    errno = 0;
-    char*        endptr;
-    const double value = std::strtod(str, &endptr);
+    errno               = 0;
+    char*        endptr = nullptr;
+    const double value  = std::strtod(str, &endptr);
     if (errno == ERANGE || value < -std::numeric_limits<float>::max()
         || value > std::numeric_limits<float>::max())
     {
@@ -128,9 +127,9 @@ float floatFromString(const char* str)
 
 double doubleFromString(const char* str)
 {
-    errno = 0;
-    char*        endptr;
-    const double value = std::strtod(str, &endptr);
+    errno               = 0;
+    char*        endptr = nullptr;
+    const double value  = std::strtod(str, &endptr);
     if (errno == ERANGE)
     {
         GMX_THROW(InvalidInputError("Invalid value: '" + std::string(str)

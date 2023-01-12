@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -207,10 +203,13 @@ static void get_params(const char* mpin, const char* mpout, t_psrec* psr)
     done_warning(wi, FARGS);
 }
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static t_rgb black = { 0, 0, 0 };
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static t_rgb white = { 1, 1, 1 };
 #define BLACK (&black)
 /* this must correspond to *colors[] in get_params */
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static t_rgb* linecolors[] = { nullptr, &black, &white, nullptr };
 
 static void leg_discrete(t_psdata*                      ps,
@@ -422,8 +421,7 @@ static void draw_boxes(t_psdata* ps, real x0, real y0, real w, gmx::ArrayRef<t_m
                 /* Plot label on lowest graph only */
                 if (m == mat.begin())
                 {
-                    ps_ctext(ps, xx, yy00 - DDD - psr->X.majorticklen - psr->X.tickfontsize * 0.8,
-                             xtick[x], eXCenter);
+                    ps_ctext(ps, xx, yy00 - DDD - psr->X.majorticklen - psr->X.tickfontsize * 0.8, xtick[x], eXCenter);
                 }
             }
             else if (bRmod(m->axis_x[x], psr->X.offset, psr->X.minor)
@@ -454,8 +452,7 @@ static void draw_boxes(t_psdata* ps, real x0, real y0, real w, gmx::ArrayRef<t_m
                 /* Major ticks */
                 strlength = std::max(strlength, std::strlen(ytick[y]));
                 ps_line(ps, xx00, yy, xx00 - psr->Y.majorticklen, yy);
-                ps_ctext(ps, xx00 - psr->Y.majorticklen - DDD, yy - psr->Y.tickfontsize / 3.0,
-                         ytick[y], eXRight);
+                ps_ctext(ps, xx00 - psr->Y.majorticklen - DDD, yy - psr->Y.tickfontsize / 3.0, ytick[y], eXRight);
             }
             else if (bRmod(m->axis_y[y], psr->Y.offset, psr->Y.minor))
             {
@@ -503,9 +500,11 @@ static void draw_boxes(t_psdata* ps, real x0, real y0, real w, gmx::ArrayRef<t_m
     if (!mylab.empty())
     {
         ps_strfont(ps, psr->X.font, psr->X.fontsize);
-        ps_ctext(ps, x0 + w / 2,
+        ps_ctext(ps,
+                 x0 + w / 2,
                  y0 - DDD - psr->X.majorticklen - psr->X.tickfontsize * FUDGE - psr->X.fontsize,
-                 mylab, eXCenter);
+                 mylab,
+                 eXCenter);
     }
 }
 
@@ -641,8 +640,10 @@ static std::vector<t_mapping> add_maps(gmx::ArrayRef<t_mapping> map1, gmx::Array
     {
         gmx_fatal(FARGS, "Not enough symbols to merge the two colormaps\n");
     }
-    printf("Combining colormaps of %zu and %zu elements into one of %zu elements\n", map1.size(),
-           map2.size(), map.size());
+    printf("Combining colormaps of %zu and %zu elements into one of %zu elements\n",
+           map1.size(),
+           map2.size(),
+           map.size());
     gmx::index k = 0;
     for (gmx::index j = 0; j < gmx::ssize(map1) && k < gmx::ssize(map); ++j, ++k)
     {
@@ -814,7 +815,11 @@ static void ps_mat(const char*             outf,
     if (psr->X.major <= 0)
     {
         tick_spacing((mat[0].flags & MAT_SPATIAL_X) ? mat[0].nx + 1 : mat[0].nx,
-                     mat[0].axis_x.data(), psr->X.offset, 'X', &(psr->X.major), &(psr->X.minor));
+                     mat[0].axis_x.data(),
+                     psr->X.offset,
+                     'X',
+                     &(psr->X.major),
+                     &(psr->X.minor));
     }
     if (psr->X.minor <= 0)
     {
@@ -823,7 +828,11 @@ static void ps_mat(const char*             outf,
     if (psr->Y.major <= 0)
     {
         tick_spacing((mat[0].flags & MAT_SPATIAL_Y) ? mat[0].ny + 1 : mat[0].ny,
-                     mat[0].axis_y.data(), psr->Y.offset, 'Y', &(psr->Y.major), &(psr->Y.minor));
+                     mat[0].axis_y.data(),
+                     psr->Y.offset,
+                     'Y',
+                     &(psr->Y.major),
+                     &(psr->Y.minor));
     }
     if (psr->Y.minor <= 0)
     {
@@ -1031,14 +1040,14 @@ static void ps_mat(const char*             outf,
         {
             if (elegend != elBoth)
             {
-                leg_continuous(&out, x0 + w / 2, w / 2, DDD, legend, psr->legfontsize, psr->legfont,
-                               leg_map, mapoffset);
+                leg_continuous(
+                        &out, x0 + w / 2, w / 2, DDD, legend, psr->legfontsize, psr->legfont, leg_map, mapoffset);
             }
             else
             {
                 assert(!mat2.empty());
-                leg_bicontinuous(&out, x0 + w / 2, w, DDD, mat[0].legend, mat2[0].legend,
-                                 psr->legfontsize, psr->legfont, map1, map2);
+                leg_bicontinuous(
+                        &out, x0 + w / 2, w, DDD, mat[0].legend, mat2[0].legend, psr->legfontsize, psr->legfont, map1, map2);
             }
         }
         ps_comment(&out, "Done processing");
@@ -1072,8 +1081,12 @@ static void prune_mat(gmx::ArrayRef<t_matrix> mat, gmx::ArrayRef<t_matrix> mat2,
                        "Matrix pruning requires matrices of the same size");
     for (gmx::index i = 0; i != gmx::ssize(mat); ++i)
     {
-        fprintf(stderr, "converting %dx%d matrix to %dx%d\n", mat[i].nx, mat[i].ny,
-                (mat[i].nx + skip - 1) / skip, (mat[i].ny + skip - 1) / skip);
+        fprintf(stderr,
+                "converting %dx%d matrix to %dx%d\n",
+                mat[i].nx,
+                mat[i].ny,
+                (mat[i].nx + skip - 1) / skip,
+                (mat[i].ny + skip - 1) / skip);
         /* walk through matrix */
         int xs = 0;
         for (int x = 0; (x < mat[i].nx); x++)
@@ -1181,7 +1194,11 @@ static void write_combined_matrix(int                     ecombine,
             gmx_fatal(FARGS,
                       "Size of frame %zd in 1st (%dx%d) and 2nd matrix (%dx%d) do"
                       " not match.\n",
-                      k, mat1[k].nx, mat1[k].ny, mat2[k].nx, mat2[k].ny);
+                      k,
+                      mat1[k].nx,
+                      mat1[k].ny,
+                      mat2[k].nx,
+                      mat2[k].ny);
         }
         printf("Combining two %dx%d matrices\n", mat1[k].nx, mat1[k].ny);
         rmat1 = matrix2real(&mat1[k], nullptr);
@@ -1226,9 +1243,22 @@ static void write_combined_matrix(int                     ecombine,
         }
         else
         {
-            write_xpm(out, mat1[k].flags, mat1[k].title, mat1[k].legend, mat1[k].label_x,
-                      mat1[k].label_y, mat1[k].nx, mat1[k].ny, mat1[k].axis_x.data(),
-                      mat1[k].axis_y.data(), rmat1, rlo, rhi, white, black, &nlevels);
+            write_xpm(out,
+                      mat1[k].flags,
+                      mat1[k].title,
+                      mat1[k].legend,
+                      mat1[k].label_x,
+                      mat1[k].label_y,
+                      mat1[k].nx,
+                      mat1[k].ny,
+                      mat1[k].axis_x.data(),
+                      mat1[k].axis_y.data(),
+                      rmat1,
+                      rlo,
+                      rhi,
+                      white,
+                      black,
+                      &nlevels);
         }
     }
     gmx_ffclose(out);
@@ -1265,7 +1295,11 @@ static void do_mat(gmx::ArrayRef<t_matrix> mat,
                 gmx_fatal(FARGS,
                           "WAKE UP!! Size of frame %zd in 2nd matrix file (%dx%d) does not match "
                           "size of 1st matrix (%dx%d) or the other way around.\n",
-                          k, mat2[k].nx, mat2[k].ny, mat[k].nx, mat[k].ny);
+                          k,
+                          mat2[k].nx,
+                          mat2[k].ny,
+                          mat[k].nx,
+                          mat[k].ny);
             }
             for (int j = 0; (j < mat[k].ny); j++)
             {
@@ -1295,8 +1329,7 @@ static void do_mat(gmx::ArrayRef<t_matrix> mat,
 
     if (epsfile != nullptr)
     {
-        ps_mat(epsfile, mat, mat2, bFrame, bDiag, bFirstDiag, bTitle, bTitleOnce, bYonce, elegend,
-               size, boxx, boxy, m2p, m2pout, mapoffset);
+        ps_mat(epsfile, mat, mat2, bFrame, bDiag, bFirstDiag, bTitle, bTitleOnce, bYonce, elegend, size, boxx, boxy, m2p, m2pout, mapoffset);
     }
     if (xpmfile != nullptr)
     {
@@ -1503,8 +1536,8 @@ int gmx_xpm2ps(int argc, char* argv[])
                        { efEPS, "-o", nullptr, ffOPTWR },     { efXPM, "-xpm", nullptr, ffOPTWR } };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW, NFILE, fnm, NPA, pa, asize(desc), desc, 0,
-                           nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW, NFILE, fnm, NPA, pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -1557,14 +1590,22 @@ int gmx_xpm2ps(int argc, char* argv[])
     fn = opt2fn("-f", NFILE, fnm);
     std::vector<t_matrix> mat, mat2;
     mat = read_xpm_matrix(fn);
-    fprintf(stderr, "There %s %zu matri%s in %s\n", (mat.size() > 1) ? "are" : "is", mat.size(),
-            (mat.size() > 1) ? "ces" : "x", fn);
+    fprintf(stderr,
+            "There %s %zu matri%s in %s\n",
+            (mat.size() > 1) ? "are" : "is",
+            mat.size(),
+            (mat.size() > 1) ? "ces" : "x",
+            fn);
     fn = opt2fn_null("-f2", NFILE, fnm);
     if (fn)
     {
         mat2 = read_xpm_matrix(fn);
-        fprintf(stderr, "There %s %zu matri%s in %s\n", (mat2.size() > 1) ? "are" : "is",
-                mat2.size(), (mat2.size() > 1) ? "ces" : "x", fn);
+        fprintf(stderr,
+                "There %s %zu matri%s in %s\n",
+                (mat2.size() > 1) ? "are" : "is",
+                mat2.size(),
+                (mat2.size() > 1) ? "ces" : "x",
+                fn);
         if (mat.size() != mat2.size())
         {
             fprintf(stderr, "Different number of matrices, using the smallest number.\n");
@@ -1626,14 +1667,34 @@ int gmx_xpm2ps(int argc, char* argv[])
 
     if (ecombine && ecombine != ecHalves)
     {
-        write_combined_matrix(ecombine, xpmfile, mat, mat2, opt2parg_bSet("-cmin", NPA, pa) ? &cmin : nullptr,
+        write_combined_matrix(ecombine,
+                              xpmfile,
+                              mat,
+                              mat2,
+                              opt2parg_bSet("-cmin", NPA, pa) ? &cmin : nullptr,
                               opt2parg_bSet("-cmax", NPA, pa) ? &cmax : nullptr);
     }
     else
     {
-        do_mat(mat, mat2, bFrame, bZeroLine, bDiag, bFirstDiag, bTitle, bTitleOnce, bYonce, elegend,
-               size, boxx, boxy, epsfile, xpmfile, opt2fn_null("-di", NFILE, fnm),
-               opt2fn_null("-do", NFILE, fnm), skip, mapoffset);
+        do_mat(mat,
+               mat2,
+               bFrame,
+               bZeroLine,
+               bDiag,
+               bFirstDiag,
+               bTitle,
+               bTitleOnce,
+               bYonce,
+               elegend,
+               size,
+               boxx,
+               boxy,
+               epsfile,
+               xpmfile,
+               opt2fn_null("-di", NFILE, fnm),
+               opt2fn_null("-do", NFILE, fnm),
+               skip,
+               mapoffset);
     }
 
     view_all(oenv, NFILE, fnm);

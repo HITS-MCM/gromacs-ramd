@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2014,2015, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2014- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 # - Define macro to check if linking to libxml2 actually works,
 # because the find_package macro is content if one exists.  This can
@@ -47,7 +46,7 @@ include(gmxOptionUtilities)
 function(GMX_TEST_LIBXML2 VARIABLE)
     if(NOT LIBXML2_FOUND)
         set(${VARIABLE} OFF PARENT_SCOPE)
-	return()
+        return()
     endif()
 
     if(HAVE_ZLIB)
@@ -72,18 +71,18 @@ function(GMX_TEST_LIBXML2 VARIABLE)
     if(LIBXML2_LINKS_OK)
         #check that xml headers can be included
         set(CMAKE_REQUIRED_INCLUDES "${LIBXML2_INCLUDE_DIR}")
-	check_include_files("libxml/parser.h" LIBXML2_INCL_OK)
-	if(NOT LIBXML2_INCL_OK)
+        check_include_files("libxml/parser.h" LIBXML2_INCL_OK)
+        if(NOT LIBXML2_INCL_OK)
             #xml headers depend on iconv.h. Test whether adding its path fixes the problem
             find_path(ICONV_INCLUDE_DIR iconv.h)
             if(ICONV_INCLUDE_DIR)
                 set(CMAKE_REQUIRED_INCLUDES "${LIBXML2_INCLUDE_DIR};${ICONV_INCLUDE_DIR}")
-		unset(LIBXML2_INCL_OK CACHE)
-		check_include_files("libxml/parser.h" LIBXML2_INCL_OK)
-		set(LIBXML2_INCLUDE_DIR "${LIBXML2_INCLUDE_DIR};${ICONV_INCLUDE_DIR}" CACHE PATH "Libxml2 include path" FORCE)
+                unset(LIBXML2_INCL_OK CACHE)
+                check_include_files("libxml/parser.h" LIBXML2_INCL_OK)
+                set(LIBXML2_INCLUDE_DIR "${LIBXML2_INCLUDE_DIR};${ICONV_INCLUDE_DIR}" CACHE PATH "Libxml2 include path" FORCE)
             endif()
         endif()
-	set(${VARIABLE} ${LIBXML2_INCL_OK} PARENT_SCOPE)
+        set(${VARIABLE} ${LIBXML2_INCL_OK} PARENT_SCOPE)
     else()
         set(${VARIABLE} OFF PARENT_SCOPE)
     endif()

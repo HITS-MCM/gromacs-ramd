@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -49,6 +48,7 @@
 
 #include <gtest/gtest.h>
 
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/options/basicoptions.h"
 #include "gromacs/options/ioptionscontainer.h"
@@ -137,8 +137,8 @@ void SplineTableTest<T>::testSplineTableAgainstFunctions(const std::string&     
         real testFuncValue;
         real testDerValue;
 
-        table.template evaluateFunctionAndDerivative<numFuncInTable, funcIndex>(x, &testFuncValue,
-                                                                                &testDerValue);
+        table.template evaluateFunctionAndDerivative<numFuncInTable, funcIndex>(
+                x, &testFuncValue, &testDerValue);
 
         // Check that we get the same values from function/derivative-only methods
         real tmpFunc, tmpDer;
@@ -369,7 +369,7 @@ double pmeCorrDerivative(double r)
 /*! \brief Typed-test list. We test QuadraticSplineTable and CubicSplineTable
  */
 typedef ::testing::Types<QuadraticSplineTable, CubicSplineTable> SplineTableTypes;
-TYPED_TEST_CASE(SplineTableTest, SplineTableTypes);
+TYPED_TEST_SUITE(SplineTableTest, SplineTableTypes);
 
 
 TYPED_TEST(SplineTableTest, HandlesIncorrectInput)
@@ -443,8 +443,8 @@ TYPED_TEST(SplineTableTest, PmeCorrection)
     TypeParam pmeCorrTable({ { "PMECorr", pmeCorrFunction, pmeCorrDerivative } }, range, tolerance);
 
     TestFixture::setTolerance(tolerance);
-    TestFixture::testSplineTableAgainstFunctions("PMECorr", pmeCorrFunction, pmeCorrDerivative,
-                                                 pmeCorrTable, range);
+    TestFixture::testSplineTableAgainstFunctions(
+            "PMECorr", pmeCorrFunction, pmeCorrDerivative, pmeCorrTable, range);
 }
 
 
@@ -512,12 +512,12 @@ TYPED_TEST(SplineTableTest, NumericalInputPmeCorr)
         derivativeValues.push_back(pmeCorrDerivative(x));
     }
 
-    TypeParam pmeCorrTable({ { "NumericalPMECorr", functionValues, derivativeValues, inputSpacing } },
-                           range, tolerance);
+    TypeParam pmeCorrTable(
+            { { "NumericalPMECorr", functionValues, derivativeValues, inputSpacing } }, range, tolerance);
 
     TestFixture::setTolerance(tolerance);
-    TestFixture::testSplineTableAgainstFunctions("NumericalPMECorr", pmeCorrFunction,
-                                                 pmeCorrDerivative, pmeCorrTable, range);
+    TestFixture::testSplineTableAgainstFunctions(
+            "NumericalPMECorr", pmeCorrFunction, pmeCorrDerivative, pmeCorrTable, range);
 }
 
 TYPED_TEST(SplineTableTest, TwoFunctions)
@@ -528,10 +528,10 @@ TYPED_TEST(SplineTableTest, TwoFunctions)
                     range);
 
     // Test entire range for each function. This will use the method that interpolates a single function
-    TestFixture::template testSplineTableAgainstFunctions<2, 0>("LJ6", lj6Function, lj6Derivative,
-                                                                table, range);
-    TestFixture::template testSplineTableAgainstFunctions<2, 1>("LJ12", lj12Function,
-                                                                lj12Derivative, table, range);
+    TestFixture::template testSplineTableAgainstFunctions<2, 0>(
+            "LJ6", lj6Function, lj6Derivative, table, range);
+    TestFixture::template testSplineTableAgainstFunctions<2, 1>(
+            "LJ12", lj12Function, lj12Derivative, table, range);
 
     // Test the methods that evaluated both functions for one value
     real x        = 0.5 * (range.first + range.second);
@@ -590,12 +590,12 @@ TYPED_TEST(SplineTableTest, ThreeFunctions)
                     range);
 
     // Test entire range for each function
-    TestFixture::template testSplineTableAgainstFunctions<3, 0>("Coulomb", coulombFunction,
-                                                                coulombDerivative, table, range);
-    TestFixture::template testSplineTableAgainstFunctions<3, 1>("LJ6", lj6Function, lj6Derivative,
-                                                                table, range);
-    TestFixture::template testSplineTableAgainstFunctions<3, 2>("LJ12", lj12Function,
-                                                                lj12Derivative, table, range);
+    TestFixture::template testSplineTableAgainstFunctions<3, 0>(
+            "Coulomb", coulombFunction, coulombDerivative, table, range);
+    TestFixture::template testSplineTableAgainstFunctions<3, 1>(
+            "LJ6", lj6Function, lj6Derivative, table, range);
+    TestFixture::template testSplineTableAgainstFunctions<3, 2>(
+            "LJ12", lj12Function, lj12Derivative, table, range);
 
     // Test the methods that evaluated both functions for one value
     real x        = 0.5 * (range.first + range.second);
@@ -653,8 +653,8 @@ TYPED_TEST(SplineTableTest, ThreeFunctions)
     EXPECT_EQ(tstDer1, tmpDer1);
 
     // Test that scrambled order interpolation methods work
-    table.template evaluateFunctionAndDerivative<3, 2, 1, 0>(x, &tstFunc2, &tstDer2, &tstFunc1,
-                                                             &tstDer1, &tstFunc0, &tstDer0);
+    table.template evaluateFunctionAndDerivative<3, 2, 1, 0>(
+            x, &tstFunc2, &tstDer2, &tstFunc1, &tstDer1, &tstFunc0, &tstDer0);
     EXPECT_EQ(tstFunc0, tmpFunc0);
     EXPECT_EQ(tstFunc1, tmpFunc1);
     EXPECT_EQ(tstFunc2, tmpFunc2);

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,15 +26,16 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include "grompp.h"
 
+#include <array>
 #include <cerrno>
 #include <climits>
 #include <cmath>
@@ -79,6 +76,7 @@
 #include "gromacs/mdlib/calc_verletbuf.h"
 #include "gromacs/mdlib/compute_io.h"
 #include "gromacs/mdlib/constr.h"
+#include "gromacs/mdlib/md_support.h"
 #include "gromacs/mdlib/perf_est.h"
 #include "gromacs/mdlib/vsite.h"
 #include "gromacs/mdrun/mdmodules.h"
@@ -106,7 +104,7 @@
 #include "gromacs/utility/listoflists.h"
 #include "gromacs/utility/logger.h"
 #include "gromacs/utility/loggerbuilder.h"
-#include "gromacs/utility/mdmodulenotification.h"
+#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
 
@@ -114,14 +112,13 @@
 InteractionOfType::InteractionOfType(gmx::ArrayRef<const int>  atoms,
                                      gmx::ArrayRef<const real> params,
                                      const std::string&        name) :
-    atoms_(atoms.begin(), atoms.end()),
-    interactionTypeName_(name)
+    atoms_(atoms.begin(), atoms.end()), interactionTypeName_(name)
 {
     GMX_RELEASE_ASSERT(
             params.size() <= forceParam_.size(),
             gmx::formatString("Cannot have more parameters than the maximum number possible (%d)", MAXFORCEPARAM)
                     .c_str());
-    auto forceParamIt = forceParam_.begin();
+    std::array<real, MAXFORCEPARAM>::iterator forceParamIt = forceParam_.begin();
     for (const auto param : params)
     {
         *forceParamIt++ = param;
@@ -297,8 +294,12 @@ static int check_atom_names(const char*          fn1,
                         GMX_LOG(logger.warning)
                                 .asParagraph()
                                 .appendTextFormatted(
-                                        "atom name %d in %s and %s does not match (%s - %s)", i + 1,
-                                        fn1, fn2, *(tat->atomname[j]), *(at->atomname[i]));
+                                        "atom name %d in %s and %s does not match (%s - %s)",
+                                        i + 1,
+                                        fn1,
+                                        fn2,
+                                        *(tat->atomname[j]),
+                                        *(at->atomname[i]));
                     }
                     else if (nmismatch == c_maxNumberOfMismatches)
                     {
@@ -436,9 +437,14 @@ static void check_bonds_timestep(const gmx_mtop_t* mtop, double dt, warninp* wi)
                 "oscillational period of %.1e ps, which is less than %d times the time step of "
                 "%.1e ps.\n"
                 "%s",
-                *w_moltype->name, w_a1 + 1, *w_moltype->atoms.atomname[w_a1], w_a2 + 1,
-                *w_moltype->atoms.atomname[w_a2], std::sqrt(w_period2),
-                bWarn ? min_steps_warn : min_steps_note, dt,
+                *w_moltype->name,
+                w_a1 + 1,
+                *w_moltype->atoms.atomname[w_a1],
+                w_a2 + 1,
+                *w_moltype->atoms.atomname[w_a2],
+                std::sqrt(w_period2),
+                bWarn ? min_steps_warn : min_steps_note,
+                dt,
                 bWater ? "Maybe you asked for fexible water."
                        : "Maybe you forgot to change the constraints mdp option.");
         if (bWarn)
@@ -458,7 +464,8 @@ static void check_vel(gmx_mtop_t* mtop, rvec v[])
     {
         const t_atom& local = atomP.atom();
         int           i     = atomP.globalAtomNumber();
-        if (local.ptype == eptShell || local.ptype == eptBond || local.ptype == eptVSite)
+        if (local.ptype == ParticleType::Shell || local.ptype == ParticleType::Bond
+            || local.ptype == ParticleType::VSite)
         {
             clear_rvec(v[i]);
         }
@@ -472,7 +479,7 @@ static void check_shells_inputrec(gmx_mtop_t* mtop, t_inputrec* ir, warninp* wi)
     for (const AtomProxy atomP : AtomRange(*mtop))
     {
         const t_atom& local = atomP.atom();
-        if (local.ptype == eptShell || local.ptype == eptBond)
+        if (local.ptype == ParticleType::Shell || local.ptype == ParticleType::Bond)
         {
             nshells++;
         }
@@ -576,7 +583,7 @@ static void new_status(const char*                           topfile,
                        std::vector<MoleculeInformation>*     mi,
                        std::unique_ptr<MoleculeInformation>* intermolecular_interactions,
                        gmx::ArrayRef<InteractionsOfType>     interactions,
-                       int*                                  comb,
+                       CombinationRule*                      comb,
                        double*                               reppow,
                        real*                                 fudgeQQ,
                        gmx_bool                              bMorse,
@@ -588,9 +595,24 @@ static void new_status(const char*                           topfile,
     bool                        ffParametrizedWithHBondConstraints;
 
     /* TOPOLOGY processing */
-    sys->name = do_top(bVerbose, topfile, topppfile, opts, bZero, &(sys->symtab), interactions,
-                       comb, reppow, fudgeQQ, atypes, mi, intermolecular_interactions, ir,
-                       &molblock, &ffParametrizedWithHBondConstraints, wi, logger);
+    sys->name = do_top(bVerbose,
+                       topfile,
+                       topppfile,
+                       opts,
+                       bZero,
+                       &(sys->symtab),
+                       interactions,
+                       comb,
+                       reppow,
+                       fudgeQQ,
+                       atypes,
+                       mi,
+                       intermolecular_interactions,
+                       ir,
+                       &molblock,
+                       &ffParametrizedWithHBondConstraints,
+                       wi,
+                       logger);
 
     sys->molblock.clear();
 
@@ -621,7 +643,7 @@ static void new_status(const char*                           topfile,
         convert_harmonics(*mi, atypes);
     }
 
-    if (ir->eDisre == edrNone)
+    if (ir->eDisre == DistanceRestraintRefinement::None)
     {
         i = rm_interactions(F_DISRES, *mi);
         if (i > 0)
@@ -654,7 +676,7 @@ static void new_status(const char*                           topfile,
      * constraints only. Do not print note with large timesteps or vsites.
      */
     if (opts->nshake == eshALLBONDS && ffParametrizedWithHBondConstraints && ir->delta_t < 0.0026
-        && gmx_mtop_ftype_count(sys, F_VSITE3FD) == 0)
+        && gmx_mtop_ftype_count(*sys, F_VSITE3FD) == 0)
     {
         set_warning_line(wi, "unknown", -1);
         warning_note(wi,
@@ -681,15 +703,18 @@ static void new_status(const char*                           topfile,
         gmx_fatal(FARGS,
                   "number of coordinates in coordinate file (%s, %d)\n"
                   "             does not match topology (%s, %d)",
-                  confin, state->natoms, topfile, sys->natoms);
+                  confin,
+                  state->natoms,
+                  topfile,
+                  sys->natoms);
     }
     /* It would be nice to get rid of the copies below, but we don't know
      * a priori if the number of atoms in confin matches what we expect.
      */
-    state->flags |= (1 << estX);
+    state->flags |= enumValueToBitMask(StateEntry::X);
     if (v != nullptr)
     {
-        state->flags |= (1 << estV);
+        state->flags |= enumValueToBitMask(StateEntry::V);
     }
     state_change_natoms(state, state->natoms);
     std::copy(x, x + state->natoms, state->x.data());
@@ -712,7 +737,10 @@ static void new_status(const char*                           topfile,
                 "%d non-matching atom name%s\n"
                 "atom names from %s will be used\n"
                 "atom names from %s will be ignored\n",
-                nmismatch, (nmismatch == 1) ? "" : "s", topfile, confin);
+                nmismatch,
+                (nmismatch == 1) ? "" : "s",
+                topfile,
+                confin);
         warning(wi, warningMessage.c_str());
     }
 
@@ -742,12 +770,11 @@ static void new_status(const char*                           topfile,
             mass[i]             = local.m;
         }
 
-        if (opts->seed == -1)
+        if (opts->bMadeSeed)
         {
-            opts->seed = static_cast<int>(gmx::makeRandomSeed());
             GMX_LOG(logger.info).asParagraph().appendTextFormatted("Setting gen_seed to %d", opts->seed);
         }
-        state->flags |= (1 << estV);
+        state->flags |= enumValueToBitMask(StateEntry::V);
         maxwell_speed(opts->tempi, opts->seed, sys, state->v.rvec_array(), logger);
 
         stop_cm(logger, state->natoms, mass, state->x.rvec_array(), state->v.rvec_array());
@@ -876,7 +903,7 @@ static void cont_status(const char*             slog,
     GMX_LOG(logger.info).asParagraph().appendTextFormatted("Using frame at t = %g ps", use_time);
     GMX_LOG(logger.info).asParagraph().appendTextFormatted("Starting time for run is %g ps", ir->init_t);
 
-    if ((ir->epc != epcNO || ir->etc == etcNOSEHOOVER) && ener)
+    if ((ir->epc != PressureCoupling::No || ir->etc == TemperatureCoupling::NoseHoover) && ener)
     {
         get_enx_state(ener, use_time, sys->groups, ir, state);
         preserve_box_shape(ir, state->box_rel, state->boxv);
@@ -887,7 +914,7 @@ static void read_posres(gmx_mtop_t*                              mtop,
                         gmx::ArrayRef<const MoleculeInformation> molinfo,
                         gmx_bool                                 bTopB,
                         const char*                              fn,
-                        int                                      rc_scaling,
+                        RefCoordScaling                          rc_scaling,
                         PbcType                                  pbcType,
                         rvec                                     com,
                         warninp*                                 wi,
@@ -913,14 +940,18 @@ static void read_posres(gmx_mtop_t*                              mtop,
         std::string warningMessage = gmx::formatString(
                 "The number of atoms in %s (%d) does not match the number of atoms in the topology "
                 "(%d). Will assume that the first %d atoms in the topology and %s match.",
-                fn, natoms, mtop->natoms, std::min(mtop->natoms, natoms), fn);
+                fn,
+                natoms,
+                mtop->natoms,
+                std::min(mtop->natoms, natoms),
+                fn);
         warning(wi, warningMessage.c_str());
     }
 
     npbcdim = numPbcDimensions(pbcType);
     GMX_RELEASE_ASSERT(npbcdim <= DIM, "Invalid npbcdim");
     clear_rvec(com);
-    if (rc_scaling != erscNO)
+    if (rc_scaling != RefCoordScaling::No)
     {
         copy_mat(box, invbox);
         for (int j = npbcdim; j < DIM; j++)
@@ -952,10 +983,13 @@ static void read_posres(gmx_mtop_t*                              mtop,
                     gmx_fatal(FARGS,
                               "Position restraint atom index (%d) in moltype '%s' is larger than "
                               "number of atoms in %s (%d).\n",
-                              ai + 1, *molinfo[molb.type].name, fn, natoms);
+                              ai + 1,
+                              *molinfo[molb.type].name,
+                              fn,
+                              natoms);
                 }
                 hadAtom[ai] = TRUE;
-                if (rc_scaling == erscCOM)
+                if (rc_scaling == RefCoordScaling::Com)
                 {
                     /* Determine the center of mass of the posres reference coordinates */
                     for (int j = 0; j < npbcdim; j++)
@@ -974,9 +1008,12 @@ static void read_posres(gmx_mtop_t*                              mtop,
                     gmx_fatal(FARGS,
                               "Position restraint atom index (%d) in moltype '%s' is larger than "
                               "number of atoms in %s (%d).\n",
-                              ai + 1, *molinfo[molb.type].name, fn, natoms);
+                              ai + 1,
+                              *molinfo[molb.type].name,
+                              fn,
+                              natoms);
                 }
-                if (rc_scaling == erscCOM && !hadAtom[ai])
+                if (rc_scaling == RefCoordScaling::Com && !hadAtom[ai])
                 {
                     /* Determine the center of mass of the posres reference coordinates */
                     for (int j = 0; j < npbcdim; j++)
@@ -1005,7 +1042,7 @@ static void read_posres(gmx_mtop_t*                              mtop,
         }
         a += nat_molb;
     }
-    if (rc_scaling == erscCOM)
+    if (rc_scaling == RefCoordScaling::Com)
     {
         if (totmass == 0)
         {
@@ -1019,10 +1056,12 @@ static void read_posres(gmx_mtop_t*                              mtop,
                 .asParagraph()
                 .appendTextFormatted(
                         "The center of mass of the position restraint coord's is %6.3f %6.3f %6.3f",
-                        com[XX], com[YY], com[ZZ]);
+                        com[XX],
+                        com[YY],
+                        com[ZZ]);
     }
 
-    if (rc_scaling != erscNO)
+    if (rc_scaling != RefCoordScaling::No)
     {
         GMX_ASSERT(npbcdim <= DIM, "Only DIM dimensions can have PBC");
 
@@ -1036,7 +1075,7 @@ static void read_posres(gmx_mtop_t*                              mtop,
                 {
                     for (int j = 0; j < npbcdim; j++)
                     {
-                        if (rc_scaling == erscALL)
+                        if (rc_scaling == RefCoordScaling::All)
                         {
                             /* Convert from Cartesian to crystal coordinates */
                             xp[i][j] *= invbox[j][j];
@@ -1045,7 +1084,7 @@ static void read_posres(gmx_mtop_t*                              mtop,
                                 xp[i][j] += invbox[k][j] * xp[i][k];
                             }
                         }
-                        else if (rc_scaling == erscCOM)
+                        else if (rc_scaling == RefCoordScaling::Com)
                         {
                             /* Subtract the center of mass */
                             xp[i][j] -= com[j];
@@ -1055,7 +1094,7 @@ static void read_posres(gmx_mtop_t*                              mtop,
             }
         }
 
-        if (rc_scaling == erscCOM)
+        if (rc_scaling == RefCoordScaling::Com)
         {
             /* Convert the COM from Cartesian to crystal coordinates */
             for (int j = 0; j < npbcdim; j++)
@@ -1078,7 +1117,7 @@ static void gen_posres(gmx_mtop_t*                              mtop,
                        gmx::ArrayRef<const MoleculeInformation> mi,
                        const char*                              fnA,
                        const char*                              fnB,
-                       int                                      rc_scaling,
+                       RefCoordScaling                          rc_scaling,
                        PbcType                                  pbcType,
                        rvec                                     com,
                        rvec                                     comB,
@@ -1106,12 +1145,16 @@ static void set_wall_atomtype(PreprocessingAtomTypes* at,
     }
     for (i = 0; i < ir->nwall; i++)
     {
-        ir->wall_atomtype[i] = at->atomTypeFromName(opts->wall_atomtype[i]);
-        if (ir->wall_atomtype[i] == NOTSET)
+        auto atomType = at->atomTypeFromName(opts->wall_atomtype[i]);
+        if (!atomType.has_value())
         {
             std::string warningMessage = gmx::formatString(
                     "Specified wall atom type %s is not defined", opts->wall_atomtype[i]);
             warning_error(wi, warningMessage.c_str());
+        }
+        else
+        {
+            ir->wall_atomtype[i] = *atomType;
         }
     }
 }
@@ -1124,7 +1167,8 @@ static int nrdf_internal(const t_atoms* atoms)
     for (i = 0; i < atoms->nr; i++)
     {
         /* Vsite ptype might not be set here yet, so also check the mass */
-        if ((atoms->atom[i].ptype == eptAtom || atoms->atom[i].ptype == eptNucleus) && atoms->atom[i].m > 0)
+        if ((atoms->atom[i].ptype == ParticleType::Atom || atoms->atom[i].ptype == ParticleType::Nucleus)
+            && atoms->atom[i].m > 0)
         {
             nmass++;
         }
@@ -1221,7 +1265,10 @@ static void setup_cmap(int grid_spacing, int nc, gmx::ArrayRef<const real> grid,
 
         for (i = 0; i < 2 * grid_spacing; i++)
         {
-            spline1d(dx, &(tmp_grid[2 * grid_spacing * i]), 2 * grid_spacing, tmp_u.data(),
+            spline1d(dx,
+                     &(tmp_grid[2 * grid_spacing * i]),
+                     2 * grid_spacing,
+                     tmp_u.data(),
                      &(tmp_t2[2 * grid_spacing * i]));
         }
 
@@ -1237,8 +1284,13 @@ static void setup_cmap(int grid_spacing, int nc, gmx::ArrayRef<const real> grid,
 
                 for (k = 0; k < 2 * grid_spacing; k++)
                 {
-                    interpolate1d(xmin, dx, &(tmp_grid[2 * grid_spacing * k]),
-                                  &(tmp_t2[2 * grid_spacing * k]), psi, &tmp_yy[k], &tmp_y1[k]);
+                    interpolate1d(xmin,
+                                  dx,
+                                  &(tmp_grid[2 * grid_spacing * k]),
+                                  &(tmp_t2[2 * grid_spacing * k]),
+                                  psi,
+                                  &tmp_yy[k],
+                                  &tmp_y1[k]);
                 }
 
                 spline1d(dx, tmp_yy.data(), 2 * grid_spacing, tmp_u.data(), tmp_u2.data());
@@ -1300,7 +1352,9 @@ static int count_constraints(const gmx_mtop_t* mtop, gmx::ArrayRef<const Molecul
                     "Molecule type '%s' has %d constraints.\n"
                     "For stability and efficiency there should not be more constraints than "
                     "internal number of degrees of freedom: %d.\n",
-                    *mi[molb.type].name, count_mol, nrdf_internal(&mi[molb.type].atoms));
+                    *mi[molb.type].name,
+                    count_mol,
+                    nrdf_internal(&mi[molb.type].atoms));
             warning(wi, warningMessage.c_str());
         }
         count += molb.nmol * count_mol;
@@ -1325,7 +1379,7 @@ static real calc_temp(const gmx_mtop_t* mtop, const t_inputrec* ir, rvec* v)
         nrdf += ir->opts.nrdf[g];
     }
 
-    return sum_mv2 / (nrdf * BOLTZ);
+    return sum_mv2 / (nrdf * gmx::c_boltz);
 }
 
 static real get_max_reference_temp(const t_inputrec* ir, warninp* wi)
@@ -1397,7 +1451,7 @@ static void checkForUnboundAtoms(const gmx_moltype_t* molt, gmx_bool bVerbose, w
     int numDanglingAtoms = 0;
     for (int a = 0; a < atoms->nr; a++)
     {
-        if (atoms->atom[a].ptype != eptVSite && count[a] == 0)
+        if (atoms->atom[a].ptype != ParticleType::VSite && count[a] == 0)
         {
             if (bVerbose)
             {
@@ -1406,7 +1460,9 @@ static void checkForUnboundAtoms(const gmx_moltype_t* molt, gmx_bool bVerbose, w
                         .appendTextFormatted(
                                 "Atom %d '%s' in moleculetype '%s' is not bound by a potential or "
                                 "constraint to any other atom in the same moleculetype.",
-                                a + 1, *atoms->atomname[a], *molt->name);
+                                a + 1,
+                                *atoms->atomname[a],
+                                *molt->name);
             }
             numDanglingAtoms++;
         }
@@ -1420,7 +1476,8 @@ static void checkForUnboundAtoms(const gmx_moltype_t* molt, gmx_bool bVerbose, w
                 "issues in a simulation, this often means that the user forgot to add a "
                 "bond/potential/constraint or put multiple molecules in the same moleculetype "
                 "definition by mistake. Run with -v to get information for each atom.",
-                *molt->name, numDanglingAtoms);
+                *molt->name,
+                numDanglingAtoms);
         warning_note(wi, warningMessage.c_str());
     }
 }
@@ -1515,7 +1572,7 @@ static bool haveDecoupledModeInMol(const gmx_moltype_t&           molt,
 
 /*! \brief Checks if the Verlet buffer and constraint accuracy is sufficient for decoupled dynamic modes.
  *
- * When decoupled modes are present and the accuray in insufficient,
+ * When decoupled modes are present and the accuracy in insufficient,
  * this routine issues a warning if the accuracy is insufficient.
  */
 static void checkDecoupledModeAccuracy(const gmx_mtop_t* mtop, const t_inputrec* ir, warninp* wi)
@@ -1549,11 +1606,12 @@ static void checkDecoupledModeAccuracy(const gmx_mtop_t* mtop, const t_inputrec*
     const int  lincsOrderThreshold      = 4;
     const real shakeToleranceThreshold  = 0.005 * ir->delta_t;
 
-    bool lincsWithSufficientTolerance = (ir->eConstrAlg == econtLINCS && ir->nLincsIter >= lincsIterationThreshold
-                                         && ir->nProjOrder >= lincsOrderThreshold);
-    bool shakeWithSufficientTolerance =
-            (ir->eConstrAlg == econtSHAKE && ir->shake_tol <= 1.1 * shakeToleranceThreshold);
-    if (ir->cutoff_scheme == ecutsVERLET && ir->verletbuf_tol <= 1.1 * bufferToleranceThreshold
+    bool lincsWithSufficientTolerance =
+            (ir->eConstrAlg == ConstraintAlgorithm::Lincs
+             && ir->nLincsIter >= lincsIterationThreshold && ir->nProjOrder >= lincsOrderThreshold);
+    bool shakeWithSufficientTolerance = (ir->eConstrAlg == ConstraintAlgorithm::Shake
+                                         && ir->shake_tol <= 1.1 * shakeToleranceThreshold);
+    if (ir->cutoff_scheme == CutoffScheme::Verlet && ir->verletbuf_tol <= 1.1 * bufferToleranceThreshold
         && (lincsWithSufficientTolerance || shakeWithSufficientTolerance))
     {
         return;
@@ -1575,7 +1633,7 @@ static void checkDecoupledModeAccuracy(const gmx_mtop_t* mtop, const t_inputrec*
                 "and with masses that differ by more than a factor of %g. This means "
                 "that there are likely dynamic modes that are only very weakly coupled.",
                 massFactorThreshold);
-        if (ir->cutoff_scheme == ecutsVERLET)
+        if (ir->cutoff_scheme == CutoffScheme::Verlet)
         {
             message += gmx::formatString(
                     " To ensure good equipartitioning, you need to either not use "
@@ -1583,8 +1641,11 @@ static void checkDecoupledModeAccuracy(const gmx_mtop_t* mtop, const t_inputrec*
                     "hydrogens) or use integrator = %s or decrease one or more tolerances: "
                     "verlet-buffer-tolerance <= %g, LINCS iterations >= %d, LINCS order "
                     ">= %d or SHAKE tolerance <= %g",
-                    ei_names[eiSD1], bufferToleranceThreshold, lincsIterationThreshold,
-                    lincsOrderThreshold, shakeToleranceThreshold);
+                    enumValueToString(IntegrationAlgorithm::SD1),
+                    bufferToleranceThreshold,
+                    lincsIterationThreshold,
+                    lincsOrderThreshold,
+                    shakeToleranceThreshold);
         }
         else
         {
@@ -1592,7 +1653,7 @@ static void checkDecoupledModeAccuracy(const gmx_mtop_t* mtop, const t_inputrec*
                     " To ensure good equipartitioning, we suggest to switch to the %s "
                     "cutoff-scheme, since that allows for better control over the Verlet "
                     "buffer size and thus over the energy drift.",
-                    ecutscheme_names[ecutsVERLET]);
+                    enumValueToString(CutoffScheme::Verlet));
         }
         warning(wi, message);
     }
@@ -1609,19 +1670,20 @@ static void set_verlet_buffer(const gmx_mtop_t*    mtop,
             .asParagraph()
             .appendTextFormatted(
                     "Determining Verlet buffer for a tolerance of %g kJ/mol/ps at %g K",
-                    ir->verletbuf_tol, buffer_temp);
+                    ir->verletbuf_tol,
+                    buffer_temp);
 
     /* Calculate the buffer size for simple atom vs atoms list */
     VerletbufListSetup listSetup1x1;
     listSetup1x1.cluster_size_i = 1;
     listSetup1x1.cluster_size_j = 1;
-    const real rlist_1x1 = calcVerletBufferSize(*mtop, det(box), *ir, ir->nstlist, ir->nstlist - 1,
-                                                buffer_temp, listSetup1x1);
+    const real rlist_1x1        = calcVerletBufferSize(
+            *mtop, det(box), *ir, ir->nstlist, ir->nstlist - 1, buffer_temp, listSetup1x1);
 
     /* Set the pair-list buffer size in ir */
     VerletbufListSetup listSetup4x4 = verletbufGetSafeListSetup(ListSetupType::CpuNoSimd);
-    ir->rlist = calcVerletBufferSize(*mtop, det(box), *ir, ir->nstlist, ir->nstlist - 1,
-                                     buffer_temp, listSetup4x4);
+    ir->rlist                       = calcVerletBufferSize(
+            *mtop, det(box), *ir, ir->nstlist, ir->nstlist - 1, buffer_temp, listSetup4x4);
 
     const int n_nonlin_vsite = gmx::countNonlinearVsites(*mtop);
     if (n_nonlin_vsite > 0)
@@ -1637,14 +1699,19 @@ static void set_verlet_buffer(const gmx_mtop_t*    mtop,
     GMX_LOG(logger.info)
             .asParagraph()
             .appendTextFormatted(
-                    "Calculated rlist for %dx%d atom pair-list as %.3f nm, buffer size %.3f nm", 1,
-                    1, rlist_1x1, rlist_1x1 - std::max(ir->rvdw, ir->rcoulomb));
+                    "Calculated rlist for %dx%d atom pair-list as %.3f nm, buffer size %.3f nm",
+                    1,
+                    1,
+                    rlist_1x1,
+                    rlist_1x1 - std::max(ir->rvdw, ir->rcoulomb));
 
     GMX_LOG(logger.info)
             .asParagraph()
             .appendTextFormatted(
                     "Set rlist, assuming %dx%d atom pair-list, to %.3f nm, buffer size %.3f nm",
-                    listSetup4x4.cluster_size_i, listSetup4x4.cluster_size_j, ir->rlist,
+                    listSetup4x4.cluster_size_i,
+                    listSetup4x4.cluster_size_j,
+                    ir->rlist,
                     ir->rlist - std::max(ir->rvdw, ir->rcoulomb));
 
     GMX_LOG(logger.info)
@@ -1658,7 +1725,101 @@ static void set_verlet_buffer(const gmx_mtop_t*    mtop,
                   "The pair-list cut-off (%g nm) is longer than half the shortest box vector or "
                   "longer than the smallest box diagonal element (%g nm). Increase the box size or "
                   "decrease nstlist or increase verlet-buffer-tolerance.",
-                  ir->rlist, std::sqrt(max_cutoff2(ir->pbcType, box)));
+                  ir->rlist,
+                  std::sqrt(max_cutoff2(ir->pbcType, box)));
+    }
+}
+
+// Computes and returns that largest distance between non-perturbed excluded atom pairs
+static real maxNonPerturbedExclusionDistance(const gmx_mtop_t&              mtop,
+                                             const bool                     useFep,
+                                             const PbcType                  pbcType,
+                                             gmx::ArrayRef<const gmx::RVec> x,
+                                             const matrix                   box)
+{
+    t_pbc pbc;
+
+    set_pbc(&pbc, pbcType, box);
+
+    real dx2Max = 0;
+
+    int moleculeOffset = 0;
+    for (const auto& mb : mtop.molblock)
+    {
+        const gmx::ListOfLists<int>& excls = mtop.moltype[mb.type].excls;
+        const t_atoms&               atoms = mtop.moltype[mb.type].atoms;
+        GMX_RELEASE_ASSERT(gmx::ssize(excls) == atoms.nr,
+                           "There should be one exclusion list per atom");
+
+        for (int mol = 0; mol < mb.nmol; mol++)
+        {
+            for (int iAtom = 0; iAtom < atoms.nr; iAtom++)
+            {
+                if (useFep && PERTURBED(atoms.atom[iAtom]))
+                {
+                    // This atom is perturbed, so all its exclusions are perturbed
+                    continue;
+                }
+
+                const auto& jAtoms = excls[iAtom];
+                for (int jAtom : jAtoms)
+                {
+                    if (jAtom != iAtom && !(useFep && PERTURBED(atoms.atom[jAtom])))
+                    {
+                        rvec dx;
+
+                        pbc_dx(&pbc, x[moleculeOffset + iAtom], x[moleculeOffset + jAtom], dx);
+                        dx2Max = std::max(dx2Max, norm2(dx));
+                    }
+                }
+            }
+
+            moleculeOffset += atoms.nr;
+        }
+    }
+
+    return std::sqrt(dx2Max);
+}
+
+// Computes and logs the maximum exclusion distance. Checks whether (non-perturbed) excluded
+// atom pairs are close to the cut-off distance and if so, generates a warning/error
+static void checkExclusionDistances(const gmx_mtop_t&              mtop,
+                                    const t_inputrec&              ir,
+                                    gmx::ArrayRef<const gmx::RVec> x,
+                                    const matrix                   box,
+                                    const gmx::MDLogger&           logger,
+                                    warninp*                       wi)
+{
+    // Check the maximum distance for (non-perturbed) excluded pairs here,
+    // as it should not be longer than the cut-off distance, but we can't
+    // easily ensure that during the run.
+    const bool useFep               = (ir.efep != FreeEnergyPerturbationType::No);
+    const real maxExclusionDistance = maxNonPerturbedExclusionDistance(mtop, useFep, ir.pbcType, x, box);
+
+    const std::string distanceString =
+            gmx::formatString("The largest distance between%s excluded atoms is %.3f nm",
+                              useFep ? " non-perturbed" : "",
+                              maxExclusionDistance);
+
+    GMX_LOG(logger.info).asParagraph().appendText(distanceString);
+
+    const real cutoffDistance = std::max(ir.rvdw, ir.rcoulomb);
+    if (maxExclusionDistance >= cutoffDistance)
+    {
+        std::string text = gmx::formatString(
+                "%s, which is larger than the cut-off distance. This will "
+                "lead to missing long-range corrections in the forces and energies.",
+                distanceString.c_str());
+        warning_error(wi, text.c_str());
+    }
+    else if (maxExclusionDistance > 0.9_real * cutoffDistance)
+    {
+        std::string text = gmx::formatString(
+                "%s, which is larger than 90%% of the cut-off distance. "
+                "When excluded pairs go beyond the cut-off distance, this leads to missing "
+                "long-range corrections in the forces and energies.",
+                distanceString.c_str());
+        warning(wi, text.c_str());
     }
 }
 
@@ -1677,9 +1838,7 @@ int gmx_grompp(int argc, char* argv[])
         "Then a coordinate file is read and velocities can be generated",
         "from a Maxwellian distribution if requested.",
         "[THISMODULE] also reads parameters for [gmx-mdrun] ",
-        "(eg. number of MD steps, time step, cut-off), and others such as",
-        "NEMD parameters, which are corrected so that the net acceleration",
-        "is zero.",
+        "(eg. number of MD steps, time step, cut-off).",
         "Eventually a binary file is produced that can serve as the sole input",
         "file for the MD program.[PAR]",
 
@@ -1764,7 +1923,8 @@ int gmx_grompp(int argc, char* argv[])
     };
     std::vector<MoleculeInformation>     mi;
     std::unique_ptr<MoleculeInformation> intermolecular_interactions;
-    int                                  nvsite, comb;
+    int                                  nvsite;
+    CombinationRule                      comb;
     real                                 fudgeQQ;
     double                               reppow;
     const char*                          mdparin;
@@ -1786,7 +1946,9 @@ int gmx_grompp(int argc, char* argv[])
                        { efEDR, "-e", nullptr, ffOPTRD },
                        /* This group is needed by the VMD viewer as the start configuration for IMD sessions: */
                        { efGRO, "-imd", "imdgroup", ffOPTWR },
-                       { efTRN, "-ref", "rotref", ffOPTRW | ffALLOW_MISSING } };
+                       { efTRN, "-ref", "rotref", ffOPTRW | ffALLOW_MISSING },
+                       /* This group is needed by the QMMM MDModule: */
+                       { efQMI, "-qmi", nullptr, ffOPTRD } };
 #define NFILE asize(fnm)
 
     /* Command line options */
@@ -1854,10 +2016,21 @@ int gmx_grompp(int argc, char* argv[])
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
 
-    // Now that the MdModules have their options assigned from get_ir, subscribe
+    // Now that the MDModules have their options assigned from get_ir, subscribe
     // to eventual notifications during pre-processing their data
     mdModules.subscribeToPreProcessingNotifications();
 
+    // Notify MDModules of existing logger
+    mdModules.notifiers().preProcessingNotifier_.notify(logger);
+
+    // Notify MDModules of existing warninp
+    mdModules.notifiers().preProcessingNotifier_.notify(wi);
+
+    // Notify QMMM MDModule of external QM input file command-line option
+    {
+        gmx::QMInputFileName qmInputFileName = { ftp2bSet(efQMI, NFILE, fnm), ftp2fn(efQMI, NFILE, fnm) };
+        mdModules.notifiers().preProcessingNotifier_.notify(qmInputFileName);
+    }
 
     if (bVerbose)
     {
@@ -1865,7 +2038,7 @@ int gmx_grompp(int argc, char* argv[])
                 .asParagraph()
                 .appendTextFormatted("checking input for internal consistency...");
     }
-    check_ir(mdparin, mdModules.notifier(), ir, opts, wi);
+    check_ir(mdparin, mdModules.notifiers(), ir, opts, wi);
 
     if (ir->ld_seed == -1)
     {
@@ -1909,9 +2082,26 @@ int gmx_grompp(int argc, char* argv[])
     }
 
     t_state state;
-    new_status(fn, opt2fn_null("-pp", NFILE, fnm), opt2fn("-c", NFILE, fnm), opts, ir, bZero,
-               bGenVel, bVerbose, &state, &atypes, &sys, &mi, &intermolecular_interactions,
-               interactions, &comb, &reppow, &fudgeQQ, opts->bMorse, wi, logger);
+    new_status(fn,
+               opt2fn_null("-pp", NFILE, fnm),
+               opt2fn("-c", NFILE, fnm),
+               opts,
+               ir,
+               bZero,
+               bGenVel,
+               bVerbose,
+               &state,
+               &atypes,
+               &sys,
+               &mi,
+               &intermolecular_interactions,
+               interactions,
+               &comb,
+               &reppow,
+               &fudgeQQ,
+               opts->bMorse,
+               wi,
+               logger);
 
     if (debug)
     {
@@ -1934,25 +2124,28 @@ int gmx_grompp(int argc, char* argv[])
         }
     }
 
-    if ((count_constraints(&sys, mi, wi) != 0) && (ir->eConstrAlg == econtSHAKE))
+    if ((count_constraints(&sys, mi, wi) != 0) && (ir->eConstrAlg == ConstraintAlgorithm::Shake))
     {
-        if (ir->eI == eiCG || ir->eI == eiLBFGS)
+        if (ir->eI == IntegrationAlgorithm::CG || ir->eI == IntegrationAlgorithm::LBFGS)
         {
             std::string warningMessage =
-                    gmx::formatString("Can not do %s with %s, use %s", EI(ir->eI),
-                                      econstr_names[econtSHAKE], econstr_names[econtLINCS]);
+                    gmx::formatString("Can not do %s with %s, use %s",
+                                      enumValueToString(ir->eI),
+                                      enumValueToString(ConstraintAlgorithm::Shake),
+                                      enumValueToString(ConstraintAlgorithm::Lincs));
             warning_error(wi, warningMessage);
         }
         if (ir->bPeriodicMols)
         {
             std::string warningMessage =
                     gmx::formatString("Can not do periodic molecules with %s, use %s",
-                                      econstr_names[econtSHAKE], econstr_names[econtLINCS]);
+                                      enumValueToString(ConstraintAlgorithm::Shake),
+                                      enumValueToString(ConstraintAlgorithm::Lincs));
             warning_error(wi, warningMessage);
         }
     }
 
-    if (EI_SD(ir->eI) && ir->etc != etcNO)
+    if (EI_SD(ir->eI) && ir->etc != TemperatureCoupling::No)
     {
         warning_note(wi, "Temperature coupling is ignored with SD integrators.");
     }
@@ -1964,13 +2157,14 @@ int gmx_grompp(int argc, char* argv[])
 
     if (nint_ftype(&sys, mi, F_POSRES) > 0 || nint_ftype(&sys, mi, F_FBPOSRES) > 0)
     {
-        if (ir->epc == epcPARRINELLORAHMAN || ir->epc == epcMTTK)
+        if (ir->epc == PressureCoupling::ParrinelloRahman || ir->epc == PressureCoupling::Mttk)
         {
             std::string warningMessage = gmx::formatString(
                     "You are combining position restraints with %s pressure coupling, which can "
                     "lead to instabilities. If you really want to combine position restraints with "
                     "pressure coupling, we suggest to use %s pressure coupling instead.",
-                    EPCOUPLTYPE(ir->epc), EPCOUPLTYPE(epcBERENDSEN));
+                    enumValueToString(ir->epc),
+                    enumValueToString(PressureCoupling::Berendsen));
             warning_note(wi, warningMessage);
         }
 
@@ -2014,17 +2208,19 @@ int gmx_grompp(int argc, char* argv[])
             }
             GMX_LOG(logger.info).asParagraph().appendText(message);
         }
-        gen_posres(&sys, mi, fn, fnB, ir->refcoord_scaling, ir->pbcType, ir->posres_com,
-                   ir->posres_comB, wi, logger);
+        gen_posres(&sys, mi, fn, fnB, ir->refcoord_scaling, ir->pbcType, ir->posres_com, ir->posres_comB, wi, logger);
     }
 
     /* If we are using CMAP, setup the pre-interpolation grid */
     if (interactions[F_CMAP].ncmap() > 0)
     {
-        init_cmap_grid(&sys.ffparams.cmap_grid, interactions[F_CMAP].cmapAngles,
+        init_cmap_grid(&sys.ffparams.cmap_grid,
+                       interactions[F_CMAP].cmapAngles,
                        interactions[F_CMAP].cmakeGridSpacing);
-        setup_cmap(interactions[F_CMAP].cmakeGridSpacing, interactions[F_CMAP].cmapAngles,
-                   interactions[F_CMAP].cmap, &sys.ffparams.cmap_grid);
+        setup_cmap(interactions[F_CMAP].cmakeGridSpacing,
+                   interactions[F_CMAP].cmapAngles,
+                   interactions[F_CMAP].cmap,
+                   &sys.ffparams.cmap_grid);
     }
 
     set_wall_atomtype(&atypes, opts, ir, wi, logger);
@@ -2052,8 +2248,8 @@ int gmx_grompp(int argc, char* argv[])
     }
 
     const int ntype = atypes.size();
-    convertInteractionsOfType(ntype, interactions, mi, intermolecular_interactions.get(), comb,
-                              reppow, fudgeQQ, &sys);
+    convertInteractionsOfType(
+            ntype, interactions, mi, intermolecular_interactions.get(), comb, reppow, fudgeQQ, &sys);
 
     if (debug)
     {
@@ -2090,7 +2286,7 @@ int gmx_grompp(int argc, char* argv[])
 
     checkForUnboundAtoms(&sys, bVerbose, wi, logger);
 
-    if (EI_DYNAMICS(ir->eI) && ir->eI != eiBD)
+    if (EI_DYNAMICS(ir->eI) && ir->eI != IntegrationAlgorithm::BD)
     {
         check_bonds_timestep(&sys, ir->delta_t, wi);
     }
@@ -2113,15 +2309,24 @@ int gmx_grompp(int argc, char* argv[])
     {
         GMX_LOG(logger.info).asParagraph().appendTextFormatted("initialising group options...");
     }
-    do_index(mdparin, ftp2fn_null(efNDX, NFILE, fnm), &sys, bVerbose, mdModules.notifier(), ir, wi);
+    do_index(mdparin, ftp2fn_null(efNDX, NFILE, fnm), &sys, bVerbose, mdModules.notifiers(), ir, wi);
 
-    if (ir->cutoff_scheme == ecutsVERLET && ir->verletbuf_tol > 0)
+    // Notify topology to MdModules for pre-processing after all indexes were built
+    mdModules.notifiers().preProcessingNotifier_.notify(&sys);
+
+    if (EEL_FULL(ir->coulombtype) || EVDW_PME(ir->vdwtype))
+    {
+        // We may have exclusion forces beyond the cut-off distance.
+        checkExclusionDistances(sys, *ir, state.x, state.box, logger, wi);
+    }
+
+    if (ir->cutoff_scheme == CutoffScheme::Verlet && ir->verletbuf_tol > 0)
     {
         if (EI_DYNAMICS(ir->eI) && inputrec2nboundeddim(ir) == 3)
         {
             real buffer_temp;
 
-            if (EI_MD(ir->eI) && ir->etc == etcNO)
+            if (EI_MD(ir->eI) && ir->etc == TemperatureCoupling::No)
             {
                 if (bGenVel)
                 {
@@ -2153,7 +2358,7 @@ int gmx_grompp(int argc, char* argv[])
                 buffer_temp = get_max_reference_temp(ir, wi);
             }
 
-            if (EI_MD(ir->eI) && ir->etc == etcNO && buffer_temp == 0)
+            if (EI_MD(ir->eI) && ir->etc == TemperatureCoupling::No && buffer_temp == 0)
             {
                 /* NVE with initial T=0: we add a fixed ratio to rlist.
                  * Since we don't actually use verletbuf_tol, we set it to -1
@@ -2169,14 +2374,14 @@ int gmx_grompp(int argc, char* argv[])
                  * Note that we can't warn when nsteps=0, since we don't
                  * know how many steps the user intends to run.
                  */
-                if (EI_MD(ir->eI) && ir->etc == etcNO && ir->nstlist > 1 && ir->nsteps > 0)
+                if (EI_MD(ir->eI) && ir->etc == TemperatureCoupling::No && ir->nstlist > 1 && ir->nsteps > 0)
                 {
                     const real driftTolerance = 0.01;
                     /* We use 2 DOF per atom = 2kT pot+kin energy,
                      * to be on the safe side with constraints.
                      */
                     const real totalEnergyDriftPerAtomPerPicosecond =
-                            2 * BOLTZ * buffer_temp / (ir->nsteps * ir->delta_t);
+                            2 * gmx::c_boltz * buffer_temp / (ir->nsteps * ir->delta_t);
 
                     if (ir->verletbuf_tol > 1.1 * driftTolerance * totalEnergyDriftPerAtomPerPicosecond)
                     {
@@ -2185,7 +2390,8 @@ int gmx_grompp(int argc, char* argv[])
                                 "NVE simulation of length %g ps, which can give a final drift of "
                                 "%d%%. For conserving energy to %d%% when using constraints, you "
                                 "might need to set verlet-buffer-tolerance to %.1e.",
-                                ir->verletbuf_tol, ir->nsteps * ir->delta_t,
+                                ir->verletbuf_tol,
+                                ir->nsteps * ir->delta_t,
                                 gmx::roundToInt(ir->verletbuf_tol / totalEnergyDriftPerAtomPerPicosecond * 100),
                                 gmx::roundToInt(100 * driftTolerance),
                                 driftTolerance * totalEnergyDriftPerAtomPerPicosecond);
@@ -2213,7 +2419,7 @@ int gmx_grompp(int argc, char* argv[])
         pr_symtab(debug, 0, "After close", &sys.symtab);
     }
 
-    if (ir->eI == eiMimic)
+    if (ir->eI == IntegrationAlgorithm::Mimic)
     {
         generate_qmexcl(&sys, ir, logger);
     }
@@ -2226,8 +2432,16 @@ int gmx_grompp(int argc, char* argv[])
                     .asParagraph()
                     .appendTextFormatted("getting data from old trajectory ...");
         }
-        cont_status(ftp2fn(efTRN, NFILE, fnm), ftp2fn_null(efEDR, NFILE, fnm), bNeedVel, bGenVel,
-                    fr_time, ir, &state, &sys, oenv, logger);
+        cont_status(ftp2fn(efTRN, NFILE, fnm),
+                    ftp2fn_null(efEDR, NFILE, fnm),
+                    bNeedVel,
+                    bGenVel,
+                    fr_time,
+                    ir,
+                    &state,
+                    &sys,
+                    oenv,
+                    logger);
     }
 
     if (ir->pbcType == PbcType::XY && ir->nwall != 2)
@@ -2239,7 +2453,7 @@ int gmx_grompp(int argc, char* argv[])
     {
         /* Calculate the optimal grid dimensions */
         matrix          scaledBox;
-        EwaldBoxZScaler boxScaler(*ir);
+        EwaldBoxZScaler boxScaler(inputrecPbcXY2Walls(ir), ir->wall_ewald_zfac);
         boxScaler.scaleBox(state.box, scaledBox);
 
         if (ir->nkx > 0 && ir->nky > 0 && ir->nkz > 0)
@@ -2254,8 +2468,7 @@ int gmx_grompp(int argc, char* argv[])
                     wi, "Some of the Fourier grid sizes are set, but all of them need to be set.");
         }
         const int minGridSize = minimalPmeGridSize(ir->pme_order);
-        calcFftGrid(stdout, scaledBox, ir->fourier_spacing, minGridSize, &(ir->nkx), &(ir->nky),
-                    &(ir->nkz));
+        calcFftGrid(stdout, scaledBox, ir->fourier_spacing, minGridSize, &(ir->nkx), &(ir->nky), &(ir->nkz));
         if (ir->nkx < minGridSize || ir->nky < minGridSize || ir->nkz < minGridSize)
         {
             warning_error(wi,
@@ -2267,10 +2480,10 @@ int gmx_grompp(int argc, char* argv[])
     /* MRS: eventually figure out better logic for initializing the fep
        values that makes declaring the lambda and declaring the state not
        potentially conflict if not handled correctly. */
-    if (ir->efep != efepNO)
+    if (ir->efep != FreeEnergyPerturbationType::No)
     {
         state.fep_state = ir->fepvals->init_fep_state;
-        for (i = 0; i < efptNR; i++)
+        for (i = 0; i < static_cast<int>(FreeEnergyPerturbationCouplingType::Count); i++)
         {
             /* init_lambda trumps state definitions*/
             if (ir->fepvals->init_lambda >= 0)
@@ -2279,7 +2492,7 @@ int gmx_grompp(int argc, char* argv[])
             }
             else
             {
-                if (ir->fepvals->all_lambda[i] == nullptr)
+                if (ir->fepvals->all_lambda[i].empty())
                 {
                     gmx_fatal(FARGS, "Values of lambda not set for a free energy calculation!");
                 }
@@ -2295,7 +2508,8 @@ int gmx_grompp(int argc, char* argv[])
 
     if (ir->bPull || ir->bRAMD)
     {
-        pull = set_pull_init(ir, &sys, state.x.rvec_array(), state.box, state.lambda[efptMASS], wi);
+        pull = set_pull_init(
+                ir, sys, state.x, state.box, state.lambda[FreeEnergyPerturbationCouplingType::Mass], wi);
     }
 
     /* Modules that supply external potential for pull coordinates
@@ -2316,14 +2530,23 @@ int gmx_grompp(int argc, char* argv[])
     if (ir->bDoAwh)
     {
         tensor compressibility = { { 0 } };
-        if (ir->epc != epcNO)
+        if (ir->epc != PressureCoupling::No)
         {
             copy_mat(ir->compress, compressibility);
         }
         setStateDependentAwhParams(
-                ir->awhParams, *ir->pull, pull, state.box, ir->pbcType, compressibility, &ir->opts,
-                ir->efep != efepNO ? ir->fepvals->all_lambda[efptFEP][ir->fepvals->init_fep_state] : 0,
-                sys, wi);
+                ir->awhParams.get(),
+                *ir->pull,
+                pull,
+                state.box,
+                ir->pbcType,
+                compressibility,
+                &ir->opts,
+                ir->efep != FreeEnergyPerturbationType::No ? ir->fepvals->all_lambda[static_cast<int>(
+                        FreeEnergyPerturbationCouplingType::Fep)][ir->fepvals->init_fep_state]
+                                                           : 0,
+                sys,
+                wi);
     }
 
     if (ir->bPull || ir->bRAMD)
@@ -2333,8 +2556,12 @@ int gmx_grompp(int argc, char* argv[])
 
     if (ir->bRot)
     {
-        set_reference_positions(ir->rot, state.x.rvec_array(), state.box,
-                                opt2fn("-ref", NFILE, fnm), opt2bSet("-ref", NFILE, fnm), wi);
+        set_reference_positions(ir->rot,
+                                state.x.rvec_array(),
+                                state.box,
+                                opt2fn("-ref", NFILE, fnm),
+                                opt2bSet("-ref", NFILE, fnm),
+                                wi);
     }
 
     /*  reset_multinr(sys); */
@@ -2350,14 +2577,15 @@ int gmx_grompp(int argc, char* argv[])
          * charges. This will double the cost, but the optimal performance will
          * then probably be at a slightly larger cut-off and grid spacing.
          */
-        if ((ir->efep == efepNO && ratio > 1.0 / 2.0) || (ir->efep != efepNO && ratio > 2.0 / 3.0))
+        if ((ir->efep == FreeEnergyPerturbationType::No && ratio > 1.0 / 2.0)
+            || (ir->efep != FreeEnergyPerturbationType::No && ratio > 2.0 / 3.0))
         {
             warning_note(
                     wi,
                     "The optimal PME mesh load for parallel simulations is below 0.5\n"
                     "and for highly parallel simulations between 0.25 and 0.33,\n"
                     "for higher performance, increase the cut-off and the PME grid spacing.\n");
-            if (ir->efep != efepNO)
+            if (ir->efep != FreeEnergyPerturbationType::No)
             {
                 warning_note(wi,
                              "For free energy simulations, the optimal load limit increases from "
@@ -2381,14 +2609,42 @@ int gmx_grompp(int argc, char* argv[])
         }
     }
 
+    // Hand over box and coordiantes to MdModules before they evaluate their final parameters
+    {
+        gmx::CoordinatesAndBoxPreprocessed coordinatesAndBoxPreprocessed;
+        coordinatesAndBoxPreprocessed.coordinates_ = state.x.arrayRefWithPadding();
+        copy_mat(state.box, coordinatesAndBoxPreprocessed.box_);
+        coordinatesAndBoxPreprocessed.pbc_ = ir->pbcType;
+        mdModules.notifiers().preProcessingNotifier_.notify(coordinatesAndBoxPreprocessed);
+    }
+
     // Add the md modules internal parameters that are not mdp options
     // e.g., atom indices
 
     {
         gmx::KeyValueTreeBuilder internalParameterBuilder;
-        mdModules.notifier().preProcessingNotifications_.notify(internalParameterBuilder.rootObject());
+        mdModules.notifiers().preProcessingNotifier_.notify(internalParameterBuilder.rootObject());
         ir->internalParameters =
                 std::make_unique<gmx::KeyValueTreeObject>(internalParameterBuilder.build());
+    }
+
+    if (ir->comm_mode != ComRemovalAlgorithm::No)
+    {
+        const int nstglobalcomm = computeGlobalCommunicationPeriod(ir);
+        if (ir->nstcomm % nstglobalcomm != 0)
+        {
+            warning_note(
+                    wi,
+                    gmx::formatString(
+                            "COM removal frequency is set to (%d).\n"
+                            "Other settings require a global communication frequency of %d.\n"
+                            "Note that this will require additional global communication steps,\n"
+                            "which will reduce performance when using multiple ranks.\n"
+                            "Consider setting nstcomm to a multiple of %d.",
+                            ir->nstcomm,
+                            nstglobalcomm,
+                            nstglobalcomm));
+        }
     }
 
     if (bVerbose)
@@ -2397,15 +2653,17 @@ int gmx_grompp(int argc, char* argv[])
     }
 
     done_warning(wi, FARGS);
-    write_tpx_state(ftp2fn(efTPR, NFILE, fnm), ir, &state, &sys);
+    write_tpx_state(ftp2fn(efTPR, NFILE, fnm), ir, &state, sys);
 
     /* Output IMD group, if bIMD is TRUE */
-    gmx::write_IMDgroup_to_file(ir->bIMD, ir, &state, &sys, NFILE, fnm);
+    gmx::write_IMDgroup_to_file(ir->bIMD, ir, &state, sys, NFILE, fnm);
 
     sfree(opts->define);
     sfree(opts->wall_atomtype[0]);
     sfree(opts->wall_atomtype[1]);
     sfree(opts->include);
+    sfree(opts->couple_moltype);
+
     for (auto& mol : mi)
     {
         // Some of the contents of molinfo have been stolen, so

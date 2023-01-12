@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \libinternal \file
@@ -69,17 +68,21 @@ struct t_pull_group
 };
 
 /*! Maximum number of pull groups that can be used in a pull coordinate */
-static const int c_pullCoordNgroupMax = 6;
+static constexpr int c_pullCoordNgroupMax = 6;
 
 /*! \brief Struct that defines a pull coordinate */
 struct t_pull_coord
 {
     //! The pull type: umbrella, constraint, ...
-    int eType = 0;
+    PullingAlgorithm eType = PullingAlgorithm::Umbrella;
     //! Name of the module providing   the external potential, only used with eType==epullEXTERNAL
     std::string externalPotentialProvider;
     //! The pull geometry
-    int eGeom = 0;
+    PullGroupGeometry eGeom = PullGroupGeometry::Distance;
+    //! Mathematical expression evaluated by the pull code for transformation coordinates.
+    std::string expression;
+    //! The finite difference to use in numerical derivation of mathematical expressions
+    double dx = 1e-9;
     //! The number of groups, depends on eGeom
     int ngroup = 0;
     /*! \brief The pull groups:
@@ -108,6 +111,8 @@ struct t_pull_coord
     real k = 0.0;
     //! Force constant for state B
     real kB = 0.0;
+    //! The index of this coordinate in the list of coordinates
+    int coordIndex = -1;
 };
 
 /*! \brief Struct containing all pull parameters */

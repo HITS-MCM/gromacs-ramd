@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #ifndef GMX_SIMD_IMPL_X86_AVX_512_UTIL_FLOAT_H
@@ -104,7 +102,7 @@ inline void gmx_simdcall decrHsimd(float* m, SimdFloat a)
 
 template<int align, typename... Targs>
 static inline void gmx_simdcall
-                   gatherLoadBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v, Targs... Fargs)
+gatherLoadBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v, Targs... Fargs)
 {
     // For align 1 or 2: No multiplication of offset is needed
     if (align > 2)
@@ -120,28 +118,28 @@ static inline void gmx_simdcall
 
 template<int align, typename... Targs>
 static inline void gmx_simdcall
-                   gatherLoadUBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v, Targs... Fargs)
+gatherLoadUBySimdIntTranspose(const float* base, SimdFInt32 offset, SimdFloat* v, Targs... Fargs)
 {
     gatherLoadBySimdIntTranspose<align>(base, offset, v, Fargs...);
 }
 
 template<int align, typename... Targs>
 static inline void gmx_simdcall
-                   gatherLoadTranspose(const float* base, const std::int32_t offset[], SimdFloat* v, Targs... Fargs)
+gatherLoadTranspose(const float* base, const std::int32_t offset[], SimdFloat* v, Targs... Fargs)
 {
     gatherLoadBySimdIntTranspose<align>(base, simdLoad(offset, SimdFInt32Tag()), v, Fargs...);
 }
 
 template<int align, typename... Targs>
 static inline void gmx_simdcall
-                   gatherLoadUTranspose(const float* base, const std::int32_t offset[], SimdFloat* v, Targs... Fargs)
+gatherLoadUTranspose(const float* base, const std::int32_t offset[], SimdFloat* v, Targs... Fargs)
 {
     gatherLoadBySimdIntTranspose<align>(base, simdLoad(offset, SimdFInt32Tag()), v, Fargs...);
 }
 
 template<int align>
 static inline void gmx_simdcall
-                   transposeScatterStoreU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
+transposeScatterStoreU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
 {
     SimdFInt32 simdoffset = simdLoad(offset, SimdFInt32Tag());
     if (align > 2)
@@ -157,7 +155,7 @@ static inline void gmx_simdcall
 
 template<int align>
 static inline void gmx_simdcall
-                   transposeScatterIncrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
+transposeScatterIncrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
 {
     __m512                                   t[4], t5, t6, t7, t8;
     int                                      i;
@@ -173,16 +171,20 @@ static inline void gmx_simdcall
         t[3] = _mm512_shuffle_ps(t6, v2.simdInternal_, _MM_SHUFFLE(3, 3, 3, 2));
         for (i = 0; i < 4; i++)
         {
-            _mm512_mask_storeu_ps(base + o[i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_add_ps(_mm_loadu_ps(base + o[i]),
                                                                     _mm512_castps512_ps128(t[i]))));
-            _mm512_mask_storeu_ps(base + o[4 + i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[4 + i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_add_ps(_mm_loadu_ps(base + o[4 + i]),
                                                                     _mm512_extractf32x4_ps(t[i], 1))));
-            _mm512_mask_storeu_ps(base + o[8 + i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[8 + i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_add_ps(_mm_loadu_ps(base + o[8 + i]),
                                                                     _mm512_extractf32x4_ps(t[i], 2))));
-            _mm512_mask_storeu_ps(base + o[12 + i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[12 + i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_add_ps(_mm_loadu_ps(base + o[12 + i]),
                                                                     _mm512_extractf32x4_ps(t[i], 3))));
         }
@@ -208,8 +210,8 @@ static inline void gmx_simdcall
                              _mm_add_ps(_mm_load_ps(base + o[4 + i]), _mm512_extractf32x4_ps(t[i], 1)));
                 _mm_store_ps(base + o[8 + i],
                              _mm_add_ps(_mm_load_ps(base + o[8 + i]), _mm512_extractf32x4_ps(t[i], 2)));
-                _mm_store_ps(base + o[12 + i], _mm_add_ps(_mm_load_ps(base + o[12 + i]),
-                                                          _mm512_extractf32x4_ps(t[i], 3)));
+                _mm_store_ps(base + o[12 + i],
+                             _mm_add_ps(_mm_load_ps(base + o[12 + i]), _mm512_extractf32x4_ps(t[i], 3)));
             }
         }
         else
@@ -218,12 +220,12 @@ static inline void gmx_simdcall
             {
                 _mm_storeu_ps(base + o[i],
                               _mm_add_ps(_mm_loadu_ps(base + o[i]), _mm512_castps512_ps128(t[i])));
-                _mm_storeu_ps(base + o[4 + i], _mm_add_ps(_mm_loadu_ps(base + o[4 + i]),
-                                                          _mm512_extractf32x4_ps(t[i], 1)));
-                _mm_storeu_ps(base + o[8 + i], _mm_add_ps(_mm_loadu_ps(base + o[8 + i]),
-                                                          _mm512_extractf32x4_ps(t[i], 2)));
-                _mm_storeu_ps(base + o[12 + i], _mm_add_ps(_mm_loadu_ps(base + o[12 + i]),
-                                                           _mm512_extractf32x4_ps(t[i], 3)));
+                _mm_storeu_ps(base + o[4 + i],
+                              _mm_add_ps(_mm_loadu_ps(base + o[4 + i]), _mm512_extractf32x4_ps(t[i], 1)));
+                _mm_storeu_ps(base + o[8 + i],
+                              _mm_add_ps(_mm_loadu_ps(base + o[8 + i]), _mm512_extractf32x4_ps(t[i], 2)));
+                _mm_storeu_ps(base + o[12 + i],
+                              _mm_add_ps(_mm_loadu_ps(base + o[12 + i]), _mm512_extractf32x4_ps(t[i], 3)));
             }
         }
     }
@@ -231,7 +233,7 @@ static inline void gmx_simdcall
 
 template<int align>
 static inline void gmx_simdcall
-                   transposeScatterDecrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
+transposeScatterDecrU(float* base, const std::int32_t offset[], SimdFloat v0, SimdFloat v1, SimdFloat v2)
 {
     __m512                                   t[4], t5, t6, t7, t8;
     int                                      i;
@@ -247,16 +249,20 @@ static inline void gmx_simdcall
         t[3] = _mm512_shuffle_ps(t6, v2.simdInternal_, _MM_SHUFFLE(3, 3, 3, 2));
         for (i = 0; i < 4; i++)
         {
-            _mm512_mask_storeu_ps(base + o[i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_sub_ps(_mm_loadu_ps(base + o[i]),
                                                                     _mm512_castps512_ps128(t[i]))));
-            _mm512_mask_storeu_ps(base + o[4 + i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[4 + i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_sub_ps(_mm_loadu_ps(base + o[4 + i]),
                                                                     _mm512_extractf32x4_ps(t[i], 1))));
-            _mm512_mask_storeu_ps(base + o[8 + i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[8 + i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_sub_ps(_mm_loadu_ps(base + o[8 + i]),
                                                                     _mm512_extractf32x4_ps(t[i], 2))));
-            _mm512_mask_storeu_ps(base + o[12 + i], avx512Int2Mask(7),
+            _mm512_mask_storeu_ps(base + o[12 + i],
+                                  avx512Int2Mask(7),
                                   _mm512_castps128_ps512(_mm_sub_ps(_mm_loadu_ps(base + o[12 + i]),
                                                                     _mm512_extractf32x4_ps(t[i], 3))));
         }
@@ -282,8 +288,8 @@ static inline void gmx_simdcall
                              _mm_sub_ps(_mm_load_ps(base + o[4 + i]), _mm512_extractf32x4_ps(t[i], 1)));
                 _mm_store_ps(base + o[8 + i],
                              _mm_sub_ps(_mm_load_ps(base + o[8 + i]), _mm512_extractf32x4_ps(t[i], 2)));
-                _mm_store_ps(base + o[12 + i], _mm_sub_ps(_mm_load_ps(base + o[12 + i]),
-                                                          _mm512_extractf32x4_ps(t[i], 3)));
+                _mm_store_ps(base + o[12 + i],
+                             _mm_sub_ps(_mm_load_ps(base + o[12 + i]), _mm512_extractf32x4_ps(t[i], 3)));
             }
         }
         else
@@ -292,12 +298,12 @@ static inline void gmx_simdcall
             {
                 _mm_storeu_ps(base + o[i],
                               _mm_sub_ps(_mm_loadu_ps(base + o[i]), _mm512_castps512_ps128(t[i])));
-                _mm_storeu_ps(base + o[4 + i], _mm_sub_ps(_mm_loadu_ps(base + o[4 + i]),
-                                                          _mm512_extractf32x4_ps(t[i], 1)));
-                _mm_storeu_ps(base + o[8 + i], _mm_sub_ps(_mm_loadu_ps(base + o[8 + i]),
-                                                          _mm512_extractf32x4_ps(t[i], 2)));
-                _mm_storeu_ps(base + o[12 + i], _mm_sub_ps(_mm_loadu_ps(base + o[12 + i]),
-                                                           _mm512_extractf32x4_ps(t[i], 3)));
+                _mm_storeu_ps(base + o[4 + i],
+                              _mm_sub_ps(_mm_loadu_ps(base + o[4 + i]), _mm512_extractf32x4_ps(t[i], 1)));
+                _mm_storeu_ps(base + o[8 + i],
+                              _mm_sub_ps(_mm_loadu_ps(base + o[8 + i]), _mm512_extractf32x4_ps(t[i], 2)));
+                _mm_storeu_ps(base + o[12 + i],
+                              _mm_sub_ps(_mm_loadu_ps(base + o[12 + i]), _mm512_extractf32x4_ps(t[i], 3)));
             }
         }
     }
@@ -326,11 +332,11 @@ static inline float gmx_simdcall reduceIncr4ReturnSum(float* m, SimdFloat v0, Si
     assert(std::size_t(m) % 16 == 0);
 
     t0 = _mm512_add_ps(v0.simdInternal_, _mm512_permute_ps(v0.simdInternal_, 0x4E));
-    t0 = _mm512_mask_add_ps(t0, avx512Int2Mask(0xCCCC), v2.simdInternal_,
-                            _mm512_permute_ps(v2.simdInternal_, 0x4E));
+    t0 = _mm512_mask_add_ps(
+            t0, avx512Int2Mask(0xCCCC), v2.simdInternal_, _mm512_permute_ps(v2.simdInternal_, 0x4E));
     t1 = _mm512_add_ps(v1.simdInternal_, _mm512_permute_ps(v1.simdInternal_, 0x4E));
-    t1 = _mm512_mask_add_ps(t1, avx512Int2Mask(0xCCCC), v3.simdInternal_,
-                            _mm512_permute_ps(v3.simdInternal_, 0x4E));
+    t1 = _mm512_mask_add_ps(
+            t1, avx512Int2Mask(0xCCCC), v3.simdInternal_, _mm512_permute_ps(v3.simdInternal_, 0x4E));
     t2 = _mm512_add_ps(t0, _mm512_permute_ps(t0, 0xB1));
     t2 = _mm512_mask_add_ps(t2, avx512Int2Mask(0xAAAA), t1, _mm512_permute_ps(t1, 0xB1));
 
@@ -355,7 +361,8 @@ static inline SimdFloat gmx_simdcall loadDualHsimd(const float* m0, const float*
 
     return { _mm512_castpd_ps(_mm512_insertf64x4(
             _mm512_castpd256_pd512(_mm256_load_pd(reinterpret_cast<const double*>(m0))),
-            _mm256_load_pd(reinterpret_cast<const double*>(m1)), 1)) };
+            _mm256_load_pd(reinterpret_cast<const double*>(m1)),
+            1)) };
 }
 
 static inline SimdFloat gmx_simdcall loadDuplicateHsimd(const float* m)
@@ -366,8 +373,8 @@ static inline SimdFloat gmx_simdcall loadDuplicateHsimd(const float* m)
 
 static inline SimdFloat gmx_simdcall loadU1DualHsimd(const float* m)
 {
-    return { _mm512_shuffle_f32x4(_mm512_broadcastss_ps(_mm_load_ss(m)),
-                                  _mm512_broadcastss_ps(_mm_load_ss(m + 1)), 0x44) };
+    return { _mm512_shuffle_f32x4(
+            _mm512_broadcastss_ps(_mm_load_ss(m)), _mm512_broadcastss_ps(_mm_load_ss(m + 1)), 0x44) };
 }
 
 

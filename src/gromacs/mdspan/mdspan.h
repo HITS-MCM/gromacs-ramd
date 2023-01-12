@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*
  * This file is a modified version of original work of Sandia Corporation.
@@ -145,10 +144,9 @@ public:
     //! Copy constructor
     template<class OtherElementType, class OtherExtents, class OtherLayoutPolicy, class OtherAccessor>
     constexpr basic_mdspan(
-            const basic_mdspan<OtherElementType, OtherExtents, OtherLayoutPolicy, OtherAccessor>& rhs) noexcept :
-        acc_(rhs.acc_),
-        map_(rhs.map_),
-        ptr_(rhs.ptr_)
+            const basic_mdspan<OtherElementType, OtherExtents, OtherLayoutPolicy, OtherAccessor>& rhs) noexcept
+        :
+        acc_(rhs.acc_), map_(rhs.map_), ptr_(rhs.ptr_)
     {
     }
     //! Copy assignment constructor
@@ -169,9 +167,7 @@ public:
      */
     template<class... IndexType>
     explicit constexpr basic_mdspan(pointer ptr, IndexType... DynamicExtents) noexcept :
-        acc_(accessor_type()),
-        map_(extents_type(DynamicExtents...)),
-        ptr_(ptr)
+        acc_(accessor_type()), map_(extents_type(DynamicExtents...)), ptr_(ptr)
     {
     }
     /*! \brief Construct from array describing dynamic extents.
@@ -180,9 +176,7 @@ public:
      */
     constexpr basic_mdspan(pointer                                                    ptr,
                            const std::array<ptrdiff_t, extents_type::rank_dynamic()>& dynamic_extents) :
-        acc_(accessor_type()),
-        map_(extents_type(dynamic_extents)),
-        ptr_(ptr)
+        acc_(accessor_type()), map_(extents_type(dynamic_extents)), ptr_(ptr)
     {
     }
     /*! \brief Construct from pointer and mapping.
@@ -190,9 +184,7 @@ public:
      * \param[in] m Mapping from multidimenisonal indices to one-dimensional offset.
      */
     constexpr basic_mdspan(pointer ptr, const mapping_type& m) noexcept :
-        acc_(accessor_type()),
-        map_(m),
-        ptr_(ptr)
+        acc_(accessor_type()), map_(m), ptr_(ptr)
     {
     }
     /*! \brief Construct with pointer, mapping and accessor.
@@ -201,9 +193,7 @@ public:
      * \param[in] a Accessor implementing memory access model.
      */
     constexpr basic_mdspan(pointer ptr, const mapping_type& m, const accessor_type& a) noexcept :
-        acc_(a),
-        map_(m),
-        ptr_(ptr)
+        acc_(a), map_(m), ptr_(ptr)
     {
     }
     /*! \brief Construct mdspan from multidimensional arrays implemented with mdspan

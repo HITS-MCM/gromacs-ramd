@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """Abstract base classes for gmxapi Python interfaces.
 
@@ -108,53 +107,8 @@ Note: This module overly specifies the API. As we figure out the relationships.
 
 import typing
 from abc import ABC, abstractmethod
-import collections
+import collections.abc
 from typing import Type, Callable
-
-
-class EnsembleDataSource(ABC):
-    """A single source of data with ensemble data flow annotations.
-
-    Note that data sources may be Futures.
-
-    Attributes:
-        dtype (type): The underlying data type provided by this source.
-        source: object or Future of type *dtype*.
-        width: ensemble width of this data source handle.
-
-    ..  todo::
-        This class should be subsumed into the core gmxapi data model. It is
-        currently necessary for some type checking, but will probably disappear
-        in future versions.
-    """
-
-    def __init__(self, source=None, width=1, dtype=None):
-        self.source = source
-        self.width = width
-        self.dtype = dtype
-
-    @abstractmethod
-    def member(self, member: int):
-        """Extract a single ensemble member from the ensemble data source."""
-        return self.source[member]
-
-    @abstractmethod
-    def reset(self):
-        """Reset the completion status of this data source.
-
-        Deprecated. This is a workaround until the data subscription model is
-        improved. We need to be able to fingerprint data sources robustly, and
-        to acquire operation factories from operation handles. In other words,
-        a Future will need both to convey its unique recreatable identity as
-        well as to be able to rebind to its subscriber(s).
-
-        Used internally to allow graph edges to be reused without rebinding
-        operation inputs.
-        """
-        protocols = ('reset', '_reset')
-        for protocol in protocols:
-            if hasattr(self.source, protocol):
-                getattr(self.source, protocol)()
 
 
 class NDArray(collections.abc.Sequence, ABC):
@@ -183,6 +137,7 @@ class NDArray(collections.abc.Sequence, ABC):
     #             any(is_compatible(base) for base in subclass.__mro__)
     #             return True
     #     return NotImplemented
+NDArray.register(list)
 
 
 # TODO: Define an enumeration.
@@ -225,7 +180,12 @@ class Future(Resource):
     def result(self) -> typing.Any:
         ...
 
-    # TODO: abstractmethod(subscribe)
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is Future:
+            if any("result" in B.__dict__ and callable(B.result) for B in C.__mro__):
+                return True
+        return NotImplemented
 
 
 class MutableResourceSubscriber(ABC):
@@ -638,16 +598,22 @@ class OperationDirector(ABC):
             -> typing.Union[ResourceFactory, typing.Callable]:
         """Get an appropriate resource factory.
 
-        The ResourceFactor converts resources (in the form produced by the *source* Context)
+        The ResourceFactory converts resources (in the form produced by the *source* Context)
         to the form consumed by the operation in the *target* Context.
 
         A *source* of None indicates that the source is an arbitrary Python function
         signature, or to try to detect appropriate dispatching. A *target* of
         None indicates that the Context of the Director instance is the target.
 
-        As we merge the interface for a NodeBuilder and a RunnerBuilder, this
-        will not need to be specified in multiple places, but it is not yet
-        clear where.
+        As we merge the interface for a NodeBuilder and a RunnerBuilder, this will not need to be
+        specified in multiple places, but it is not yet clear where the responsibility lies.
+        Ultimately, the operation implementation should only need to provide a single-dispatching
+        helper for finalizing input preparation in a target Context when building a node.
+        Converting resources from one Context to another during edge creation is a
+        collaboration between the resource type, the providing Context, and the consuming
+        Context. It should be mediated by functions registered with the Context when the
+        Operation is registered, and such functionality should be decoupled from the
+        OperationDirector.
 
         Generally, the client should not need to call the resource_factory directly.
         The director should dispatch an appropriate factory. C++ versions need

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -71,16 +70,15 @@ EnergyTermsToCompare EnergyComparison::defaultEnergyTermsToCompare()
         { interaction_function[F_EKIN].longname, relativeToleranceAsUlp(10.0, 50) },
         // The pressure is very strongly affected by summation errors,
         // so we need a large tolerance.
-        // The value of 15000 is calibrated for running a small water box for 16 steps.
+        // The value of 17000 is calibrated for running a small water box for 16 steps.
         // For a single frame for a water box a value of 150 could work.
-        { interaction_function[F_PRES].longname, relativeToleranceAsUlp(10.0, 15000) },
+        { interaction_function[F_PRES].longname, relativeToleranceAsUlp(10.0, 17000) },
     };
 };
 
 EnergyComparison::EnergyComparison(const EnergyTermsToCompare& energyTermsToCompare,
                                    MaxNumFrames                maxNumFrames) :
-    energyTermsToCompare_(energyTermsToCompare),
-    maxNumFrames_(maxNumFrames)
+    energyTermsToCompare_(energyTermsToCompare), maxNumFrames_(maxNumFrames)
 {
 }
 
@@ -107,15 +105,15 @@ void EnergyComparison::operator()(const EnergyFrame& reference, const EnergyFram
                  + test.frameName());
     for (auto referenceIt = reference.begin(); referenceIt != reference.end(); ++referenceIt)
     {
-        auto& energyName = referenceIt->first;
+        const auto& energyName = referenceIt->first;
         SCOPED_TRACE("Comparing " + energyName + " between frames");
         auto testIt = test.find(energyName);
         if (testIt != test.end())
         {
-            auto& energyValueInReference = referenceIt->second;
-            auto& energyValueInTest      = testIt->second;
-            EXPECT_REAL_EQ_TOL(energyValueInReference, energyValueInTest,
-                               energyTermsToCompare_.at(energyName));
+            const auto& energyValueInReference = referenceIt->second;
+            const auto& energyValueInTest      = testIt->second;
+            EXPECT_REAL_EQ_TOL(
+                    energyValueInReference, energyValueInTest, energyTermsToCompare_.at(energyName));
         }
         else
         {
@@ -185,8 +183,8 @@ void checkEnergiesAgainstReferenceData(const std::string&          energyFilenam
                                        const EnergyTermsToCompare& energyTermsToCompare,
                                        TestReferenceChecker*       checker)
 {
-    checkEnergiesAgainstReferenceData(energyFilename, energyTermsToCompare, checker,
-                                      MaxNumFrames::compareAllFrames());
+    checkEnergiesAgainstReferenceData(
+            energyFilename, energyTermsToCompare, checker, MaxNumFrames::compareAllFrames());
 }
 
 } // namespace test

@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *  \brief Define utility routines for OpenCL
@@ -50,45 +48,7 @@
 #include <string>
 
 #include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/smalloc.h"
 
-/*! \brief \brief Allocates nbytes of host memory. Use ocl_free to free memory allocated with this function.
- *
- *  \todo
- *  This function should allocate page-locked memory to help reduce D2H and H2D
- *  transfer times, similar with pmalloc from pmalloc_cuda.cu.
- *
- * \param[in,out]    h_ptr   Pointer where to store the address of the newly allocated buffer.
- * \param[in]        nbytes  Size in bytes of the buffer to be allocated.
- */
-void pmalloc(void** h_ptr, size_t nbytes)
-{
-    /* Need a temporary type whose size is 1 byte, so that the
-     * implementation of snew_aligned can cope without issuing
-     * warnings. */
-    char** temporary = reinterpret_cast<char**>(h_ptr);
-
-    /* 16-byte alignment is required by the neighbour-searching code,
-     * because it uses four-wide SIMD for bounding-box calculation.
-     * However, when we organize using page-locked memory for
-     * device-host transfers, it will probably need to be aligned to a
-     * 4kb page, like CUDA does. */
-    snew_aligned(*temporary, nbytes, 16);
-}
-
-/*! \brief Frees memory allocated with pmalloc.
- *
- * \param[in]    h_ptr   Buffer allocated with pmalloc that needs to be freed.
- */
-void pfree(void* h_ptr)
-{
-
-    if (h_ptr)
-    {
-        sfree_aligned(h_ptr);
-    }
-}
 
 /*! \brief Convert error code to diagnostic string */
 std::string ocl_get_error_string(cl_int error)

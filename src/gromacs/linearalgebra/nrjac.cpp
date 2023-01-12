@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -43,9 +39,11 @@
 #include <cmath>
 
 #include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 
-static inline void do_rotate(double** a, int i, int j, int k, int l, double tau, double s)
+template<typename MatrixType>
+static inline void do_rotate(MatrixType a, int i, int j, int k, int l, double tau, double s)
 {
     double g, h;
     g       = a[i][j];
@@ -54,7 +52,8 @@ static inline void do_rotate(double** a, int i, int j, int k, int l, double tau,
     a[k][l] = h + s * (g - h * tau);
 }
 
-void jacobi(double** a, int n, double d[], double** v, int* nrot)
+template<typename MatrixType>
+static int jacobi(MatrixType a, const int n, double d[], MatrixType v)
 {
     int    j, i;
     int    iq, ip;
@@ -75,7 +74,7 @@ void jacobi(double** a, int n, double d[], double** v, int* nrot)
         b[ip] = d[ip] = a[ip][ip];
         z[ip]         = 0.0;
     }
-    *nrot = 0;
+    int nrot = 0;
     for (i = 1; i <= 50; i++)
     {
         sm = 0.0;
@@ -90,7 +89,7 @@ void jacobi(double** a, int n, double d[], double** v, int* nrot)
         {
             sfree(z);
             sfree(b);
-            return;
+            return nrot;
         }
         if (i < 4)
         {
@@ -151,7 +150,7 @@ void jacobi(double** a, int n, double d[], double** v, int* nrot)
                     {
                         do_rotate(v, j, ip, j, iq, tau, s);
                     }
-                    ++(*nrot);
+                    ++nrot;
                 }
             }
         }
@@ -163,6 +162,27 @@ void jacobi(double** a, int n, double d[], double** v, int* nrot)
         }
     }
     gmx_fatal(FARGS, "Error: Too many iterations in routine JACOBI\n");
+
+    return nrot;
+}
+
+void jacobi(double** a, const int numDimensions, double* eigenvalues, double** eigenvectors, int* numRotations)
+{
+    int numRot = jacobi(a, numDimensions, eigenvalues, eigenvectors);
+
+    if (numRotations)
+    {
+        *numRotations = numRot;
+    }
+}
+
+int jacobi(gmx::ArrayRef<gmx::DVec> a, gmx::ArrayRef<double> eigenvalues, gmx::ArrayRef<gmx::DVec> eigenvectors)
+{
+    GMX_RELEASE_ASSERT(gmx::ssize(a) == DIM, "Size should be 3");
+    GMX_RELEASE_ASSERT(gmx::ssize(eigenvalues) == DIM, "Size should be 3");
+    GMX_RELEASE_ASSERT(gmx::ssize(eigenvectors) == DIM, "Size should be 3");
+
+    return jacobi(a, DIM, eigenvalues.data(), eigenvectors);
 }
 
 int m_inv_gen(real* m, int n, real* minv)

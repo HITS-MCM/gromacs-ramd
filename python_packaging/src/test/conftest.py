@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,25 +26,52 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """Configuration and fixtures for pytest."""
 
 import json
 import logging
 import os
+
 import pytest
 
 pytest_plugins = ('gmxapi.testsupport',)
 
-@pytest.fixture(scope='class')
-def spc_water_box(gmxcli, remove_tempdir):
-    """Provide a TPR input file for a simple simulation.
+try:
+    from mpi4py import MPI
+
+    rank_number = MPI.COMM_WORLD.Get_rank()
+    comm_size = MPI.COMM_WORLD.Get_size()
+except ImportError:
+    rank_number = 0
+    comm_size = 1
+    rank_tag = ''
+    MPI = None
+else:
+    rank_tag = 'rank{}:'.format(rank_number)
+
+old_factory = logging.getLogRecordFactory()
+
+
+def record_factory(*args, **kwargs):
+    record = old_factory(*args, **kwargs)
+    record.rank_tag = rank_tag
+    return record
+
+
+logging.setLogRecordFactory(record_factory)
+
+
+@pytest.fixture(scope='session')
+def spc_water_box_collection(gmxcli, remove_tempdir):
+    """Provide a collection of simulation input items for a simple simulation.
 
     Prepare the MD input in a freshly created working directory.
+    Solvate a 5nm cubic box with spc water. Return a dictionary of the artifacts produced.
     """
     import gmxapi as gmx
     # TODO: Remove this import when the the spc_water_box fixture is migrated to gmxapi.testsupport
@@ -94,18 +120,20 @@ def spc_water_box(gmxcli, remove_tempdir):
         assert os.path.exists(topfile)
 
         if solvate.output.returncode.result() != 0:
-            logging.debug(solvate.output.erroroutput.result())
+            logging.debug(solvate.output.stderr.result())
             raise RuntimeError('solvate failed in spc_water_box testing fixture.')
 
         # Choose an exactly representable dt of 2^-9 ps (approximately 0.002)
-        dt = 2.**-9.
+        dt = 2. ** -9.
         mdp_input = [('integrator', 'md'),
                      ('dt', dt),
                      ('cutoff-scheme', 'Verlet'),
+                     ('nstcalcenergy', 1),
                      ('nsteps', 2),
+                     ('nstfout', 1),
+                     ('nstlist', 1),
                      ('nstxout', 1),
                      ('nstvout', 1),
-                     ('nstfout', 1),
                      ('tcoupl', 'v-rescale'),
                      ('tc-grps', 'System'),
                      ('tau-t', 1),
@@ -130,9 +158,23 @@ def spc_water_box(gmxcli, remove_tempdir):
                                            output_files={'-o': tprfile})
         tprfilename = grompp.output.file['-o'].result()
         if grompp.output.returncode.result() != 0:
-            logging.debug(grompp.output.erroroutput.result())
+            logging.debug(grompp.output.stderr.result())
             raise RuntimeError('grompp failed in spc_water_box testing fixture.')
 
         # TODO: more inspection of grompp errors...
         assert os.path.exists(tprfilename)
-        yield tprfilename
+        collection = {
+            'tpr_filename': tprfilename,
+            'mdp_input_filename': mdpfile,
+            'mdp_output_filename': mdout_mdp,
+            'topology_filename': solvate.output.file['-p'].result(),
+            'gro_filename': solvate.output.file['-o'].result(),
+            'mdp_input_list': mdp_input
+        }
+        yield collection
+
+
+@pytest.fixture(scope='session')
+def spc_water_box(spc_water_box_collection):
+    """Provide a TPR input file for a simple simulation."""
+    yield spc_water_box_collection['tpr_filename']

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -121,7 +117,8 @@ static gmx_bool get_w_conf(FILE*       in,
         fprintf(stderr,
                 "Warning: gro file contains less atoms (%d) than expected"
                 " (%d)\n",
-                natoms, atoms->nr);
+                natoms,
+                atoms->nr);
     }
 
     atoms->haveMass    = FALSE;
@@ -294,8 +291,7 @@ static gmx_bool get_w_conf(FILE*       in,
         {
             box[m][m] = (xmax[m] - xmin[m]);
         }
-        fprintf(stderr, "Generated a cubic box %8.3f x %8.3f x %8.3f\n", box[XX][XX], box[YY][YY],
-                box[ZZ][ZZ]);
+        fprintf(stderr, "Generated a cubic box %8.3f x %8.3f x %8.3f\n", box[XX][XX], box[YY][YY], box[ZZ][ZZ]);
     }
     else
     {
@@ -406,7 +402,8 @@ gmx_bool gro_next_x_or_v(FILE* status, t_trxframe* fr)
         gmx_fatal(FARGS,
                   "Number of atoms in gro frame (%d) doesn't match the number in the previous "
                   "frame (%d)",
-                  atoms.nr, fr->natoms);
+                  atoms.nr,
+                  fr->natoms);
     }
 
     return TRUE;
@@ -450,9 +447,17 @@ static void write_hconf_box(FILE* out, const matrix box)
     if ((box[XX][YY] != 0.0F) || (box[XX][ZZ] != 0.0F) || (box[YY][XX] != 0.0F)
         || (box[YY][ZZ] != 0.0F) || (box[ZZ][XX] != 0.0F) || (box[ZZ][YY] != 0.0F))
     {
-        fprintf(out, "%10.5f %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f\n", box[XX][XX],
-                box[YY][YY], box[ZZ][ZZ], box[XX][YY], box[XX][ZZ], box[YY][XX], box[YY][ZZ],
-                box[ZZ][XX], box[ZZ][YY]);
+        fprintf(out,
+                "%10.5f %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f\n",
+                box[XX][XX],
+                box[YY][YY],
+                box[ZZ][ZZ],
+                box[XX][YY],
+                box[XX][ZZ],
+                box[YY][XX],
+                box[YY][ZZ],
+                box[ZZ][XX],
+                box[ZZ][YY]);
     }
     else
     {
@@ -520,14 +525,14 @@ void write_hconf_indexed_p(FILE*          out,
     fflush(out);
 }
 
-void write_hconf_mtop(FILE* out, const char* title, const gmx_mtop_t* mtop, const rvec* x, const rvec* v, const matrix box)
+void write_hconf_mtop(FILE* out, const char* title, const gmx_mtop_t& mtop, const rvec* x, const rvec* v, const matrix box)
 {
     fprintf(out, "%s\n", (title && title[0]) ? title : gmx::bromacs().c_str());
-    fprintf(out, "%5d\n", mtop->natoms);
+    fprintf(out, "%5d\n", mtop.natoms);
 
     const char* format = get_hconf_format(v != nullptr);
 
-    for (const AtomProxy atomP : AtomRange(*mtop))
+    for (const AtomProxy atomP : AtomRange(mtop))
     {
         int         i             = atomP.globalAtomNumber();
         int         residueNumber = atomP.residueNumber();

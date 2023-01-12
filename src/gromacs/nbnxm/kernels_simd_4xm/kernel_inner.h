@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /* Doxygen gets confused (buggy) about the block in this file in combination with
@@ -57,8 +55,6 @@
 #    endif
 
 {
-    int cj, ajx, ajy, ajz;
-    int gmx_unused aj;
 
 #    ifdef ENERGY_GROUPS
     /* Energy group indices for two atoms packed into one int */
@@ -217,11 +213,6 @@
     SimdReal c6s_j_S, c12s_j_S;
 #        endif
 
-#        if defined LJ_COMB_GEOM || defined LJ_COMB_LB || defined LJ_EWALD_GEOM
-    /* Index for loading LJ parameters, complicated when interleaving */
-    int aj2;
-#        endif
-
     /* Intermediate variables for LJ calculation */
 #        ifndef LJ_COMB_LB
     SimdReal rinvsix_S0;
@@ -249,29 +240,37 @@
 #    endif /* CALC_LJ */
 
     /* j-cluster index */
-    cj = l_cj[cjind].cj;
+    const int cj = l_cj[cjind].cj;
 
     /* Atom indices (of the first atom in the cluster) */
-    aj = cj * UNROLLJ;
+    const int gmx_unused aj = cj * UNROLLJ;
 #    if defined CALC_LJ && (defined LJ_COMB_GEOM || defined LJ_COMB_LB || defined LJ_EWALD_GEOM)
+    /* Index for loading LJ parameters, complicated when interleaving */
 #        if UNROLLJ == STRIDE
-    aj2 = aj * 2;
+    const int aj2 = aj * 2;
 #        else
-    aj2 = (cj >> 1) * 2 * STRIDE + (cj & 1) * UNROLLJ;
+    const int aj2 = (cj >> 1) * 2 * STRIDE + (cj & 1) * UNROLLJ;
 #        endif
 #    endif
 #    if UNROLLJ == STRIDE
-    ajx = aj * DIM;
+    const int ajx = aj * DIM;
 #    else
-    ajx = (cj >> 1) * DIM * STRIDE + (cj & 1) * UNROLLJ;
+    const int ajx = (cj >> 1) * DIM * STRIDE + (cj & 1) * UNROLLJ;
 #    endif
-    ajy = ajx + STRIDE;
-    ajz = ajy + STRIDE;
+    const int ajy = ajx + STRIDE;
+    const int ajz = ajy + STRIDE;
 
 #    ifdef CHECK_EXCLS
-    gmx_load_simd_4xn_interactions(static_cast<int>(l_cj[cjind].excl), filter_S0, filter_S1,
-                                   filter_S2, filter_S3, nbat->simdMasks.interaction_array.data(),
-                                   &interact_S0, &interact_S1, &interact_S2, &interact_S3);
+    gmx_load_simd_4xn_interactions(static_cast<int>(l_cj[cjind].excl),
+                                   filter_S0,
+                                   filter_S1,
+                                   filter_S2,
+                                   filter_S3,
+                                   nbat->simdMasks.interaction_array.data(),
+                                   &interact_S0,
+                                   &interact_S1,
+                                   &interact_S2,
+                                   &interact_S3);
 #    endif /* CHECK_EXCLS */
 
     /* load j atom coordinates */
@@ -853,17 +852,21 @@
             c6_S3 * fma(sixth_S, rinvsix_S3, v_fswitch_r(rsw_S3, rsw2_S3, p6_6cpot_S, p6_vc3_S, p6_vc4_S));
 #                endif
     SimdReal VLJ12_S0 = c12_S0
-                        * fma(twelveth_S, rinvsix_S0 * rinvsix_S0,
+                        * fma(twelveth_S,
+                              rinvsix_S0 * rinvsix_S0,
                               v_fswitch_r(rsw_S0, rsw2_S0, p12_12cpot_S, p12_vc3_S, p12_vc4_S));
     SimdReal VLJ12_S1 = c12_S1
-                        * fma(twelveth_S, rinvsix_S1 * rinvsix_S1,
+                        * fma(twelveth_S,
+                              rinvsix_S1 * rinvsix_S1,
                               v_fswitch_r(rsw_S1, rsw2_S1, p12_12cpot_S, p12_vc3_S, p12_vc4_S));
 #                ifndef HALF_LJ
     SimdReal VLJ12_S2 = c12_S2
-                        * fma(twelveth_S, rinvsix_S2 * rinvsix_S2,
+                        * fma(twelveth_S,
+                              rinvsix_S2 * rinvsix_S2,
                               v_fswitch_r(rsw_S2, rsw2_S2, p12_12cpot_S, p12_vc3_S, p12_vc4_S));
     SimdReal VLJ12_S3 = c12_S3
-                        * fma(twelveth_S, rinvsix_S3 * rinvsix_S3,
+                        * fma(twelveth_S,
+                              rinvsix_S3 * rinvsix_S3,
                               v_fswitch_r(rsw_S3, rsw2_S3, p12_12cpot_S, p12_vc3_S, p12_vc4_S));
 #                endif
 #                undef v_fswitch_r
@@ -1013,14 +1016,18 @@
          * r^-6*cexp*(1 + cr2 + cr2^2/2 + cr2^3/6) = cexp*(r^-6*poly + c^6/6)
          */
         frLJ_S0 = fma(c6grid_S0,
-                      fnma(expmcr2_S0, fma(rinvsix_nm_S0, poly_S0, lje_c6_6_S), rinvsix_nm_S0), frLJ_S0);
+                      fnma(expmcr2_S0, fma(rinvsix_nm_S0, poly_S0, lje_c6_6_S), rinvsix_nm_S0),
+                      frLJ_S0);
         frLJ_S1 = fma(c6grid_S1,
-                      fnma(expmcr2_S1, fma(rinvsix_nm_S1, poly_S1, lje_c6_6_S), rinvsix_nm_S1), frLJ_S1);
+                      fnma(expmcr2_S1, fma(rinvsix_nm_S1, poly_S1, lje_c6_6_S), rinvsix_nm_S1),
+                      frLJ_S1);
 #            ifndef HALF_LJ
         frLJ_S2 = fma(c6grid_S2,
-                      fnma(expmcr2_S2, fma(rinvsix_nm_S2, poly_S2, lje_c6_6_S), rinvsix_nm_S2), frLJ_S2);
+                      fnma(expmcr2_S2, fma(rinvsix_nm_S2, poly_S2, lje_c6_6_S), rinvsix_nm_S2),
+                      frLJ_S2);
         frLJ_S3 = fma(c6grid_S3,
-                      fnma(expmcr2_S3, fma(rinvsix_nm_S3, poly_S3, lje_c6_6_S), rinvsix_nm_S3), frLJ_S3);
+                      fnma(expmcr2_S3, fma(rinvsix_nm_S3, poly_S3, lje_c6_6_S), rinvsix_nm_S3),
+                      frLJ_S3);
 #            endif
 
 #            ifdef CALC_ENERGIES
@@ -1041,14 +1048,18 @@
 #                endif
 
         VLJ_S0 = fma(sixth_S * c6grid_S0,
-                     fma(rinvsix_nm_S0, fnma(expmcr2_S0, poly_S0, one_S), sh_mask_S0), VLJ_S0);
+                     fma(rinvsix_nm_S0, fnma(expmcr2_S0, poly_S0, one_S), sh_mask_S0),
+                     VLJ_S0);
         VLJ_S1 = fma(sixth_S * c6grid_S1,
-                     fma(rinvsix_nm_S1, fnma(expmcr2_S1, poly_S1, one_S), sh_mask_S1), VLJ_S1);
+                     fma(rinvsix_nm_S1, fnma(expmcr2_S1, poly_S1, one_S), sh_mask_S1),
+                     VLJ_S1);
 #                ifndef HALF_LJ
         VLJ_S2 = fma(sixth_S * c6grid_S2,
-                     fma(rinvsix_nm_S2, fnma(expmcr2_S2, poly_S2, one_S), sh_mask_S2), VLJ_S2);
+                     fma(rinvsix_nm_S2, fnma(expmcr2_S2, poly_S2, one_S), sh_mask_S2),
+                     VLJ_S2);
         VLJ_S3 = fma(sixth_S * c6grid_S3,
-                     fma(rinvsix_nm_S3, fnma(expmcr2_S3, poly_S3, one_S), sh_mask_S3), VLJ_S3);
+                     fma(rinvsix_nm_S3, fnma(expmcr2_S3, poly_S3, one_S), sh_mask_S3),
+                     VLJ_S3);
 #                endif
 #            endif /* CALC_ENERGIES */
     }
@@ -1085,18 +1096,15 @@
      * complicated when the i- and j-cluster size don't match.
      */
     {
-        int egps_j;
 #            if UNROLLJ == 2
-        egps_j    = nbatParams.energrp[cj >> 1];
-        egp_jj[0] = ((egps_j >> ((cj & 1) * egps_jshift)) & egps_jmask) * egps_jstride;
+        const int egps_j = nbatParams.energrp[cj >> 1];
+        egp_jj[0]        = ((egps_j >> ((cj & 1) * egps_jshift)) & egps_jmask) * egps_jstride;
 #            else
         /* We assume UNROLLI <= UNROLLJ */
-        int jdi;
-        for (jdi = 0; jdi < UNROLLJ / UNROLLI; jdi++)
+        for (int jdi = 0; jdi < UNROLLJ / UNROLLI; jdi++)
         {
-            int jj;
-            egps_j = nbatParams.energrp[cj * (UNROLLJ / UNROLLI) + jdi];
-            for (jj = 0; jj < (UNROLLI / 2); jj++)
+            const int egps_j = nbatParams.energrp[cj * (UNROLLJ / UNROLLI) + jdi];
+            for (int jj = 0; jj < (UNROLLI / 2); jj++)
             {
                 egp_jj[jdi * (UNROLLI / 2) + jj] =
                         ((egps_j >> (jj * egps_jshift)) & egps_jmask) * egps_jstride;

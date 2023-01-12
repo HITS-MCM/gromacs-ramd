@@ -1,0 +1,67 @@
+# Test goal: GCC with newest CUDA
+# Test intents (should change rarely and conservatively):
+#   OS: Ubuntu oldest supported
+#   GPU: CUDA newest supported with its newest supported gcc
+#   HW: NVIDIA GPU
+#   CMake: oldest supported
+#   Scope: configure, build, unit tests
+# Test implementation choices (free to change as needed):
+#   OS: Ubuntu 20.04
+#   Build type: RelWithDebInfo
+#   Compiler: GCC 11.2
+#   GPU: CUDA 11.4.1
+#   SIMD: AVX2_256
+#   FFT: FFTW3
+#   Parallelism nt/ntomp: 4/2 (unit tests)
+
+gromacs:gcc-11-cuda-11.4.1:release:configure:
+  extends:
+    - .gromacs:base:release:configure
+    - .use-gcc:base
+    - .use-mpi
+    - .use-cuda
+    - .rules:nightly-only-for-release
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-11-cuda-11.4.1
+  variables:
+    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    COMPILER_MAJOR_VERSION: 11
+    RELEASE_BUILD_DIR: release-builds-gcc
+    CMAKE_BUILD_TYPE_OPTIONS : "-DCMAKE_BUILD_TYPE=RelWithAssert"
+    CMAKE_REGRESSIONTEST_OPTIONS: ""
+  dependencies:
+    - archive:package
+    - regressiontests:package
+    - prepare-release-version
+
+gromacs:gcc-11-cuda-11.4.1:release:build:
+  extends:
+    - .variables:default
+    - .gromacs:base:build
+    - .before_script:default
+    - .use-ccache
+    - .rules:nightly-only-for-release
+  stage: release-build
+  variables:
+    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    BUILD_DIR: release-builds-gcc
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-11-cuda-11.4.1
+  needs:
+    - job: gromacs:gcc-11-cuda-11.4.1:release:configure
+
+gromacs:gcc-11-cuda-11.4.1:release:test:
+  extends:
+    - .gromacs:base:test
+    - .rules:nightly-only-for-release
+  stage: release-tests
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-11-cuda-11.4.1
+  variables:
+    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    KUBERNETES_EXTENDED_RESOURCE_NAME: "nvidia.com/gpu"
+    KUBERNETES_EXTENDED_RESOURCE_LIMIT: 1
+    BUILD_DIR: release-builds-gcc
+  tags:
+    - k8s-scilifelab
+  needs:
+    - job: gromacs:gcc-11-cuda-11.4.1:release:configure
+    - job: gromacs:gcc-11-cuda-11.4.1:release:build
+

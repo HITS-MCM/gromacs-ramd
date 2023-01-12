@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/simd/simd.h"
@@ -79,7 +77,8 @@ static inline void add_ener_grp_halves(gmx::SimdReal e_S, real* v0, real* v1, co
     for (int jj = 0; jj < (UNROLLJ / 2); jj++)
     {
         incrDualHsimd(v0 + offset_jj[jj] + jj * GMX_SIMD_REAL_WIDTH / 2,
-                      v1 + offset_jj[jj] + jj * GMX_SIMD_REAL_WIDTH / 2, e_S);
+                      v1 + offset_jj[jj] + jj * GMX_SIMD_REAL_WIDTH / 2,
+                      e_S);
     }
 }
 #endif
@@ -103,7 +102,8 @@ static inline void gmx_simdcall gmx_load_simd_2xnn_interactions(int            e
     *interact_S0 = cvtIB2B(testBits(mask_pr_S & filter_S0));
     *interact_S2 = cvtIB2B(testBits(mask_pr_S & filter_S2));
 #elif GMX_SIMD_HAVE_LOGICAL
-    union {
+    union
+    {
 #    if GMX_DOUBLE
         std::int64_t i;
 #    else

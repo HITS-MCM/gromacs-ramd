@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -184,8 +182,13 @@ static void density_in_time(const char*             fn,
             *yslices = 1;
         }
     }
-    fprintf(stderr, "\nDividing the box in %5d x %5d x %5d slices with binw %f along axis %d\n",
-            *xslices, *yslices, *zslices, bw, axis);
+    fprintf(stderr,
+            "\nDividing the box in %5d x %5d x %5d slices with binw %f along axis %d\n",
+            *xslices,
+            *yslices,
+            *zslices,
+            bw,
+            axis);
 
 
     /****Start trajectory processing***/
@@ -223,8 +226,9 @@ static void density_in_time(const char*             fn,
             (*Densdevel)[*tblock] = Densslice;
         }
 
-        dscale = (*xslices) * (*yslices) * (*zslices) * AMU
-                 / (box[ax1][ax1] * box[ax2][ax2] * box[axis][axis] * nsttblock * (NANO * NANO * NANO));
+        dscale = (*xslices) * (*yslices) * (*zslices) * gmx::c_amu
+                 / (box[ax1][ax1] * box[ax2][ax2] * box[axis][axis] * nsttblock
+                    * (gmx::c_nano * gmx::c_nano * gmx::c_nano));
 
         if (bCenter)
         {
@@ -501,8 +505,8 @@ static void interfaces_txy(real****                Densmap,
 
         if (debug)
         {
-            xvg = xvgropen("DensprofileonZ.xvg", "Averaged Densityprofile on Z", "z[nm]",
-                           "Density[kg/m^3]", oenv);
+            xvg = xvgropen(
+                    "DensprofileonZ.xvg", "Averaged Densityprofile on Z", "z[nm]", "Density[kg/m^3]", oenv);
             for (k = 0; k < zslices; k++)
             {
                 fprintf(xvg, "%4f.3   %8f.4\n", k * binwidth, zDensavg[k]);
@@ -513,11 +517,9 @@ static void interfaces_txy(real****                Densmap,
         /*Fit average density in z over whole trajectory to obtain tentative fit-parameters in fit1 and fit2*/
 
         /*Fit 1st half of box*/
-        do_lmfit(zslices, zDensavg, sigma1, binwidth, nullptr, startpoint, splitpoint, oenv, FALSE,
-                 effnERF, beginfit1, 8, nullptr);
+        do_lmfit(zslices, zDensavg, sigma1, binwidth, nullptr, startpoint, splitpoint, oenv, FALSE, effnERF, beginfit1, 8, nullptr);
         /*Fit 2nd half of box*/
-        do_lmfit(zslices, zDensavg, sigma2, binwidth, nullptr, splitpoint, endpoint, oenv, FALSE,
-                 effnERF, beginfit2, 8, nullptr);
+        do_lmfit(zslices, zDensavg, sigma2, binwidth, nullptr, splitpoint, endpoint, oenv, FALSE, effnERF, beginfit2, 8, nullptr);
 
         /*Initialise the const arrays for storing the average fit parameters*/
         avgfit1 = beginfit1;
@@ -540,12 +542,34 @@ static void interfaces_txy(real****                Densmap,
                         fit2[k] = avgfit2[k];
                     }
                     /*Now fit and store in structures in row-major order int[n][i][j]*/
-                    do_lmfit(zslices, Densmap[n][i][j], sigma1, binwidth, nullptr, startpoint,
-                             splitpoint, oenv, FALSE, effnERF, fit1, 0, nullptr);
+                    do_lmfit(zslices,
+                             Densmap[n][i][j],
+                             sigma1,
+                             binwidth,
+                             nullptr,
+                             startpoint,
+                             splitpoint,
+                             oenv,
+                             FALSE,
+                             effnERF,
+                             fit1,
+                             0,
+                             nullptr);
                     int1[n][j + (yslices * i)]->Z = fit1[2];
                     int1[n][j + (yslices * i)]->t = fit1[3];
-                    do_lmfit(zslices, Densmap[n][i][j], sigma2, binwidth, nullptr, splitpoint,
-                             endpoint, oenv, FALSE, effnERF, fit2, 0, nullptr);
+                    do_lmfit(zslices,
+                             Densmap[n][i][j],
+                             sigma2,
+                             binwidth,
+                             nullptr,
+                             splitpoint,
+                             endpoint,
+                             oenv,
+                             FALSE,
+                             effnERF,
+                             fit2,
+                             0,
+                             nullptr);
                     int2[n][j + (yslices * i)]->Z = fit2[2];
                     int2[n][j + (yslices * i)]->t = fit2[3];
                 }
@@ -631,10 +655,8 @@ static void writesurftoxpms(t_interf***                      surf1,
             }
         }
 
-        write_xpm(xpmfile1, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks,
-                  profile1, min1, max1, lo, hi, &maplevels);
-        write_xpm(xpmfile2, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks,
-                  profile2, min2, max2, lo, hi, &maplevels);
+        write_xpm(xpmfile1, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks, profile1, min1, max1, lo, hi, &maplevels);
+        write_xpm(xpmfile2, 3, numbuf, "Height", "x[nm]", "y[nm]", xbins, ybins, xticks, yticks, profile2, min2, max2, lo, hi, &maplevels);
     }
 
     gmx_ffclose(xpmfile1);
@@ -679,9 +701,17 @@ static void writeraw(t_interf***                      int1,
         {
             for (j = 0; j < ybins; j++)
             {
-                fprintf(raw1, "%i  %i  %8.5f  %6.4f\n", i, j, (int1[n][j + ybins * i])->Z,
+                fprintf(raw1,
+                        "%i  %i  %8.5f  %6.4f\n",
+                        i,
+                        j,
+                        (int1[n][j + ybins * i])->Z,
                         (int1[n][j + ybins * i])->t);
-                fprintf(raw2, "%i  %i  %8.5f  %6.4f\n", i, j, (int2[n][j + ybins * i])->Z,
+                fprintf(raw2,
+                        "%i  %i  %8.5f  %6.4f\n",
+                        i,
+                        j,
+                        (int2[n][j + ybins * i])->Z,
                         (int2[n][j + ybins * i])->t);
             }
         }
@@ -765,12 +795,9 @@ int gmx_densorder(int argc, char* argv[])
         { efTPR, "-s", nullptr, ffREAD }, /* this is for the topology */
         { efTRX, "-f", nullptr, ffREAD }, /* and this for the trajectory */
         { efNDX, "-n", nullptr, ffREAD }, /* this is to select groups */
-        { efDAT, "-o", "Density4D",
-          ffOPTWR }, /* This is for outputting the entire 4D densityfield in binary format */
-        { efOUT, "-or", nullptr,
-          ffOPTWRMULT }, /* This is for writing out the entire information in the t_interf arrays */
-        { efXPM, "-og", "interface",
-          ffOPTWRMULT }, /* This is for writing out the interface meshes - one xpm-file per tblock*/
+        { efDAT, "-o", "Density4D", ffOPTWR }, /* This is for outputting the entire 4D densityfield in binary format */
+        { efOUT, "-or", nullptr, ffOPTWRMULT }, /* This is for writing out the entire information in the t_interf arrays */
+        { efXPM, "-og", "interface", ffOPTWRMULT }, /* This is for writing out the interface meshes - one xpm-file per tblock*/
         { efOUT, "-Spect", "intfspect", ffOPTWRMULT }, /* This is for the trajectory averaged Fourier-spectra*/
     };
 
@@ -778,8 +805,8 @@ int gmx_densorder(int argc, char* argv[])
 
     /* This is the routine responsible for adding default options,
      * calling the X/motif interface, etc. */
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME | PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -800,8 +827,23 @@ int gmx_densorder(int argc, char* argv[])
 
     get_index(&top->atoms, ftp2fn_null(efNDX, NFILE, fnm), 1, ngx, index, grpname);
 
-    density_in_time(ftp2fn(efTRX, NFILE, fnm), index, ngx, binw, binwz, nsttblock, &Densmap,
-                    &xslices, &yslices, &zslices, &tblock, top, pbcType, axis, bCenter, b1d, oenv);
+    density_in_time(ftp2fn(efTRX, NFILE, fnm),
+                    index,
+                    ngx,
+                    binw,
+                    binwz,
+                    nsttblock,
+                    &Densmap,
+                    &xslices,
+                    &yslices,
+                    &zslices,
+                    &tblock,
+                    top,
+                    pbcType,
+                    axis,
+                    bCenter,
+                    b1d,
+                    oenv);
 
     if (ftorder > 0)
     {
@@ -813,8 +855,8 @@ int gmx_densorder(int argc, char* argv[])
         outputfield(opt2fn("-o", NFILE, fnm), Densmap, xslices, yslices, zslices, tblock);
     }
 
-    interfaces_txy(Densmap, xslices, yslices, zslices, tblock, binwz, eMeth, dens1, dens2, &surf1,
-                   &surf2, oenv);
+    interfaces_txy(
+            Densmap, xslices, yslices, zslices, tblock, binwz, eMeth, dens1, dens2, &surf1, &surf2, oenv);
 
     if (bGraph)
     {

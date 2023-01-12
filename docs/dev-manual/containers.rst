@@ -23,15 +23,15 @@ to the container registry.
 
 Steps:
 
-1. Create a `personal access token <https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html>`__
-   with ``write_registry`` scope. Save the hash!
-2. Authenticate from the command line with ``docker login registry.gitlab.com -u <token name> -p <hash>``
+1. Create a `personal access token <https://gitlab.com/-/profile/personal_access_tokens>`__ (`docs <https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html>`__)
+   with ``write_registry`` and ``read_registry`` scopes. Save the hash!
+2. Authenticate from the command line with ``docker login registry.gitlab.com -u <user name> -p <hash>``
 3. ``docker push registry.gitlab.com/gromacs/gromacs/<imagename>``
 
 Refer to :file:`buildall.sh` in the ``master`` branch for the set of images
 currently built.
 
-Within :doc:`pipeline jobs <gitlab>`, jobs specify a Docker image with the *image* property.
+Within :doc:`pipeline jobs <gitlab-ci>`, jobs specify a Docker image with the *image* property.
 For image naming convention, see :py:func:`utility.image_name`.
 Images from the GitLab registry
 are easily accessible with the same identifier as above.

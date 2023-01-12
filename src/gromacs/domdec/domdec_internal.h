@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -196,6 +194,8 @@ typedef struct gmx_domdec_sort
     std::vector<gmx_cgsort_t> moved;
     /**< Integer buffer for sorting */
     std::vector<int> intBuffer;
+    /**< Int64 buffer for sorting */
+    std::vector<int64_t> int64Buffer;
 } gmx_domdec_sort_t;
 
 /*! \brief Manages atom ranges and order for the local state atom vectors */
@@ -287,7 +287,7 @@ enum class DlbState
     offTemporarilyLocked, /**< DLB is off and temporarily can't turn on */
     onCanTurnOff,         /**< DLB is on and can turn off when slow */
     onUser,               /**< DLB is permanently on per user request */
-    nr                    /**< The number of DLB states */
+    Count                 /**< The number of DLB states */
 };
 
 /*! \brief The PME domain decomposition for one dimension */
@@ -430,7 +430,7 @@ struct DDSystemInfo
     //! True when update groups are used
     bool useUpdateGroups = false;
     //! Update atom grouping for each molecule type
-    std::vector<gmx::RangePartitioning> updateGroupingPerMoleculetype;
+    gmx::ArrayRef<const gmx::RangePartitioning> updateGroupingsPerMoleculeType;
     //! The maximum radius over all update groups
     real maxUpdateGroupRadius;
 
@@ -449,9 +449,9 @@ struct DDSystemInfo
     real cellsizeLimit = 0;
 
     //! Can atoms connected by constraints be assigned to different domains?
-    bool haveSplitConstraints = false;
+    bool mayHaveSplitConstraints = false;
     //! Can atoms connected by settles be assigned to different domains?
-    bool haveSplitSettles = false;
+    bool mayHaveSplitSettles = false;
     //! Estimated communication range needed for constraints
     real constraintCommunicationRange = 0;
 
@@ -593,35 +593,35 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
     /**< Cut-off for multi-body interactions, also 2-body bonded when \p cutoff_mody > \p cutoff */
     real cutoff_mbody = 0;
     /**< The minimum guaranteed cell-size, Cartesian indexing */
-    rvec cellsize_min = {};
+    gmx::RVec cellsize_min = { 0, 0, 0 };
     /**< The minimum guaranteed cell-size with dlb=auto */
-    rvec cellsize_min_dlb = {};
+    gmx::RVec cellsize_min_dlb = { 0, 0, 0 };
     /**< The lower limit for the DD cell size with DLB */
     real cellsize_limit = 0;
     /**< Effectively no NB cut-off limit with DLB for systems without PBC? */
-    gmx_bool bVacDLBNoLimit = false;
+    bool bVacDLBNoLimit = false;
 
     /** With PME load balancing we set limits on DLB */
-    gmx_bool bPMELoadBalDLBLimits = false;
+    bool bPMELoadBalDLBLimits = false;
     /** DLB needs to take into account that we want to allow this maximum
      *  cut-off (for PME load balancing), this could limit cell boundaries.
      */
     real PMELoadBal_max_cutoff = 0;
 
     /**< box lower corner, required with dim's without pbc and -gcom */
-    rvec box0 = {};
+    gmx::RVec box0 = { 0, 0, 0 };
     /**< box size, required with dim's without pbc and -gcom */
-    rvec box_size = {};
+    gmx::RVec box_size = { 0, 0, 0 };
 
     /**< The DD cell lower corner, in triclinic space */
-    rvec cell_x0 = {};
+    gmx::RVec cell_x0 = { 0, 0, 0 };
     /**< The DD cell upper corner, in triclinic space */
-    rvec cell_x1 = {};
+    gmx::RVec cell_x1 = { 0, 0, 0 };
 
     /**< The old \p cell_x0, to check cg displacements */
-    rvec old_cell_x0 = {};
+    gmx::RVec old_cell_x0 = { 0, 0, 0 };
     /**< The old \p cell_x1, to check cg displacements */
-    rvec old_cell_x1 = {};
+    gmx::RVec old_cell_x1 = { 0, 0, 0 };
 
     /** The communication setup and charge group boundaries for the zones */
     gmx_domdec_zones_t zones;
@@ -631,12 +631,12 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
      * dynamic load balancing.
      */
     /**< Zone limits for dim 1 with staggered grids */
-    gmx_ddzone_t zone_d1[2];
+    std::array<gmx_ddzone_t, 2> zone_d1;
     /**< Zone limits for dim 2 with staggered grids */
     gmx_ddzone_t zone_d2[2][2];
 
     /** The coordinate/force communication setup and indices */
-    gmx_domdec_comm_dim_t cd[DIM];
+    std::array<gmx_domdec_comm_dim_t, DIM> cd;
     /** Restricts the maximum number of cells to communicate with in one dimension
      *
      * Dynamic load balancing is not permitted to change sizes if it
@@ -649,7 +649,7 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
     int64_t master_cg_ddp_count = 0;
 
     /** The number of cg's received from the direct neighbors */
-    int zone_ncg1[DD_MAXZONE] = { 0 };
+    std::array<int, DD_MAXZONE> zone_ncg1 = { 0 };
 
     /** The atom ranges in the local state */
     DDAtomRanges atomRanges;
@@ -697,11 +697,11 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
 
     /* Cycle counters over nstlist steps */
     /**< Total cycles counted */
-    float cycl[ddCyclNr] = {};
+    std::array<float, ddCyclNr> cycl = { 0 };
     /**< The number of cycle recordings */
-    int cycl_n[ddCyclNr] = {};
+    std::array<int, ddCyclNr> cycl_n = { 0 };
     /**< The maximum cycle count */
-    float cycl_max[ddCyclNr] = {};
+    std::array<float, ddCyclNr> cycl_max = { 0 };
     /**< Total flops counted */
     double flop = 0.0;
     /**< The number of flop recordings */
@@ -737,7 +737,7 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
     /**< Max \p load_sum over the ranks */
     double load_max = 0.0;
     /**< Was load balancing limited, per DD dim */
-    ivec load_lim = {};
+    gmx::IVec load_lim = { 0, 0, 0 };
     /**< Total time on PP done during PME overlap time */
     double load_mdf = 0.0;
     /**< Total time on our PME-only rank */

@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010,2011,2012,2013,2014 by the GROMACS development team.
- * Copyright (c) 2015,2016,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \brief
@@ -46,11 +44,12 @@
 
 #include <cstdio>
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "gromacs/selection/selection.h" // For gmx::SelectionList
-#include "gromacs/utility/classhelpers.h"
 
 struct gmx_ana_indexgrps_t;
 struct gmx_mtop_t;
@@ -61,7 +60,6 @@ namespace gmx
 {
 
 class IOptionsContainer;
-class SelectionCompiler;
 class SelectionEvaluator;
 class TextInputStream;
 class TextOutputStream;
@@ -80,6 +78,11 @@ struct SelectionTopologyProperties;
  * the object, either call initOptions(), or both setReferencePosType() and
  * setOutputPosType().  See these methods for more details on the
  * initialization options.
+ *
+ * SelectionCollections can be copied. Copies retain the same pointers to external indices (if set)
+ * and the topology (if set), and are compiled if the copied collection is compiled. Selection
+ * objects created from a given SelectionCollection are tied only to the original collection, so
+ * a copy of a SelectionCollection will not update pre-existing Selections on evaluate() calls.
  *
  * After setting the default values, one or more selections can be parsed with
  * one or more calls to parseInteractive(), parseFromStdin(), parseFromFile(), and/or
@@ -137,6 +140,10 @@ public:
      */
     SelectionCollection();
     ~SelectionCollection();
+
+    SelectionCollection(const SelectionCollection& rhs);
+    SelectionCollection& operator=(SelectionCollection rhs);
+    void                 swap(SelectionCollection& rhs);
 
     /*! \brief
      * Initializes options for setting global properties on the collection.
@@ -246,7 +253,7 @@ public:
      * Does not throw currently, but this is subject to change when more
      * underlying code is converted to C++.
      */
-    void setTopology(gmx_mtop_t* top, int natoms);
+    void setTopology(const gmx_mtop_t* top, int natoms);
     /*! \brief
      * Sets the external index groups to use for the selections.
      *
@@ -388,7 +395,13 @@ public:
      * Does not throw.
      */
     void evaluateFinal(int nframes);
-
+    /*! \brief
+     * Retrieves a Selection handle for the selection with the given name
+     *
+     * @param selName name of the selection to return
+     * @return The selection with the given name, or nullopt if no such selection exists.
+     */
+    [[nodiscard]] std::optional<Selection> selection(std::string_view selName) const;
     /*! \brief
      * Prints a human-readable version of the internal selection element
      * tree.
@@ -414,13 +427,15 @@ public:
 private:
     class Impl;
 
-    PrivateImplPointer<Impl> impl_;
+    std::unique_ptr<Impl> impl_;
 
     // Needed for the compiler to freely modify the collection.
     friend void compileSelection(SelectionCollection* coll);
     // Needed for the evaluator to freely modify the collection.
     friend class SelectionEvaluator;
 };
+
+void swap(SelectionCollection& lhs, SelectionCollection& rhs);
 
 } // namespace gmx
 

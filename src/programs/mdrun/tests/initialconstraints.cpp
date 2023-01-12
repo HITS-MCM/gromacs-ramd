@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -76,7 +75,7 @@ TEST_P(InitialConstraintsTest, Works)
 {
     const int         nsteps     = 1;
     const float       timestep   = 0.001;
-    auto              integrator = GetParam();
+    const auto*       integrator = GetParam();
     const std::string integratorName(integrator);
     SCOPED_TRACE("Integrating with " + integratorName);
     const std::string theMdpFile = formatString(
@@ -92,7 +91,9 @@ TEST_P(InitialConstraintsTest, Works)
             "integrator              = %s\n"
             "nsteps                  = %d\n"
             "dt                      = %f\n",
-            integratorName.c_str(), nsteps, timestep);
+            integratorName.c_str(),
+            nsteps,
+            timestep);
 
     runner_.useStringAsMdpFile(theMdpFile);
 
@@ -129,7 +130,7 @@ TEST_P(InitialConstraintsTest, Works)
 //! Integrators with energy conservation to test
 const EnergyIntegratorType c_integratorsToTest[] = { "md", "md-vv", "md-vv-avek" };
 
-INSTANTIATE_TEST_CASE_P(Checking, InitialConstraintsTest, ::testing::ValuesIn(c_integratorsToTest));
+INSTANTIATE_TEST_SUITE_P(Checking, InitialConstraintsTest, ::testing::ValuesIn(c_integratorsToTest));
 
 } // namespace
 } // namespace test

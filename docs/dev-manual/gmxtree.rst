@@ -35,8 +35,8 @@ This representation is then used for various purposes:
 The checks are run as part of a single ``check-source`` target, but are described
 in separate sections below.  In addition to printing the issues to ``stderr``,
 the script also writes them into ``docs/doxygen/check-source.log`` for later
-inspection.  Jenkins runs the checks as part of the Documentation job, and the
-build is marked unstable if any issues are found.
+inspection.  CI runs the checks as part of all pipelines and CI will fail
+if any issues are found.
 
 For correct functionality, the scripts depend on correct usage of Doxygen
 annotations described in :doc:`doxygen`, in particular the visibility and
@@ -152,18 +152,6 @@ copied into ``suppressions.txt``, and the line number (if any) removed.  If the
 issue does not have a file name (or a pseudo-file) associated, a leading ``:``
 must be added.  To cover many similar issues, parts of the line can then be
 replaced with wildcards.
-
-A separate suppression mechanism is in place for cyclic dependencies: to
-suppress a cycle between moduleA and moduleB, add a line with format ::
-
-    moduleA -> moduleB
-
-into ``doxygen/cycle-suppressions.txt``.  This suppresses all cycles that contain
-the mentioned edge.  Since a cycle contains multiple edges, the suppression
-should be made for the edge that is determined to be an incorrect dependency.
-This also affects the layout of the include dependency graphs (see below): the
-suppressed edge is not considered when determining the dependency order, and is
-shown as invalid in the graph.
 
 .. _dev-include-sorter:
 

@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \libinternal \brief
@@ -49,6 +46,7 @@
 
 #include "gromacs/gmxpreprocess/notset.h"
 #include "gromacs/topology/ifunc.h"
+#include "gromacs/utility/enumerationhelpers.h"
 
 struct t_atom;
 struct t_symtab;
@@ -61,23 +59,23 @@ class ArrayRef;
 
 /*! \brief
  * Used for reading .rtp/.tdb
- * ebtsBONDS must be the first, new types can be added to the end
+ * BondedTypes::Bonds must be the first, new types can be added to the end
  * these *MUST* correspond to the arrays in hackblock.cpp
  */
-enum
+enum class BondedTypes : int
 {
-    ebtsBONDS,
-    ebtsANGLES,
-    ebtsPDIHS,
-    ebtsIDIHS,
-    ebtsEXCLS,
-    ebtsCMAP,
-    ebtsNR
+    Bonds,
+    Angles,
+    ProperDihedrals,
+    ImproperDihedrals,
+    Exclusions,
+    Cmap,
+    Count
 };
 //! Names for interaction type entries
-extern const char* btsNames[ebtsNR];
+const char* enumValueToString(BondedTypes enumValue);
 //! Numbers for atoms in the interactions.
-extern const int btsNiatoms[ebtsNR];
+int enumValueToNumIAtoms(BondedTypes enumValue);
 
 /* if changing any of these structs, make sure that all of the
    free/clear/copy/merge_t_* functions stay updated */
@@ -145,7 +143,7 @@ struct PreprocessResidue
     //! Delete dihedrals also defined by impropers.
     bool bRemoveDihedralIfWithImproper = false;
     //! List of bonded interactions to potentially add.
-    std::array<BondedInteractionList, ebtsNR> rb;
+    gmx::EnumerationArray<BondedTypes, BondedInteractionList> rb;
     //! Get number of atoms in residue.
     int natom() const { return atom.size(); }
 };
@@ -176,7 +174,7 @@ struct MoleculePatch
     std::vector<t_atom> atom;
     //! Chargegroup number.
     int cgnr = NOTSET;
-    //! Type of attachement.
+    //! Type of attachment.
     int tp = 0;
     //! Number of control atoms.
     int nctl = 0;
@@ -223,7 +221,7 @@ struct MoleculePatchDatabase
     //! List of changes to atoms.
     std::vector<MoleculePatch> hack;
     //! List of bonded interactions to potentially add.
-    std::array<BondedInteractionList, ebtsNR> rb;
+    gmx::EnumerationArray<BondedTypes, BondedInteractionList> rb;
     //! Number of atoms to modify
     int nhack() const { return hack.size(); }
 };

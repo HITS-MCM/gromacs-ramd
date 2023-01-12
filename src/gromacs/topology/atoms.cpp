@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -47,11 +43,18 @@
 #include "gromacs/topology/atomprop.h"
 #include "gromacs/topology/symtab.h"
 #include "gromacs/utility/compare.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/txtdump.h"
 
-const char* ptype_str[eptNR + 1] = { "Atom", "Nucleus", "Shell", "Bond", "VSite", nullptr };
+const char* enumValueToString(ParticleType enumValue)
+{
+    static constexpr gmx::EnumerationArray<ParticleType, const char*> particleTypeNames = {
+        "Atom", "Nucleus", "Shell", "Bond", "VSite"
+    };
+    return particleTypeNames[enumValue];
+}
 
 void init_atom(t_atoms* at)
 {
@@ -101,8 +104,6 @@ void done_atomtypes(t_atomtypes* atype)
 
 void add_t_atoms(t_atoms* atoms, int natom_extra, int nres_extra)
 {
-    int i;
-
     if (natom_extra > 0)
     {
         srenew(atoms->atomname, atoms->nr + natom_extra);
@@ -119,7 +120,7 @@ void add_t_atoms(t_atoms* atoms, int natom_extra, int nres_extra)
         {
             srenew(atoms->atomtypeB, atoms->nr + natom_extra);
         }
-        for (i = atoms->nr; (i < atoms->nr + natom_extra); i++)
+        for (int i = atoms->nr; (i < atoms->nr + natom_extra); i++)
         {
             atoms->atomname[i] = nullptr;
             memset(&atoms->atom[i], 0, sizeof(atoms->atom[i]));
@@ -141,7 +142,7 @@ void add_t_atoms(t_atoms* atoms, int natom_extra, int nres_extra)
     if (nres_extra > 0)
     {
         srenew(atoms->resinfo, atoms->nres + nres_extra);
-        for (i = atoms->nres; (i < atoms->nres + nres_extra); i++)
+        for (int i = atoms->nres; (i < atoms->nres + nres_extra); i++)
         {
             std::memset(&atoms->resinfo[i], 0, sizeof(atoms->resinfo[i]));
         }
@@ -175,7 +176,7 @@ void init_t_atoms(t_atoms* atoms, int natoms, gmx_bool bPdbinfo)
 
 void gmx_pdbinfo_init_default(t_pdbinfo* pdbinfo)
 {
-    pdbinfo->type         = epdbATOM;
+    pdbinfo->type         = PdbRecordType::Atom;
     pdbinfo->atomnr       = 0;
     pdbinfo->altloc       = ' ';
     pdbinfo->atomnm[0]    = '\0';
@@ -187,16 +188,10 @@ void gmx_pdbinfo_init_default(t_pdbinfo* pdbinfo)
 
 t_atoms* copy_t_atoms(const t_atoms* src)
 {
-    t_atoms* dst;
-    int      i;
+    t_atoms* dst = nullptr;
 
     snew(dst, 1);
     init_t_atoms(dst, src->nr, (nullptr != src->pdbinfo));
-    dst->nr = src->nr;
-    if (nullptr != src->atomname)
-    {
-        snew(dst->atomname, src->nr);
-    }
     if (nullptr != src->atomtype)
     {
         snew(dst->atomtype, src->nr);
@@ -205,7 +200,7 @@ t_atoms* copy_t_atoms(const t_atoms* src)
     {
         snew(dst->atomtypeB, src->nr);
     }
-    for (i = 0; (i < src->nr); i++)
+    for (int i = 0; (i < src->nr); i++)
     {
         dst->atom[i] = src->atom[i];
         if (nullptr != src->pdbinfo)
@@ -231,7 +226,7 @@ t_atoms* copy_t_atoms(const t_atoms* src)
     dst->havePdbInfo = src->havePdbInfo;
     dst->haveType    = src->haveType;
     dst->nres        = src->nres;
-    for (i = 0; (i < src->nres); i++)
+    for (int i = 0; (i < src->nres); i++)
     {
         dst->resinfo[i] = src->resinfo[i];
     }
@@ -247,64 +242,69 @@ void t_atoms_set_resinfo(t_atoms*      atoms,
                          int           chainnum,
                          char          chainid)
 {
-    t_resinfo* ri;
-
-    ri           = &atoms->resinfo[atoms->atom[atom_ind].resind];
-    ri->name     = put_symtab(symtab, resname);
-    ri->rtp      = nullptr;
-    ri->nr       = resnr;
-    ri->ic       = ic;
-    ri->chainnum = chainnum;
-    ri->chainid  = chainid;
+    t_resinfo* ri = &atoms->resinfo[atoms->atom[atom_ind].resind];
+    ri->name      = put_symtab(symtab, resname);
+    ri->rtp       = nullptr;
+    ri->nr        = resnr;
+    ri->ic        = ic;
+    ri->chainnum  = chainnum;
+    ri->chainid   = chainid;
 }
 
 static void pr_atom(FILE* fp, int indent, const char* title, const t_atom* atom, int n)
 {
-    int i;
-
     if (available(fp, atom, indent, title))
     {
         indent = pr_title_n(fp, indent, title, n);
-        for (i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
         {
             pr_indent(fp, indent);
             fprintf(fp,
                     "%s[%6d]={type=%3hu, typeB=%3hu, ptype=%8s, m=%12.5e, "
                     "q=%12.5e, mB=%12.5e, qB=%12.5e, resind=%5d, atomnumber=%3d}\n",
-                    title, i, atom[i].type, atom[i].typeB, ptype_str[atom[i].ptype], atom[i].m,
-                    atom[i].q, atom[i].mB, atom[i].qB, atom[i].resind, atom[i].atomnumber);
+                    title,
+                    i,
+                    atom[i].type,
+                    atom[i].typeB,
+                    enumValueToString(atom[i].ptype),
+                    atom[i].m,
+                    atom[i].q,
+                    atom[i].mB,
+                    atom[i].qB,
+                    atom[i].resind,
+                    atom[i].atomnumber);
         }
     }
 }
 
 static void pr_strings2(FILE* fp, int indent, const char* title, char*** nm, char*** nmB, int n, gmx_bool bShowNumbers)
 {
-    int i;
-
     if (available(fp, nm, indent, title))
     {
         indent = pr_title_n(fp, indent, title, n);
-        for (i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
         {
             pr_indent(fp, indent);
-            fprintf(fp, "%s[%d]={name=\"%s\",nameB=\"%s\"}\n", title, bShowNumbers ? i : -1,
-                    *(nm[i]), *(nmB[i]));
+            fprintf(fp, "%s[%d]={name=\"%s\",nameB=\"%s\"}\n", title, bShowNumbers ? i : -1, *(nm[i]), *(nmB[i]));
         }
     }
 }
 
 static void pr_resinfo(FILE* fp, int indent, const char* title, const t_resinfo* resinfo, int n, gmx_bool bShowNumbers)
 {
-    int i;
-
     if (available(fp, resinfo, indent, title))
     {
         indent = pr_title_n(fp, indent, title, n);
-        for (i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
         {
             pr_indent(fp, indent);
-            fprintf(fp, "%s[%d]={name=\"%s\", nr=%d, ic='%c'}\n", title, bShowNumbers ? i : -1,
-                    *(resinfo[i].name), resinfo[i].nr, (resinfo[i].ic == '\0') ? ' ' : resinfo[i].ic);
+            fprintf(fp,
+                    "%s[%d]={name=\"%s\", nr=%d, ic='%c'}\n",
+                    title,
+                    bShowNumbers ? i : -1,
+                    *(resinfo[i].name),
+                    resinfo[i].nr,
+                    (resinfo[i].ic == '\0') ? ' ' : resinfo[i].ic);
         }
     }
 }
@@ -324,15 +324,13 @@ void pr_atoms(FILE* fp, int indent, const char* title, const t_atoms* atoms, gmx
 
 void pr_atomtypes(FILE* fp, int indent, const char* title, const t_atomtypes* atomtypes, gmx_bool bShowNumbers)
 {
-    int i;
     if (available(fp, atomtypes, indent, title))
     {
         indent = pr_title(fp, indent, title);
-        for (i = 0; i < atomtypes->nr; i++)
+        for (int i = 0; i < atomtypes->nr; i++)
         {
             pr_indent(fp, indent);
-            fprintf(fp, "atomtype[%3d]={atomnumber=%4d}\n", bShowNumbers ? i : -1,
-                    atomtypes->atomnumber[i]);
+            fprintf(fp, "atomtype[%3d]={atomnumber=%4d}\n", bShowNumbers ? i : -1, atomtypes->atomnumber[i]);
         }
     }
 }
@@ -342,7 +340,7 @@ static void compareAtom(FILE* fp, int index, const t_atom* a1, const t_atom* a2,
     if (a2)
     {
         cmp_us(fp, "atom.type", index, a1->type, a2->type);
-        cmp_us(fp, "atom.ptype", index, a1->ptype, a2->ptype);
+        cmpEnum<ParticleType>(fp, "atom.ptype", a1->ptype, a2->ptype);
         cmp_int(fp, "atom.resind", index, a1->resind, a2->resind);
         cmp_int(fp, "atom.atomnumber", index, a1->atomnumber, a2->atomnumber);
         cmp_real(fp, "atom.m", index, a1->m, a2->m, relativeTolerance, absoluteTolerance);
@@ -386,7 +384,7 @@ static void comparePdbinfo(FILE*            fp,
                            real             absoluteTolerance)
 {
     fprintf(fp, "comparing t_pdbinfo\n");
-    cmp_int(fp, "type", pdb, pdb1.type, pdb2.type);
+    cmpEnum<PdbRecordType>(fp, "type", pdb1.type, pdb2.type);
     cmp_int(fp, "atomnr", pdb, pdb1.atomnr, pdb2.atomnr);
     cmp_uc(fp, "altloc", pdb, pdb1.altloc, pdb2.altloc);
     cmp_str(fp, "atomnm", pdb, pdb1.atomnm, pdb2.atomnm);
@@ -466,15 +464,19 @@ void atomsSetMassesBasedOnNames(t_atoms* atoms, gmx_bool printMissingMasses)
     bool haveMass = true;
     for (int i = 0; i < atoms->nr; i++)
     {
-        if (!aps.setAtomProperty(epropMass, *atoms->resinfo[atoms->atom[i].resind].name,
-                                 *atoms->atomname[i], &atoms->atom[i].m))
+        if (!aps.setAtomProperty(epropMass,
+                                 *atoms->resinfo[atoms->atom[i].resind].name,
+                                 *atoms->atomname[i],
+                                 &atoms->atom[i].m))
         {
             haveMass = false;
 
             if (numWarn < maxWarn)
             {
-                fprintf(stderr, "Can not find mass in database for atom %s in residue %d %s\n",
-                        *atoms->atomname[i], atoms->resinfo[atoms->atom[i].resind].nr,
+                fprintf(stderr,
+                        "Can not find mass in database for atom %s in residue %d %s\n",
+                        *atoms->atomname[i],
+                        atoms->resinfo[atoms->atom[i].resind].nr,
                         *atoms->resinfo[atoms->atom[i].resind].name);
                 numWarn++;
             }

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -52,6 +48,7 @@
 #include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
+#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/arraysize.h"
@@ -112,10 +109,25 @@ static void lo_write_xplor(XplorMap* map, const char* file)
     fprintf(fp, "\n       2 !NTITLE\n");
     fprintf(fp, " REMARKS Energy Landscape from GROMACS\n");
     fprintf(fp, " REMARKS DATE: 2004-12-21 \n");
-    fprintf(fp, " %7d %7d %7d %7d %7d %7d %7d %7d %7d\n", map->Nx, map->dmin[0], map->dmax[0],
-            map->Ny, map->dmin[1], map->dmax[1], map->Nz, map->dmin[2], map->dmax[2]);
-    fprintf(fp, "%12.5E%12.5E%12.5E%12.5E%12.5E%12.5E\n", map->cell[0], map->cell[1], map->cell[2],
-            map->cell[3], map->cell[4], map->cell[5]);
+    fprintf(fp,
+            " %7d %7d %7d %7d %7d %7d %7d %7d %7d\n",
+            map->Nx,
+            map->dmin[0],
+            map->dmax[0],
+            map->Ny,
+            map->dmin[1],
+            map->dmax[1],
+            map->Nz,
+            map->dmin[2],
+            map->dmax[2]);
+    fprintf(fp,
+            "%12.5E%12.5E%12.5E%12.5E%12.5E%12.5E\n",
+            map->cell[0],
+            map->cell[1],
+            map->cell[2],
+            map->cell[3],
+            map->cell[4],
+            map->cell[5]);
     fprintf(fp, "ZYX\n");
 
     z = map->dmin[2];
@@ -233,7 +245,9 @@ static inline void print_minimum(FILE* fp, int num, const t_minimum* min)
     fprintf(fp,
             "Minimum %d at index "
             "%" PRId64 " energy %10.3f\n",
-            num, min->index, min->ener);
+            num,
+            min->index,
+            min->ener);
 }
 
 static inline void add_minimum(FILE* fp, int num, const t_minimum* min, t_minimum* mm)
@@ -314,14 +328,14 @@ static void pick_minima(const char* logfile, int* ibox, int ndim, int len, real 
                         this_min.index = index3(ibox, i, j, k);
                         this_min.ener  = W[this_min.index];
                         if (is_local_minimum_from_below(&this_min, i, 0, index3(ibox, i - 1, j, k), W)
-                            && is_local_minimum_from_above(&this_min, i, ibox[0] - 1,
-                                                           index3(ibox, i + 1, j, k), W)
+                            && is_local_minimum_from_above(
+                                    &this_min, i, ibox[0] - 1, index3(ibox, i + 1, j, k), W)
                             && is_local_minimum_from_below(&this_min, j, 0, index3(ibox, i, j - 1, k), W)
-                            && is_local_minimum_from_above(&this_min, j, ibox[1] - 1,
-                                                           index3(ibox, i, j + 1, k), W)
+                            && is_local_minimum_from_above(
+                                    &this_min, j, ibox[1] - 1, index3(ibox, i, j + 1, k), W)
                             && is_local_minimum_from_below(&this_min, k, 0, index3(ibox, i, j, k - 1), W)
-                            && is_local_minimum_from_above(&this_min, k, ibox[2] - 1,
-                                                           index3(ibox, i, j, k + 1), W))
+                            && is_local_minimum_from_above(
+                                    &this_min, k, ibox[2] - 1, index3(ibox, i, j, k + 1), W))
                         {
                             add_minimum(fp, nmin, &this_min, mm);
                             nmin++;
@@ -365,12 +379,12 @@ static void pick_minima(const char* logfile, int* ibox, int ndim, int len, real 
                     int index = this_point[i];
                     this_point[i]--;
                     bMin = bMin
-                           && is_local_minimum_from_below(&this_min, index, 0,
-                                                          indexn(ndim, ibox, this_point), W);
+                           && is_local_minimum_from_below(
+                                   &this_min, index, 0, indexn(ndim, ibox, this_point), W);
                     this_point[i] += 2;
                     bMin = bMin
-                           && is_local_minimum_from_above(&this_min, index, ibox[i] - 1,
-                                                          indexn(ndim, ibox, this_point), W);
+                           && is_local_minimum_from_above(
+                                   &this_min, index, ibox[i] - 1, indexn(ndim, ibox, this_point), W);
                     this_point[i]--;
                 }
                 if (bMin)
@@ -481,8 +495,10 @@ static void do_sham(const char* fn,
         {
             if (max_eig[i] > xmax[i])
             {
-                gmx_warning("Your xmax[%d] value %f is smaller than the largest data point %f", i,
-                            xmax[i], max_eig[i]);
+                gmx_warning("Your xmax[%d] value %f is smaller than the largest data point %f",
+                            i,
+                            xmax[i],
+                            max_eig[i]);
             }
             max_eig[i] = xmax[i];
         }
@@ -495,8 +511,10 @@ static void do_sham(const char* fn,
         {
             if (min_eig[i] < xmin[i])
             {
-                gmx_warning("Your xmin[%d] value %f is larger than the smallest data point %f", i,
-                            xmin[i], min_eig[i]);
+                gmx_warning("Your xmin[%d] value %f is larger than the smallest data point %f",
+                            i,
+                            xmin[i],
+                            min_eig[i]);
             }
             min_eig[i] = xmin[i];
         }
@@ -507,7 +525,7 @@ static void do_sham(const char* fn,
         bfac[i] = ibox[i] / (max_eig[i] - min_eig[i]);
     }
     /* Do the binning */
-    bref = 1 / (BOLTZ * Tref);
+    bref = 1 / (gmx::c_boltz * Tref);
     snew(bE, n);
     if (bGE || nenerT == 2)
     {
@@ -521,7 +539,7 @@ static void do_sham(const char* fn,
             }
             else
             {
-                bE[j] = (bref - 1 / (BOLTZ * enerT[1][j])) * enerT[0][j];
+                bE[j] = (bref - 1 / (gmx::c_boltz * enerT[1][j])) * enerT[0][j];
             }
             Emin = std::min(Emin, static_cast<double>(bE[j]));
         }
@@ -584,7 +602,7 @@ static void do_sham(const char* fn,
                 }
                 else if (idim[i] == -1)
                 {
-                    efac /= std::sin(DEG2RAD * eig[i][j]);
+                    efac /= std::sin(gmx::c_deg2Rad * eig[i][j]);
                 }
             }
             /* Update the probability */
@@ -614,7 +632,7 @@ static void do_sham(const char* fn,
         if (P[i] != 0)
         {
             Pmax = std::max(P[i], Pmax);
-            W[i] = -BOLTZ * Tref * std::log(P[i]);
+            W[i] = -gmx::c_boltz * Tref * std::log(P[i]);
             if (W[i] < Wmin)
             {
                 Wmin = W[i];
@@ -744,20 +762,76 @@ static void do_sham(const char* fn,
             SS[i] = &(S[i * ibox[1]]);
         }
         fp = gmx_ffopen(xpmP, "w");
-        write_xpm(fp, flags, "Probability Distribution", "", "PC1", "PC2", ibox[0], ibox[1], axis_x,
-                  axis_y, PP, 0, Pmax, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "Probability Distribution",
+                  "",
+                  "PC1",
+                  "PC2",
+                  ibox[0],
+                  ibox[1],
+                  axis_x,
+                  axis_y,
+                  PP,
+                  0,
+                  Pmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
         fp = gmx_ffopen(xpm, "w");
-        write_xpm(fp, flags, "Gibbs Energy Landscape", "G (kJ/mol)", "PC1", "PC2", ibox[0], ibox[1],
-                  axis_x, axis_y, WW, 0, gmax, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "Gibbs Energy Landscape",
+                  "G (kJ/mol)",
+                  "PC1",
+                  "PC2",
+                  ibox[0],
+                  ibox[1],
+                  axis_x,
+                  axis_y,
+                  WW,
+                  0,
+                  gmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
         fp = gmx_ffopen(xpm2, "w");
-        write_xpm(fp, flags, "Enthalpy Landscape", "H (kJ/mol)", "PC1", "PC2", ibox[0], ibox[1],
-                  axis_x, axis_y, EE, emin ? *emin : Emin, emax ? *emax : Einf, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "Enthalpy Landscape",
+                  "H (kJ/mol)",
+                  "PC1",
+                  "PC2",
+                  ibox[0],
+                  ibox[1],
+                  axis_x,
+                  axis_y,
+                  EE,
+                  emin ? *emin : Emin,
+                  emax ? *emax : Einf,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
         fp = gmx_ffopen(xpm3, "w");
-        write_xpm(fp, flags, "Entropy Landscape", "TDS (kJ/mol)", "PC1", "PC2", ibox[0], ibox[1],
-                  axis_x, axis_y, SS, 0, Sinf, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "Entropy Landscape",
+                  "TDS (kJ/mol)",
+                  "PC1",
+                  "PC2",
+                  ibox[0],
+                  ibox[1],
+                  axis_x,
+                  axis_y,
+                  SS,
+                  0,
+                  Sinf,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
     }
     else if (neig == 3)
@@ -776,9 +850,18 @@ static void do_sham(const char* fn,
                     index   = index3(ibox, i, j, k);
                     if (P[index] > 0)
                     {
-                        fprintf(fp, "%-6s%5d  %-4.4s%3.3s  %4d    %8.3f%8.3f%8.3f%6.2f%6.2f\n",
-                                "ATOM", (index + 1) % 10000, "H", "H", (index + 1) % 10000, xxx[XX],
-                                xxx[YY], xxx[ZZ], 1.0, W[index]);
+                        fprintf(fp,
+                                "%-6s%5d  %-4.4s%3.3s  %4d    %8.3f%8.3f%8.3f%6.2f%6.2f\n",
+                                "ATOM",
+                                (index + 1) % 10000,
+                                "H",
+                                "H",
+                                (index + 1) % 10000,
+                                xxx[XX],
+                                xxx[YY],
+                                xxx[ZZ],
+                                1.0,
+                                W[index]);
                     }
                 }
             }
@@ -800,8 +883,22 @@ static void do_sham(const char* fn,
         sprintf(buf, "%s", xpm);
         sprintf(&buf[std::strlen(xpm) - 4], "12.xpm");
         fp = gmx_ffopen(buf, "w");
-        write_xpm(fp, flags, "Gibbs Energy Landscape", "W (kJ/mol)", "PC1", "PC2", ibox[0], ibox[1],
-                  axis_x, axis_y, WW, 0, gmax, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "Gibbs Energy Landscape",
+                  "W (kJ/mol)",
+                  "PC1",
+                  "PC2",
+                  ibox[0],
+                  ibox[1],
+                  axis_x,
+                  axis_y,
+                  WW,
+                  0,
+                  gmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
         for (i = 0; (i < ibox[0]); i++)
         {
@@ -812,8 +909,22 @@ static void do_sham(const char* fn,
         }
         sprintf(&buf[std::strlen(xpm) - 4], "13.xpm");
         fp = gmx_ffopen(buf, "w");
-        write_xpm(fp, flags, "SHAM Energy Landscape", "kJ/mol", "PC1", "PC3", ibox[0], ibox[2],
-                  axis_x, axis_z, WW, 0, gmax, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "SHAM Energy Landscape",
+                  "kJ/mol",
+                  "PC1",
+                  "PC3",
+                  ibox[0],
+                  ibox[2],
+                  axis_x,
+                  axis_z,
+                  WW,
+                  0,
+                  gmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
         for (i = 0; (i < ibox[1]); i++)
         {
@@ -824,8 +935,22 @@ static void do_sham(const char* fn,
         }
         sprintf(&buf[std::strlen(xpm) - 4], "23.xpm");
         fp = gmx_ffopen(buf, "w");
-        write_xpm(fp, flags, "SHAM Energy Landscape", "kJ/mol", "PC2", "PC3", ibox[1], ibox[2],
-                  axis_y, axis_z, WW, 0, gmax, rlo, rhi, &nlevels);
+        write_xpm(fp,
+                  flags,
+                  "SHAM Energy Landscape",
+                  "kJ/mol",
+                  "PC2",
+                  "PC3",
+                  ibox[1],
+                  ibox[2],
+                  axis_y,
+                  axis_z,
+                  WW,
+                  0,
+                  gmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
         gmx_ffclose(fp);
         sfree(buf);
     }
@@ -1011,14 +1136,23 @@ int gmx_sham(int argc, char* argv[])
     int npargs;
 
     npargs = asize(pa);
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW, NFILE, fnm, npargs, pa, asize(desc), desc, 0,
-                           nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW, NFILE, fnm, npargs, pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
 
-    val = read_xvg_time(opt2fn("-f", NFILE, fnm), bHaveT, opt2parg_bSet("-b", npargs, pa), tb - ttol,
-                        opt2parg_bSet("-e", npargs, pa), te + ttol, nsets_in, &nset, &n, &dt, &t);
+    val = read_xvg_time(opt2fn("-f", NFILE, fnm),
+                        bHaveT,
+                        opt2parg_bSet("-b", npargs, pa),
+                        tb - ttol,
+                        opt2parg_bSet("-e", npargs, pa),
+                        te + ttol,
+                        nsets_in,
+                        &nset,
+                        &n,
+                        &dt,
+                        &t);
     printf("Read %d sets of %d points, dt = %g\n\n", nset, n, dt);
 
     fn_ge  = opt2fn_null("-ge", NFILE, fnm);
@@ -1031,9 +1165,17 @@ int gmx_sham(int argc, char* argv[])
 
     if (fn_ge || fn_ene)
     {
-        et_val = read_xvg_time(fn_ge ? fn_ge : fn_ene, bHaveT, opt2parg_bSet("-b", npargs, pa),
-                               tb - ttol, opt2parg_bSet("-e", npargs, pa), te + ttol, 1, &e_nset,
-                               &e_n, &e_dt, &e_t);
+        et_val = read_xvg_time(fn_ge ? fn_ge : fn_ene,
+                               bHaveT,
+                               opt2parg_bSet("-b", npargs, pa),
+                               tb - ttol,
+                               opt2parg_bSet("-e", npargs, pa),
+                               te + ttol,
+                               1,
+                               &e_nset,
+                               &e_n,
+                               &e_dt,
+                               &e_t);
         if (fn_ge)
         {
             if (e_nset != 1)
@@ -1046,13 +1188,17 @@ int gmx_sham(int argc, char* argv[])
             if (e_nset != 1 && e_nset != 2)
             {
                 gmx_fatal(FARGS,
-                          "Can only handle one energy component or one energy and one T in %s", fn_ene);
+                          "Can only handle one energy component or one energy and one T in %s",
+                          fn_ene);
             }
         }
         if (e_n != n)
         {
-            gmx_fatal(FARGS, "Number of energies (%d) does not match number of entries (%d) in %s",
-                      e_n, n, opt2fn("-f", NFILE, fnm));
+            gmx_fatal(FARGS,
+                      "Number of energies (%d) does not match number of entries (%d) in %s",
+                      e_n,
+                      n,
+                      opt2fn("-f", NFILE, fnm));
         }
     }
     else
@@ -1098,12 +1244,33 @@ int gmx_sham(int argc, char* argv[])
     }
     /* The number of grid points fits in a int64_t. */
 
-    do_sham(opt2fn("-dist", NFILE, fnm), opt2fn("-bin", NFILE, fnm), opt2fn("-lp", NFILE, fnm),
-            opt2fn("-ls", NFILE, fnm), opt2fn("-lsh", NFILE, fnm), opt2fn("-lss", NFILE, fnm),
-            opt2fn("-ls3", NFILE, fnm), opt2fn("-g", NFILE, fnm), n, nset, val, fn_ge != nullptr,
-            e_nset, et_val, Tref, pmax, gmax, opt2parg_bSet("-emin", NPA, pa) ? &emin : nullptr,
-            opt2parg_bSet("-emax", NPA, pa) ? &emax : nullptr, nlevels, pmin, idim, ibox,
-            opt2parg_bSet("-xmin", NPA, pa), rmin, opt2parg_bSet("-xmax", NPA, pa), rmax);
+    do_sham(opt2fn("-dist", NFILE, fnm),
+            opt2fn("-bin", NFILE, fnm),
+            opt2fn("-lp", NFILE, fnm),
+            opt2fn("-ls", NFILE, fnm),
+            opt2fn("-lsh", NFILE, fnm),
+            opt2fn("-lss", NFILE, fnm),
+            opt2fn("-ls3", NFILE, fnm),
+            opt2fn("-g", NFILE, fnm),
+            n,
+            nset,
+            val,
+            fn_ge != nullptr,
+            e_nset,
+            et_val,
+            Tref,
+            pmax,
+            gmax,
+            opt2parg_bSet("-emin", NPA, pa) ? &emin : nullptr,
+            opt2parg_bSet("-emax", NPA, pa) ? &emax : nullptr,
+            nlevels,
+            pmin,
+            idim,
+            ibox,
+            opt2parg_bSet("-xmin", NPA, pa),
+            rmin,
+            opt2parg_bSet("-xmax", NPA, pa),
+            rmax);
 
     return 0;
 }

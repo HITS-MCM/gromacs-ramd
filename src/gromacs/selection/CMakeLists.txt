@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2010,2012,2013,2014,2015 by the GROMACS development team.
-# Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2010- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,13 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
+
+# Set up the module library
+add_library(selection INTERFACE)
 
 file(GLOB SELECTION_SOURCES *.cpp)
 file(GLOB SCANNER_SOURCES scanner.cpp parser.cpp)
@@ -56,8 +57,42 @@ else()
     gmx_target_warning_suppression(scanner -Wno-missing-declarations HAS_NO_MISSING_DECLARATIONS)
     gmx_target_warning_suppression(scanner -Wno-null-conversion HAS_NO_NULL_CONVERSIONS)
 endif()
+target_link_libraries(scanner PRIVATE legacy_api)
+# TODO: Use explicit module dependencies.
+target_link_libraries(scanner PRIVATE legacy_modules)
+
 list(APPEND libgromacs_object_library_dependencies scanner)
 set(libgromacs_object_library_dependencies ${libgromacs_object_library_dependencies} PARENT_SCOPE)
+
+# Source files have the following dependencies on library infrastructure.
+#target_link_libraries(selection PRIVATE
+#                      common
+#                      legacy_modules
+#)
+
+# Public interface for modules, including dependencies and interfaces
+#target_include_directories(selection PUBLIC
+target_include_directories(selection INTERFACE
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+#target_link_libraries(selection PUBLIC
+target_link_libraries(selection INTERFACE
+                      legacy_api
+                      )
+
+# TODO: when selection is an OBJECT target
+#target_link_libraries(selection PUBLIC legacy_api)
+#target_link_libraries(selection PRIVATE common)
+
+# Module dependencies
+# selection interfaces convey transitive dependence on these modules.
+#target_link_libraries(selection PUBLIC
+target_link_libraries(selection INTERFACE
+                      utility
+                      )
+# Source files have the following private module dependencies.
+#target_link_libraries(selection PRIVATE NOTHING)
+# TODO: Explicitly link specific modules.
+#target_link_libraries(selection PRIVATE legacy_modules)
 
 if(GMX_INSTALL_LEGACY_API)
     install(FILES

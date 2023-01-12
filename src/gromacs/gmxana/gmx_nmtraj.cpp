@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -127,8 +124,8 @@ int gmx_nmtraj(int argc, char* argv[])
         return 0;
     }
 
-    read_eigenvectors(opt2fn("-v", NFILE, fnm), &natoms, &bFit, &xref, &bDMR, &xav, &bDMA, &nvec,
-                      &eignr, &eigvec, &eigval);
+    read_eigenvectors(
+            opt2fn("-v", NFILE, fnm), &natoms, &bFit, &xref, &bDMR, &xav, &bDMA, &nvec, &eignr, &eigvec, &eigval);
 
     read_tps_conf(ftp2fn(efTPS, NFILE, fnm), &top, &pbcType, &xtop, nullptr, box, bDMA);
 
@@ -231,7 +228,7 @@ int gmx_nmtraj(int argc, char* argv[])
             /* Derive amplitude from temperature and eigenvalue if we can */
 
             /* Convert eigenvalue to angular frequency, in units s^(-1) */
-            omega = std::sqrt(eigval[kmode] * 1.0E21 / (AVOGADRO * AMU));
+            omega = std::sqrt(eigval[kmode] * 1.0E21 / (gmx::c_avogadro * gmx::c_amu));
             /* Harmonic motion will be x=x0 + A*sin(omega*t)*eigenvec.
              * The velocity is thus:
              *
@@ -261,10 +258,10 @@ int gmx_nmtraj(int argc, char* argv[])
             /* Convert Ekin from amu*(nm/s)^2 to J, i.e., kg*(m/s)^2
              * This will also be proportional to A^2
              */
-            Ekin *= AMU * 1E-18;
+            Ekin *= gmx::c_amu * 1E-18;
 
             /* Set the amplitude so the energy is kT/2 */
-            amplitude[i] = std::sqrt(0.5 * BOLTZMANN * temp / Ekin);
+            amplitude[i] = std::sqrt(0.5 * gmx::c_boltzmann * temp / Ekin);
         }
         else
         {

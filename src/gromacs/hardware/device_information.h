@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016, by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *  \brief Declares the GPU information structure and its helpers
@@ -64,6 +62,7 @@
 
 //! Constant used to help minimize preprocessed code
 static constexpr bool c_binarySupportsGpus = (GMX_GPU != 0);
+//! Whether \ref DeviceInformation can be serialized for sending via MPI.
 static constexpr bool c_canSerializeDeviceInformation =
         (!GMX_GPU_OPENCL && !GMX_GPU_SYCL); /*NOLINT(misc-redundant-expression)*/
 
@@ -71,25 +70,35 @@ static constexpr bool c_canSerializeDeviceInformation =
 enum class DeviceStatus : int
 {
     //! The device is compatible
-    Compatible = 0,
+    Compatible,
     //! Device does not exist
-    Nonexistent = 1,
+    Nonexistent,
     //! Device is not compatible
-    Incompatible = 2,
+    Incompatible,
     //! OpenCL device has incompatible cluster size for non-bonded kernels.
-    IncompatibleClusterSize = 3,
-    //! There are known issues with NVIDIA Volta and newer.
-    IncompatibleNvidiaVolta = 4,
+    IncompatibleClusterSize,
+    //! There are known issues with OpenCL on NVIDIA Volta and newer.
+    IncompatibleNvidiaVolta,
+    /*! \brief The device originates from non-recommended SYCL backend.
+     * The device might work by itself, but to simplify device allocation, it is marked as incompatible.
+     * */
+    NotPreferredBackend,
     /*! \brief An error occurred during the functionality checks.
      * That indicates malfunctioning of the device, driver, or incompatible driver/runtime.
      */
-    NonFunctional = 5,
+    NonFunctional,
     /*! \brief CUDA devices are busy or unavailable.
      * typically due to use of \p cudaComputeModeExclusive, \p cudaComputeModeProhibited modes.
      */
-    Unavailable = 6,
+    Unavailable,
+    /*! \brief The device is outside the set of compilation targets.
+     * See \c GMX_CUDA_TARGET_SM and \c GMX_CUDA_TARGET_COMPUTE CMake variables.
+     */
+    DeviceNotTargeted,
+    //! \brief LevelZero backend is known to cause errors with oneAPI 2022.0.1
+    IncompatibleLevelZeroAndOneApi2022,
     //! Enumeration size
-    Count = 7
+    Count
 };
 
 /*! \brief Names of the GPU detection/check results
@@ -102,13 +111,19 @@ enum class DeviceStatus : int
  * missing, so that is suppressed.
  */
 static const gmx::EnumerationArray<DeviceStatus, const char*> c_deviceStateString = {
-    "compatible", "nonexistent", "incompatible",
+    "compatible",
+    "nonexistent",
+    "incompatible",
     // clang-format off
     // NOLINTNEXTLINE(bugprone-suspicious-missing-comma)
-    "incompatible (please recompile with correct GMX" "_OPENCL_NB_CLUSTER_SIZE of 4)",
+    "incompatible (please recompile with correct GMX" "_GPU_NB_CLUSTER_SIZE of 4)",
     // clang-format on
-    "incompatible (please use CUDA build for NVIDIA Volta GPUs or newer)", "non-functional",
-    "unavailable"
+    "incompatible (please use CUDA build for NVIDIA Volta GPUs or newer)",
+    "not recommended (please use SYCL_DEVICE_FILTER to limit visibility to a single backend)",
+    "non-functional",
+    "unavailable",
+    "not in set of targeted devices",
+    "incompatible (Level Zero backend is not stable with oneAPI 2022.0)", // Issue #4354
 };
 
 //! Device vendors
@@ -155,7 +170,7 @@ struct DeviceInformation
     size_t         maxWorkItemSizes[3]; //!< Workgroup size limits (CL_DEVICE_MAX_WORK_ITEM_SIZES).
     size_t         maxWorkGroupSize;    //!< Workgroup total size limit (CL_DEVICE_MAX_WORK_GROUP_SIZE).
 #elif GMX_GPU_SYCL
-    cl::sycl::device syclDevice;
+    sycl::device syclDevice;
 #endif
 };
 

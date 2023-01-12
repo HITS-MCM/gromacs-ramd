@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,13 +26,16 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_MULTIPLETIMESTEPPING_H
 #define GMX_MULTIPLETIMESTEPPING_H
+
+#include <string>
+#include <vector>
 
 #include <bitset>
 
@@ -58,6 +60,7 @@ enum class MtsForceGroups : int
     Count               //!< The number of groups above
 };
 
+//! Names for the MTS force groups
 static const gmx::EnumerationArray<MtsForceGroups, std::string> mtsForceGroupNames = {
     "longrange-nonbonded", "nonbonded", "pair", "dihedral", "angle", "pull", "awh"
 };
@@ -89,8 +92,42 @@ static inline int forceGroupMtsLevel(ArrayRef<const MtsLevel> mtsLevels, const M
  */
 int nonbondedMtsFactor(const t_inputrec& ir);
 
-//! (Release) Asserts that all multiple time-stepping requirements on \p ir are fulfilled
-void assertMtsRequirements(const t_inputrec& ir);
+//! Struct for passing the MTS mdp options to setupMtsLevels()
+struct GromppMtsOpts
+{
+    //! The number of MTS levels
+    int numLevels = 0;
+    //! The names of the force groups assigned by the user to level 2, internal index 1
+    std::string level2Forces;
+    //! The step factor assigned by the user to level 2, internal index 1
+    int level2Factor = 0;
+};
+
+/*! \brief Sets up and returns the MTS levels and checks requirements of MTS
+ *
+ * Appends errors about allowed input values ir to errorMessages, when not nullptr.
+ *
+ * \param[in]     mtsOpts        Options for setting the MTS levels
+ * \param[in,out] errorMessages  List of error messages, can be nullptr
+ */
+std::vector<MtsLevel> setupMtsLevels(const GromppMtsOpts& mtsOpts, std::vector<std::string>* errorMessages);
+
+/*! \brief Returns whether we use MTS and the MTS setup is internally valid
+ *
+ * Note that setupMtsLevels would have returned at least one error message
+ * when this function returns false
+ */
+bool haveValidMtsSetup(const t_inputrec& ir);
+
+/*! \brief Checks whether the MTS requirements on other algorithms and output frequencies are met
+ *
+ * Note: exits with an assertion failure when
+ * ir.useMts == true && haveValidMtsSetup(ir) == false
+ *
+ * \param[in] ir  Complete input record
+ * \returns list of error messages, empty when all MTS requirements are met
+ */
+std::vector<std::string> checkMtsRequirements(const t_inputrec& ir);
 
 } // namespace gmx
 

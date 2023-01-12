@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -66,22 +62,29 @@ static int round_check(real r, int limit, int ftype, const char* name)
 
     if (r - i > 0.01 || r - i < -0.01)
     {
-        gmx_fatal(FARGS, "A non-integer value (%f) was supplied for '%s' in %s", r, name,
+        gmx_fatal(FARGS,
+                  "A non-integer value (%f) was supplied for '%s' in %s",
+                  r,
+                  name,
                   interaction_function[ftype].longname);
     }
 
     if (i < limit)
     {
-        gmx_fatal(FARGS, "Value of '%s' in %s is %d, which is smaller than the minimum of %d", name,
-                  interaction_function[ftype].longname, i, limit);
+        gmx_fatal(FARGS,
+                  "Value of '%s' in %s is %d, which is smaller than the minimum of %d",
+                  name,
+                  interaction_function[ftype].longname,
+                  i,
+                  limit);
     }
 
     return i;
 }
 
-static void set_ljparams(int comb, double reppow, double v, double w, real* c6, real* c12)
+static void set_ljparams(CombinationRule comb, double reppow, double v, double w, real* c6, real* c12)
 {
-    if (comb == eCOMB_ARITHMETIC || comb == eCOMB_GEOM_SIG_EPS)
+    if (comb == CombinationRule::Arithmetic || comb == CombinationRule::GeomSigEps)
     {
         if (v >= 0)
         {
@@ -105,7 +108,11 @@ static void set_ljparams(int comb, double reppow, double v, double w, real* c6, 
 /* A return value of 0 means parameters were assigned successfully,
  * returning -1 means this is an all-zero interaction that should not be added.
  */
-static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<const real> old, int comb, double reppow)
+static int assign_param(t_functype                ftype,
+                        t_iparams*                newparam,
+                        gmx::ArrayRef<const real> old,
+                        CombinationRule           comb,
+                        double                    reppow)
 {
     bool all_param_zero = true;
 
@@ -134,9 +141,9 @@ static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<con
     {
         case F_G96ANGLES:
             /* Post processing of input data: store cosine iso angle itself */
-            newparam->harmonic.rA  = cos(old[0] * DEG2RAD);
+            newparam->harmonic.rA  = cos(old[0] * gmx::c_deg2Rad);
             newparam->harmonic.krA = old[1];
-            newparam->harmonic.rB  = cos(old[2] * DEG2RAD);
+            newparam->harmonic.rB  = cos(old[2] * gmx::c_deg2Rad);
             newparam->harmonic.krB = old[3];
             break;
         case F_G96BONDS:
@@ -247,14 +254,6 @@ static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<con
             newparam->thole.a      = old[0];
             newparam->thole.alpha1 = old[1];
             newparam->thole.alpha2 = old[2];
-            if ((old[1] > 0) && (old[2] > 0))
-            {
-                newparam->thole.rfac = old[0] * gmx::invsixthroot(old[1] * old[2]);
-            }
-            else
-            {
-                newparam->thole.rfac = 1;
-            }
             break;
         case F_BHAM:
             newparam->bham.a = old[0];
@@ -327,7 +326,8 @@ static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<con
                 gmx_fatal(FARGS,
                           "Invalid geometry for flat-bottomed position restraint.\n"
                           "Expected number between 1 and %d. Found %d\n",
-                          efbposresNR - 1, newparam->fbposres.geom);
+                          efbposresNR - 1,
+                          newparam->fbposres.geom);
             }
             newparam->fbposres.r        = old[1];
             newparam->fbposres.k        = old[2];
@@ -418,8 +418,8 @@ static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<con
             newparam->vsite.f = old[5];
             break;
         case F_VSITE3FAD:
-            newparam->vsite.a = old[1] * cos(DEG2RAD * old[0]);
-            newparam->vsite.b = old[1] * sin(DEG2RAD * old[0]);
+            newparam->vsite.a = old[1] * cos(gmx::c_deg2Rad * old[0]);
+            newparam->vsite.b = old[1] * sin(gmx::c_deg2Rad * old[0]);
             newparam->vsite.c = old[2];
             newparam->vsite.d = old[3];
             newparam->vsite.e = old[4];
@@ -445,7 +445,7 @@ static int assign_param(t_functype ftype, t_iparams* newparam, gmx::ArrayRef<con
 static int enter_params(gmx_ffparams_t*           ffparams,
                         t_functype                ftype,
                         gmx::ArrayRef<const real> forceparams,
-                        int                       comb,
+                        CombinationRule           comb,
                         real                      reppow,
                         int                       start,
                         bool                      bAppend)
@@ -508,7 +508,7 @@ static void append_interaction(InteractionList* ilist, int type, gmx::ArrayRef<c
 
 static void enter_function(const InteractionsOfType* p,
                            t_functype                ftype,
-                           int                       comb,
+                           CombinationRule           comb,
                            real                      reppow,
                            gmx_ffparams_t*           ffparams,
                            InteractionList*          il,
@@ -517,7 +517,7 @@ static void enter_function(const InteractionsOfType* p,
 {
     int start = ffparams->numTypes();
 
-    for (auto& parm : p->interactionTypes)
+    for (const auto& parm : p->interactionTypes)
     {
         int type = enter_params(ffparams, ftype, parm.forceParam(), comb, reppow, start, bAppend);
         /* Type==-1 is used as a signal that this interaction is all-zero and should not be added. */
@@ -535,7 +535,7 @@ void convertInteractionsOfType(int                                      atnr,
                                gmx::ArrayRef<const InteractionsOfType>  nbtypes,
                                gmx::ArrayRef<const MoleculeInformation> mi,
                                const MoleculeInformation*               intermolecular_interactions,
-                               int                                      comb,
+                               CombinationRule                          comb,
                                double                                   reppow,
                                real                                     fudgeQQ,
                                gmx_mtop_t*                              mtop)
@@ -552,8 +552,8 @@ void convertInteractionsOfType(int                                      atnr,
     ffp->reppow = reppow;
 
     enter_function(&(nbtypes[F_LJ]), static_cast<t_functype>(F_LJ), comb, reppow, ffp, nullptr, TRUE, TRUE);
-    enter_function(&(nbtypes[F_BHAM]), static_cast<t_functype>(F_BHAM), comb, reppow, ffp, nullptr,
-                   TRUE, TRUE);
+    enter_function(
+            &(nbtypes[F_BHAM]), static_cast<t_functype>(F_BHAM), comb, reppow, ffp, nullptr, TRUE, TRUE);
 
     for (size_t mt = 0; mt < mtop->moltype.size(); mt++)
     {
@@ -568,8 +568,14 @@ void convertInteractionsOfType(int                                      atnr,
             if ((i != F_LJ) && (i != F_BHAM)
                 && ((flags & IF_BOND) || (flags & IF_VSITE) || (flags & IF_CONSTRAINT)))
             {
-                enter_function(&(interactions[i]), static_cast<t_functype>(i), comb, reppow, ffp,
-                               &molt->ilist[i], FALSE, (i == F_POSRES || i == F_FBPOSRES));
+                enter_function(&(interactions[i]),
+                               static_cast<t_functype>(i),
+                               comb,
+                               reppow,
+                               ffp,
+                               &molt->ilist[i],
+                               FALSE,
+                               (i == F_POSRES || i == F_FBPOSRES));
             }
         }
     }
@@ -615,8 +621,14 @@ void convertInteractionsOfType(int                                      atnr,
                 }
                 else
                 {
-                    enter_function(&(interactions[i]), static_cast<t_functype>(i), comb, reppow,
-                                   ffp, &(*mtop->intermolecular_ilist)[i], FALSE, FALSE);
+                    enter_function(&(interactions[i]),
+                                   static_cast<t_functype>(i),
+                                   comb,
+                                   reppow,
+                                   ffp,
+                                   &(*mtop->intermolecular_ilist)[i],
+                                   FALSE,
+                                   FALSE);
 
                     mtop->bIntermolecularInteractions = TRUE;
                 }

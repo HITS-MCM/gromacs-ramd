@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -67,6 +66,7 @@
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/stringutil.h"
 
+#include "biassharing.h"
 #include "correlationgrid.h"
 #include "correlationhistory.h"
 #include "pointstate.h"
@@ -107,8 +107,6 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
                                                          ArrayRef<const double> neighborLambdaDhdl,
                                                          double*                awhPotential,
                                                          double*                potentialJump,
-                                                         const t_commrec*       commRecord,
-                                                         const gmx_multisim_t*  ms,
                                                          double                 t,
                                                          int64_t                step,
                                                          int64_t                seed,
@@ -144,8 +142,7 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
             state_.doSkippedUpdatesInNeighborhood(params_, grid_);
         }
         convolvedBias = state_.updateProbabilityWeightsAndConvolvedBias(
-                dimParams_, grid_, moveUmbrella ? neighborLambdaEnergies : ArrayRef<const double>{},
-                &probWeightNeighbor);
+                dimParams_, grid_, moveUmbrella ? neighborLambdaEnergies : ArrayRef<const double>{}, &probWeightNeighbor);
 
         if (isSampleCoordStep)
         {
@@ -165,9 +162,12 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
     double potential;
     if (params_.convolveForce)
     {
-        state_.calcConvolvedForce(dimParams_, grid_, probWeightNeighbor,
+        state_.calcConvolvedForce(dimParams_,
+                                  grid_,
+                                  probWeightNeighbor,
                                   moveUmbrella ? neighborLambdaDhdl : ArrayRef<const double>{},
-                                  tempForce_, biasForce_);
+                                  tempForce_,
+                                  biasForce_);
 
         potential = -convolvedBias * params_.invBeta;
     }
@@ -178,8 +178,11 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
                            "AWH bias grid point for the umbrella reference value is outside of the "
                            "target region.");
         potential = state_.calcUmbrellaForceAndPotential(
-                dimParams_, grid_, coordState.umbrellaGridpoint(),
-                moveUmbrella ? neighborLambdaDhdl : ArrayRef<const double>{}, biasForce_);
+                dimParams_,
+                grid_,
+                coordState.umbrellaGridpoint(),
+                moveUmbrella ? neighborLambdaDhdl : ArrayRef<const double>{},
+                biasForce_);
 
         /* Moving the umbrella results in a force correction and
          * a new potential. The umbrella center is sampled as often as
@@ -188,18 +191,25 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
          */
         if (moveUmbrella)
         {
-            double newPotential =
-                    state_.moveUmbrella(dimParams_, grid_, probWeightNeighbor, neighborLambdaDhdl,
-                                        biasForce_, step, seed, params_.biasIndex);
-            *potentialJump = newPotential - potential;
+            const bool onlySampleUmbrellaGridpoint = false;
+            double     newPotential                = state_.moveUmbrella(dimParams_,
+                                                      grid_,
+                                                      probWeightNeighbor,
+                                                      neighborLambdaDhdl,
+                                                      biasForce_,
+                                                      step,
+                                                      seed,
+                                                      params_.biasIndex,
+                                                      onlySampleUmbrellaGridpoint);
+            *potentialJump                         = newPotential - potential;
         }
     }
 
     /* Update the free energy estimates and bias and other history dependent method parameters */
     if (params_.isUpdateFreeEnergyStep(step))
     {
-        state_.updateFreeEnergyAndAddSamplesToHistogram(dimParams_, grid_, params_, commRecord, ms,
-                                                        t, step, fplog, &updateList_);
+        state_.updateFreeEnergyAndAddSamplesToHistogram(
+                dimParams_, grid_, params_, t, step, fplog, &updateList_);
 
         if (params_.convolveForce)
         {
@@ -207,6 +217,21 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
             double newPotential = -calcConvolvedBias(coordState.coordValue()) * params_.invBeta;
             *potentialJump      = newPotential - potential;
         }
+    }
+    /* If there is a lambda axis it is still controlled using an umbrella even if the force
+     * is convolved in the other dimensions. */
+    if (moveUmbrella && params_.convolveForce && grid_.hasLambdaAxis())
+    {
+        const bool onlySampleUmbrellaGridpoint = true;
+        state_.moveUmbrella(dimParams_,
+                            grid_,
+                            probWeightNeighbor,
+                            neighborLambdaDhdl,
+                            biasForce_,
+                            step,
+                            seed,
+                            params_.biasIndex,
+                            onlySampleUmbrellaGridpoint);
     }
 
     /* Return the potential. */
@@ -224,7 +249,7 @@ gmx::ArrayRef<const double> Bias::calcForceAndUpdateBias(const awh_dvec         
  * \param[in] pointState  The state of the points in a bias.
  * \returns the total sample count.
  */
-static int64_t countSamples(const std::vector<PointState>& pointState)
+static int64_t countSamples(ArrayRef<const PointState> pointState)
 {
     double numSamples = 0;
     for (const PointState& point : pointState)
@@ -255,8 +280,11 @@ static void ensureStateAndRunConsistency(const BiasParams& params, const BiasSta
                 "The number of AWH updates in the checkpoint file (%" PRId64
                 ") does not match the total number of AWH samples divided by the number of samples "
                 "per update for %d sharing AWH bias(es) (%" PRId64 "/%d=%" PRId64 ")",
-                numUpdatesExpected, params.numSharedUpdate, numSamples,
-                params.numSamplesUpdateFreeEnergy_ * params.numSharedUpdate, numUpdatesFromSamples);
+                numUpdatesExpected,
+                params.numSharedUpdate,
+                numSamples,
+                params.numSamplesUpdateFreeEnergy_ * params.numSharedUpdate,
+                numUpdatesFromSamples);
         mesg += " Maybe you changed AWH parameters.";
         /* Unfortunately we currently do not store the number of simulations
          * sharing the bias or the state to checkpoint. But we can hint at
@@ -267,7 +295,8 @@ static void ensureStateAndRunConsistency(const BiasParams& params, const BiasSta
             mesg += gmx::formatString(
                     " Or the run you continued from used %" PRId64
                     " sharing simulations, whereas you now specified %d sharing simulations.",
-                    numUpdatesFromSamples / state.histogramSize().numUpdates(), params.numSharedUpdate);
+                    numUpdatesFromSamples / state.histogramSize().numUpdates(),
+                    params.numSharedUpdate);
         }
         GMX_THROW(InvalidInputError(mesg));
     }
@@ -329,35 +358,35 @@ void Bias::updateHistory(AwhBiasHistory* biasHistory) const
 Bias::Bias(int                            biasIndexInCollection,
            const AwhParams&               awhParams,
            const AwhBiasParams&           awhBiasParams,
-           const std::vector<DimParams>&  dimParamsInit,
+           ArrayRef<const DimParams>      dimParamsInit,
            double                         beta,
            double                         mdTimeStep,
-           int                            numSharingSimulations,
+           const BiasSharing*             biasSharing,
            const std::string&             biasInitFilename,
            ThisRankWillDoIO               thisRankWillDoIO,
            BiasParams::DisableUpdateSkips disableUpdateSkips) :
-    dimParams_(dimParamsInit),
-    grid_(dimParamsInit, awhBiasParams.dimParams),
+    dimParams_(dimParamsInit.begin(), dimParamsInit.end()),
+    grid_(dimParamsInit, awhBiasParams.dimParams()),
     params_(awhParams,
             awhBiasParams,
             dimParams_,
             beta,
             mdTimeStep,
             disableUpdateSkips,
-            numSharingSimulations,
+            biasSharing ? biasSharing->numSharingSimulations(biasIndexInCollection) : 1,
             grid_.axis(),
             biasIndexInCollection),
-    state_(awhBiasParams, params_.initialHistogramSize, dimParams_, grid_),
+    state_(awhBiasParams, params_.initialHistogramSize, dimParams_, grid_, biasSharing),
     thisRankDoesIO_(thisRankWillDoIO == ThisRankWillDoIO::Yes),
     biasForce_(ndim()),
-
     tempForce_(ndim()),
     numWarningsIssued_(0)
 {
     /* For a global update updateList covers all points, so reserve that */
     updateList_.reserve(grid_.numPoints());
 
-    state_.initGridPointState(awhBiasParams, dimParams_, grid_, params_, biasInitFilename, awhParams.numBias);
+    state_.initGridPointState(
+            awhBiasParams, dimParams_, grid_, params_, biasInitFilename, awhParams.numBias());
 
     if (thisRankDoesIO_)
     {
@@ -368,9 +397,12 @@ Bias::Bias(int                            biasIndexInCollection,
          */
         double blockLength = 0;
         /* Construct the force correlation object. */
-        forceCorrelationGrid_ = std::make_unique<CorrelationGrid>(
-                state_.points().size(), ndim(), blockLength,
-                CorrelationGrid::BlockLengthMeasure::Time, awhParams.nstSampleCoord * mdTimeStep);
+        forceCorrelationGrid_ =
+                std::make_unique<CorrelationGrid>(state_.points().size(),
+                                                  ndim(),
+                                                  blockLength,
+                                                  CorrelationGrid::BlockLengthMeasure::Time,
+                                                  awhParams.nstSampleCoord() * mdTimeStep);
 
         writer_ = std::make_unique<BiasWriter>(*this);
     }
@@ -385,11 +417,13 @@ void Bias::printInitializationToLog(FILE* fplog) const
         fprintf(fplog,
                 "%s initial force correlation block length = %g %s"
                 "%s force correlation number of blocks = %d",
-                prefix.c_str(), forceCorrelationGrid().getBlockLength(),
+                prefix.c_str(),
+                forceCorrelationGrid().getBlockLength(),
                 forceCorrelationGrid().blockLengthMeasure == CorrelationGrid::BlockLengthMeasure::Weight
                         ? ""
                         : "ps",
-                prefix.c_str(), forceCorrelationGrid().getNumBlocks());
+                prefix.c_str(),
+                forceCorrelationGrid().getNumBlocks());
     }
 }
 
@@ -415,8 +449,8 @@ void Bias::updateForceCorrelationGrid(gmx::ArrayRef<const double> probWeightNeig
            We actually add the force normalized by beta which has the units of 1/length. This means that the
            resulting correlation time integral is directly in units of friction time/length^2 which is really what
            we're interested in. */
-        state_.calcUmbrellaForceAndPotential(dimParams_, grid_, indexNeighbor, neighborLambdaDhdl,
-                                             forceFromNeighbor);
+        state_.calcUmbrellaForceAndPotential(
+                dimParams_, grid_, indexNeighbor, neighborLambdaDhdl, forceFromNeighbor);
 
         /* Note: we might want to give a whole list of data to add instead and have this loop in the data adding function */
         forceCorrelationGrid_->addData(indexNeighbor, weightNeighbor, forceFromNeighbor, t);

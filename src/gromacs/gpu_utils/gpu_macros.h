@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_GPU_UTILS_MACROS_H
 #define GMX_GPU_UTILS_MACROS_H
@@ -73,11 +72,15 @@
 #    define OPENCL_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
 #    define OPENCL_FUNC_TERM REAL_FUNC_TERM
 #    define OPENCL_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
+#    define SYCL_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
+#    define SYCL_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
+#    define SYCL_FUNC_TERM REAL_FUNC_TERM
+#    define SYCL_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
 
 #else // Not DOXYGEN
 
 /* GPU support is enabled, so these functions will have real code defined somewhere */
-#    if GMX_GPU && !GMX_GPU_SYCL
+#    if GMX_GPU
 #        define GPU_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
 #        define GPU_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
 #        define GPU_FUNC_TERM REAL_FUNC_TERM
@@ -87,7 +90,6 @@
 #        define GPU_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
 #        define GPU_FUNC_TERM NULL_FUNC_TERM
 #        define GPU_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
-#
 #    endif
 
 /* Enable and disable platform-specific function implementations */
@@ -113,6 +115,18 @@
 #        define CUDA_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
 #        define CUDA_FUNC_TERM NULL_FUNC_TERM
 #        define CUDA_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
+#    endif
+
+#    if GMX_GPU_SYCL
+#        define SYCL_FUNC_QUALIFIER REAL_FUNC_QUALIFIER
+#        define SYCL_FUNC_ARGUMENT REAL_FUNC_ARGUMENT
+#        define SYCL_FUNC_TERM REAL_FUNC_TERM
+#        define SYCL_FUNC_TERM_WITH_RETURN(arg) REAL_FUNC_TERM_WITH_RETURN(arg)
+#    else
+#        define SYCL_FUNC_QUALIFIER NULL_FUNC_QUALIFIER
+#        define SYCL_FUNC_ARGUMENT NULL_FUNC_ARGUMENT
+#        define SYCL_FUNC_TERM NULL_FUNC_TERM
+#        define SYCL_FUNC_TERM_WITH_RETURN(arg) NULL_FUNC_TERM_WITH_RETURN(arg)
 #    endif
 
 #endif // ifdef DOXYGEN

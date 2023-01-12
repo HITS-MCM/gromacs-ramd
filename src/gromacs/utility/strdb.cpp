@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -50,8 +46,8 @@
 
 gmx_bool get_a_line(FILE* fp, char line[], int n)
 {
-    char* line0;
-    char* dum;
+    char* line0 = nullptr;
+    char* dum   = nullptr;
 
     snew(line0, n + 1);
 
@@ -70,7 +66,8 @@ gmx_bool get_a_line(FILE* fp, char line[], int n)
         else if (static_cast<int>(std::strlen(line0)) == n)
         {
             fprintf(stderr,
-                    "Warning: line length exceeds buffer length (%d), data might be corrupted\n", n);
+                    "Warning: line length exceeds buffer length (%d), data might be corrupted\n",
+                    n);
             line0[n - 1] = '\0';
         }
         else
@@ -112,10 +109,8 @@ gmx_bool get_header(char line[], char* header)
 
 int search_str(int nstr, char** str, char* key)
 {
-    int i;
-
     /* Linear search */
-    for (i = 0; (i < nstr); i++)
+    for (int i = 0; (i < nstr); i++)
     {
         if (gmx_strcasecmp(str[i], key) == 0)
         {
@@ -128,12 +123,11 @@ int search_str(int nstr, char** str, char* key)
 
 static int fget_lines(FILE* in, const char* db, char*** strings)
 {
-    char** ptr;
+    char** ptr = nullptr;
     char   buf[STRLEN];
-    int    i, nstr;
-    char*  pret;
+    int    nstr = 0;
 
-    pret = fgets(buf, STRLEN, in);
+    char* pret = fgets(buf, STRLEN, in);
     if (pret == nullptr || sscanf(buf, "%d", &nstr) != 1)
     {
         gmx_warning("File is empty");
@@ -142,7 +136,7 @@ static int fget_lines(FILE* in, const char* db, char*** strings)
         return 0;
     }
     snew(ptr, nstr);
-    for (i = 0; (i < nstr); i++)
+    for (int i = 0; (i < nstr); i++)
     {
         if (fgets2(buf, STRLEN, in) == nullptr)
         {

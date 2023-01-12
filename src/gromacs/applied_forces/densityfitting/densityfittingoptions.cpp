@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -52,7 +51,7 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreetransform.h"
-#include "gromacs/utility/mdmodulenotification.h"
+#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/strconvert.h"
 
 #include "densityfittingamplitudelookup.h"
@@ -130,37 +129,39 @@ void DensityFittingOptions::initMdpTransform(IKeyValueTreeTransformRules* rules)
     const auto& stringIdentityTransform = [](std::string s) { return s; };
     densityfittingMdpTransformFromString<bool>(rules, &fromStdString<bool>, c_activeTag_);
     densityfittingMdpTransformFromString<std::string>(rules, stringIdentityTransform, c_groupTag_);
-    densityfittingMdpTransformFromString<std::string>(rules, stringIdentityTransform,
-                                                      c_similarityMeasureTag_);
+    densityfittingMdpTransformFromString<std::string>(
+            rules, stringIdentityTransform, c_similarityMeasureTag_);
     densityfittingMdpTransformFromString<std::string>(rules, stringIdentityTransform, c_amplitudeMethodTag_);
     densityfittingMdpTransformFromString<real>(rules, &fromStdString<real>, c_forceConstantTag_);
-    densityfittingMdpTransformFromString<real>(rules, &fromStdString<real>,
-                                               c_gaussianTransformSpreadingWidthTag_);
+    densityfittingMdpTransformFromString<real>(
+            rules, &fromStdString<real>, c_gaussianTransformSpreadingWidthTag_);
     densityfittingMdpTransformFromString<real>(
             rules, &fromStdString<real>, c_gaussianTransformSpreadingRangeInMultiplesOfWidthTag_);
-    densityfittingMdpTransformFromString<std::string>(rules, stringIdentityTransform,
-                                                      c_referenceDensityFileNameTag_);
-    densityfittingMdpTransformFromString<std::int64_t>(rules, &fromStdString<std::int64_t>,
-                                                       c_everyNStepsTag_);
+    densityfittingMdpTransformFromString<std::string>(
+            rules, stringIdentityTransform, c_referenceDensityFileNameTag_);
+    densityfittingMdpTransformFromString<std::int64_t>(
+            rules, &fromStdString<std::int64_t>, c_everyNStepsTag_);
     densityfittingMdpTransformFromString<bool>(rules, &fromStdString<bool>, c_normalizeDensitiesTag_);
     densityfittingMdpTransformFromString<bool>(rules, &fromStdString<bool>, c_adaptiveForceScalingTag_);
-    densityfittingMdpTransformFromString<real>(rules, &fromStdString<real>,
-                                               c_adaptiveForceScalingTimeConstantTag_);
+    densityfittingMdpTransformFromString<real>(
+            rules, &fromStdString<real>, c_adaptiveForceScalingTimeConstantTag_);
     const auto& stringRVecToStringRVecWithCheck = [](const std::string& str) {
         return stringIdentityTransformWithArrayCheck<real, 3>(
-                str, "Reading three real values as vector while parsing the .mdp input failed in "
-                             + DensityFittingModuleInfo::name_ + ".");
+                str,
+                "Reading three real values as vector while parsing the .mdp input failed in "
+                        + DensityFittingModuleInfo::name_ + ".");
     };
-    densityfittingMdpTransformFromString<std::string>(rules, stringRVecToStringRVecWithCheck,
-                                                      c_translationTag_);
+    densityfittingMdpTransformFromString<std::string>(
+            rules, stringRVecToStringRVecWithCheck, c_translationTag_);
 
     const auto& stringMatrixToStringMatrixWithCheck = [](const std::string& str) {
         return stringIdentityTransformWithArrayCheck<real, 9>(
-                str, "Reading nine real values as vector while parsing the .mdp input failed in "
-                             + DensityFittingModuleInfo::name_ + ".");
+                str,
+                "Reading nine real values as vector while parsing the .mdp input failed in "
+                        + DensityFittingModuleInfo::name_ + ".");
     };
-    densityfittingMdpTransformFromString<std::string>(rules, stringMatrixToStringMatrixWithCheck,
-                                                      c_transformationMatrixTag_);
+    densityfittingMdpTransformFromString<std::string>(
+            rules, stringMatrixToStringMatrixWithCheck, c_transformationMatrixTag_);
 }
 
 //! Name the methods that may be used to evaluate similarity between densities
@@ -189,20 +190,23 @@ void DensityFittingOptions::buildMdpOutput(KeyValueTreeObjectBuilder* builder) c
                 "cross-correlation",
                 c_similarityMeasureTag_);
         addDensityFittingMdpOutputValue<std::string>(
-                builder, c_densitySimilarityMeasureMethodNames[parameters_.similarityMeasureMethod_],
+                builder,
+                c_densitySimilarityMeasureMethodNames[parameters_.similarityMeasureMethod_],
                 c_similarityMeasureTag_);
 
         addDensityFittingMdpOutputValueComment(
-                builder, "; Atom amplitude for spreading onto grid: unity, mass, or charge",
-                c_amplitudeMethodTag_);
+                builder, "; Atom amplitude for spreading onto grid: unity, mass, or charge", c_amplitudeMethodTag_);
         addDensityFittingMdpOutputValue<std::string>(
-                builder, c_densityFittingAmplitudeMethodNames[parameters_.amplitudeLookupMethod_],
+                builder,
+                c_densityFittingAmplitudeMethodNames[parameters_.amplitudeLookupMethod_],
                 c_amplitudeMethodTag_);
 
         addDensityFittingMdpOutputValue(builder, parameters_.forceConstant_, c_forceConstantTag_);
-        addDensityFittingMdpOutputValue(builder, parameters_.gaussianTransformSpreadingWidth_,
+        addDensityFittingMdpOutputValue(builder,
+                                        parameters_.gaussianTransformSpreadingWidth_,
                                         c_gaussianTransformSpreadingWidthTag_);
-        addDensityFittingMdpOutputValue(builder, parameters_.gaussianTransformSpreadingRangeInMultiplesOfWidth_,
+        addDensityFittingMdpOutputValue(builder,
+                                        parameters_.gaussianTransformSpreadingRangeInMultiplesOfWidth_,
                                         c_gaussianTransformSpreadingRangeInMultiplesOfWidthTag_);
         addDensityFittingMdpOutputValueComment(builder,
                                                "; Reference density file location as absolute path "
@@ -213,14 +217,15 @@ void DensityFittingOptions::buildMdpOutput(KeyValueTreeObjectBuilder* builder) c
         addDensityFittingMdpOutputValueComment(
                 builder, "; Normalize the sum of density voxel values to one", c_normalizeDensitiesTag_);
         addDensityFittingMdpOutputValue(builder, parameters_.normalizeDensities_, c_normalizeDensitiesTag_);
-        addDensityFittingMdpOutputValueComment(builder, "; Apply adaptive force scaling",
-                                               c_adaptiveForceScalingTag_);
-        addDensityFittingMdpOutputValue(builder, parameters_.adaptiveForceScaling_,
-                                        c_adaptiveForceScalingTag_);
+        addDensityFittingMdpOutputValueComment(
+                builder, "; Apply adaptive force scaling", c_adaptiveForceScalingTag_);
+        addDensityFittingMdpOutputValue(
+                builder, parameters_.adaptiveForceScaling_, c_adaptiveForceScalingTag_);
         addDensityFittingMdpOutputValueComment(builder,
                                                "; Time constant for adaptive force scaling in ps",
                                                c_adaptiveForceScalingTimeConstantTag_);
-        addDensityFittingMdpOutputValue(builder, parameters_.adaptiveForceScalingTimeConstant_,
+        addDensityFittingMdpOutputValue(builder,
+                                        parameters_.adaptiveForceScalingTimeConstant_,
                                         c_adaptiveForceScalingTimeConstantTag_);
     }
 }
@@ -306,7 +311,9 @@ void DensityFittingOptions::readInternalParametersFromKvt(const KeyValueTreeObje
     }
     auto kvtIndexArray = tree[DensityFittingModuleInfo::name_ + "-" + c_groupTag_].asArray().values();
     parameters_.indices_.resize(kvtIndexArray.size());
-    std::transform(std::begin(kvtIndexArray), std::end(kvtIndexArray), std::begin(parameters_.indices_),
+    std::transform(std::begin(kvtIndexArray),
+                   std::end(kvtIndexArray),
+                   std::begin(parameters_.indices_),
                    [](const KeyValueTreeValue& val) { return val.cast<std::int64_t>(); });
 }
 

@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2012- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 include(gmxCustomCommandUtilities)
 include(gmxOptionUtilities)
@@ -119,7 +117,7 @@ if (DOXYGEN_FOUND)
     else()
         # If there is no git, we just update the stamp every time, and the
         # builds are triggered every time.  This should be rare enough, but
-        # this case still needs to be supported for the Jenkins job that builds
+        # this case still needs to be supported for the CI job that builds
         # the documentation for a release from the release tarball.
         gmx_add_custom_output_target(doxygen-source-timestamp
             RUN_ALWAYS OUTPUT STAMP
@@ -168,13 +166,11 @@ if (DOXYGEN_FOUND)
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/graphbuilder.py
                 -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}
-                --ignore-cycles ${CMAKE_CURRENT_SOURCE_DIR}/cycle-suppressions.txt
                 -o ${DEPGRAPH_DIR}
             DEPENDS doxygen-xml ${INSTALLED_HEADER_FILE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/doxygenxml.py
                 ${CMAKE_CURRENT_SOURCE_DIR}/gmxtree.py
                 ${CMAKE_CURRENT_SOURCE_DIR}/graphbuilder.py
-                ${CMAKE_CURRENT_SOURCE_DIR}/cycle-suppressions.txt
             COMMENT "Generating include dependency graphs for dot"
             USES_TERMINAL)
 
@@ -209,14 +205,13 @@ if (DOXYGEN_FOUND)
         # TODO: Consider whether this is the best location for this code,
         # since not all of it is Doxygen-specific (but nearly all of it
         # relies on the Doxygen XML documentation).
-        # The output .log file currently needs to be here, since Jenkins
+        # The output .log file currently needs to be here, since CI
         # expects that.
         set(check_source_command
             ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check-source.py
             -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}
             -l ${CMAKE_CURRENT_BINARY_DIR}/check-source.log
-            --ignore ${CMAKE_CURRENT_SOURCE_DIR}/suppressions.txt
-            --ignore-cycles ${CMAKE_CURRENT_SOURCE_DIR}/cycle-suppressions.txt)
+            --ignore ${CMAKE_CURRENT_SOURCE_DIR}/suppressions.txt)
         add_custom_target(check-source      COMMAND ${check_source_command}
             COMMENT "Checking source code for various issues" VERBATIM USES_TERMINAL)
         add_custom_target(check-source-fast COMMAND ${check_source_command}

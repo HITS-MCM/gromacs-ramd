@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Implements functionality for printing information about the
@@ -52,7 +48,7 @@
 #    include <fftw3.h>
 #endif
 
-#ifdef HAVE_LIBMKL
+#if HAVE_LIBMKL
 #    include <mkl.h>
 #endif
 
@@ -70,11 +66,13 @@
 
 #include <algorithm>
 #include <array>
+#include <numeric>
 #include <string>
 
 /* This file is completely threadsafe - keep it that way! */
 
 #include "buildinfo.h"
+#include "contributors.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/baseversion.h"
 #include "gromacs/utility/exceptions.h"
@@ -84,8 +82,10 @@
 #include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/sysinfo.h"
 #include "gromacs/utility/textwriter.h"
+#include "gromacs/utility/mpiinfo.h"
 
 #include "cuda_version_information.h"
+#include "sycl_version_information.h"
 
 namespace
 {
@@ -105,105 +105,93 @@ std::string formatCentered(int width, const char* text)
     return formatString("%*s%s", offset, "", text);
 }
 
+void writeVectorAsColumns(gmx::TextWriter*                writer,
+                          const std::string&              header,
+                          const std::vector<std::string>& v,
+                          std::size_t                     outputWidth = 80)
+{
+    if (v.empty())
+    {
+        return;
+    }
+
+    writer->writeLine(formatCentered(outputWidth, header.c_str()));
+
+    const std::size_t maxWidth =
+            std::accumulate(v.begin(), v.end(), std::size_t{ 0 }, [](const auto a, const auto& s) {
+                return std::max(a, s.length());
+            });
+
+    const int columns     = outputWidth / (maxWidth + 1);
+    const int columnWidth = outputWidth / columns;
+
+    for (std::size_t i = 0; i < v.size(); i++)
+    {
+        const std::size_t padLeft = (columnWidth - v[i].length()) / 2;
+        const std::string paddedString{ std::string(padLeft, ' ') + v[i] };
+
+        // Using maxWidth+1 when calculating #columns above means we will always have spaces
+        writer->writeString(formatString("%-*s", columnWidth, paddedString.c_str()));
+        if ((i + 1) % columns == 0)
+        {
+            writer->ensureLineBreak();
+        }
+    }
+    writer->ensureEmptyLine();
+}
+
+void writeVectorAsSingleLine(gmx::TextWriter*                writer,
+                             const std::string&              header,
+                             const std::vector<std::string>& v,
+                             std::size_t                     outputWidth = 80)
+{
+    if (v.empty())
+    {
+        return;
+    }
+
+    writer->writeLine(formatCentered(outputWidth, header.c_str()));
+
+    std::string s;
+    for (std::size_t i = 0; i < v.size(); i++)
+    {
+        s += v[i];
+        if (i < v.size() - 2)
+        {
+            s += ", ";
+        }
+        else if (i == v.size() - 2)
+        {
+            s += (v.size() == 2) ? " and " : ", and "; // Oxford comma for >2 names...
+        }
+    }
+    writer->writeLine(formatCentered(outputWidth, s.c_str()));
+    writer->ensureEmptyLine();
+}
+
 void printCopyright(gmx::TextWriter* writer)
 {
-    // Contributors sorted alphabetically by last name
-    static const char* const Contributors[]  = { "Andrey Alekseenko",
-                                                "Emile Apol",
-                                                "Rossen Apostolov",
-                                                "Paul Bauer",
-                                                "Herman J.C. Berendsen",
-                                                "Par Bjelkmar",
-                                                "Christian Blau",
-                                                "Viacheslav Bolnykh",
-                                                "Kevin Boyd",
-                                                "Aldert van Buuren",
-                                                "Rudi van Drunen",
-                                                "Anton Feenstra",
-                                                "Gilles Gouaillardet",
-                                                "Alan Gray",
-                                                "Gerrit Groenhof",
-                                                "Anca Hamuraru",
-                                                "Vincent Hindriksen",
-                                                "M. Eric Irrgang",
-                                                "Aleksei Iupinov",
-                                                "Christoph Junghans",
-                                                "Joe Jordan",
-                                                "Dimitrios Karkoulis",
-                                                "Peter Kasson",
-                                                "Jiri Kraus",
-                                                "Carsten Kutzner",
-                                                "Per Larsson",
-                                                "Justin A. Lemkul",
-                                                "Viveca Lindahl",
-                                                "Magnus Lundborg",
-                                                "Erik Marklund",
-                                                "Pascal Merz",
-                                                "Pieter Meulenhoff",
-                                                "Teemu Murtola",
-                                                "Szilard Pall",
-                                                "Sander Pronk",
-                                                "Roland Schulz",
-                                                "Michael Shirts",
-                                                "Alexey Shvetsov",
-                                                "Alfons Sijbers",
-                                                "Peter Tieleman",
-                                                "Jon Vincent",
-                                                "Teemu Virolainen",
-                                                "Christian Wennberg",
-                                                "Maarten Wolf",
-                                                "Artem Zhmurov" };
-    static const char* const CopyrightText[] = {
-        "Copyright (c) 1991-2000, University of Groningen, The Netherlands.",
-        "Copyright (c) 2001-2019, The GROMACS development team at",
-        "Uppsala University, Stockholm University and", "the Royal Institute of Technology, Sweden.",
-        "check out http://www.gromacs.org for more information."
-    };
-
-#define NCONTRIBUTORS static_cast<int>(asize(Contributors))
-#define NCR static_cast<int>(asize(CopyrightText))
-
-    // TODO a centering behaviour of TextWriter could be useful here
-    writer->writeLine(formatCentered(78, "GROMACS is written by:"));
-    for (int i = 0; i < NCONTRIBUTORS;)
-    {
-        for (int j = 0; j < 3 && i < NCONTRIBUTORS; ++j, ++i)
-        {
-            const int            width = 26;
-            std::array<char, 30> buf;
-            const int            offset = centeringOffset(width, strlen(Contributors[i]));
-            GMX_RELEASE_ASSERT(static_cast<int>(strlen(Contributors[i])) + offset < gmx::ssize(buf),
-                               "Formatting buffer is not long enough");
-            std::fill(buf.begin(), buf.begin() + offset, ' ');
-            std::strncpy(buf.data() + offset, Contributors[i], gmx::ssize(buf) - offset);
-            writer->writeString(formatString(" %-*s", width, buf.data()));
-        }
-        writer->ensureLineBreak();
-    }
-    writer->writeLine(formatCentered(78, "and the project leaders:"));
-    writer->writeLine(
-            formatCentered(78, "Mark Abraham, Berk Hess, Erik Lindahl, and David van der Spoel"));
-    writer->ensureEmptyLine();
-    for (int i = 0; i < NCR; ++i)
-    {
-        writer->writeLine(CopyrightText[i]);
-    }
-    writer->ensureEmptyLine();
-
-    // Folding At Home has different licence to allow digital
-    // signatures in GROMACS, so does not need to show the normal
-    // license statement.
+    writer->writeLine(gmx::copyrightText);
     if (!GMX_FAHCORE)
     {
+        // Folding At Home has different licence to allow digital
+        // signatures in GROMACS, so does not need to show the normal
+        // license statement.
         writer->writeLine("GROMACS is free software; you can redistribute it and/or modify it");
         writer->writeLine("under the terms of the GNU Lesser General Public License");
         writer->writeLine("as published by the Free Software Foundation; either version 2.1");
         writer->writeLine("of the License, or (at your option) any later version.");
     }
+    writer->ensureEmptyLine();
+
+    writeVectorAsColumns(writer, "Current GROMACS contributors:", gmx::currentContributors);
+    writeVectorAsColumns(writer, "Previous GROMACS contributors:", gmx::previousContributors);
+    writeVectorAsSingleLine(
+            writer, "Coordinated by the GROMACS project leaders:", gmx::currentProjectLeaders);
 }
 
-// Construct a string that describes the library that provides FFT support to this build
-const char* getFftDescriptionString()
+//! Construct a string that describes the library that provides CPU FFT support to this build
+const char* getCpuFftDescriptionString()
 {
 // Define the FFT description string
 #if GMX_FFT_FFTW3 || GMX_FFT_ARMPL_FFTW3
@@ -227,6 +215,35 @@ const char* getFftDescriptionString()
 #endif
 };
 
+//! Construct a string that describes the library that provides GPU FFT support to this build
+const char* getGpuFftDescriptionString()
+{
+    if (GMX_GPU)
+    {
+        if (GMX_GPU_CUDA)
+        {
+            return "cuFFT";
+        }
+        else if (GMX_GPU_OPENCL)
+        {
+            return "clFFT";
+        }
+        else if (GMX_GPU_SYCL)
+        {
+            return "unknown";
+        }
+        else
+        {
+            GMX_RELEASE_ASSERT(false, "Unknown GPU configuration");
+            return "impossible";
+        }
+    }
+    else
+    {
+        return "none";
+    }
+};
+
 void gmx_print_version_info(gmx::TextWriter* writer)
 {
     writer->writeLine(formatString("GROMACS version:    %s", gmx_version()));
@@ -240,45 +257,6 @@ void gmx_print_version_info(gmx::TextWriter* writer)
     {
         writer->writeLine(formatString("Branched from:      %s", base_hash));
     }
-    const char* const releaseSourceChecksum = gmxReleaseSourceChecksum();
-    const char* const currentSourceChecksum = gmxCurrentSourceChecksum();
-    if (releaseSourceChecksum[0] != '\0')
-    {
-        if (std::strcmp(releaseSourceChecksum, "NoChecksumFile") == 0)
-        {
-            writer->writeLine(formatString(
-                    "The source code this program was compiled from has not been verified because "
-                    "the reference checksum was missing during compilation. This means you have an "
-                    "incomplete GROMACS distribution, please make sure to download an intact "
-                    "source distribution and compile that before proceeding."));
-            writer->writeLine(formatString("Computed checksum: %s", currentSourceChecksum));
-        }
-        else if (std::strcmp(releaseSourceChecksum, "NoPythonAvailable") == 0)
-        {
-            writer->writeLine(
-                    formatString("Build source could not be verified, because the checksum could "
-                                 "not be computed."));
-        }
-        else if (std::strcmp(releaseSourceChecksum, currentSourceChecksum) != 0)
-        {
-            writer->writeLine(formatString(
-                    "This program has been built from source code that has been altered and does "
-                    "not match the code released as part of the official GROMACS version %s. If "
-                    "you did not intend to use an altered GROMACS version, make sure to download "
-                    "an intact source distribution and compile that before proceeding.",
-                    gmx_version()));
-            writer->writeLine(formatString(
-                    "If you have modified the source code, you are strongly encouraged to set your "
-                    "custom version suffix (using -DGMX_VERSION_STRING_OF_FORK) which will can "
-                    "help later with scientific reproducibility but also when reporting bugs."));
-            writer->writeLine(formatString("Release checksum: %s", releaseSourceChecksum));
-            writer->writeLine(formatString("Computed checksum: %s", currentSourceChecksum));
-        }
-        else
-        {
-            writer->writeLine(formatString("Verified release checksum is %s", releaseSourceChecksum));
-        }
-    }
 
 
 #if GMX_DOUBLE
@@ -291,7 +269,16 @@ void gmx_print_version_info(gmx::TextWriter* writer)
 #if GMX_THREAD_MPI
     writer->writeLine("MPI library:        thread_mpi");
 #elif GMX_MPI
-    writer->writeLine("MPI library:        MPI");
+    const bool haveDetectedCudaAwareMpi =
+            (gmx::checkMpiCudaAwareSupport() == gmx::GpuAwareMpiStatus::Supported);
+    if (haveDetectedCudaAwareMpi)
+    {
+        writer->writeLine("MPI library:        MPI (CUDA-aware)");
+    }
+    else
+    {
+        writer->writeLine("MPI library:        MPI");
+    }
 #else
     writer->writeLine("MPI library:        none");
 #endif
@@ -303,7 +290,8 @@ void gmx_print_version_info(gmx::TextWriter* writer)
 #endif
     writer->writeLine(formatString("GPU support:        %s", getGpuImplementationString()));
     writer->writeLine(formatString("SIMD instructions:  %s", GMX_SIMD_STRING));
-    writer->writeLine(formatString("FFT library:        %s", getFftDescriptionString()));
+    writer->writeLine(formatString("CPU FFT library:    %s", getCpuFftDescriptionString()));
+    writer->writeLine(formatString("GPU FFT library:    %s", getGpuFftDescriptionString()));
 #if GMX_TARGET_X86
     writer->writeLine(formatString("RDTSCP usage:       %s", GMX_USE_RDTSCP ? "enabled" : "disabled"));
 #endif
@@ -320,8 +308,8 @@ void gmx_print_version_info(gmx::TextWriter* writer)
 #if HAVE_EXTRAE
     unsigned major, minor, revision;
     Extrae_get_version(&major, &minor, &revision);
-    writer->writeLine(formatString("Tracing support:    enabled. Using Extrae-%d.%d.%d", major,
-                                   minor, revision));
+    writer->writeLine(formatString(
+            "Tracing support:    enabled. Using Extrae-%d.%d.%d", major, minor, revision));
 #else
     writer->writeLine("Tracing support:    disabled");
 #endif
@@ -331,15 +319,15 @@ void gmx_print_version_info(gmx::TextWriter* writer)
      * them. Can wait for later, as the master branch has ready code to do all
      * that. */
     writer->writeLine(formatString("C compiler:         %s", BUILD_C_COMPILER));
-    writer->writeLine(formatString("C compiler flags:   %s %s", BUILD_CFLAGS,
-                                   CMAKE_BUILD_CONFIGURATION_C_FLAGS));
+    writer->writeLine(formatString(
+            "C compiler flags:   %s %s", BUILD_CFLAGS, CMAKE_BUILD_CONFIGURATION_C_FLAGS));
     writer->writeLine(formatString("C++ compiler:       %s", BUILD_CXX_COMPILER));
-    writer->writeLine(formatString("C++ compiler flags: %s %s", BUILD_CXXFLAGS,
-                                   CMAKE_BUILD_CONFIGURATION_CXX_FLAGS));
-#ifdef HAVE_LIBMKL
+    writer->writeLine(formatString(
+            "C++ compiler flags: %s %s", BUILD_CXXFLAGS, CMAKE_BUILD_CONFIGURATION_CXX_FLAGS));
+#if HAVE_LIBMKL
     /* MKL might be used for LAPACK/BLAS even if FFTs use FFTW, so keep it separate */
-    writer->writeLine(formatString("Linked with Intel MKL version %d.%d.%d.", __INTEL_MKL__,
-                                   __INTEL_MKL_MINOR__, __INTEL_MKL_UPDATE__));
+    writer->writeLine(formatString(
+            "Intel MKL version:  %d.%d.%d", __INTEL_MKL__, __INTEL_MKL_MINOR__, __INTEL_MKL_UPDATE__));
 #endif
 #if GMX_GPU_OPENCL
     writer->writeLine(formatString("OpenCL include dir: %s", OPENCL_INCLUDE_DIR));
@@ -348,10 +336,20 @@ void gmx_print_version_info(gmx::TextWriter* writer)
 #endif
 #if GMX_GPU_CUDA
     writer->writeLine(formatString("CUDA compiler:      %s", CUDA_COMPILER_INFO));
-    writer->writeLine(formatString("CUDA compiler flags:%s %s", CUDA_COMPILER_FLAGS,
-                                   CMAKE_BUILD_CONFIGURATION_CXX_FLAGS));
+    writer->writeLine(formatString(
+            "CUDA compiler flags:%s %s", CUDA_COMPILER_FLAGS, CMAKE_BUILD_CONFIGURATION_CXX_FLAGS));
     writer->writeLine("CUDA driver:        " + gmx::getCudaDriverVersionString());
     writer->writeLine("CUDA runtime:       " + gmx::getCudaRuntimeVersionString());
+#endif
+#if GMX_SYCL_DPCPP
+    writer->writeLine(formatString("SYCL DPC++ flags:   %s", SYCL_DPCPP_COMPILER_FLAGS));
+    writer->writeLine("SYCL DPC++ version: " + gmx::getSyclCompilerVersion());
+#endif
+#if GMX_SYCL_HIPSYCL
+    writer->writeLine(formatString("hipSYCL launcher:   %s", SYCL_HIPSYCL_COMPILER_LAUNCHER));
+    writer->writeLine(formatString("hipSYCL flags:      %s", SYCL_HIPSYCL_COMPILER_FLAGS));
+    writer->writeLine(formatString("hipSYCL targets:    %s", SYCL_HIPSYCL_TARGETS));
+    writer->writeLine("hipSYCL version:    " + gmx::getSyclCompilerVersion());
 #endif
 }
 
@@ -426,8 +424,8 @@ void printBinaryInformation(TextWriter*                      writer,
         // necessary to read stuff above the copyright notice.
         // The line above the copyright notice puts the copyright notice is
         // context, though.
-        writer->writeLine(formatString("%sGROMACS:      %s, version %s%s%s", prefix, name,
-                                       gmx_version(), precisionString, suffix));
+        writer->writeLine(formatString(
+                "%sGROMACS:      %s, version %s%s%s", prefix, name, gmx_version(), precisionString, suffix));
     }
     const char* const binaryPath = programContext.fullBinaryPath();
     if (!gmx::isNullOrEmpty(binaryPath))
@@ -437,8 +435,11 @@ void printBinaryInformation(TextWriter*                      writer,
     const gmx::InstallationPrefixInfo installPrefix = programContext.installationPrefix();
     if (!gmx::isNullOrEmpty(installPrefix.path))
     {
-        writer->writeLine(formatString("%sData prefix:  %s%s%s", prefix, installPrefix.path,
-                                       installPrefix.bSourceLayout ? " (source tree)" : "", suffix));
+        writer->writeLine(formatString("%sData prefix:  %s%s%s",
+                                       prefix,
+                                       installPrefix.path,
+                                       installPrefix.bSourceLayout ? " (source tree)" : "",
+                                       suffix));
     }
     const std::string workingDir = Path::getWorkingDirectory();
     if (!workingDir.empty())
@@ -452,8 +453,8 @@ void printBinaryInformation(TextWriter*                      writer,
     const char* const commandLine = programContext.commandLine();
     if (!gmx::isNullOrEmpty(commandLine))
     {
-        writer->writeLine(formatString("%sCommand line:%s\n%s  %s%s", prefix, suffix, prefix,
-                                       commandLine, suffix));
+        writer->writeLine(formatString(
+                "%sCommand line:%s\n%s  %s%s", prefix, suffix, prefix, commandLine, suffix));
     }
     if (settings.bExtendedInfo_)
     {

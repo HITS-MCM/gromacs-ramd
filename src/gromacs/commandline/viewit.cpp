@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -43,23 +39,24 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <array>
+#include <type_traits>
+
 #include "gromacs/commandline/filenm.h"
 #include "gromacs/fileio/oenv.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
 
-static const int can_view_ftp[] = { 0, efEPS, efXPM, efXVG, efPDB };
-#define NVIEW asize(can_view_ftp)
-static const char* view_program[] = { nullptr, "ghostview", "display", nullptr, "xterm -e rasmol" };
+static constexpr std::array<int, 5> canViewFileType = { 0, efEPS, efXPM, efXVG, efPDB };
+
+static constexpr int numberOfPossibleFiles = canViewFileType.size();
 
 static int can_view(int ftp)
 {
-    int i;
-
-    for (i = 1; i < NVIEW; i++)
+    for (int i = 1; i < numberOfPossibleFiles; i++)
     {
-        if (ftp == can_view_ftp[i])
+        if (ftp == canViewFileType[i])
         {
             return i;
         }
@@ -70,6 +67,9 @@ static int can_view(int ftp)
 
 void do_view(const gmx_output_env_t* oenv, const char* fn, const char* opts)
 {
+    std::array<const char*, 5> viewProgram = {
+        nullptr, "ghostview", "display", nullptr, "xterm -e rasmol"
+    };
     char        buf[STRLEN], env[STRLEN];
     const char* cmd;
     int         ftp, n;
@@ -105,7 +105,7 @@ void do_view(const gmx_output_env_t* oenv, const char* fn, const char* opts)
                     {
                         if (!(cmd = getenv(env)))
                         {
-                            cmd = view_program[n];
+                            cmd = viewProgram[n];
                         }
                     }
                     else

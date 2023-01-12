@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_PBCUTIL_PBC_H
 #define GMX_PBCUTIL_PBC_H
@@ -43,7 +39,7 @@
 #include <string>
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/arrayref.h"
+#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/real.h"
@@ -51,16 +47,11 @@
 struct gmx_domdec_t;
 struct gmx_mtop_t;
 
-//! Enumeration that contains all supported periodic boundary setups.
-enum class PbcType : int
+namespace gmx
 {
-    Xyz   = 0, //!< Periodic boundaries in all dimensions.
-    No    = 1, //!< No periodic boundaries.
-    XY    = 2, //!< Only two dimensions are periodic.
-    Screw = 3, //!< Screw.
-    Unset = 4, //!< The type of PBC is not set or invalid.
-    Count = 5
-};
+template<typename>
+class ArrayRef;
+} // namespace gmx
 
 //! Names for all values in PBC types enumeration
 extern const gmx::EnumerationArray<PbcType, std::string> c_pbcTypeNames;
@@ -195,7 +186,7 @@ PbcType guessPbcType(const matrix box);
  * \param[in] box   The simulation cell
  * \return TRUE when the box was corrected.
  */
-gmx_bool correct_box(FILE* fplog, int step, tensor box);
+bool correct_box(FILE* fplog, int step, tensor box);
 
 /*! \brief Initiate the periodic boundary condition algorithms.
  *
@@ -228,7 +219,7 @@ void set_pbc(t_pbc* pbc, PbcType pbcType, const matrix box);
  * \param[in] box         The box tensor
  * \return the pbc structure when pbc operations are required, NULL otherwise.
  */
-t_pbc* set_pbc_dd(t_pbc* pbc, PbcType pbcType, const ivec domdecCells, gmx_bool bSingleDir, const matrix box);
+t_pbc* set_pbc_dd(t_pbc* pbc, PbcType pbcType, const ivec domdecCells, bool bSingleDir, const matrix box);
 
 /*! \brief Compute distance with PBC
  *
@@ -255,7 +246,7 @@ void pbc_dx(const t_pbc* pbc, const rvec x1, const rvec x2, rvec dx);
  * \param[in]    x2  Coordinates for particle 2
  * \param[out]   dx  Distance vector
  * \return the ishift required to shift x1 at closest distance to x2;
- * i.e. if 0<=ishift<SHIFTS then x1 - x2 + shift_vec[ishift] = dx
+ * i.e. if 0<=ishift<c_numShiftVectors then x1 - x2 + shift_vec[ishift] = dx
  * (see calc_shifts below on how to obtain shift_vec)
  */
 int pbc_dx_aiuc(const t_pbc* pbc, const rvec x1, const rvec x2, rvec dx);
@@ -278,7 +269,7 @@ void pbc_dx_d(const t_pbc* pbc, const dvec x1, const dvec x2, dvec dx);
  * \param[in]  box       The simulation box
  * \param[out] shift_vec The shifting vectors
  */
-void calc_shifts(const matrix box, rvec shift_vec[]);
+void calc_shifts(const matrix box, gmx::ArrayRef<gmx::RVec> shift_vec);
 
 /*! \brief Calculates the center of the box.
  *

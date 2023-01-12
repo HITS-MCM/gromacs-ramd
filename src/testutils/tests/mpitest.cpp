@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -45,37 +44,46 @@
 
 #include "config.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 
 #include "gromacs/utility/basenetwork.h"
 #include "gromacs/utility/gmxmpi.h"
 
+namespace gmx
+{
+namespace test
+{
 namespace
 {
 
 class MpiSelfTest : public ::testing::Test
 {
 public:
-    MpiSelfTest() : reached{ 0, 0 } {}
-
-    int reached[2];
+    //! Whether each rank participated, relevant only on rank 0
+    std::vector<int> reached_;
 };
 
 TEST_F(MpiSelfTest, Runs)
 {
-    GMX_MPI_TEST(2);
-#if GMX_THREAD_MPI
-    reached[gmx_node_rank()] = 1;
-    MPI_Barrier(MPI_COMM_WORLD);
-#else
-    int value = 1;
-    MPI_Gather(&value, 1, MPI_INT, reached, 1, MPI_INT, 0, MPI_COMM_WORLD);
-#endif
+    GMX_MPI_TEST(RequireMinimumRankCount<2>);
     if (gmx_node_rank() == 0)
     {
-        EXPECT_EQ(1, reached[0]);
-        EXPECT_EQ(1, reached[1]);
+        reached_.resize(getNumberOfTestMpiRanks(), 0);
+    }
+    // Needed for thread-MPI so that we resize the buffer before we
+    // fill it on non-master ranks.
+    MPI_Barrier(MPI_COMM_WORLD);
+    int value = 1;
+    MPI_Gather(&value, 1, MPI_INT, reached_.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (gmx_node_rank() == 0)
+    {
+        EXPECT_THAT(reached_, testing::Each(value));
     }
 }
 
 } // namespace
+} // namespace test
+} // namespace gmx

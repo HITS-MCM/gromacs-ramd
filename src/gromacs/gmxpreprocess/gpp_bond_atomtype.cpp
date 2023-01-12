@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -42,11 +38,11 @@
 #include <cstring>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 #include "gromacs/gmxpreprocess/notset.h"
 #include "gromacs/topology/symtab.h"
-#include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/smalloc.h"
 
 class PreprocessingBondAtomType::Impl
@@ -56,25 +52,25 @@ public:
     std::vector<char**> typeNames;
 };
 
-int PreprocessingBondAtomType::bondAtomTypeFromName(const std::string& str) const
+std::optional<int> PreprocessingBondAtomType::bondAtomTypeFromName(const std::string& str) const
 {
     /* Atom types are always case sensitive */
-    auto found =
-            std::find_if(impl_->typeNames.begin(), impl_->typeNames.end(),
-                         [&str](const auto& type) { return str == const_cast<const char*>(*type); });
+    auto found = std::find_if(impl_->typeNames.begin(),
+                              impl_->typeNames.end(),
+                              [&str](const auto& type) { return str == std::string(*type); });
     if (found == impl_->typeNames.end())
     {
-        return NOTSET;
+        return std::nullopt;
     }
     else
     {
-        return std::distance(impl_->typeNames.begin(), found);
+        return std::make_optional(std::distance(impl_->typeNames.begin(), found));
     }
 }
 
-const char* PreprocessingBondAtomType::atomNameFromBondAtomType(int nt) const
+std::optional<const char*> PreprocessingBondAtomType::atomNameFromBondAtomType(int nt) const
 {
-    return isSet(nt) ? *impl_->typeNames[nt] : nullptr;
+    return isSet(nt) ? *impl_->typeNames[nt] : std::optional<const char*>{};
 }
 
 PreprocessingBondAtomType::PreprocessingBondAtomType() : impl_(new Impl) {}
@@ -83,15 +79,23 @@ PreprocessingBondAtomType::~PreprocessingBondAtomType() {}
 
 int PreprocessingBondAtomType::addBondAtomType(t_symtab* tab, const std::string& name)
 {
-    int position = bondAtomTypeFromName(name);
-    if (position == NOTSET)
+    auto position = bondAtomTypeFromName(name);
+    if (!position.has_value())
     {
         impl_->typeNames.emplace_back(put_symtab(tab, name.c_str()));
-        return bondAtomTypeFromName(name);
+        if (auto bondAtomType = bondAtomTypeFromName(name); bondAtomType.has_value())
+        {
+            return *bondAtomType;
+        }
+        else
+        {
+            GMX_RELEASE_ASSERT(false, "Unhandled error in adding bond atom type");
+            return 0;
+        }
     }
     else
     {
-        return position;
+        return *position;
     }
 }
 

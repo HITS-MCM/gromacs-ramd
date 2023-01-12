@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -44,6 +41,7 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/do_fit.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -162,8 +160,8 @@ int gmx_helixorient(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME, NFILE, fnm, NPA, pa, asize(desc), desc, 0,
-                           nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME, NFILE, fnm, NPA, pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -231,17 +229,29 @@ int gmx_helixorient(int argc, char* argv[])
 
     if (bIncremental)
     {
-        fptilt = xvgropen(opt2fn("-otilt", NFILE, fnm), "Incremental local helix tilt", "Time(ps)",
-                          "Tilt (degrees)", oenv);
-        fprotation = xvgropen(opt2fn("-orot", NFILE, fnm), "Incremental local helix rotation",
-                              "Time(ps)", "Rotation (degrees)", oenv);
+        fptilt     = xvgropen(opt2fn("-otilt", NFILE, fnm),
+                          "Incremental local helix tilt",
+                          "Time(ps)",
+                          "Tilt (degrees)",
+                          oenv);
+        fprotation = xvgropen(opt2fn("-orot", NFILE, fnm),
+                              "Incremental local helix rotation",
+                              "Time(ps)",
+                              "Rotation (degrees)",
+                              oenv);
     }
     else
     {
-        fptilt = xvgropen(opt2fn("-otilt", NFILE, fnm), "Cumulative local helix tilt", "Time(ps)",
-                          "Tilt (degrees)", oenv);
-        fprotation = xvgropen(opt2fn("-orot", NFILE, fnm), "Cumulative local helix rotation",
-                              "Time(ps)", "Rotation (degrees)", oenv);
+        fptilt     = xvgropen(opt2fn("-otilt", NFILE, fnm),
+                          "Cumulative local helix tilt",
+                          "Time(ps)",
+                          "Tilt (degrees)",
+                          oenv);
+        fprotation = xvgropen(opt2fn("-orot", NFILE, fnm),
+                              "Cumulative local helix rotation",
+                              "Time(ps)",
+                              "Rotation (degrees)",
+                              oenv);
     }
 
     clear_rvecs(3, unitaxes);
@@ -357,10 +367,16 @@ int gmx_helixorient(int argc, char* argv[])
                 rvec_sub(bSC ? x_SC[i] : x_CA[i], residueorigin[i], residuevector[i]);
                 svmul(1.0 / norm(residuevector[i]), residuevector[i], residuevector[i]);
                 cprod(residuehelixaxis[i], residuevector[i], axis3[i]);
-                fprintf(fpaxis, "%15.12g %15.12g %15.12g       ", residuehelixaxis[i][0],
-                        residuehelixaxis[i][1], residuehelixaxis[i][2]);
-                fprintf(fpcenter, "%15.12g %15.12g %15.12g       ", residueorigin[i][0],
-                        residueorigin[i][1], residueorigin[i][2]);
+                fprintf(fpaxis,
+                        "%15.12g %15.12g %15.12g       ",
+                        residuehelixaxis[i][0],
+                        residuehelixaxis[i][1],
+                        residuehelixaxis[i][2]);
+                fprintf(fpcenter,
+                        "%15.12g %15.12g %15.12g       ",
+                        residueorigin[i][0],
+                        residueorigin[i][1],
+                        residueorigin[i][2]);
 
                 fprintf(fprise, "%15.12g  ", residuerise[i]);
                 fprintf(fpradius, "%15.12g  ", residueradius[i]);

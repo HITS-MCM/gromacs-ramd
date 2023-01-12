@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -95,7 +93,7 @@ void gmx_omp_set_num_threads(int num_threads)
 #endif
 }
 
-gmx_bool gmx_omp_check_thread_affinity(char** message)
+bool gmx_omp_check_thread_affinity(char** message)
 {
     bool shouldSetAffinity = true;
 
@@ -104,7 +102,7 @@ gmx_bool gmx_omp_check_thread_affinity(char** message)
     /* We assume that the affinity setting is available on all platforms
      * gcc supports. Even if this is not the case (e.g. Mac OS) the user
      * will only get a warning. */
-#    if defined(__GNUC__) || defined(__INTEL_COMPILER)
+#    if defined(__GNUC__)
     const char* programName;
     try
     {
@@ -125,36 +123,14 @@ gmx_bool gmx_omp_check_thread_affinity(char** message)
                     "      setting as the two can conflict and cause performance degradation.\n"
                     "      To keep using the %s internal affinity setting, unset the\n"
                     "      GOMP_CPU_AFFINITY environment variable.",
-                    programName, programName);
+                    programName,
+                    programName);
             *message = gmx_strdup(buf.c_str());
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         shouldSetAffinity = false;
     }
-#    endif /* __GNUC__ || __INTEL_COMPILER */
-
-#    if defined(__INTEL_COMPILER)
-    const char* const kmp_env         = getenv("KMP_AFFINITY");
-    const bool        bKmpAffinitySet = (kmp_env != NULL);
-
-    // turn off internal pinning if KMP_AFFINITY is set but does not contain
-    // the settings 'disabled' or 'none'.
-    if (bKmpAffinitySet && (strstr(kmp_env, "disabled") == NULL) && (strstr(kmp_env, "none") == NULL))
-    {
-        try
-        {
-            std::string buf = gmx::formatString(
-                    "NOTE: KMP_AFFINITY set, will turn off %s internal affinity\n"
-                    "      setting as the two can conflict and cause performance degradation.\n"
-                    "      To keep using the %s internal affinity setting, unset the\n"
-                    "      KMP_AFFINITY environment variable or set it to 'none' or 'disabled'.",
-                    programName, programName);
-            *message = gmx_strdup(buf.c_str());
-        }
-        GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR;
-        shouldSetAffinity = false;
-    }
-#    endif /* __INTEL_COMPILER */
+#    endif /* __GNUC__ */
 
 #endif /* GMX_OPENMP */
     return shouldSetAffinity;

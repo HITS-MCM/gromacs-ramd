@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -55,12 +51,14 @@
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/fcdata.h"
 #include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/gmxassert.h"
@@ -68,7 +66,7 @@
 #include "gromacs/utility/smalloc.h"
 
 void init_disres(FILE*                 fplog,
-                 const gmx_mtop_t*     mtop,
+                 const gmx_mtop_t&     mtop,
                  t_inputrec*           ir,
                  DisResRunMode         disResRunMode,
                  DDRole                ddRole,
@@ -79,11 +77,9 @@ void init_disres(FILE*                 fplog,
                  t_state*              state,
                  gmx_bool              bIsREMD)
 {
-    int                  fa, nmol, npair, np;
-    history_t*           hist;
-    gmx_mtop_ilistloop_t iloop;
-    char*                ptr;
-    int                  type_min, type_max;
+    history_t* hist;
+    char*      ptr;
+    int        type_min, type_max;
 
     if (gmx_mtop_ftype_count(mtop, F_DISRES) == 0)
     {
@@ -135,10 +131,10 @@ void init_disres(FILE*                 fplog,
     dd->npair = 0;
     type_min  = INT_MAX;
     type_max  = 0;
-    iloop     = gmx_mtop_ilistloop_init(mtop);
-    while (const InteractionLists* il = gmx_mtop_ilistloop_next(iloop, &nmol))
+    for (const auto il : IListRange(mtop))
     {
-        if (nmol > 1 && !(*il)[F_DISRES].empty() && ir->eDisre != edrEnsemble)
+        if (il.nmol() > 1 && !il.list()[F_DISRES].empty()
+            && ir->eDisre != DistanceRestraintRefinement::Ensemble)
         {
             gmx_fatal(FARGS,
                       "NMR distance restraints with multiple copies of the same molecule are "
@@ -147,19 +143,17 @@ void init_disres(FILE*                 fplog,
                       "a restraint potential (bonds type 10) instead.");
         }
 
-        np = 0;
-        for (fa = 0; fa < (*il)[F_DISRES].size(); fa += 3)
+        int np = 0;
+        for (int fa = 0; fa < il.list()[F_DISRES].size(); fa += 3)
         {
-            int type;
-
-            type = (*il)[F_DISRES].iatoms[fa];
+            int type = il.list()[F_DISRES].iatoms[fa];
 
             np++;
-            npair = mtop->ffparams.iparams[type].disres.npair;
+            int npair = mtop.ffparams.iparams[type].disres.npair;
             if (np == npair)
             {
-                dd->nres += (ir->eDisre == edrEnsemble ? 1 : nmol);
-                dd->npair += nmol * npair;
+                dd->nres += (ir->eDisre == DistanceRestraintRefinement::Ensemble ? 1 : il.nmol());
+                dd->npair += il.nmol() * npair;
                 np = 0;
 
                 type_min = std::min(type_min, type);
@@ -199,12 +193,11 @@ void init_disres(FILE*                 fplog,
 
         hist = &state->hist;
         /* Set the "history lack" factor to 1 */
-        state->flags |= (1 << estDISRE_INITF);
+        state->flags |= enumValueToBitMask(StateEntry::DisreInitF);
         hist->disre_initf = 1.0;
         /* Allocate space for the r^-3 time averages */
-        state->flags |= (1 << estDISRE_RM3TAV);
-        hist->ndisrepairs = dd->npair;
-        snew(hist->disre_rm3tav, hist->ndisrepairs);
+        state->flags |= enumValueToBitMask(StateEntry::DisreRm3Tav);
+        hist->disre_rm3tav.resize(dd->npair);
     }
     /* Allocate space for a copy of rm3tav,
      * so we can call do_force without modifying the state.
@@ -245,7 +238,8 @@ void init_disres(FILE*                 fplog,
             gmx_fatal(FARGS,
                       "GMX_DISRE_ENSEMBLE_SIZE (%d) is not equal to 1 or the number of systems "
                       "(option -multidir) %d",
-                      dd->nsystems, ms->numSimulations_);
+                      dd->nsystems,
+                      ms->numSimulations_);
         }
         if (fplog)
         {
@@ -278,8 +272,7 @@ void init_disres(FILE*                 fplog,
     {
         if (fplog)
         {
-            fprintf(fplog, "There are %d distance restraints involving %d atom pairs\n", dd->nres,
-                    dd->npair);
+            fprintf(fplog, "There are %d distance restraints involving %d atom pairs\n", dd->nres, dd->npair);
         }
         /* Have to avoid g_disre de-referencing cr blindly, mdrun not
          * doing consistency checks for ensemble-averaged distance
@@ -303,7 +296,7 @@ void calc_disres_R_6(const t_commrec*      cr,
                      const rvec            x[],
                      const t_pbc*          pbc,
                      t_disresdata*         dd,
-                     history_t*            hist)
+                     const history_t*      hist)
 {
     rvec     dx;
     real *   rt, *rm3tav, *Rtl_6, *Rt_6, *Rtav_6;
@@ -381,7 +374,7 @@ void calc_disres_R_6(const t_commrec*      cr,
     }
 
     /* NOTE: Rt_6 and Rtav_6 are stored consecutively in memory */
-    if (cr && DOMAINDECOMP(cr))
+    if (cr && haveDDAtomOrdering(*cr))
     {
         gmx_sum(2 * dd->nres, dd->Rt_6, cr);
     }
@@ -400,7 +393,7 @@ void calc_disres_R_6(const t_commrec*      cr,
         GMX_ASSERT(cr != nullptr && ms != nullptr, "We need multisim with nsystems>1");
         gmx_sum_sim(2 * dd->nres, dd->Rt_6, ms);
 
-        if (DOMAINDECOMP(cr))
+        if (haveDDAtomOrdering(*cr))
         {
             gmx_bcast(2 * dd->nres, dd->Rt_6, cr->mpi_comm_mygroup);
         }
@@ -415,48 +408,47 @@ void calc_disres_R_6(const t_commrec*      cr,
     dd->sumviol = 0;
 }
 
-real ta_disres(int             nfa,
-               const t_iatom   forceatoms[],
-               const t_iparams ip[],
-               const rvec      x[],
-               rvec4           f[],
-               rvec            fshift[],
-               const t_pbc*    pbc,
-               real gmx_unused lambda,
+real ta_disres(int              nfa,
+               const t_iatom*   forceatoms,
+               const t_iparams* ip,
+               const rvec*      x,
+               rvec4*           f,
+               rvec*            fshift,
+               const t_pbc*     pbc,
+               real gmx_unused  lambda,
                real gmx_unused* dvdlambda,
-               const t_mdatoms gmx_unused* md,
-               t_fcdata*                   fcd,
+               gmx::ArrayRef<const real> /*charge*/,
+               t_fcdata gmx_unused* fcd,
+               t_disresdata*        disresdata,
+               t_oriresdata gmx_unused* oriresdata,
                int gmx_unused* global_atom_index)
 {
     const real seven_three = 7.0 / 3.0;
 
-    rvec          dx;
-    real          weight_rt_1;
-    real          smooth_fc, Rt, Rtav, rt2, *Rtl_6, *Rt_6, *Rtav_6;
-    real          k0, f_scal = 0, fmax_scal, fk_scal, fij;
-    real          tav_viol, instant_viol, mixed_viol, violtot, vtot;
-    real          tav_viol_Rtav7, instant_viol_Rtav7;
-    real          up1, up2, low;
-    gmx_bool      bConservative, bMixed, bViolation;
-    t_disresdata* dd;
-    int           dr_weighting;
-    gmx_bool      dr_bMixed;
+    rvec     dx;
+    real     weight_rt_1;
+    real     smooth_fc, Rt, Rtav, rt2, *Rtl_6, *Rt_6, *Rtav_6;
+    real     k0, f_scal = 0, fmax_scal, fk_scal, fij;
+    real     tav_viol, instant_viol, mixed_viol, violtot, vtot;
+    real     tav_viol_Rtav7, instant_viol_Rtav7;
+    real     up1, up2, low;
+    gmx_bool bConservative, bMixed, bViolation;
+    gmx_bool dr_bMixed;
 
-    dd           = fcd->disres;
-    dr_weighting = dd->dr_weighting;
-    dr_bMixed    = dd->dr_bMixed;
-    Rtl_6        = dd->Rtl_6;
-    Rt_6         = dd->Rt_6;
-    Rtav_6       = dd->Rtav_6;
+    DistanceRestraintWeighting dr_weighting = disresdata->dr_weighting;
+    dr_bMixed                               = disresdata->dr_bMixed;
+    Rtl_6                                   = disresdata->Rtl_6;
+    Rt_6                                    = disresdata->Rt_6;
+    Rtav_6                                  = disresdata->Rtav_6;
 
     tav_viol = instant_viol = mixed_viol = tav_viol_Rtav7 = instant_viol_Rtav7 = 0;
 
-    smooth_fc = dd->dr_fc;
-    if (dd->dr_tau != 0)
+    smooth_fc = disresdata->dr_fc;
+    if (disresdata->dr_tau != 0)
     {
         /* scaling factor to smoothly turn on the restraint forces *
          * when using time averaging                               */
-        smooth_fc *= (1.0 - dd->exp_min_t_tau);
+        smooth_fc *= (1.0 - disresdata->exp_min_t_tau);
     }
 
     violtot = 0;
@@ -464,7 +456,7 @@ real ta_disres(int             nfa,
 
     /* 'loop' over all atom pairs (pair_nr=fa/3) involved in restraints, *
      * the total number of atoms pairs is nfa/3                          */
-    int faOffset = static_cast<int>(forceatoms - dd->forceatomsStart);
+    int faOffset = static_cast<int>(forceatoms - disresdata->forceatomsStart);
     for (int fa = 0; fa < nfa; fa += 3)
     {
         int type  = forceatoms[fa];
@@ -474,12 +466,12 @@ real ta_disres(int             nfa,
         low       = ip[type].disres.low;
         k0        = smooth_fc * ip[type].disres.kfac;
 
-        int res = type - dd->type_min;
+        int res = type - disresdata->type_min;
 
         /* save some flops when there is only one pair */
         if (ip[type].disres.type != 2)
         {
-            bConservative = (dr_weighting == edrwConservative) && (npair > 1);
+            bConservative = (dr_weighting == DistanceRestraintWeighting::Conservative) && (npair > 1);
             bMixed        = dr_bMixed;
             Rt            = gmx::invsixthroot(Rt_6[res]);
             Rtav          = gmx::invsixthroot(Rtav_6[res]);
@@ -516,7 +508,14 @@ real ta_disres(int             nfa,
             /* NOTE:
              * there is no real potential when time averaging is applied
              */
-            vtot += 0.5 * k0 * gmx::square(tav_viol) * pairFac;
+            if (tav_viol > up2 - up1)
+            {
+                vtot += 0.5 * k0 * (up2 - up1) * (2 * tav_viol + up1 - up2) * pairFac;
+            }
+            else
+            {
+                vtot += 0.5 * k0 * gmx::square(tav_viol) * pairFac;
+            }
             if (!bMixed)
             {
                 f_scal = -k0 * tav_viol;
@@ -565,7 +564,10 @@ real ta_disres(int             nfa,
             /* Correct the force for the number of restraints */
             if (bConservative)
             {
-                f_scal = std::max(f_scal, fmax_scal);
+                if (-f_scal / k0 > up2 - up1)
+                {
+                    f_scal = fmax_scal;
+                }
                 if (!bMixed)
                 {
                     f_scal *= Rtav / Rtav_6[res];
@@ -580,7 +582,10 @@ real ta_disres(int             nfa,
             else
             {
                 f_scal /= npair;
-                f_scal = std::max(f_scal, fmax_scal);
+                if (-f_scal / k0 > up2 - up1)
+                {
+                    f_scal = fmax_scal;
+                }
             }
 
             /* Exert the force ... */
@@ -588,7 +593,7 @@ real ta_disres(int             nfa,
             int pair = (faOffset + fa) / 3;
             int ai   = forceatoms[fa + 1];
             int aj   = forceatoms[fa + 2];
-            int ki   = CENTRAL;
+            int ki   = gmx::c_centralShiftIndex;
             if (pbc)
             {
                 ki = pbc_dx_aiuc(pbc, x[ai], x[aj], dx);
@@ -605,12 +610,14 @@ real ta_disres(int             nfa,
             {
                 if (!dr_bMixed)
                 {
-                    weight_rt_1 *= std::pow(dd->rm3tav[pair], seven_three);
+                    weight_rt_1 *= std::pow(disresdata->rm3tav[pair], seven_three);
                 }
                 else
                 {
-                    weight_rt_1 *= tav_viol_Rtav7 * std::pow(dd->rm3tav[pair], seven_three)
-                                   + instant_viol_Rtav7 / (dd->rt[pair] * gmx::power6(dd->rt[pair]));
+                    weight_rt_1 *=
+                            tav_viol_Rtav7 * std::pow(disresdata->rm3tav[pair], seven_three)
+                            + instant_viol_Rtav7
+                                      / (disresdata->rt[pair] * gmx::power6(disresdata->rt[pair]));
                 }
             }
 
@@ -625,14 +632,14 @@ real ta_disres(int             nfa,
                 if (fshift)
                 {
                     fshift[ki][m] += fij;
-                    fshift[CENTRAL][m] -= fij;
+                    fshift[gmx::c_centralShiftIndex][m] -= fij;
                 }
             }
         }
     }
 
 #pragma omp atomic
-    dd->sumviol += violtot;
+    disresdata->sumviol += violtot;
 
     /* Return energy */
     return vtot;

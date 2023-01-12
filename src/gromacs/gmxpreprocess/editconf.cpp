@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -55,6 +51,7 @@
 #include "gromacs/gmxlib/conformation_utilities.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
+#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/rmpbc.h"
@@ -79,8 +76,10 @@ static real calc_mass(t_atoms* atoms, gmx_bool bGetMass, AtomProperties* aps)
     {
         if (bGetMass)
         {
-            aps->setAtomProperty(epropMass, std::string(*atoms->resinfo[atoms->atom[i].resind].name),
-                                 std::string(*atoms->atomname[i]), &(atoms->atom[i].m));
+            aps->setAtomProperty(epropMass,
+                                 std::string(*atoms->resinfo[atoms->atom[i].resind].name),
+                                 std::string(*atoms->atomname[i]),
+                                 &(atoms->atom[i].m));
         }
         tmass += atoms->atom[i].m;
     }
@@ -244,7 +243,8 @@ static void set_pdb_conf_bfac(int natoms, int nres, t_atoms* atoms, int n_bfac, 
         fprintf(stderr,
                 "Range of values for B-factors too large (min %g, max %g) "
                 "will scale down a factor 10\n",
-                bfac_min, bfac_max);
+                bfac_min,
+                bfac_max);
         for (i = 0; (i < n_bfac); i++)
         {
             bfac[i] /= 10;
@@ -257,7 +257,8 @@ static void set_pdb_conf_bfac(int natoms, int nres, t_atoms* atoms, int n_bfac, 
         fprintf(stderr,
                 "Range of values for B-factors too small (min %g, max %g) "
                 "will scale up a factor 10\n",
-                bfac_min, bfac_max);
+                bfac_min,
+                bfac_max);
         for (i = 0; (i < n_bfac); i++)
         {
             bfac[i] *= 10;
@@ -323,9 +324,20 @@ static void pdb_legend(FILE* out, int natoms, int nres, t_atoms* atoms, rvec x[]
     fprintf(stderr, "B-factors range from %g to %g\n", bfac_min, bfac_max);
     for (i = 1; (i < 12); i++)
     {
-        fprintf(out, "%-6s%5d  %-4.4s%3.3s %c%4d%c   %8.3f%8.3f%8.3f%6.2f%6.2f\n", "ATOM  ",
-                natoms + 1 + i, "CA", "LEG", space, nres + 1, space, (xmin + (i * 0.12)) * 10,
-                ymin * 10, zmin * 10, 1.0, bfac_min + ((i - 1.0) * (bfac_max - bfac_min) / 10));
+        fprintf(out,
+                "%-6s%5d  %-4.4s%3.3s %c%4d%c   %8.3f%8.3f%8.3f%6.2f%6.2f\n",
+                "ATOM  ",
+                natoms + 1 + i,
+                "CA",
+                "LEG",
+                space,
+                nres + 1,
+                space,
+                (xmin + (i * 0.12)) * 10,
+                ymin * 10,
+                zmin * 10,
+                1.0,
+                bfac_min + ((i - 1.0) * (bfac_max - bfac_min) / 10));
     }
 }
 
@@ -401,9 +413,21 @@ static void visualize_box(FILE* out, int a0, int r0, matrix box, const rvec grid
 
         for (i = 0; i < nat; i++)
         {
-            gmx_fprintf_pdb_atomline(out, epdbATOM, a0 + i, "C", ' ', "BOX", 'K' + i / NCUCVERT,
-                                     r0 + i, ' ', 10 * vert[i][XX], 10 * vert[i][YY],
-                                     10 * vert[i][ZZ], 1.0, 0.0, "");
+            gmx_fprintf_pdb_atomline(out,
+                                     PdbRecordType::Atom,
+                                     a0 + i,
+                                     "C",
+                                     ' ',
+                                     "BOX",
+                                     'K' + i / NCUCVERT,
+                                     r0 + i,
+                                     ' ',
+                                     10 * vert[i][XX],
+                                     10 * vert[i][YY],
+                                     10 * vert[i][ZZ],
+                                     1.0,
+                                     0.0,
+                                     "");
         }
 
         edge = compact_unitcell_edges();
@@ -411,7 +435,9 @@ static void visualize_box(FILE* out, int a0, int r0, matrix box, const rvec grid
         {
             for (i = 0; i < NCUCEDGE; i++)
             {
-                fprintf(out, "CONECT%5d%5d\n", a0 + j * NCUCVERT + edge[2 * i],
+                fprintf(out,
+                        "CONECT%5d%5d\n",
+                        a0 + j * NCUCVERT + edge[2 * i],
                         a0 + j * NCUCVERT + edge[2 * i + 1]);
             }
         }
@@ -427,9 +453,21 @@ static void visualize_box(FILE* out, int a0, int r0, matrix box, const rvec grid
             {
                 for (x = 0; x <= 1; x++)
                 {
-                    gmx_fprintf_pdb_atomline(out, epdbATOM, a0 + i, "C", ' ', "BOX", 'K' + i / 8,
-                                             r0 + i, ' ', x * 10 * box[XX][XX], y * 10 * box[YY][YY],
-                                             z * 10 * box[ZZ][ZZ], 1.0, 0.0, "");
+                    gmx_fprintf_pdb_atomline(out,
+                                             PdbRecordType::Atom,
+                                             a0 + i,
+                                             "C",
+                                             ' ',
+                                             "BOX",
+                                             'K' + i / 8,
+                                             r0 + i,
+                                             ' ',
+                                             x * 10 * box[XX][XX],
+                                             y * 10 * box[YY][YY],
+                                             z * 10 * box[ZZ][ZZ],
+                                             1.0,
+                                             0.0,
+                                             "");
                     i++;
                 }
             }
@@ -452,9 +490,16 @@ static void calc_rotmatrix(rvec principal_axis, rvec targetvec, matrix rotmatrix
     /* Determine rotation from cross product with target vector */
     cprod(principal_axis, targetvec, rotvec);
     unitv(rotvec, rotvec);
-    printf("Aligning %g %g %g to %g %g %g : xprod  %g %g %g\n", principal_axis[XX],
-           principal_axis[YY], principal_axis[ZZ], targetvec[XX], targetvec[YY], targetvec[ZZ],
-           rotvec[XX], rotvec[YY], rotvec[ZZ]);
+    printf("Aligning %g %g %g to %g %g %g : xprod  %g %g %g\n",
+           principal_axis[XX],
+           principal_axis[YY],
+           principal_axis[ZZ],
+           targetvec[XX],
+           targetvec[YY],
+           targetvec[ZZ],
+           rotvec[XX],
+           rotvec[YY],
+           rotvec[ZZ]);
 
     ux              = rotvec[XX];
     uy              = rotvec[YY];
@@ -469,9 +514,16 @@ static void calc_rotmatrix(rvec principal_axis, rvec targetvec, matrix rotmatrix
     rotmatrix[2][1] = uy * uz * (1 - costheta) + ux * sintheta;
     rotmatrix[2][2] = uz * uz + (1.0 - uz * uz) * costheta;
 
-    printf("Rotation matrix: \n%g %g %g\n%g %g %g\n%g %g %g\n", rotmatrix[0][0], rotmatrix[0][1],
-           rotmatrix[0][2], rotmatrix[1][0], rotmatrix[1][1], rotmatrix[1][2], rotmatrix[2][0],
-           rotmatrix[2][1], rotmatrix[2][2]);
+    printf("Rotation matrix: \n%g %g %g\n%g %g %g\n%g %g %g\n",
+           rotmatrix[0][0],
+           rotmatrix[0][1],
+           rotmatrix[0][2],
+           rotmatrix[1][0],
+           rotmatrix[1][1],
+           rotmatrix[1][2],
+           rotmatrix[2][0],
+           rotmatrix[2][1],
+           rotmatrix[2][2]);
 }
 
 static void renum_resnr(t_atoms* atoms, int isize, const int* index, int resnr_start)
@@ -697,8 +749,8 @@ int gmx_editconf(int argc, char* argv[])
                        { efDAT, "-bf", "bfact", ffOPTRD } };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW, NFILE, fnm, NPA, pa, asize(desc), desc,
-                           asize(bugs), bugs, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW, NFILE, fnm, NPA, pa, asize(desc), desc, asize(bugs), bugs, &oenv))
     {
         return 0;
     }
@@ -792,7 +844,8 @@ int gmx_editconf(int argc, char* argv[])
     if (pbcType != PbcType::No)
     {
         real vol = det(box);
-        printf("Volume: %g nm^3, corresponds to roughly %d electrons\n", vol,
+        printf("Volume: %g nm^3, corresponds to roughly %d electrons\n",
+               vol,
                100 * (static_cast<int>(vol * 4.5)));
     }
 
@@ -814,8 +867,10 @@ int gmx_editconf(int argc, char* argv[])
             /* Determine the Van der Waals radius from the force field */
             if (bReadVDW)
             {
-                if (!aps.setAtomProperty(epropVDW, *top->atoms.resinfo[top->atoms.atom[i].resind].name,
-                                         *top->atoms.atomname[i], &vdw))
+                if (!aps.setAtomProperty(epropVDW,
+                                         *top->atoms.resinfo[top->atoms.atom[i].resind].name,
+                                         *top->atoms.atomname[i],
+                                         &vdw))
                 {
                     vdw = rvdw;
                 }
@@ -912,9 +967,9 @@ int gmx_editconf(int argc, char* argv[])
         printf("    center      :%7.3f%7.3f%7.3f (nm)\n", gc[XX], gc[YY], gc[ZZ]);
         printf("    box vectors :%7.3f%7.3f%7.3f (nm)\n", norm(box[XX]), norm(box[YY]), norm(box[ZZ]));
         printf("    box angles  :%7.2f%7.2f%7.2f (degrees)\n",
-               norm2(box[ZZ]) == 0 ? 0 : RAD2DEG * gmx_angle(box[YY], box[ZZ]),
-               norm2(box[ZZ]) == 0 ? 0 : RAD2DEG * gmx_angle(box[XX], box[ZZ]),
-               norm2(box[YY]) == 0 ? 0 : RAD2DEG * gmx_angle(box[XX], box[YY]));
+               norm2(box[ZZ]) == 0 ? 0 : gmx::c_rad2Deg * gmx_angle(box[YY], box[ZZ]),
+               norm2(box[ZZ]) == 0 ? 0 : gmx::c_rad2Deg * gmx_angle(box[XX], box[ZZ]),
+               norm2(box[YY]) == 0 ? 0 : gmx::c_rad2Deg * gmx_angle(box[XX], box[YY]));
         printf("    box volume  :%7.2f               (nm^3)\n", det(box));
     }
 
@@ -947,7 +1002,7 @@ int gmx_editconf(int argc, char* argv[])
             real vol, dens;
 
             vol  = det(box);
-            dens = (mass * AMU) / (vol * NANO * NANO * NANO);
+            dens = (mass * gmx::c_amu) / (vol * gmx::c_nano * gmx::c_nano * gmx::c_nano);
             fprintf(stderr, "Volume  of input %g (nm^3)\n", vol);
             fprintf(stderr, "Mass    of input %g (a.m.u.)\n", mass);
             fprintf(stderr, "Density of input %g (g/l)\n", dens);
@@ -956,7 +1011,8 @@ int gmx_editconf(int argc, char* argv[])
                 gmx_fatal(FARGS,
                           "Cannot scale density with "
                           "zero mass (%g) or volume (%g)\n",
-                          mass, vol);
+                          mass,
+                          vol);
             }
 
             scale[XX] = scale[YY] = scale[ZZ] = std::cbrt(dens / rho);
@@ -982,8 +1038,14 @@ int gmx_editconf(int argc, char* argv[])
             }
         }
         printf("Aligning %d atoms (out of %d) to %g %g %g, center of rotation %g %g %g\n",
-               numAlignmentAtoms, natom, targetvec[XX], targetvec[YY], targetvec[ZZ],
-               aligncenter[XX], aligncenter[YY], aligncenter[ZZ]);
+               numAlignmentAtoms,
+               natom,
+               targetvec[XX],
+               targetvec[YY],
+               targetvec[ZZ],
+               aligncenter[XX],
+               aligncenter[YY],
+               aligncenter[ZZ]);
         /*subtract out pivot point*/
         for (i = 0; i < numAlignmentAtoms; i++)
         {
@@ -1030,8 +1092,12 @@ int gmx_editconf(int argc, char* argv[])
             ssize  = atoms.nr;
             sindex = nullptr;
         }
-        printf("Translating %d atoms (out of %d) by %g %g %g nm\n", ssize, natom, translation[XX],
-               translation[YY], translation[ZZ]);
+        printf("Translating %d atoms (out of %d) by %g %g %g nm\n",
+               ssize,
+               natom,
+               translation[XX],
+               translation[YY],
+               translation[ZZ]);
         if (sindex)
         {
             for (i = 0; i < ssize; i++)
@@ -1051,10 +1117,12 @@ int gmx_editconf(int argc, char* argv[])
     {
         /* Rotate */
         printf("Rotating %g, %g, %g degrees around the X, Y and Z axis respectively\n",
-               rotangles[XX], rotangles[YY], rotangles[ZZ]);
+               rotangles[XX],
+               rotangles[YY],
+               rotangles[ZZ]);
         for (i = 0; i < DIM; i++)
         {
-            rotangles[i] *= DEG2RAD;
+            rotangles[i] *= gmx::c_deg2Rad;
         }
         rotate_conf(natom, x, v, rotangles[XX], rotangles[YY], rotangles[ZZ]);
     }
@@ -1164,9 +1232,9 @@ int gmx_editconf(int argc, char* argv[])
     {
         printf("new box vectors :%7.3f%7.3f%7.3f (nm)\n", norm(box[XX]), norm(box[YY]), norm(box[ZZ]));
         printf("new box angles  :%7.2f%7.2f%7.2f (degrees)\n",
-               norm2(box[ZZ]) == 0 ? 0 : RAD2DEG * gmx_angle(box[YY], box[ZZ]),
-               norm2(box[ZZ]) == 0 ? 0 : RAD2DEG * gmx_angle(box[XX], box[ZZ]),
-               norm2(box[YY]) == 0 ? 0 : RAD2DEG * gmx_angle(box[XX], box[YY]));
+               norm2(box[ZZ]) == 0 ? 0 : gmx::c_rad2Deg * gmx_angle(box[YY], box[ZZ]),
+               norm2(box[ZZ]) == 0 ? 0 : gmx::c_rad2Deg * gmx_angle(box[XX], box[ZZ]),
+               norm2(box[YY]) == 0 ? 0 : gmx::c_rad2Deg * gmx_angle(box[XX], box[YY]));
         printf("new box volume  :%7.2f               (nm^3)\n", det(box));
     }
 
@@ -1236,8 +1304,8 @@ int gmx_editconf(int argc, char* argv[])
         }
         else
         {
-            write_sto_conf_indexed(outfile, name, &atoms, x, bHaveV ? v : nullptr, pbcType, box,
-                                   isize, index);
+            write_sto_conf_indexed(
+                    outfile, name, &atoms, x, bHaveV ? v : nullptr, pbcType, box, isize, index);
         }
         sfree(grpname);
         sfree(index);
@@ -1292,8 +1360,8 @@ int gmx_editconf(int argc, char* argv[])
             {
                 index[i] = i;
             }
-            write_pdbfile_indexed(out, name, &atoms, x, pbcType, box, ' ', -1, atoms.nr, index,
-                                  conect, outftp == efPQR);
+            write_pdbfile_indexed(
+                    out, name, &atoms, x, pbcType, box, ' ', -1, atoms.nr, index, conect, outftp == efPQR);
             sfree(index);
             if (bLegend)
             {
@@ -1301,8 +1369,11 @@ int gmx_editconf(int argc, char* argv[])
             }
             if (visbox[0] > 0)
             {
-                visualize_box(out, bLegend ? atoms.nr + 12 : atoms.nr,
-                              bLegend ? atoms.nres = 12 : atoms.nres, box, visbox);
+                visualize_box(out,
+                              bLegend ? atoms.nr + 12 : atoms.nr,
+                              bLegend ? atoms.nres = 12 : atoms.nres,
+                              box,
+                              visbox);
             }
             gmx_ffclose(out);
         }

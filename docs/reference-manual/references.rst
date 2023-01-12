@@ -1406,35 +1406,6 @@ Phys. Lett.*, **222** 529–539 (1994).
 
 .. raw:: html
 
-   <div id="ref-Pham2011">
-
-.. _refPham2011:
-
-:sup:`101` T.T. Pham and M.R. Shirts, "Identifying low variance pathways
-for free energy calculations of molecular transformations in solution
-phase," *J. Chem. Phys.*, **135** 034114 (2011).
-
-.. raw:: html
-
-   </div>
-
-.. raw:: html
-
-   <div id="ref-Pham2012">
-
-.. _refPham2012:
-
-:sup:`102` T.T. Pham and M.R. Shirts, "Optimal pairwise and non-pairwise
-alchemical pathways for free energy calculations of molecular
-transformation in solution phase," *J. Chem. Phys.*, **136** 124120
-(2012).
-
-.. raw:: html
-
-   </div>
-
-.. raw:: html
-
    <div id="ref-Jorgensen88">
 
 .. _refJorgensen88:
@@ -2640,6 +2611,60 @@ structures into cryoelectron microscopy maps using biased molecular dynamics sim
 
    </div>
 
+   <div id="refcp2k2020">
+
+.. _refcp2k2020:
+
+:sup:`188` Kühne T., Iannuzzi M., Del Ben M. and Hutter J. *et al.*,
+"CP2K: An electronic structure and molecular dynamics software package - Quickstep: Efficient and accurate electronic structure calculations",
+*J. Chem. Phys.*, **152**, 194103 (2020).
+
 .. raw:: html
 
    </div>
+
+   <div id="refLaino2005">
+
+.. _refLaino2005:
+
+:sup:`189` Laino T., Mohamed F., Laio A. and Parrinello M.,
+"An Efficient Real Space Multigrid QM/MM Electrostatic Coupling", *J. Chem. Theory Comput.*, **1**, 1176 (2005).
+
+.. raw:: html
+
+   </div>
+
+.. raw:: html
+
+   <div id="ref-Gapsys2012">
+
+.. _refGapsys2012:
+
+:sup:`185` V. Gapsys, D. Seeliger, and B.L. de Groot, 
+"New Soft-Core Potential Function for Molecular Dynamics Based Alchemical Free Energy Calculations", *J. Chem. Theor. Comput.*, **8** 2373-2382 (2012).
+
+.. raw:: html
+
+   </div>
+
+
+   <div id="refSpoel2020">
+
+.. _refSpoel2020:
+   
+:sup:`190` D. van der Spoel, H. Henschel, P. J. van Maaren, M. M. Ghahremanpour , and L. T. Costa, "A potential for molecular simulation of compounds with linear moieties", *J. Chem. Phys.*, **153** 084503 (2020).
+
+.. raw:: html
+
+   </div>
+
+   <div id="refTuckerman92">
+
+.. _refTuckerman92:
+
+:sup:`191` M. Tuckerman, B. J. Berne, and G. J. Martyna, "Reversible multiple time scale molecular dynamics", *J. Chem. Phys.*, **97** 1990 (1992).
+
+.. raw:: html
+
+   </div>
+

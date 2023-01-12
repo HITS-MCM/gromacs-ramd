@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -104,8 +100,18 @@ int gmx_principal(int argc, char* argv[])
                        { efXVG, "-om", "moi", ffWRITE } };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW, NFILE, fnm,
-                           asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW,
+                           NFILE,
+                           fnm,
+                           asize(pa),
+                           pa,
+                           asize(desc),
+                           desc,
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -117,24 +123,36 @@ int gmx_principal(int argc, char* argv[])
         sprintf(legend[i], "%c component", 'X' + i);
     }
 
-    axis1 = xvgropen(opt2fn("-a1", NFILE, fnm), "Principal axis 1 (major axis)",
-                     output_env_get_xvgr_tlabel(oenv), "Component (nm)", oenv);
+    axis1 = xvgropen(opt2fn("-a1", NFILE, fnm),
+                     "Principal axis 1 (major axis)",
+                     output_env_get_xvgr_tlabel(oenv),
+                     "Component (nm)",
+                     oenv);
     xvgr_legend(axis1, DIM, legend, oenv);
 
-    axis2 = xvgropen(opt2fn("-a2", NFILE, fnm), "Principal axis 2 (middle axis)",
-                     output_env_get_xvgr_tlabel(oenv), "Component (nm)", oenv);
+    axis2 = xvgropen(opt2fn("-a2", NFILE, fnm),
+                     "Principal axis 2 (middle axis)",
+                     output_env_get_xvgr_tlabel(oenv),
+                     "Component (nm)",
+                     oenv);
     xvgr_legend(axis2, DIM, legend, oenv);
 
-    axis3 = xvgropen(opt2fn("-a3", NFILE, fnm), "Principal axis 3 (minor axis)",
-                     output_env_get_xvgr_tlabel(oenv), "Component (nm)", oenv);
+    axis3 = xvgropen(opt2fn("-a3", NFILE, fnm),
+                     "Principal axis 3 (minor axis)",
+                     output_env_get_xvgr_tlabel(oenv),
+                     "Component (nm)",
+                     oenv);
     xvgr_legend(axis3, DIM, legend, oenv);
 
     sprintf(legend[XX], "Axis 1 (major)");
     sprintf(legend[YY], "Axis 2 (middle)");
     sprintf(legend[ZZ], "Axis 3 (minor)");
 
-    fmoi = xvgropen(opt2fn("-om", NFILE, fnm), "Moments of inertia around inertial axes",
-                    output_env_get_xvgr_tlabel(oenv), "I (au nm\\S2\\N)", oenv);
+    fmoi = xvgropen(opt2fn("-om", NFILE, fnm),
+                    "Moments of inertia around inertial axes",
+                    output_env_get_xvgr_tlabel(oenv),
+                    "I (au nm\\S2\\N)",
+                    oenv);
     xvgr_legend(fmoi, DIM, legend, oenv);
 
     for (i = 0; i < DIM; i++)
@@ -157,12 +175,9 @@ int gmx_principal(int argc, char* argv[])
 
         calc_principal_axes(&top, x, index, gnx, axes, moi);
 
-        fprintf(axis1, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, axes[XX][XX], axes[XX][YY],
-                axes[XX][ZZ]);
-        fprintf(axis2, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, axes[YY][XX], axes[YY][YY],
-                axes[YY][ZZ]);
-        fprintf(axis3, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, axes[ZZ][XX], axes[ZZ][YY],
-                axes[ZZ][ZZ]);
+        fprintf(axis1, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, axes[XX][XX], axes[XX][YY], axes[XX][ZZ]);
+        fprintf(axis2, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, axes[YY][XX], axes[YY][YY], axes[YY][ZZ]);
+        fprintf(axis3, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, axes[ZZ][XX], axes[ZZ][YY], axes[ZZ][ZZ]);
         fprintf(fmoi, "%15.10f     %15.10f  %15.10f  %15.10f\n", t, moi[XX], moi[YY], moi[ZZ]);
     } while (read_next_x(oenv, status, &t, x, box));
 

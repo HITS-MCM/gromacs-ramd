@@ -792,20 +792,42 @@ allows the true ensemble to be calculated. In either case, simulation
 with double precision may be required to get fine details of
 thermodynamics correct.
 
-Multiple time stepping
+Multiple time-stepping
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Several other simulation packages uses multiple time stepping for bonds
-and/or the PME mesh forces. In |Gromacs| we have not implemented this
-(yet), since we use a different philosophy. Bonds can be constrained
-(which is also a more sound approximation of a physical quantum
-oscillator), which allows the smallest time step to be increased to the
-larger one. This not only halves the number of force calculations, but
-also the update calculations. For even larger time steps, angle
+The leap-frog integrator in |Gromacs| supports a configurable multiple
+time-stepping scheme. This can be used to improve performance by
+computing slowly varying forces less frequently. The RESPA scheme
+:ref:`191 <refTuckerman92>` is used, which is based on a TROTTER
+decomposition and is therefore reversible and symplectic.
+
+In order to allow tuning this for each system, the integrator makes it
+possible to specify different types of bonded and non-bonded interactions
+for multiple-time step integration. 
+To avoid integration errors, it is still imperative that the integration
+interval used for each force component is short enough, and there is no
+universal formula that allows the algorithm to detect this. Since the
+slowly-varying forces are often of smaller magnitude, using time steps that
+are too large might not result in simulations crashing, so it is recommended
+to be conservative and only gradually increase intervals while ensuring you
+get proper sampling and avoid energy drifts.
+As an initial guidance, many of the most common biomolecular force fields appear
+to run into stability problems when the period of integrating Lennard-Jones
+forces is 4 fs or longer, so for now we only recommend computing long-range
+electrostatics (PME mesh contribution) less frequently than every step when
+using a base time step of 2 fs.
+Another, rather different, scenario is to use a base time step of 0.5 fs
+with non-constrained harmonic bonds, and compute other interactions
+every second or fourth step. Despite these caveats, we encourage users to test
+the functionality, assess stability and energy drifts, and either discuss your
+experience in the GROMACS forums or suggest improvements to the documentation
+so we can improve this guidance in the future.
+
+For using larger time steps for all interactions, and integration, angle
 vibrations involving hydrogen atoms can be removed using virtual
 interaction sites (see sec. :ref:`rmfast`), which brings the shortest
 time step up to PME mesh update frequency of a multiple time stepping
-scheme.
+scheme. This results in a near doubling of the simulation performance.
 
 .. _temp-coupling:
 
@@ -878,7 +900,10 @@ averages will not be affected significantly, except for the distribution
 of the kinetic energy itself. However, fluctuation properties, such as
 the heat capacity, will be affected. A similar thermostat which does
 produce a correct ensemble is the velocity rescaling
-thermostat \ :ref:`30 <refBussi2007a>` described below.
+thermostat \ :ref:`30 <refBussi2007a>` described below, so while the
+Berendsen thermostat is supported for historical reasons, including
+the ability to reproduce old simulations, we strongly recommend
+against using it for new simulations.
 
 The heat flow into or out of the system is affected by scaling the
 velocities of each particle every step, or every :math:`n_\mathrm{TC}`
@@ -1175,7 +1200,8 @@ Pressure coupling
 In the same spirit as the temperature coupling, the system can also be
 coupled to a *pressure bath.* |Gromacs| supports both the Berendsen
 algorithm \ :ref:`26 <refBerendsen84>` that scales coordinates and box
-vectors every step, the extended-ensemble Parrinello-Rahman
+vectors every step (we strongly recommend not to use it), a new
+stochastic cell rescaling algorithm, the extended-ensemble Parrinello-Rahman
 approach \ :ref:`38 <refParrinello81>`, :ref:`39 <refNose83>`, and for the
 velocity Verlet variants, the Martyna-Tuckerman-Tobias-Klein (MTTK)
 implementation of pressure control \ :ref:`35 <refMartyna1996>`.
@@ -1250,10 +1276,23 @@ in the other direction(s).
 
 If you allow full anisotropic deformations and use constraints you might
 have to scale more slowly or decrease your timestep to avoid errors from
-the constraint algorithms. It is important to note that although the
+the constraint algorithms.
+
+It is important to note that although the
 Berendsen pressure control algorithm yields a simulation with the
 correct average pressure, it does not yield the exact NPT ensemble, and
 it is not yet clear exactly what errors this approximation may yield.
+We strongly advise against using it for new simulations. The only
+useful role it has had recently is to ensure fast relaxation without
+oscillations, e.g. at the start of a simulation for from equilibrium,
+but this is now provided by the stochastic cell rescaling, which should
+be used instead. For full anisotropic simulations you need to use the
+Parrinello-Rahman barostat (for now). This does have the same
+oscillation problems as many other correct-ensemble barostats, so if
+you cannot get your initial system stable you might need to use
+Berendsen briefly - but the warnings/errors you get are a reminder
+it should not be used for production runs.
+
 
 Stochastic cell rescaling
 ^^^^^^^^^^^^^^^^^^^^^^^^^

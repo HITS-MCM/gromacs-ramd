@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -79,8 +78,7 @@ GaussianSpreadKernelParameters::Shape makeSpreadKernel(real sigma, real nSigma, 
 {
     RVec sigmaInLatticeCoordinates{ sigma, sigma, sigma };
     scaleToLattice(&sigmaInLatticeCoordinates);
-    return { DVec{ sigmaInLatticeCoordinates[XX], sigmaInLatticeCoordinates[YY],
-                   sigmaInLatticeCoordinates[ZZ] },
+    return { DVec{ sigmaInLatticeCoordinates[XX], sigmaInLatticeCoordinates[YY], sigmaInLatticeCoordinates[ZZ] },
              nSigma };
 }
 
@@ -102,10 +100,10 @@ const std::string DensityFittingForceProviderState::stepsSinceLastCalculationNam
 void DensityFittingForceProviderState::writeState(KeyValueTreeObjectBuilder kvtBuilder,
                                                   const std::string&        identifier) const
 {
-    writeKvtCheckpointValue(stepsSinceLastCalculation_, stepsSinceLastCalculationName_, identifier,
-                            kvtBuilder);
-    writeKvtCheckpointValue(adaptiveForceConstantScale_, adaptiveForceConstantScaleName_,
-                            identifier, kvtBuilder);
+    writeKvtCheckpointValue(
+            stepsSinceLastCalculation_, stepsSinceLastCalculationName_, identifier, kvtBuilder);
+    writeKvtCheckpointValue(
+            adaptiveForceConstantScale_, adaptiveForceConstantScaleName_, identifier, kvtBuilder);
 
     KeyValueTreeObjectBuilder exponentialMovingAverageKvtEntry =
             kvtBuilder.addObject(identifier + "-" + exponentialMovingAverageStateName_);
@@ -117,9 +115,13 @@ void DensityFittingForceProviderState::readState(const KeyValueTreeObject& kvtDa
                                                  const std::string&        identifier)
 {
     readKvtCheckpointValue(compat::make_not_null(&stepsSinceLastCalculation_),
-                           stepsSinceLastCalculationName_, identifier, kvtData);
+                           stepsSinceLastCalculationName_,
+                           identifier,
+                           kvtData);
     readKvtCheckpointValue(compat::make_not_null(&adaptiveForceConstantScale_),
-                           adaptiveForceConstantScaleName_, identifier, kvtData);
+                           adaptiveForceConstantScaleName_,
+                           identifier,
+                           kvtData);
 
     if (kvtData.keyExists(identifier + "-" + exponentialMovingAverageStateName_))
     {
@@ -230,11 +232,11 @@ DensityFittingForceProvider::Impl::Impl(const DensityFittingParameters&         
         Matrix3x3 translationMatrix = transformationMatrixParametersAsArray.has_value()
                                               ? *transformationMatrixParametersAsArray
                                               : identityMatrix<real, 3>();
-        RVec translationVector = translationParametersAsArray.has_value()
-                                         ? RVec((*translationParametersAsArray)[XX],
+        RVec      translationVector = translationParametersAsArray.has_value()
+                                              ? RVec((*translationParametersAsArray)[XX],
                                                 (*translationParametersAsArray)[YY],
                                                 (*translationParametersAsArray)[ZZ])
-                                         : RVec(0, 0, 0);
+                                              : RVec(0, 0, 0);
         affineTransformation_.emplace(translationMatrix.asConstView(), translationVector);
     }
 
@@ -266,7 +268,8 @@ void DensityFittingForceProvider::Impl::calculateForces(const ForceProviderInput
 
     transformedCoordinates_.resize(localAtomSet_.numAtomsLocal());
     // pick and copy atom coordinates
-    std::transform(std::cbegin(localAtomSet_.localIndex()), std::cend(localAtomSet_.localIndex()),
+    std::transform(std::cbegin(localAtomSet_.localIndex()),
+                   std::cend(localAtomSet_.localIndex()),
                    std::begin(transformedCoordinates_),
                    [&forceProviderInput](int index) { return forceProviderInput.x_[index]; });
 
@@ -294,8 +297,8 @@ void DensityFittingForceProvider::Impl::calculateForces(const ForceProviderInput
     // spread atoms on grid
     gaussTransform_.setZero();
 
-    std::vector<real> amplitudes =
-            amplitudeLookup_(forceProviderInput.mdatoms_, localAtomSet_.localIndex());
+    std::vector<real> amplitudes = amplitudeLookup_(
+            forceProviderInput.chargeA_, forceProviderInput.massT_, localAtomSet_.localIndex());
 
     if (parameters_.normalizeDensities_)
     {
@@ -323,7 +326,8 @@ void DensityFittingForceProvider::Impl::calculateForces(const ForceProviderInput
     {
         // \todo update to real once GaussTransform class returns real
         gmx_sumf(gaussTransform_.view().mapping().required_span_size(),
-                 gaussTransform_.view().data(), &forceProviderInput.cr_);
+                 gaussTransform_.view().data(),
+                 &forceProviderInput.cr_);
     }
 
     // calculate grid derivative
@@ -332,8 +336,11 @@ void DensityFittingForceProvider::Impl::calculateForces(const ForceProviderInput
     // calculate forces
     forces_.resize(localAtomSet_.numAtomsLocal());
     std::transform(
-            std::begin(transformedCoordinates_), std::end(transformedCoordinates_), std::begin(amplitudes),
-            std::begin(forces_), [&densityDerivative, this](const RVec r, real amplitude) {
+            std::begin(transformedCoordinates_),
+            std::end(transformedCoordinates_),
+            std::begin(amplitudes),
+            std::begin(forces_),
+            [&densityDerivative, this](const RVec r, real amplitude) {
                 return densityFittingForce_.evaluateForce({ r, amplitude }, densityDerivative);
             });
 
@@ -409,7 +416,7 @@ void DensityFittingForceProvider::calculateForces(const ForceProviderInput& forc
     impl_->calculateForces(forceProviderInput, forceProviderOutput);
 }
 
-void DensityFittingForceProvider::writeCheckpointData(MdModulesWriteCheckpointData checkpointWriting,
+void DensityFittingForceProvider::writeCheckpointData(MDModulesWriteCheckpointData checkpointWriting,
                                                       const std::string&           moduleName)
 {
     impl_->stateToCheckpoint().writeState(checkpointWriting.builder_, moduleName);

@@ -155,7 +155,7 @@ MACRO(TMPI_ENABLE_CORE INCDIR)
     check_include_file_cxx(sys/time.h           HAVE_SYS_TIME_H)
     check_cxx_symbol_exists(sysconf    unistd.h HAVE_SYSCONF)
 # this runs on windows
-#check_include_files(windows.h		HAVE_WINDOWS_H)
+#   check_include_files(windows.h               HAVE_WINDOWS_H)
 ENDMACRO(TMPI_ENABLE_CORE)
 
 # enable C++ library build.
@@ -218,10 +218,6 @@ MACRO(TMPI_GET_SOURCE_LIST SRC_VARIABLE SRC_ROOT)
         list(APPEND ${SRC_VARIABLE} ${SRC_ROOT}/pthreads.cpp)
     elseif (THREAD_WINDOWS)
         list(APPEND ${SRC_VARIABLE} ${SRC_ROOT}/winthreads.cpp)
-    endif ()
-
-    if (TMPI_CXX_LIB)
-        list(APPEND ${SRC_VARIABLE} ${SRC_ROOT}/system_error.cpp)
     endif ()
 
     if (TMPI_ENABLED)

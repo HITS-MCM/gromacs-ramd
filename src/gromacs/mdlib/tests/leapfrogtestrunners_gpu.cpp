@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Runner for GPU version of the integrator
@@ -48,18 +47,11 @@
 
 #include "leapfrogtestrunners.h"
 
-#if GMX_GPU_CUDA
-#    include "gromacs/gpu_utils/devicebuffer.cuh"
+#if GPU_LEAPFROG_SUPPORTED
+#    include "gromacs/gpu_utils/devicebuffer.h"
 #endif
-#if GMX_GPU_SYCL
-#    include "gromacs/gpu_utils/devicebuffer_sycl.h"
-#endif
-
-#if HAVE_GPU_LEAPFROG
-#    include "gromacs/mdlib/leapfrog_gpu.h"
-#endif
-
-#include "gromacs/hardware/device_information.h"
+#include "gromacs/gpu_utils/gputraits.h"
+#include "gromacs/mdlib/leapfrog_gpu.h"
 #include "gromacs/mdlib/stat.h"
 
 namespace gmx
@@ -67,7 +59,8 @@ namespace gmx
 namespace test
 {
 
-#if HAVE_GPU_LEAPFROG
+#if GPU_LEAPFROG_SUPPORTED
+
 void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numSteps)
 {
     const DeviceContext& deviceContext = testDevice_.deviceContext();
@@ -76,14 +69,12 @@ void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numStep
 
     int numAtoms = testData->numAtoms_;
 
-    static_assert(sizeof(float3) == sizeof(*testData->x_.data()), "Incompatible types");
+    Float3* h_x  = gmx::asGenericFloat3Pointer(testData->x_);
+    Float3* h_xp = gmx::asGenericFloat3Pointer(testData->xPrime_);
+    Float3* h_v  = gmx::asGenericFloat3Pointer(testData->v_);
+    Float3* h_f  = gmx::asGenericFloat3Pointer(testData->f_);
 
-    float3* h_x  = reinterpret_cast<float3*>(testData->x_.data());
-    float3* h_xp = reinterpret_cast<float3*>(testData->xPrime_.data());
-    float3* h_v  = reinterpret_cast<float3*>(testData->v_.data());
-    float3* h_f  = reinterpret_cast<float3*>(testData->f_.data());
-
-    DeviceBuffer<float3> d_x, d_xp, d_v, d_f;
+    DeviceBuffer<Float3> d_x, d_xp, d_v, d_f;
 
     allocateDeviceBuffer(&d_x, numAtoms, deviceContext);
     allocateDeviceBuffer(&d_xp, numAtoms, deviceContext);
@@ -95,10 +86,10 @@ void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numStep
     copyToDeviceBuffer(&d_v, h_v, 0, numAtoms, deviceStream, GpuApiCallBehavior::Sync, nullptr);
     copyToDeviceBuffer(&d_f, h_f, 0, numAtoms, deviceStream, GpuApiCallBehavior::Sync, nullptr);
 
-    auto integrator = std::make_unique<LeapFrogGpu>(deviceContext, deviceStream);
+    auto integrator =
+            std::make_unique<LeapFrogGpu>(deviceContext, deviceStream, testData->numTCoupleGroups_);
 
-    integrator->set(testData->numAtoms_, testData->inverseMasses_.data(),
-                    testData->numTCoupleGroups_, testData->mdAtoms_.cTC);
+    integrator->set(testData->numAtoms_, testData->inverseMasses_.data(), testData->mdAtoms_.cTC);
 
     bool doTempCouple = testData->numTCoupleGroups_ > 0;
     for (int step = 0; step < numSteps; step++)
@@ -107,9 +98,16 @@ void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numStep
         bool doPressureCouple = testData->doPressureCouple_
                                 && do_per_step(step + testData->inputRecord_.nstpcouple - 1,
                                                testData->inputRecord_.nstpcouple);
-        integrator->integrate(d_x, d_xp, d_v, d_f, testData->timestep_, doTempCouple,
-                              testData->kineticEnergyData_.tcstat, doPressureCouple,
-                              testData->dtPressureCouple_, testData->velocityScalingMatrix_);
+        integrator->integrate(d_x,
+                              d_xp,
+                              d_v,
+                              d_f,
+                              testData->timestep_,
+                              doTempCouple,
+                              testData->kineticEnergyData_.tcstat,
+                              doPressureCouple,
+                              testData->dtPressureCouple_,
+                              testData->velocityScalingMatrix_);
     }
 
     copyFromDeviceBuffer(h_xp, &d_x, 0, numAtoms, deviceStream, GpuApiCallBehavior::Sync, nullptr);
@@ -121,7 +119,7 @@ void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numStep
     freeDeviceBuffer(&d_f);
 }
 
-#else // HAVE_GPU_LEAPFROG
+#else // GPU_LEAPFROG_SUPPORTED
 
 void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* /* testData */, int /* numSteps */)
 {
@@ -129,7 +127,7 @@ void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* /* testData */, int /
     FAIL() << "Dummy Leap-Frog GPU function was called instead of the real one.";
 }
 
-#endif // HAVE_GPU_LEAPFROG
+#endif // GPU_LEAPFROG_SUPPORTED
 
 } // namespace test
 } // namespace gmx

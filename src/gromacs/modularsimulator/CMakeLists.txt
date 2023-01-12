@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,35 +26,65 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 file(GLOB MODULARSIMULATOR_SOURCES *.cpp)
 
 add_library(modularsimulator OBJECT ${MODULARSIMULATOR_SOURCES})
+
+if (GMX_OPENMP)
+    # Explicitly set properties for modular simulator module to compile with openmp
+    set_target_properties(modularsimulator PROPERTIES COMPILE_OPTIONS $<TARGET_PROPERTY:OpenMP::OpenMP_CXX,INTERFACE_COMPILE_OPTIONS>)
+endif ()
+
+if (WIN32)
+    gmx_target_warning_suppression(modularsimulator /wd4244 HAS_NO_MSVC_LOSSY_CONVERSION)
+    gmx_target_warning_suppression(modularsimulator /wd4996 HAS_NO_MSVC_UNSAFE_FUNCTION)
+else ()
+    # Several std::move uses are redundant in C++14, but clang before
+    # 3.9 had a bug that needed them. gcc 9 can warn about their use,
+    # which we need to supress. This suppression should be removed
+    # when GROMACS requires clang 3.9 or higher.
+    gmx_target_warning_suppression(modularsimulator "-Wno-redundant-move" HAS_NO_REDUNDANT_MOVE)
+endif ()
+
 target_include_directories(modularsimulator SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/src/external)
 gmx_target_compile_options(modularsimulator)
 target_compile_definitions(modularsimulator PRIVATE HAVE_CONFIG_H)
 # Should be possible to remove this when resolving #3290
 target_include_directories(modularsimulator SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
 
-if(GMX_OPENMP)
-    # Explicitly set properties for modular simulator module to compile with openmp
-    set_target_properties(modularsimulator PROPERTIES COMPILE_OPTIONS $<TARGET_PROPERTY:OpenMP::OpenMP_CXX,INTERFACE_COMPILE_OPTIONS>)
-endif()
+# Source files have the following private external dependencies.
+target_link_libraries(modularsimulator PRIVATE tng_io)
 
-if (WIN32)
-    gmx_target_warning_suppression(modularsimulator /wd4244 HAS_NO_MSVC_LOSSY_CONVERSION)
-    gmx_target_warning_suppression(modularsimulator /wd4996 HAS_NO_MSVC_UNSAFE_FUNCTION)
-else()
-    # Several std::move uses are redundant in C++14, but clang before
-    # 3.9 had a bug that needed them. gcc 9 can warn about their use,
-    # which we need to supress. This suppression should be removed
-    # when GROMACS requires clang 3.9 or higher.
-    gmx_target_warning_suppression(modularsimulator "-Wno-redundant-move" HAS_NO_REDUNDANT_MOVE)
-endif()
+# Source files have the following private infrastructure dependencies.
+target_link_libraries(modularsimulator PRIVATE common)
+
+# Source files have the following private module dependencies.
+# TODO: Explicitly link specific modules.
+target_link_libraries(modularsimulator PRIVATE legacy_modules)
+target_link_libraries(modularsimulator PRIVATE
+                      gmxlib
+                      math
+                      mdtypes
+                      tng_io
+                      )
+
+# Public interface for modules, including dependencies and interfaces
+target_include_directories(modularsimulator PUBLIC
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+target_link_libraries(modularsimulator PUBLIC
+                      legacy_api
+                      )
+
+# Module dependencies
+# This module convey transitive dependence on these modules.
+target_link_libraries(modularsimulator PUBLIC
+                      utility
+                      )
 
 list(APPEND libgromacs_object_library_dependencies modularsimulator)
 set(libgromacs_object_library_dependencies ${libgromacs_object_library_dependencies} PARENT_SCOPE)

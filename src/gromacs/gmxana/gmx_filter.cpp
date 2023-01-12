@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -45,6 +42,7 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/gmxana/princ.h"
 #include "gromacs/math/do_fit.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -111,7 +109,6 @@ int gmx_filter(int argc, char* argv[])
     gmx_output_env_t* oenv;
     gmx_rmpbc_t       gpbc = nullptr;
 
-#define NLEG asize(leg)
     t_filenm fnm[] = { { efTRX, "-f", nullptr, ffREAD },
                        { efTPS, nullptr, nullptr, ffOPTRD },
                        { efNDX, nullptr, nullptr, ffOPTRD },
@@ -119,8 +116,8 @@ int gmx_filter(int argc, char* argv[])
                        { efTRO, "-oh", "highpass", ffOPTWR } };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME | PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -298,8 +295,16 @@ int gmx_filter(int argc, char* argv[])
             }
             if (outl && (bLowAll || fr % nf == nf - 1))
             {
-                write_trx(outl, nat, ind, topfile ? &(top.atoms) : nullptr, 0, t[nf - 1],
-                          bFit ? topbox : boxf, xf, nullptr, nullptr);
+                write_trx(outl,
+                          nat,
+                          ind,
+                          topfile ? &(top.atoms) : nullptr,
+                          0,
+                          t[nf - 1],
+                          bFit ? topbox : boxf,
+                          xf,
+                          nullptr,
+                          nullptr);
             }
             if (outh)
             {
@@ -325,8 +330,16 @@ int gmx_filter(int argc, char* argv[])
                         boxf[j][d] = topbox[j][d] + box[nf - 1][j][d] - boxf[j][d];
                     }
                 }
-                write_trx(outh, nat, ind, topfile ? &(top.atoms) : nullptr, 0, t[nf - 1],
-                          bFit ? topbox : boxf, xf, nullptr, nullptr);
+                write_trx(outh,
+                          nat,
+                          ind,
+                          topfile ? &(top.atoms) : nullptr,
+                          0,
+                          t[nf - 1],
+                          bFit ? topbox : boxf,
+                          xf,
+                          nullptr,
+                          nullptr);
             }
         }
         /* Cycle all the pointer and the box by one */

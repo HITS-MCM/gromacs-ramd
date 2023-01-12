@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -71,31 +67,31 @@
 
 static double cv_corr(double nu, double T)
 {
-    double x  = PLANCK * nu / (BOLTZ * T);
+    double x  = gmx::c_planck * nu / (gmx::c_boltz * T);
     double ex = std::exp(x);
 
     if (nu <= 0)
     {
-        return BOLTZ * KILO;
+        return gmx::c_boltz * gmx::c_kilo;
     }
     else
     {
-        return BOLTZ * KILO * (ex * gmx::square(x) / gmx::square(ex - 1) - 1);
+        return gmx::c_boltz * gmx::c_kilo * (ex * gmx::square(x) / gmx::square(ex - 1) - 1);
     }
 }
 
 static double u_corr(double nu, double T)
 {
-    double x  = PLANCK * nu / (BOLTZ * T);
+    double x  = gmx::c_planck * nu / (gmx::c_boltz * T);
     double ex = std::exp(x);
 
     if (nu <= 0)
     {
-        return BOLTZ * T;
+        return gmx::c_boltz * T;
     }
     else
     {
-        return BOLTZ * T * (0.5 * x - 1 + x / (ex - 1));
+        return gmx::c_boltz * T * (0.5 * x - 1 + x / (ex - 1));
     }
 }
 
@@ -271,7 +267,10 @@ static real* allocateEigenvectors(int nrow, int first, int last, bool ignoreBegi
         gmx_fatal(FARGS,
                   "You asked to store %d eigenvectors of size %d, which requires more than the "
                   "supported %d elements; %sdecrease -last",
-                  numVector, nrow, INT_MAX, ignoreBegin ? "" : "increase -first and/or ");
+                  numVector,
+                  nrow,
+                  INT_MAX,
+                  ignoreBegin ? "" : "increase -first and/or ");
     }
 
     real* eigenvectors;
@@ -284,14 +283,14 @@ static real* allocateEigenvectors(int nrow, int first, int last, bool ignoreBegi
  */
 static double calcTranslationalHeatCapacity()
 {
-    return RGAS * 1.5;
+    return gmx::c_universalGasConstant * 1.5;
 }
 
 /*! \brief Compute internal energy due to translational motion
  */
 static double calcTranslationalInternalEnergy(double T)
 {
-    return BOLTZ * T * 1.5;
+    return gmx::c_boltz * T * 1.5;
 }
 
 /*! \brief Compute heat capacity due to rotational motion
@@ -304,11 +303,11 @@ static double calcRotationalInternalEnergy(gmx_bool linear, double T)
 {
     if (linear)
     {
-        return BOLTZ * T;
+        return gmx::c_boltz * T;
     }
     else
     {
-        return BOLTZ * T * 1.5;
+        return gmx::c_boltz * T * 1.5;
     }
 }
 
@@ -321,11 +320,11 @@ static double calcRotationalHeatCapacity(gmx_bool linear)
 {
     if (linear)
     {
-        return RGAS;
+        return gmx::c_universalGasConstant;
     }
     else
     {
-        return RGAS * 1.5;
+        return gmx::c_universalGasConstant * 1.5;
     }
 }
 
@@ -358,9 +357,9 @@ static void analyzeThermochemistry(FILE*                    fp,
     principal_comp(index.size(), index.data(), top.atoms.atom, as_rvec_array(x_com.data()), trans, inertia);
     bool linear = (inertia[XX] / inertia[YY] < linear_toler && inertia[XX] / inertia[ZZ] < linear_toler);
     // (kJ/mol ps)^2/(Dalton nm^2 kJ/mol K) =
-    // KILO kg m^2 ps^2/(s^2 mol g/mol nm^2 K) =
-    // KILO^2 10^18 / 10^24 K = 1/K
-    double rot_const = gmx::square(PLANCK) / (8 * gmx::square(M_PI) * BOLTZ);
+    // c_kilo kg m^2 ps^2/(s^2 mol g/mol nm^2 K) =
+    // c_kilo^2 10^18 / 10^24 K = 1/K
+    double rot_const = gmx::square(gmx::c_planck) / (8 * gmx::square(M_PI) * gmx::c_boltz);
     // Rotational temperature (1/K)
     rvec theta = { 0, 0, 0 };
     if (linear)
@@ -542,7 +541,7 @@ int gmx_nmeig(int argc, char* argv[])
     {
         nharm = get_nharm(&mtop);
     }
-    std::vector<int> atom_index = get_atom_index(&mtop);
+    std::vector<int> atom_index = get_atom_index(mtop);
 
     top = gmx_mtop_t_to_t_topology(&mtop, true);
 
@@ -589,7 +588,9 @@ int gmx_nmeig(int argc, char* argv[])
             gmx_fatal(FARGS,
                       "Hessian size is %d x %d, which is larger than the maximum allowed %d "
                       "elements.",
-                      nrow, ncol, INT_MAX);
+                      nrow,
+                      ncol,
+                      INT_MAX);
         }
         snew(full_hessian, hessianSize);
         for (i = 0; i < nrow * ncol; i++)
@@ -648,8 +649,11 @@ int gmx_nmeig(int argc, char* argv[])
 
     /* now write the output */
     fprintf(stderr, "Writing eigenvalues...\n");
-    out = xvgropen(opt2fn("-ol", NFILE, fnm), "Eigenvalues", "Eigenvalue index",
-                   "Eigenvalue [Gromacs units]", oenv);
+    out = xvgropen(opt2fn("-ol", NFILE, fnm),
+                   "Eigenvalues",
+                   "Eigenvalue index",
+                   "Eigenvalue [Gromacs units]",
+                   oenv);
     if (output_env_get_print_xvgr_codes(oenv))
     {
         if (bM)
@@ -681,8 +685,11 @@ int gmx_nmeig(int argc, char* argv[])
     }
     printf("Writing eigenfrequencies - negative eigenvalues will be set to zero.\n");
 
-    out = xvgropen(opt2fn("-of", NFILE, fnm), "Eigenfrequencies", "Eigenvector index",
-                   "Wavenumber [cm\\S-1\\N]", oenv);
+    out = xvgropen(opt2fn("-of", NFILE, fnm),
+                   "Eigenfrequencies",
+                   "Eigenvector index",
+                   "Wavenumber [cm\\S-1\\N]",
+                   oenv);
     if (output_env_get_print_xvgr_codes(oenv))
     {
         if (bM)
@@ -701,7 +708,9 @@ int gmx_nmeig(int argc, char* argv[])
         snew(spectrum, maxspec);
         spec = xvgropen(opt2fn("-os", NFILE, fnm),
                         "Vibrational spectrum based on harmonic approximation",
-                        "\\f{12}w\\f{4} (cm\\S-1\\N)", "Intensity [Gromacs units]", oenv);
+                        "\\f{12}w\\f{4} (cm\\S-1\\N)",
+                        "Intensity [Gromacs units]",
+                        oenv);
         for (i = 0; (i < maxspec); i++)
         {
             spectrum[i] = 0;
@@ -716,8 +725,8 @@ int gmx_nmeig(int argc, char* argv[])
      * light. Do this by first converting to omega^2 (units 1/s), take the square
      * root, and finally divide by the speed of light (nm/ps in gromacs).
      */
-    factor_gmx_to_omega2       = 1.0E21 / (AVOGADRO * AMU);
-    factor_omega_to_wavenumber = 1.0E-5 / (2.0 * M_PI * SPEED_OF_LIGHT);
+    factor_gmx_to_omega2       = 1.0E21 / (gmx::c_avogadro * gmx::c_amu);
+    factor_omega_to_wavenumber = 1.0E-5 / (2.0 * M_PI * gmx::c_speedOfLight);
 
     value = 0;
     for (i = begin; (i <= end); i++)
@@ -745,8 +754,8 @@ int gmx_nmeig(int argc, char* argv[])
             qu  = u_corr(nu, T);
             if (i > end - nharm)
             {
-                qcv += BOLTZ * KILO;
-                qu += BOLTZ * T;
+                qcv += gmx::c_boltz * gmx::c_kilo;
+                qu += gmx::c_boltz * T;
             }
             fprintf(qc, "%6d %15g %15g\n", i, qcv, qu);
             qcvtot += qcv;
@@ -793,13 +802,23 @@ int gmx_nmeig(int argc, char* argv[])
         /* The sparse matrix diagonalization store all eigenvectors up to end */
         eigenvectorPtr = eigenvectors + (begin - 1) * atom_index.size();
     }
-    write_eigenvectors(opt2fn("-v", NFILE, fnm), atom_index.size(), eigenvectorPtr, FALSE, begin,
-                       end, eWXR_NO, nullptr, FALSE, top_x, bM, eigenvalues);
+    write_eigenvectors(opt2fn("-v", NFILE, fnm),
+                       atom_index.size(),
+                       eigenvectorPtr,
+                       FALSE,
+                       begin,
+                       end,
+                       eWXR_NO,
+                       nullptr,
+                       FALSE,
+                       top_x,
+                       bM,
+                       eigenvalues);
 
     if (begin == 1)
     {
-        analyzeThermochemistry(stdout, top, top_x, atom_index, eigenvalues, T, P, sigma_r,
-                               scale_factor, linear_toler);
+        analyzeThermochemistry(
+                stdout, top, top_x, atom_index, eigenvalues, T, P, sigma_r, scale_factor, linear_toler);
         please_cite(stdout, "Spoel2018a");
     }
     else

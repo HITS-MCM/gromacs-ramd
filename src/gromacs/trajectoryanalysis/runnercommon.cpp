@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -230,7 +228,8 @@ void TrajectoryAnalysisRunnerCommon::Impl::initFirstFrame()
             {
                 const std::string message =
                         formatString("Trajectory (%d atoms) does not match topology (%d atoms)",
-                                     fr->natoms, topologyAtomCount);
+                                     fr->natoms,
+                                     topologyAtomCount);
                 GMX_THROW(InconsistentInputError(message));
             }
         }
@@ -280,7 +279,8 @@ void TrajectoryAnalysisRunnerCommon::Impl::initFrameIndexGroup()
         const std::string message = formatString(
                 "Selection specified with -fgroup has %d atoms, but "
                 "the trajectory (-f) has %d atoms.",
-                trajectoryGroup_.atomCount(), fr->natoms);
+                trajectoryGroup_.atomCount(),
+                fr->natoms);
         GMX_THROW(InconsistentInputError(message));
     }
     fr->bIndex = TRUE;
@@ -327,13 +327,13 @@ void TrajectoryAnalysisRunnerCommon::initOptions(IOptionsContainer* options, Tim
 
     // Add common file name arguments.
     options->addOption(FileNameOption("f")
-                               .filetype(eftTrajectory)
+                               .filetype(OptionFileType::Trajectory)
                                .inputFile()
                                .store(&impl_->trjfile_)
                                .defaultBasename("traj")
                                .description("Input trajectory or single configuration"));
     options->addOption(FileNameOption("s")
-                               .filetype(eftTopology)
+                               .filetype(OptionFileType::Topology)
                                .inputFile()
                                .store(&impl_->topfile_)
                                .defaultBasename("topol")
@@ -404,15 +404,15 @@ void TrajectoryAnalysisRunnerCommon::optionsFinished()
 
     if (impl_->bStartTimeSet_)
     {
-        setTimeValue(TBEGIN, impl_->startTime_);
+        setTimeValue(TimeControl::Begin, impl_->startTime_);
     }
     if (impl_->bEndTimeSet_)
     {
-        setTimeValue(TEND, impl_->endTime_);
+        setTimeValue(TimeControl::End, impl_->endTime_);
     }
     if (impl_->bDeltaTimeSet_)
     {
-        setTimeValue(TDELTA, impl_->deltaTime_);
+        setTimeValue(TimeControl::Delta, impl_->deltaTime_);
     }
 }
 

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -186,8 +182,8 @@ static void do_label(t_x11* x11, t_manager* man, int x, int y, bool bSet)
             return;
         }
         XSetForeground(x11->disp, x11->gc, col);
-        XDrawString(x11->disp, man->molw->wd.self, x11->gc, x + 2, y - 2, man->szLab[ai],
-                    std::strlen(man->szLab[ai]));
+        XDrawString(
+                x11->disp, man->molw->wd.self, x11->gc, x + 2, y - 2, man->szLab[ai], std::strlen(man->szLab[ai]));
         XSetForeground(x11->disp, x11->gc, x11->fg);
     }
 }
@@ -236,7 +232,10 @@ void set_file(t_x11* x11, t_manager* man, const char* trajectory, const char* st
         gmx_fatal(FARGS,
                   "Topology %s (%d atoms) and trajectory %s (%d atoms) "
                   "do not match",
-                  status, man->top.atoms.nr, trajectory, man->natom);
+                  status,
+                  man->top.atoms.nr,
+                  trajectory,
+                  man->natom);
     }
 
     man->title.text =
@@ -634,8 +633,8 @@ t_manager* init_man(t_x11*            x11,
     man->bSort  = true;
     man->oenv   = oenv;
     InitWin(&(man->wd), x, y, width, height, 0, "Manager");
-    man->wd.self = XCreateSimpleWindow(x11->disp, Parent, man->wd.x, man->wd.y, man->wd.width,
-                                       man->wd.height, man->wd.bwidth, fg, bg);
+    man->wd.self = XCreateSimpleWindow(
+            x11->disp, Parent, man->wd.x, man->wd.y, man->wd.width, man->wd.height, man->wd.bwidth, fg, bg);
     x11->RegisterCallback(x11, man->wd.self, Parent, ManCallBack, man);
     x11->SetInputMask(x11, man->wd.self, StructureNotifyMask | ExposureMask | ButtonPressMask);
 
@@ -645,9 +644,15 @@ t_manager* init_man(t_x11*            x11,
 
     /* Title Window */
     InitWin(&(man->title), 0, 0, 1, 1, 0, nullptr);
-    man->title.self =
-            XCreateSimpleWindow(x11->disp, man->molw->wd.self, man->title.x, man->title.y,
-                                man->title.width, man->title.height, man->title.bwidth, WHITE, BLUE);
+    man->title.self = XCreateSimpleWindow(x11->disp,
+                                          man->molw->wd.self,
+                                          man->title.x,
+                                          man->title.y,
+                                          man->title.width,
+                                          man->title.height,
+                                          man->title.bwidth,
+                                          WHITE,
+                                          BLUE);
     x11->RegisterCallback(x11, man->title.self, man->molw->wd.self, TitleCallBack, &(man->title));
     x11->SetInputMask(x11, man->title.self, ExposureMask | StructureNotifyMask);
 

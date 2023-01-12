@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -80,12 +79,9 @@ ResetHandler::ResetHandler(compat::not_null<SimulationSignal*> signal,
                            bool                                resetHalfway,
                            real                                maximumHoursToRun,
                            const MDLogger&                     mdlog,
-                           gmx_wallcycle_t                     wcycle,
+                           gmx_wallcycle*                      wcycle,
                            gmx_walltime_accounting_t           walltime_accounting) :
-    signal_(*signal),
-    rankCanSetSignal_(false),
-    simulationNeedsReset_(false),
-    maximumHoursToRun_(maximumHoursToRun)
+    signal_(*signal), rankCanSetSignal_(false), simulationNeedsReset_(false), maximumHoursToRun_(maximumHoursToRun)
 {
     if (simulationsShareState)
     {
@@ -144,7 +140,7 @@ bool ResetHandler::resetCountersImpl(int64_t                     step,
                                      t_nrnb*                     nrnb,
                                      const gmx_pme_t*            pme,
                                      const pme_load_balancing_t* pme_loadbal,
-                                     gmx_wallcycle_t             wcycle,
+                                     gmx_wallcycle*              wcycle,
                                      gmx_walltime_accounting_t   walltime_accounting)
 {
     /* Reset either if signal has been passed, or if reset step has been reached */
@@ -194,14 +190,14 @@ bool ResetHandler::resetCountersImpl(int64_t                     step,
             resetGpuProfiler();
         }
 
-        wallcycle_stop(wcycle, ewcRUN);
+        wallcycle_stop(wcycle, WallCycleCounter::Run);
         wallcycle_reset_all(wcycle);
-        if (DOMAINDECOMP(cr))
+        if (haveDDAtomOrdering(*cr))
         {
             reset_dd_statistics_counters(cr->dd);
         }
         clear_nrnb(nrnb);
-        wallcycle_start(wcycle, ewcRUN);
+        wallcycle_start(wcycle, WallCycleCounter::Run);
         walltime_accounting_reset_time(walltime_accounting, step);
         print_date_and_time(fplog, cr->nodeid, "Restarted time", gmx_gettime());
 

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,16 +26,17 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
  * Describes common routines and types for PME tests.
  *
  * \author Aleksei Iupinov <a.yupinov@gmail.com>
+ * \author Mark Abraham <mark.j.abraham@gmail.com>
  * \ingroup module_ewald
  */
 #ifndef GMX_EWALD_PME_TEST_COMMON_H
@@ -44,12 +44,15 @@
 
 #include <array>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "gromacs/ewald/pme.h"
 #include "gromacs/ewald/pme_gpu_internal.h"
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/mdtypes/state_propagator_data_gpu.h"
+#include "gromacs/utility/message_string_collector.h"
+#include "gromacs/utility/range.h"
 #include "gromacs/utility/unique_cptr.h"
 
 #include "testutils/test_device.h"
@@ -74,20 +77,17 @@ enum class CodePath : int
     Count
 };
 
-//! Return a string useful for human-readable messages describing a \c codePath.
-const char* codePathToString(CodePath codePath);
-
 // Convenience typedefs
 //! A safe pointer type for PME.
 typedef gmx::unique_cptr<gmx_pme_t, gmx_pme_destroy> PmeSafePointer;
 //! Charges
-typedef ArrayRef<const real> ChargesVector;
+typedef std::vector<real> ChargesVector;
 //! Coordinates
 typedef std::vector<RVec> CoordinatesVector;
 //! Forces
 typedef ArrayRef<RVec> ForcesVector;
 //! Gridline indices
-typedef ArrayRef<const IVec> GridLineIndicesVector;
+typedef std::vector<IVec> GridLineIndicesVector;
 /*! \brief Spline parameters (theta or dtheta).
  * A reference to a single dimension's spline data; this means (atomCount * pmeOrder) values or derivatives.
  */
@@ -125,8 +125,12 @@ enum class PmeSolveAlgorithm : int
 
 // Misc.
 
-//! Tells if this generally valid PME input is supported for this mode
-bool pmeSupportsInputForMode(const gmx_hw_info_t& hwinfo, const t_inputrec* inputRec, CodePath mode);
+/*! \brief Returns message describing why PME in this \c mode is not
+ * supported for this \c inputRec on this \c hwinfo, or empty of
+ * messages when PME is supported. */
+MessageStringCollector getSkipMessagesIfNecessary(const gmx_hw_info_t& hwinfo,
+                                                  const t_inputrec&    inputRec,
+                                                  CodePath             mode);
 
 //! Spline moduli are computed in double precision, so they're very good in single precision
 constexpr int64_t c_splineModuliSinglePrecisionUlps = 1;
@@ -213,13 +217,15 @@ struct PmeTestHardwareContext
     CodePath codePath_;
     //! Returns a human-readable context description line
     std::string description() const;
+    //! Returns an optional GPU ID, with a valid value when the context is for a GPU
+    std::optional<int> gpuId() const;
     //! Pointer to the global test hardware device (if on GPU)
     TestDevice* testDevice_ = nullptr;
     //! PME GPU program if needed
     PmeGpuProgramStorage pmeGpuProgram_ = nullptr;
-    // Constructor for CPU context
+    //! Constructor for CPU context
     PmeTestHardwareContext();
-    // Constructor for GPU context
+    //! Constructor for GPU context
     explicit PmeTestHardwareContext(TestDevice* testDevice);
 
     //! Get the code path
@@ -244,7 +250,40 @@ struct PmeTestHardwareContext
     void activate() const;
 };
 
-std::vector<std::unique_ptr<PmeTestHardwareContext>> createPmeTestHardwareContextList();
+//! Return a view of the current PME test hardware contexts
+ArrayRef<const PmeTestHardwareContext> getPmeTestHardwareContexts();
+
+/*! \brief Construct a refdata filename for a test
+ *
+ * We want the same reference data to apply to every hardware context
+ * for which we test PME. That means we need to store it in a file
+ * whose name relates to the name of the test, but excluding the part
+ * related to the context. */
+std::string makeRefDataFileName();
+
+/*! \brief Make a terse description of the hardware context suitable
+ * for use in naming the test case.
+ *
+ * The full hardware device description is used in a SCOPED_TRACE
+ * message, but that is too long for the test name and has too many
+ * possible characters that might break GoogleTest. */
+std::string makeHardwareContextName(int hardwareContextIndex);
+
+/*! \brief Functions that dynamically register test cases
+ *
+ * This are called by registerTestsDynamically and customize the
+ * range of test cases to suit the available hardware. */
+//!\{
+void registerDynamicalPmeSplineSpreadTests(Range<int> contextIndexRange);
+void registerDynamicalPmeSolveTests(Range<int> contextIndexRange);
+void registerDynamicalPmeGatherTests(Range<int> contextIndexRange);
+//!\}
+
+//! A couple of valid inputs for boxes.
+extern const std::map<std::string, Matrix3x3> c_inputBoxes;
+
+//! Valid PME orders for testing
+extern std::vector<int> c_inputPmeOrders;
 
 } // namespace test
 } // namespace gmx

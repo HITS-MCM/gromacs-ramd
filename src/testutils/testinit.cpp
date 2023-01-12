@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -42,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "testinit.h"
+#include "testutils/testinit.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -68,11 +66,13 @@
 #include "gromacs/utility/programcontext.h"
 #include "gromacs/utility/textwriter.h"
 
-#include "testutils/mpi_printer.h"
+#include "testutils/mpitest.h"
 #include "testutils/refdata.h"
 #include "testutils/test_hardware_environment.h"
 #include "testutils/testfilemanager.h"
 #include "testutils/testoptions.h"
+
+#include "mpi_printer.h"
 
 namespace gmx
 {
@@ -87,7 +87,7 @@ namespace
  *
  * This context overrides the installationPrefix() implementation to always
  * load data files from the source directory, as the test binaries are never
- * installed.  It also support overriding the directory through a command-line
+ * installed.  It also supports overriding the directory through a command-line
  * option to the test binary.
  *
  * \ingroup module_testutils
@@ -101,8 +101,7 @@ public:
      * \param[in] context  Current \Gromacs program context.
      */
     explicit TestProgramContext(const IProgramContext& context) :
-        context_(context),
-        dataPath_(CMAKE_SOURCE_DIR)
+        context_(context), dataPath_(CMAKE_SOURCE_DIR)
     {
     }
 
@@ -142,6 +141,29 @@ void printHelp(const Options& options)
 // Never releases ownership.
 std::unique_ptr<TestProgramContext> g_testContext;
 
+/*! \brief Makes GoogleTest non-failures more verbose
+ *
+ * By default, GoogleTest does not echo messages appended to explicit
+ * assertions of success with SUCCEEDED() e.g.
+ *
+ *    GTEST_SKIP() << "reason why";
+ *
+ * produces no output. This test listener changes that behavior, so
+ * that the message is echoed.
+ *
+ * When run with multiple ranks, only the master rank should use this
+ * listener, else the output can be very noisy. */
+class SuccessListener : public testing::EmptyTestEventListener
+{
+    void OnTestPartResult(const testing::TestPartResult& result) override
+    {
+        if (result.type() == testing::TestPartResult::kSuccess)
+        {
+            printf("%s\n", result.message());
+        }
+    }
+};
+
 } // namespace
 
 //! \cond internal
@@ -149,14 +171,14 @@ void initTestUtils(const char* dataPath,
                    const char* tempPath,
                    bool        usesMpi,
                    bool        usesHardwareDetection,
+                   bool        registersDynamically,
                    int*        argc,
                    char***     argv)
 {
-#if !defined NDEBUG                                                                         \
-        && !((defined __clang__ || (defined(__GNUC__) && !defined(__ICC) && __GNUC__ == 7)) \
-             && defined __OPTIMIZE__)
-    gmx_feenableexcept();
-#endif
+    if (gmxShouldEnableFPExceptions())
+    {
+        gmx_feenableexcept();
+    }
     const CommandLineProgramContext& context = initForCommandLine(argc, argv);
     try
     {
@@ -171,14 +193,22 @@ void initTestUtils(const char* dataPath,
                         "NOTE: You are running %s on %d MPI ranks, "
                         "but it is does not contain MPI-enabled tests. "
                         "The test will now exit.\n",
-                        context.programName(), gmx_node_num());
+                        context.programName(),
+                        gmx_node_num());
             }
             finalizeForCommandLine();
             std::exit(1);
         }
-        if (usesHardwareDetection)
+        if (registersDynamically || usesHardwareDetection)
         {
-            callAddGlobalTestEnvironment();
+            ::gmx::test::TestHardwareEnvironment::gmxSetUp();
+        }
+        // Note that setting up the hardware environment should
+        // precede dynamic registration, in case it is needed for
+        // deciding what to register.
+        if (registersDynamically)
+        {
+            ::gmx::test::registerTestsDynamically();
         }
         g_testContext = std::make_unique<TestProgramContext>(context);
         setProgramContext(g_testContext.get());
@@ -198,6 +228,7 @@ void initTestUtils(const char* dataPath,
 
         bool        bHelp = false;
         std::string sourceRoot;
+        bool        echoReasons = false;
         Options     options;
         // TODO: A single option that accepts multiple names would be nicer.
         // Also, we recognize -help, but GTest doesn't, which leads to a bit
@@ -209,6 +240,8 @@ void initTestUtils(const char* dataPath,
         // TODO: Make this into a FileNameOption (or a DirectoryNameOption).
         options.addOption(
                 StringOption("src-root").store(&sourceRoot).description("Override source tree location (for data files)"));
+        options.addOption(
+                BooleanOption("echo-reasons").store(&echoReasons).description("When succeeding or skipping a test, echo the reason"));
         // The potential MPI test event listener must be initialized first,
         // because it should appear in the start of the event listener list,
         // before other event listeners that may generate test failures
@@ -240,6 +273,11 @@ void initTestUtils(const char* dataPath,
             g_testContext->overrideSourceRoot(sourceRoot);
             TestFileManager::setInputDataDirectory(Path::join(sourceRoot, dataPath));
         }
+        // Echo success messages only from the master MPI rank
+        if (echoReasons && (gmx_node_rank() == 0))
+        {
+            testing::UnitTest::GetInstance()->listeners().Append(new SuccessListener);
+        }
     }
     catch (const std::exception& ex)
     {
@@ -253,8 +291,12 @@ void initTestUtils(const char* dataPath,
     }
 }
 
-void finalizeTestUtils()
+void finalizeTestUtils(const bool usesHardwareDetection, const bool registersDynamically)
 {
+    if (registersDynamically || usesHardwareDetection)
+    {
+        ::gmx::test::TestHardwareEnvironment::gmxTearDown();
+    }
     setProgramContext(nullptr);
     g_testContext.reset();
     finalizeForCommandLine();

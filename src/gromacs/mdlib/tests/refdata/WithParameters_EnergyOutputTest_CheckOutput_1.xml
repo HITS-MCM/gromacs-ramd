@@ -3,7 +3,7 @@
 <ReferenceData>
   <File Name="EnergyFile">
     <Sequence Name="EnergyTerms">
-      <Int Name="Length">51</Int>
+      <Int Name="Length">44</Int>
       <EnergyTerm>
         <String Name="Name">LJ-14</String>
         <String Name="Units">kJ/mol</String>
@@ -36,10 +36,7 @@
         <String Name="Name">COM Pull En.</String>
         <String Name="Units">kJ/mol</String>
       </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Quantum En.</String>
-        <String Name="Units">kJ/mol</String>
-      </EnergyTerm>
+
       <EnergyTerm>
         <String Name="Name">Potential</String>
         <String Name="Units">kJ/mol</String>
@@ -184,30 +181,6 @@
         <String Name="Name">LJ-14:Lipid-Lipid</String>
         <String Name="Units">kJ/mol</String>
       </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Ux-Protein</String>
-        <String Name="Units">nm/ps</String>
-      </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Uy-Protein</String>
-        <String Name="Units">nm/ps</String>
-      </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Uz-Protein</String>
-        <String Name="Units">nm/ps</String>
-      </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Ux-Lipid</String>
-        <String Name="Units">nm/ps</String>
-      </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Uy-Lipid</String>
-        <String Name="Units">nm/ps</String>
-      </EnergyTerm>
-      <EnergyTerm>
-        <String Name="Name">Uz-Lipid</String>
-        <String Name="Units">nm/ps</String>
-      </EnergyTerm>
     </Sequence>
     <Sequence Name="Frames">
       <Int Name="Length">1</Int>
@@ -217,7 +190,7 @@
         <String Name="Step">0</String>
         <String Name="NumSteps">0</String>
         <Sequence Name="EnergyTerms">
-          <Int Name="Length">51</Int>
+          <Int Name="Length">44</Int>
           <EnergyTerm>
             <String Name="Name">LJ-14</String>
             <Real Name="Value">11.499999999999995</Real>
@@ -249,10 +222,6 @@
           <EnergyTerm>
             <String Name="Name">COM Pull En.</String>
             <Real Name="Value">12.89999999999999</Real>
-          </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Quantum En.</String>
-            <Real Name="Value">11.099999999999996</Real>
           </EnergyTerm>
           <EnergyTerm>
             <String Name="Name">Potential</String>
@@ -398,47 +367,21 @@
             <String Name="Name">LJ-14:Lipid-Lipid</String>
             <Real Name="Value">17.5</Real>
           </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Ux-Protein</String>
-            <Real Name="Value">18.20000000000001</Real>
-          </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Uy-Protein</String>
-            <Real Name="Value">18.300000000000011</Real>
-          </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Uz-Protein</String>
-            <Real Name="Value">18.400000000000013</Real>
-          </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Ux-Lipid</String>
-            <Real Name="Value">18.500000000000014</Real>
-          </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Uy-Lipid</String>
-            <Real Name="Value">18.600000000000016</Real>
-          </EnergyTerm>
-          <EnergyTerm>
-            <String Name="Name">Uz-Lipid</String>
-            <Real Name="Value">18.700000000000017</Real>
-          </EnergyTerm>
         </Sequence>
       </Frame>
     </Sequence>
   </File>
-  <Int Name="Number of Energy Terms">51</Int>
+  <Int Name="Number of Energy Terms">44</Int>
   <String Name="log">Current ref_t for group Water:     25.7
 Current ref_t for group Lipid:     25.8
 
    Energies (kJ/mol)
           LJ-14     Coulomb-14        LJ (SR)  Disper. corr.   Coulomb (SR)
     1.15000e+01    1.16000e+01    1.03000e+01    1.25000e+01    1.04000e+01
-   Coul. recip.      LJ recip.   COM Pull En.    Quantum En.      Potential
-    1.13000e+01    1.14000e+01    1.29000e+01    1.11000e+01    1.05000e+01
-    dVremain/dl       dEkin/dl      dVcoul/dl       dVvdw/dl    dVbonded/dl
-    1.24000e+01    1.23000e+01    1.19000e+01    1.20000e+01    1.21000e+01
- dVrestraint/dl
-    1.22000e+01
+   Coul. recip.      LJ recip.   COM Pull En.      Potential    dVremain/dl
+    1.13000e+01    1.14000e+01    1.29000e+01    1.05000e+01    1.24000e+01
+       dEkin/dl      dVcoul/dl       dVvdw/dl    dVbonded/dl dVrestraint/dl
+    1.23000e+01    1.19000e+01    1.20000e+01    1.21000e+01    1.22000e+01
 
 Current ref_t for group Water:     25.7
 Current ref_t for group Lipid:     25.8
@@ -452,12 +395,10 @@ Current ref_t for group Lipid:     25.8
    Energies (kJ/mol)
           LJ-14     Coulomb-14        LJ (SR)  Disper. corr.   Coulomb (SR)
     1.15000e+01    1.16000e+01    1.03000e+01    1.25000e+01    1.04000e+01
-   Coul. recip.      LJ recip.   COM Pull En.    Quantum En.      Potential
-    1.13000e+01    1.14000e+01    1.29000e+01    1.11000e+01    1.05000e+01
-    dVremain/dl       dEkin/dl      dVcoul/dl       dVvdw/dl    dVbonded/dl
-    1.24000e+01    1.23000e+01    1.19000e+01    1.20000e+01    1.21000e+01
- dVrestraint/dl
-    1.22000e+01
+   Coul. recip.      LJ recip.   COM Pull En.      Potential    dVremain/dl
+    1.13000e+01    1.14000e+01    1.29000e+01    1.05000e+01    1.24000e+01
+       dEkin/dl      dVcoul/dl       dVvdw/dl    dVbonded/dl dVrestraint/dl
+    1.23000e+01    1.19000e+01    1.20000e+01    1.21000e+01    1.22000e+01
 
    Total Dipole (D)
     2.44000e+01    2.45000e+01    2.46000e+01
@@ -469,10 +410,6 @@ Protein-Protein    1.31000e+01    1.32000e+01    1.34000e+01    1.35000e+01
     Water-Water    1.51000e+01    1.52000e+01    1.54000e+01    1.55000e+01
     Water-Lipid    1.56000e+01    1.57000e+01    1.59000e+01    1.60000e+01
     Lipid-Lipid    1.71000e+01    1.72000e+01    1.74000e+01    1.75000e+01
-
-          Group             Ux             Uy             Uz
-        Protein    1.82000e+01    1.83000e+01    1.84000e+01
-          Lipid    1.85000e+01    1.86000e+01    1.87000e+01
 
 </String>
 </ReferenceData>

@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2010-2018, The GROMACS development team.
- * Copyright (c) 2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2010- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -245,10 +243,7 @@ AbstractOptionStorage* Int64Option::createStorage(const OptionManagerContainer& 
  */
 
 DoubleOptionStorage::DoubleOptionStorage(const DoubleOption& settings) :
-    MyBase(settings),
-    info_(this),
-    bTime_(settings.bTime_),
-    factor_(1.0)
+    MyBase(settings), info_(this), bTime_(settings.bTime_), factor_(1.0)
 {
 }
 
@@ -337,10 +332,7 @@ AbstractOptionStorage* DoubleOption::createStorage(const OptionManagerContainer&
  */
 
 FloatOptionStorage::FloatOptionStorage(const FloatOption& settings) :
-    MyBase(settings),
-    info_(this),
-    bTime_(settings.bTime_),
-    factor_(1.0)
+    MyBase(settings), info_(this), bTime_(settings.bTime_), factor_(1.0)
 {
 }
 
@@ -429,8 +421,7 @@ AbstractOptionStorage* FloatOption::createStorage(const OptionManagerContainer& 
  */
 
 StringOptionStorage::StringOptionStorage(const StringOption& settings) :
-    MyBase(settings),
-    info_(this)
+    MyBase(settings), info_(this)
 {
     if (settings.defaultEnumIndex_ >= 0 && settings.enumValues_ == nullptr)
     {
@@ -539,8 +530,7 @@ EnumOptionStorage::EnumOptionStorage(const AbstractOption& settings,
                                      int                   defaultValue,
                                      int                   defaultValueIfSet,
                                      StorePointer          store) :
-    MyBase(settings, std::move(store)),
-    info_(this)
+    MyBase(settings, std::move(store)), info_(this)
 {
     if (enumValues == nullptr)
     {

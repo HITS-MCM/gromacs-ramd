@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011-2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -85,8 +82,18 @@ int LegacyMdrunOptions::updateFromCommandLine(int argc, char** argv, ArrayRef<co
         PCA_Flags |= PCA_DISABLE_INPUT_FILE_CHECKING;
     }
 
-    if (!parse_common_args(&argc, argv, PCA_Flags, ssize(filenames), filenames.data(), asize(pa),
-                           pa, ssize(desc), desc.data(), 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_Flags,
+                           ssize(filenames),
+                           filenames.data(),
+                           asize(pa),
+                           pa,
+                           ssize(desc),
+                           desc.data(),
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -100,18 +107,18 @@ int LegacyMdrunOptions::updateFromCommandLine(int argc, char** argv, ArrayRef<co
         // TODO Argument parsing can't handle std::string. We should
         // fix that by changing the parsing, once more of the roles of
         // handling, validating and implementing defaults for user
-        // command-line options have been seperated.
-        hw_opt.gpuIdsAvailable       = gpuIdsAvailable;
+        // command-line options have been separated.
+        hw_opt.devicesSelectedByUser = devicesSelectedByUser;
         hw_opt.userGpuTaskAssignment = userGpuTaskAssignment;
 
         const char* env = getenv("GMX_GPU_ID");
         if (env != nullptr)
         {
-            if (!hw_opt.gpuIdsAvailable.empty())
+            if (!hw_opt.devicesSelectedByUser.empty())
             {
                 gmx_fatal(FARGS, "GMX_GPU_ID and -gpu_id can not be used at the same time");
             }
-            hw_opt.gpuIdsAvailable = env;
+            hw_opt.devicesSelectedByUser = env;
         }
 
         env = getenv("GMX_GPUTASKS");
@@ -124,7 +131,7 @@ int LegacyMdrunOptions::updateFromCommandLine(int argc, char** argv, ArrayRef<co
             hw_opt.userGpuTaskAssignment = env;
         }
 
-        if (!hw_opt.gpuIdsAvailable.empty() && !hw_opt.userGpuTaskAssignment.empty())
+        if (!hw_opt.devicesSelectedByUser.empty() && !hw_opt.userGpuTaskAssignment.empty())
         {
             gmx_fatal(FARGS, "-gpu_id and -gputasks cannot be used at the same time");
         }

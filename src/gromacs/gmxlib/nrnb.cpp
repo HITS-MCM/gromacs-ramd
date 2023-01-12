@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -41,13 +37,6 @@
 
 #include <cstdlib>
 #include <cstring>
-
-#include <algorithm>
-#include <vector>
-
-#include "gromacs/mdtypes/commrec.h"
-#include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/utility/arraysize.h"
 
 typedef struct
 {
@@ -205,8 +194,8 @@ static void pr_two(FILE* out, int c, int i)
 
 static void pr_difftime(FILE* out, double dt)
 {
-    int      ndays, nhours, nmins, nsecs;
-    gmx_bool bPrint, bPrinted;
+    int  ndays, nhours, nmins, nsecs;
+    bool bPrint, bPrinted;
 
     ndays    = static_cast<int>(dt / (24 * 3600));
     dt       = dt - 24 * 3600 * ndays;
@@ -260,29 +249,15 @@ static void pr_difftime(FILE* out, double dt)
 
 void clear_nrnb(t_nrnb* nrnb)
 {
-    int i;
-
-    for (i = 0; (i < eNRNB); i++)
+    for (int i = 0; (i < eNRNB); i++)
     {
         nrnb->n[i] = 0.0;
     }
 }
 
-void add_nrnb(t_nrnb* dest, t_nrnb* s1, t_nrnb* s2)
-{
-    int i;
-
-    for (i = 0; (i < eNRNB); i++)
-    {
-        dest->n[i] = s1->n[i] + s2->n[i];
-    }
-}
-
 void print_nrnb(FILE* out, t_nrnb* nrnb)
 {
-    int i;
-
-    for (i = 0; (i < eNRNB); i++)
+    for (int i = 0; (i < eNRNB); i++)
     {
         if (nrnb->n[i] > 0)
         {
@@ -291,36 +266,32 @@ void print_nrnb(FILE* out, t_nrnb* nrnb)
     }
 }
 
-void _inc_nrnb(t_nrnb* nrnb, int enr, int inc, char gmx_unused* file, int gmx_unused line)
-{
-    nrnb->n[enr] += inc;
-#ifdef DEBUG_NRNB
-    printf("nrnb %15s(%2d) incremented with %8d from file %s line %d\n", nbdata[enr].name, enr, inc,
-           file, line);
-#endif
-}
-
 /* Returns in enr is the index of a full nbnxn VdW kernel */
-static gmx_bool nrnb_is_nbnxn_vdw_kernel(int enr)
+static bool nrnb_is_nbnxn_vdw_kernel(int enr)
 {
     return (enr >= eNR_NBNXN_LJ_RF && enr <= eNR_NBNXN_LJ_E);
 }
 
 /* Returns in enr is the index of an nbnxn kernel addition (LJ modification) */
-static gmx_bool nrnb_is_nbnxn_kernel_addition(int enr)
+static bool nrnb_is_nbnxn_kernel_addition(int enr)
 {
     return (enr >= eNR_NBNXN_ADD_LJ_FSW && enr <= eNR_NBNXN_ADD_LJ_EWALD_E);
 }
 
+void atomicNrnbIncrement(t_nrnb* nrnb, int index, int increment)
+{
+#pragma omp atomic
+    nrnb->n[index] += increment;
+}
+
 void print_flop(FILE* out, t_nrnb* nrnb, double* nbfs, double* mflop)
 {
-    int         i, j;
     double      mni, frac, tfrac, tflop;
     const char* myline =
             "-----------------------------------------------------------------------------";
 
     *nbfs = 0.0;
-    for (i = 0; (i < eNR_NBKERNEL_TOTAL_NR); i++)
+    for (int i = 0; (i < eNR_NBKERNEL_TOTAL_NR); i++)
     {
         if (std::strstr(nbdata[i].name, "W3-W3") != nullptr)
         {
@@ -344,7 +315,7 @@ void print_flop(FILE* out, t_nrnb* nrnb, double* nbfs, double* mflop)
         }
     }
     tflop = 0;
-    for (i = 0; (i < eNRNB); i++)
+    for (int i = 0; (i < eNRNB); i++)
     {
         tflop += 1e-6 * nrnb->n[i] * nbdata[i].flop;
     }
@@ -371,7 +342,7 @@ void print_flop(FILE* out, t_nrnb* nrnb, double* nbfs, double* mflop)
     }
     *mflop = 0.0;
     tfrac  = 0.0;
-    for (i = 0; (i < eNRNB); i++)
+    for (int i = 0; (i < eNRNB); i++)
     {
         mni = 1e-6 * nrnb->n[i];
         /* Skip empty entries and nbnxn additional flops,
@@ -385,7 +356,7 @@ void print_flop(FILE* out, t_nrnb* nrnb, double* nbfs, double* mflop)
             if (nrnb_is_nbnxn_vdw_kernel(i))
             {
                 /* Possibly add the cost of an LJ switch/Ewald function */
-                for (j = eNR_NBNXN_ADD_LJ_FSW; j <= eNR_NBNXN_ADD_LJ_EWALD; j += 2)
+                for (int j = eNR_NBNXN_ADD_LJ_FSW; j <= eNR_NBNXN_ADD_LJ_EWALD; j += 2)
                 {
                     int e_kernel_add;
 
@@ -439,8 +410,7 @@ void print_perf(FILE*   out,
     if (time_per_node > 0)
     {
         fprintf(out, "%12s %12s %12s %10s\n", "", "Core t (s)", "Wall t (s)", "(%)");
-        fprintf(out, "%12s %12.3f %12.3f %10.1f\n", "Time:", time_per_thread, time_per_node,
-                100.0 * time_per_thread / time_per_node);
+        fprintf(out, "%12s %12.3f %12.3f %10.1f\n", "Time:", time_per_thread, time_per_node, 100.0 * time_per_thread / time_per_node);
         /* only print day-hour-sec format if time_per_node is more than 30 min */
         if (time_per_node > 30 * 60)
         {
@@ -455,15 +425,27 @@ void print_perf(FILE*   out,
             if (getenv("GMX_DETAILED_PERF_STATS") == nullptr)
             {
                 fprintf(out, "%12s %12s %12s\n", "", "(ns/day)", "(hour/ns)");
-                fprintf(out, "%12s %12.3f %12.3f\n", "Performance:", wallclocktime * 24 * 3.6 / time_per_node,
+                fprintf(out,
+                        "%12s %12.3f %12.3f\n",
+                        "Performance:",
+                        wallclocktime * 24 * 3.6 / time_per_node,
                         1000 * time_per_node / (3600 * wallclocktime));
             }
             else
             {
-                fprintf(out, "%12s %12s %12s %12s %12s\n", "", "(Mnbf/s)",
-                        (mflop > 1000) ? "(GFlops)" : "(MFlops)", "(ns/day)", "(hour/ns)");
-                fprintf(out, "%12s %12.3f %12.3f %12.3f %12.3f\n", "Performance:", nbfs / time_per_node,
-                        (mflop > 1000) ? (mflop / 1000) : mflop, wallclocktime * 24 * 3.6 / time_per_node,
+                fprintf(out,
+                        "%12s %12s %12s %12s %12s\n",
+                        "",
+                        "(Mnbf/s)",
+                        (mflop > 1000) ? "(GFlops)" : "(MFlops)",
+                        "(ns/day)",
+                        "(hour/ns)");
+                fprintf(out,
+                        "%12s %12.3f %12.3f %12.3f %12.3f\n",
+                        "Performance:",
+                        nbfs / time_per_node,
+                        (mflop > 1000) ? (mflop / 1000) : mflop,
+                        wallclocktime * 24 * 3.6 / time_per_node,
                         1000 * time_per_node / (3600 * wallclocktime));
             }
         }
@@ -476,10 +458,18 @@ void print_perf(FILE*   out,
             }
             else
             {
-                fprintf(out, "%12s %12s %12s %14s\n", "", "(Mnbf/s)",
-                        (mflop > 1000) ? "(GFlops)" : "(MFlops)", "(steps/hour)");
-                fprintf(out, "%12s %12.3f %12.3f %14.1f\n", "Performance:", nbfs / time_per_node,
-                        (mflop > 1000) ? (mflop / 1000) : mflop, nsteps * 3600.0 / time_per_node);
+                fprintf(out,
+                        "%12s %12s %12s %14s\n",
+                        "",
+                        "(Mnbf/s)",
+                        (mflop > 1000) ? "(GFlops)" : "(MFlops)",
+                        "(steps/hour)");
+                fprintf(out,
+                        "%12s %12.3f %12.3f %14.1f\n",
+                        "Performance:",
+                        nbfs / time_per_node,
+                        (mflop > 1000) ? (mflop / 1000) : mflop,
+                        nsteps * 3600.0 / time_per_node);
             }
         }
     }
@@ -493,132 +483,4 @@ int cost_nrnb(int enr)
 const char* nrnb_str(int enr)
 {
     return nbdata[enr].name;
-}
-
-static const int force_index[] = {
-    eNR_BONDS,  eNR_ANGLES, eNR_PROPER, eNR_IMPROPER, eNR_RB,
-    eNR_DISRES, eNR_ORIRES, eNR_POSRES, eNR_FBPOSRES, eNR_NS,
-};
-#define NFORCE_INDEX asize(force_index)
-
-static const int constr_index[] = { eNR_SHAKE,  eNR_SHAKE_RIJ,  eNR_SETTLE,  eNR_UPDATE,
-                                    eNR_PCOUPL, eNR_CONSTR_VIR, eNR_CONSTR_V };
-#define NCONSTR_INDEX asize(constr_index)
-
-static double pr_av(FILE* log, t_commrec* cr, double fav, const double ftot[], const char* title)
-{
-    int    i, perc;
-    double dperc, unb;
-
-    unb = 0;
-    if (fav > 0)
-    {
-        fav /= cr->nnodes - cr->npmenodes;
-        fprintf(log, "\n %-26s", title);
-        for (i = 0; (i < cr->nnodes); i++)
-        {
-            dperc = (100.0 * ftot[i]) / fav;
-            unb   = std::max(unb, dperc);
-            perc  = static_cast<int>(dperc);
-            fprintf(log, "%3d ", perc);
-        }
-        if (unb > 0)
-        {
-            perc = static_cast<int>(10000.0 / unb);
-            fprintf(log, "%6d%%\n\n", perc);
-        }
-        else
-        {
-            fprintf(log, "\n\n");
-        }
-    }
-    return unb;
-}
-
-void pr_load(FILE* log, t_commrec* cr, t_nrnb nrnb[])
-{
-    t_nrnb av;
-
-    std::vector<double> ftot(cr->nnodes);
-    std::vector<double> stot(cr->nnodes);
-    for (int i = 0; (i < cr->nnodes); i++)
-    {
-        add_nrnb(&av, &av, &(nrnb[i]));
-        /* Cost due to forces */
-        for (int j = 0; (j < eNR_NBKERNEL_TOTAL_NR); j++)
-        {
-            ftot[i] += nrnb[i].n[j] * cost_nrnb(j);
-        }
-        for (int j = 0; (j < NFORCE_INDEX); j++)
-        {
-            ftot[i] += nrnb[i].n[force_index[j]] * cost_nrnb(force_index[j]);
-        }
-        /* Due to shake */
-        for (int j = 0; (j < NCONSTR_INDEX); j++)
-        {
-            stot[i] += nrnb[i].n[constr_index[j]] * cost_nrnb(constr_index[j]);
-        }
-    }
-    for (int j = 0; (j < eNRNB); j++)
-    {
-        av.n[j] = av.n[j] / static_cast<double>(cr->nnodes - cr->npmenodes);
-    }
-
-    fprintf(log, "\nDetailed load balancing info in percentage of average\n");
-
-    fprintf(log, " Type                 RANK:");
-    for (int i = 0; (i < cr->nnodes); i++)
-    {
-        fprintf(log, "%3d ", i);
-    }
-    fprintf(log, "Scaling\n");
-    fprintf(log, "---------------------------");
-    for (int i = 0; (i < cr->nnodes); i++)
-    {
-        fprintf(log, "----");
-    }
-    fprintf(log, "-------\n");
-
-    for (int j = 0; (j < eNRNB); j++)
-    {
-        double unb = 100.0;
-        if (av.n[j] > 0)
-        {
-            double dperc;
-            int    perc;
-            fprintf(log, " %-26s", nrnb_str(j));
-            for (int i = 0; (i < cr->nnodes); i++)
-            {
-                dperc = (100.0 * nrnb[i].n[j]) / av.n[j];
-                unb   = std::max(unb, dperc);
-                perc  = static_cast<int>(dperc);
-                fprintf(log, "%3d ", perc);
-            }
-            if (unb > 0)
-            {
-                perc = static_cast<int>(10000.0 / unb);
-                fprintf(log, "%6d%%\n", perc);
-            }
-            else
-            {
-                fprintf(log, "\n");
-            }
-        }
-    }
-    double fav = 0;
-    double sav = 0;
-    for (int i = 0; (i < cr->nnodes); i++)
-    {
-        fav += ftot[i];
-        sav += stot[i];
-    }
-    double uf = pr_av(log, cr, fav, ftot.data(), "Total Force");
-    double us = pr_av(log, cr, sav, stot.data(), "Total Constr.");
-
-    double unb = (uf * fav + us * sav) / (fav + sav);
-    if (unb > 0)
-    {
-        unb = 10000.0 / unb;
-        fprintf(log, "\nTotal Scaling: %.0f%% of max performance\n\n", unb);
-    }
 }

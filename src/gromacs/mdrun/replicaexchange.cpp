@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011-2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -45,6 +42,7 @@
  */
 #include "gmxpre.h"
 
+#include "gromacs/utility/enumerationhelpers.h"
 #include "replicaexchange.h"
 
 #include "config.h"
@@ -66,6 +64,7 @@
 #include "gromacs/random/threefry.h"
 #include "gromacs/random/uniformintdistribution.h"
 #include "gromacs/random/uniformrealdistribution.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/pleasecite.h"
 #include "gromacs/utility/smalloc.h"
@@ -79,13 +78,13 @@ constexpr int c_probabilityCutoff = 100;
 #define MSRANK(ms, nodeid) (nodeid)
 
 //! Enum for replica exchange flavours
-enum
+enum class ReplicaExchangeType : int
 {
-    ereTEMP,
-    ereLAMBDA,
-    ereENDSINGLE,
-    ereTL,
-    ereNR
+    Temperature,
+    Lambda,
+    EndSingle,
+    TemperatureLambda,
+    Count
 };
 /*! \brief Strings describing replica exchange flavours.
  *
@@ -97,8 +96,13 @@ enum
  *  'lambda_and_pressure', 'temperature_lambda_pressure'?; Let's wait
  *  until we feel better about the pressure control methods giving
  *  exact ensembles.  Right now, we assume constant pressure */
-static const char* erename[ereNR] = { "temperature", "lambda", "end_single_marker",
-                                      "temperature and lambda" };
+static const char* enumValueToString(ReplicaExchangeType enumValue)
+{
+    constexpr gmx::EnumerationArray<ReplicaExchangeType, const char*> replicateExchangeTypeNames = {
+        "temperature", "lambda", "end_single_marker", "temperature and lambda"
+    };
+    return replicateExchangeTypeNames[enumValue];
+}
 
 //! Working data for replica exchange.
 struct gmx_repl_ex
@@ -109,10 +113,10 @@ struct gmx_repl_ex
     int nrepl;
     //! Temperature
     real temp;
-    //! Replica exchange type from ere enum
-    int type;
+    //! Replica exchange type from ReplicaExchangeType enum
+    ReplicaExchangeType type;
     //! Quantity, e.g. temperature or lambda; first index is ere, second index is replica ID
-    real** q;
+    gmx::EnumerationArray<ReplicaExchangeType, real*> q;
     //! Use constant pressure and temperature
     gmx_bool bNPT;
     //! Replica pressures
@@ -160,7 +164,7 @@ struct gmx_repl_ex
 // TODO We should add Doxygen here some time.
 //! \cond
 
-static gmx_bool repl_quantity(const gmx_multisim_t* ms, struct gmx_repl_ex* re, int ere, real q)
+static gmx_bool repl_quantity(const gmx_multisim_t* ms, struct gmx_repl_ex* re, ReplicaExchangeType ere, real q)
 {
     real*    qall;
     gmx_bool bDiff;
@@ -228,7 +232,7 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
          * is true!
          *
          * Since we are using a dynamical integrator, the only
-         * decomposition is DD, so PAR(cr) and DOMAINDECOMP(cr) are
+         * decomposition is DD, so PAR(cr) and haveDDAtomOrdering(*cr) are
          * synonymous. The only way for cr->nnodes > 1 to be true is
          * if we are using DD. */
     }
@@ -237,7 +241,6 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
 
     re->repl  = ms->simulationIndex_;
     re->nrepl = ms->numSimulations_;
-    snew(re->q, ereENDSINGLE);
 
     fprintf(fplog, "Repl  There are %d replicas:\n", re->nrepl);
 
@@ -246,15 +249,15 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
      * but it does guarantee that we can perform replica exchange.
      */
     check_multi_int(fplog, ms, numAtomsInSystem, "the number of atoms", FALSE);
-    check_multi_int(fplog, ms, ir->eI, "the integrator", FALSE);
+    check_multi_int(fplog, ms, static_cast<int>(ir->eI), "the integrator", FALSE);
     check_multi_int64(fplog, ms, ir->init_step + ir->nsteps, "init_step+nsteps", FALSE);
     const int nst = replExParams.exchangeInterval;
-    check_multi_int64(fplog, ms, (ir->init_step + nst - 1) / nst,
-                      "first exchange step: init_step/-replex", FALSE);
-    check_multi_int(fplog, ms, ir->etc, "the temperature coupling", FALSE);
+    check_multi_int64(
+            fplog, ms, (ir->init_step + nst - 1) / nst, "first exchange step: init_step/-replex", FALSE);
+    check_multi_int(fplog, ms, static_cast<int>(ir->etc), "the temperature coupling", FALSE);
     check_multi_int(fplog, ms, ir->opts.ngtc, "the number of temperature coupling groups", FALSE);
-    check_multi_int(fplog, ms, ir->epc, "the pressure coupling", FALSE);
-    check_multi_int(fplog, ms, ir->efep, "free energy", FALSE);
+    check_multi_int(fplog, ms, static_cast<int>(ir->epc), "the pressure coupling", FALSE);
+    check_multi_int(fplog, ms, static_cast<int>(ir->efep), "free energy", FALSE);
     check_multi_int(fplog, ms, ir->fepvals->n_lambda, "number of lambda states", FALSE);
 
     re->temp = ir->opts.ref_t[0];
@@ -271,13 +274,14 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
         }
     }
 
-    re->type = -1;
-    bTemp    = repl_quantity(ms, re, ereTEMP, re->temp);
-    if (ir->efep != efepNO)
+    re->type = ReplicaExchangeType::Count;
+    bTemp    = repl_quantity(ms, re, ReplicaExchangeType::Temperature, re->temp);
+    if (ir->efep != FreeEnergyPerturbationType::No)
     {
-        bLambda = repl_quantity(ms, re, ereLAMBDA, static_cast<real>(ir->fepvals->init_fep_state));
+        bLambda = repl_quantity(
+                ms, re, ReplicaExchangeType::Lambda, static_cast<real>(ir->fepvals->init_fep_state));
     }
-    if (re->type == -1) /* nothing was assigned */
+    if (re->type == ReplicaExchangeType::Count) /* nothing was assigned */
     {
         gmx_fatal(FARGS,
                   "The properties of the %d systems are all the same, there is nothing to exchange",
@@ -285,24 +289,25 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
     }
     if (bLambda && bTemp)
     {
-        re->type = ereTL;
+        re->type = ReplicaExchangeType::TemperatureLambda;
     }
 
     if (bTemp)
     {
         please_cite(fplog, "Sugita1999a");
-        if (ir->epc != epcNO)
+        if (ir->epc != PressureCoupling::No)
         {
             re->bNPT = TRUE;
             fprintf(fplog, "Repl  Using Constant Pressure REMD.\n");
             please_cite(fplog, "Okabe2001a");
         }
-        if (ir->etc == etcBERENDSEN)
+        if (ir->etc == TemperatureCoupling::Berendsen)
         {
             gmx_fatal(FARGS,
                       "REMD with the %s thermostat does not produce correct potential energy "
                       "distributions, consider using the %s thermostat instead",
-                      ETCOUPLTYPE(ir->etc), ETCOUPLTYPE(etcVRESCALE));
+                      enumValueToString(ir->etc),
+                      enumValueToString(TemperatureCoupling::VRescale));
         }
     }
     if (bLambda)
@@ -315,7 +320,7 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
     if (re->bNPT)
     {
         snew(re->pres, re->nrepl);
-        if (ir->epct == epctSURFACETENSION)
+        if (ir->epct == PressureCouplingType::SurfaceTension)
         {
             pres = ir->ref_p[ZZ][ZZ];
         }
@@ -346,7 +351,7 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
         re->ind[i] = i;
     }
 
-    if (re->type < ereENDSINGLE)
+    if (re->type < ReplicaExchangeType::EndSingle)
     {
 
         for (i = 0; i < re->nrepl; i++)
@@ -362,12 +367,16 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
                     gmx_fatal(FARGS,
                               "Replicas with indices %d < %d have %ss %g > %g, please order your "
                               "replicas on increasing %s",
-                              i, j, erename[re->type], re->q[re->type][i], re->q[re->type][j],
-                              erename[re->type]);
+                              i,
+                              j,
+                              enumValueToString(re->type),
+                              re->q[re->type][i],
+                              re->q[re->type][j],
+                              enumValueToString(re->type));
                 }
                 else if (re->q[re->type][re->ind[j]] == re->q[re->type][re->ind[i]])
                 {
-                    gmx_fatal(FARGS, "Two replicas have identical %ss", erename[re->type]);
+                    gmx_fatal(FARGS, "Two replicas have identical %ss", enumValueToString(re->type));
                 }
             }
         }
@@ -382,7 +391,7 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
 
     switch (re->type)
     {
-        case ereTEMP:
+        case ReplicaExchangeType::Temperature:
             fprintf(fplog, "\nReplica exchange in temperature\n");
             for (i = 0; i < re->nrepl; i++)
             {
@@ -390,7 +399,7 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
             }
             fprintf(fplog, "\n");
             break;
-        case ereLAMBDA:
+        case ReplicaExchangeType::Lambda:
             fprintf(fplog, "\nReplica exchange in lambda\n");
             for (i = 0; i < re->nrepl; i++)
             {
@@ -398,16 +407,16 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
             }
             fprintf(fplog, "\n");
             break;
-        case ereTL:
+        case ReplicaExchangeType::TemperatureLambda:
             fprintf(fplog, "\nReplica exchange in temperature and lambda state\n");
             for (i = 0; i < re->nrepl; i++)
             {
-                fprintf(fplog, " %5.1f", re->q[ereTEMP][re->ind[i]]);
+                fprintf(fplog, " %5.1f", re->q[ReplicaExchangeType::Temperature][re->ind[i]]);
             }
             fprintf(fplog, "\n");
             for (i = 0; i < re->nrepl; i++)
             {
-                fprintf(fplog, " %5d", static_cast<int>(re->q[ereLAMBDA][re->ind[i]]));
+                fprintf(fplog, " %5d", static_cast<int>(re->q[ReplicaExchangeType::Lambda][re->ind[i]]));
             }
             fprintf(fplog, "\n");
             break;
@@ -544,8 +553,7 @@ static void exchange_doubles(const gmx_multisim_t gmx_unused* ms, int gmx_unused
             MPI_Request mpi_req;
 
             MPI_Isend(v, n * sizeof(double), MPI_BYTE, MSRANK(ms, b), 0, ms->mastersComm_, &mpi_req);
-            MPI_Recv(buf, n * sizeof(double), MPI_BYTE, MSRANK(ms, b), 0, ms->mastersComm_,
-                     MPI_STATUS_IGNORE);
+            MPI_Recv(buf, n * sizeof(double), MPI_BYTE, MSRANK(ms, b), 0, ms->mastersComm_, MPI_STATUS_IGNORE);
             MPI_Wait(&mpi_req, MPI_STATUS_IGNORE);
         }
 #endif
@@ -575,8 +583,7 @@ static void exchange_rvecs(const gmx_multisim_t gmx_unused* ms, int gmx_unused b
             MPI_Request mpi_req;
 
             MPI_Isend(v[0], n * sizeof(rvec), MPI_BYTE, MSRANK(ms, b), 0, ms->mastersComm_, &mpi_req);
-            MPI_Recv(buf[0], n * sizeof(rvec), MPI_BYTE, MSRANK(ms, b), 0, ms->mastersComm_,
-                     MPI_STATUS_IGNORE);
+            MPI_Recv(buf[0], n * sizeof(rvec), MPI_BYTE, MSRANK(ms, b), 0, ms->mastersComm_, MPI_STATUS_IGNORE);
             MPI_Wait(&mpi_req, MPI_STATUS_IGNORE);
         }
 #endif
@@ -767,14 +774,14 @@ static real calc_delta(FILE* fplog, gmx_bool bPrint, struct gmx_repl_ex* re, int
 
     switch (re->type)
     {
-        case ereTEMP:
+        case ReplicaExchangeType::Temperature:
             /*
              * Okabe et. al. Chem. Phys. Lett. 335 (2001) 435-439
              */
             ediff = Epot[b] - Epot[a];
             delta = -(beta[bp] - beta[ap]) * ediff;
             break;
-        case ereLAMBDA:
+        case ReplicaExchangeType::Lambda:
             /* two cases:  when we are permuted, and not.  */
             /* non-permuted:
                ediff =  E_new - E_old
@@ -802,7 +809,7 @@ static real calc_delta(FILE* fplog, gmx_bool bPrint, struct gmx_repl_ex* re, int
             ediff = (de[bp][a] - de[ap][a]) + (de[ap][b] - de[bp][b]);
             delta = ediff * beta[a]; /* assume all same temperature in this case */
             break;
-        case ereTL:
+        case ReplicaExchangeType::TemperatureLambda:
             /* not permuted:  */
             /* delta =  reduced E_new - reduced E_old
                      =  [beta_b H_b(x_a) + beta_a H_a(x_b)] - [beta_b H_b(x_b) + beta_a H_a(x_a)]
@@ -840,7 +847,7 @@ static real calc_delta(FILE* fplog, gmx_bool bPrint, struct gmx_repl_ex* re, int
     if (re->bNPT)
     {
         /* revist the calculation for 5.0.  Might be some improvements. */
-        dpV = (beta[ap] * re->pres[ap] - beta[bp] * re->pres[bp]) * (Vol[b] - Vol[a]) / PRESFAC;
+        dpV = (beta[ap] * re->pres[ap] - beta[bp] * re->pres[bp]) * (Vol[b] - Vol[a]) / gmx::c_presfac;
         if (bPrint)
         {
             fprintf(fplog, "  dpV = %10.3e  d = %10.3e\n", dpV, delta + dpV);
@@ -883,7 +890,7 @@ static void test_for_replica_exchange(FILE*                 fplog,
         bVol              = TRUE;
         re->Vol[re->repl] = vol;
     }
-    if ((re->type == ereTEMP || re->type == ereTL))
+    if ((re->type == ReplicaExchangeType::Temperature || re->type == ReplicaExchangeType::TemperatureLambda))
     {
         for (i = 0; i < re->nrepl; i++)
         {
@@ -894,17 +901,17 @@ static void test_for_replica_exchange(FILE*                 fplog,
         /* temperatures of different states*/
         for (i = 0; i < re->nrepl; i++)
         {
-            re->beta[i] = 1.0 / (re->q[ereTEMP][i] * BOLTZ);
+            re->beta[i] = 1.0 / (re->q[ReplicaExchangeType::Temperature][i] * gmx::c_boltz);
         }
     }
     else
     {
         for (i = 0; i < re->nrepl; i++)
         {
-            re->beta[i] = 1.0 / (re->temp * BOLTZ); /* we have a single temperature */
+            re->beta[i] = 1.0 / (re->temp * gmx::c_boltz); /* we have a single temperature */
         }
     }
-    if (re->type == ereLAMBDA || re->type == ereTL)
+    if (re->type == ReplicaExchangeType::Lambda || re->type == ReplicaExchangeType::TemperatureLambda)
     {
         bDLambda = TRUE;
         /* lambda differences. */
@@ -919,7 +926,8 @@ static void test_for_replica_exchange(FILE*                 fplog,
         }
         for (i = 0; i < re->nrepl; i++)
         {
-            re->de[i][re->repl] = enerd->foreignLambdaTerms.deltaH(re->q[ereLAMBDA][i]);
+            re->de[i][re->repl] =
+                    enerd->foreignLambdaTerms.deltaH(re->q[ReplicaExchangeType::Lambda][i]);
         }
     }
 
@@ -1275,7 +1283,7 @@ gmx_bool replica_exchange(FILE*                 fplog,
      * each simulation know whether they need to participate in
      * collecting the state. Otherwise, they might as well get on with
      * the next thing to do. */
-    if (DOMAINDECOMP(cr))
+    if (haveDDAtomOrdering(*cr))
     {
 #if GMX_MPI
         MPI_Bcast(&bThisReplicaExchanged, sizeof(gmx_bool), MPI_BYTE, MASTERRANK(cr), cr->mpi_comm_mygroup);
@@ -1286,7 +1294,7 @@ gmx_bool replica_exchange(FILE*                 fplog,
     {
         /* Exchange the states */
         /* Collect the global state on the master node */
-        if (DOMAINDECOMP(cr))
+        if (haveDDAtomOrdering(*cr))
         {
             dd_collect_state(cr->dd, state_local, state);
         }
@@ -1317,15 +1325,17 @@ gmx_bool replica_exchange(FILE*                 fplog,
             }
             /* For temperature-type replica exchange, we need to scale
              * the velocities. */
-            if (re->type == ereTEMP || re->type == ereTL)
+            if (re->type == ReplicaExchangeType::Temperature || re->type == ReplicaExchangeType::TemperatureLambda)
             {
-                scale_velocities(state->v, std::sqrt(re->q[ereTEMP][replica_id]
-                                                     / re->q[ereTEMP][re->destinations[replica_id]]));
+                scale_velocities(
+                        state->v,
+                        std::sqrt(re->q[ReplicaExchangeType::Temperature][replica_id]
+                                  / re->q[ReplicaExchangeType::Temperature][re->destinations[replica_id]]));
             }
         }
 
         /* With domain decomposition the global state is distributed later */
-        if (!DOMAINDECOMP(cr))
+        if (!haveDDAtomOrdering(*cr))
         {
             /* Copy the global state to the local state data structure */
             copy_state_serial(state, state_local);
@@ -1343,8 +1353,11 @@ void print_replica_exchange_statistics(FILE* fplog, struct gmx_repl_ex* re)
 
     if (re->nex == 0)
     {
-        fprintf(fplog, "Repl  %d attempts, %d odd, %d even\n", re->nattempt[0] + re->nattempt[1],
-                re->nattempt[1], re->nattempt[0]);
+        fprintf(fplog,
+                "Repl  %d attempts, %d odd, %d even\n",
+                re->nattempt[0] + re->nattempt[1],
+                re->nattempt[1],
+                re->nattempt[0]);
 
         fprintf(fplog, "Repl  average probabilities:\n");
         for (i = 1; i < re->nrepl; i++)

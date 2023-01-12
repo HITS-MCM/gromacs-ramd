@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines the topology class for the modular simulator
@@ -52,17 +51,16 @@ namespace gmx
 {
 TopologyHolder::TopologyHolder(std::vector<ITopologyHolderClient*> clients,
                                const gmx_mtop_t&                   globalTopology,
+                               gmx_localtop_t*                     localTopology,
                                const t_commrec*                    cr,
                                const t_inputrec*                   inputrec,
                                t_forcerec*                         fr,
                                MDAtoms*                            mdAtoms,
                                Constraints*                        constr,
                                VirtualSitesHandler*                vsite) :
-    globalTopology_(globalTopology),
-    localTopology_(std::make_unique<gmx_localtop_t>(globalTopology.ffparams)),
-    clients_(std::move(clients))
+    globalTopology_(globalTopology), localTopology_(localTopology), clients_(std::move(clients))
 {
-    if (!DOMAINDECOMP(cr))
+    if (!haveDDAtomOrdering(*cr))
     {
         // Generate and initialize new topology
         // Note that most of the data needed for the constructor is used here -
@@ -70,8 +68,8 @@ TopologyHolder::TopologyHolder(std::vector<ITopologyHolderClient*> clients,
         // Note: Legacy mdrun resizes the force buffer in mdAlgorithmsSetupAtomData()
         //       TopologyHolder has no access to the forces, so we are passing a nullptr
         //       TODO: Find a unique approach to resizing the forces in modular simulator (#3461)
-        mdAlgorithmsSetupAtomData(cr, inputrec, globalTopology, localTopology_.get(), fr, nullptr,
-                                  mdAtoms, constr, vsite, nullptr);
+        mdAlgorithmsSetupAtomData(
+                cr, *inputrec, globalTopology, localTopology_, fr, nullptr, mdAtoms, constr, vsite, nullptr);
     }
     // Send copy of initial topology to clients
     updateLocalTopology();
@@ -86,8 +84,12 @@ void TopologyHolder::updateLocalTopology()
 {
     for (auto& client : clients_)
     {
-        client->setTopology(localTopology_.get());
+        client->setTopology(localTopology_);
     }
+}
+DomDecCallback TopologyHolder::registerDomDecCallback()
+{
+    return [this]() { updateLocalTopology(); };
 }
 
 void TopologyHolder::Builder::registerClient(ITopologyHolderClient* client)

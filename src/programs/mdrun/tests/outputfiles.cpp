@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -81,7 +80,8 @@ TEST_P(OutputFiles, FilesArePresent)
     SCOPED_TRACE(
             formatString("Checking for presence of expected output files using "
                          "simulation '%s' with integrator '%s'",
-                         simulationName.c_str(), integrator.c_str()));
+                         simulationName.c_str(),
+                         integrator.c_str()));
 
     // Prepare the .tpr file
     {
@@ -98,9 +98,11 @@ TEST_P(OutputFiles, FilesArePresent)
     }
     // Check if expected files are present
     {
-        for (const auto& file : { runner_.fullPrecisionTrajectoryFileName_, runner_.logFileName_,
-                                  runner_.edrFileName_, fileManager_.getTemporaryFilePath("state.gro"),
-                                  fileManager_.getTemporaryFilePath("state.cpt") })
+        for (const auto& file : { runner_.fullPrecisionTrajectoryFileName_,
+                                  runner_.logFileName_,
+                                  runner_.edrFileName_,
+                                  runner_.groOutputFileName_,
+                                  runner_.cptOutputFileName_ })
         {
             EXPECT_TRUE(File::exists(file, File::returnFalseOnError))
                     << "File " << file << " was not found.";
@@ -108,10 +110,10 @@ TEST_P(OutputFiles, FilesArePresent)
     }
 }
 
-INSTANTIATE_TEST_CASE_P(Argon12,
-                        OutputFiles,
-                        ::testing::Combine(::testing::Values("argon12"),
-                                           ::testing::Values("md", "md-vv")));
+INSTANTIATE_TEST_SUITE_P(Argon12,
+                         OutputFiles,
+                         ::testing::Combine(::testing::Values("argon12"),
+                                            ::testing::Values("md", "md-vv")));
 
 } // namespace
 } // namespace test

@@ -1,0 +1,13 @@
+# List of rationales for check suppressions (where known).
+# This have to precede the list because inline comments are not
+# supported by clang-tidy.
+#
+#         -bugprone-reserved-identifier
+# Quite a large number of functions use the _FName style for naming
+#
+#         -cppcoreguidelines-avoid-non-const-global-variables
+# The selection code has a large amount of static or exported non-const
+# variables that are out of scope for quick rework
+Checks:  -bugprone-reserved-identifier,
+         -cppcoreguidelines-avoid-non-const-global-variables
+InheritParentConfig: true

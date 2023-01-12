@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,15 +26,16 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/fileio/confio.h"
@@ -47,6 +44,7 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
+#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/rmpbc.h"
 #include "gromacs/topology/index.h"
@@ -156,14 +154,14 @@ static void calc_axes(rvec x[], t_atom atom[], const int gnx[], int* index[], gm
 
 static void dump_axes(t_trxstatus* status, t_trxframe* fr, t_atoms* outat, t_bundle* bun)
 {
-    t_trxframe   frout;
-    static rvec* xout = nullptr;
-    int          i;
+    t_trxframe                    frout;
+    static std::vector<gmx::RVec> xout;
+    int                           i;
 
     GMX_ASSERT(outat->nr >= bun->n, "");
-    if (xout == nullptr)
+    if (xout.empty())
     {
-        snew(xout, outat->nr);
+        xout.resize(outat->nr);
     }
 
     for (i = 0; i < bun->n; i++)
@@ -186,7 +184,7 @@ static void dump_axes(t_trxstatus* status, t_trxframe* fr, t_atoms* outat, t_bun
     frout.bAtoms = TRUE;
     frout.natoms = outat->nr;
     frout.atoms  = outat;
-    frout.x      = xout;
+    frout.x      = as_rvec_array(xout.data());
     write_trxframe(status, &frout, nullptr);
 }
 
@@ -245,7 +243,6 @@ int gmx_bundle(int argc, char* argv[])
     gmx_output_env_t* oenv;
     gmx_rmpbc_t       gpbc = nullptr;
 
-#define NLEG asize(leg)
     t_filenm fnm[] = {
         { efTRX, "-f", nullptr, ffREAD },        { efTPS, nullptr, nullptr, ffREAD },
         { efNDX, nullptr, nullptr, ffOPTRD },    { efXVG, "-ol", "bun_len", ffWRITE },
@@ -257,8 +254,8 @@ int gmx_bundle(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -298,31 +295,52 @@ int gmx_bundle(int argc, char* argv[])
     snew(bun.dir, n);
     snew(bun.len, n);
 
-    flen   = xvgropen(opt2fn("-ol", NFILE, fnm), "Axis lengths", output_env_get_xvgr_tlabel(oenv),
-                    "(nm)", oenv);
-    fdist  = xvgropen(opt2fn("-od", NFILE, fnm), "Distance of axis centers",
-                     output_env_get_xvgr_tlabel(oenv), "(nm)", oenv);
-    fz     = xvgropen(opt2fn("-oz", NFILE, fnm), "Z-shift of axis centers",
-                  output_env_get_xvgr_tlabel(oenv), "(nm)", oenv);
-    ftilt  = xvgropen(opt2fn("-ot", NFILE, fnm), "Axis tilts", output_env_get_xvgr_tlabel(oenv),
-                     "(degrees)", oenv);
-    ftiltr = xvgropen(opt2fn("-otr", NFILE, fnm), "Radial axis tilts",
-                      output_env_get_xvgr_tlabel(oenv), "(degrees)", oenv);
-    ftiltl = xvgropen(opt2fn("-otl", NFILE, fnm), "Lateral axis tilts",
-                      output_env_get_xvgr_tlabel(oenv), "(degrees)", oenv);
+    flen = xvgropen(
+            opt2fn("-ol", NFILE, fnm), "Axis lengths", output_env_get_xvgr_tlabel(oenv), "(nm)", oenv);
+    fdist = xvgropen(opt2fn("-od", NFILE, fnm),
+                     "Distance of axis centers",
+                     output_env_get_xvgr_tlabel(oenv),
+                     "(nm)",
+                     oenv);
+    fz    = xvgropen(opt2fn("-oz", NFILE, fnm),
+                  "Z-shift of axis centers",
+                  output_env_get_xvgr_tlabel(oenv),
+                  "(nm)",
+                  oenv);
+    ftilt = xvgropen(
+            opt2fn("-ot", NFILE, fnm), "Axis tilts", output_env_get_xvgr_tlabel(oenv), "(degrees)", oenv);
+    ftiltr = xvgropen(opt2fn("-otr", NFILE, fnm),
+                      "Radial axis tilts",
+                      output_env_get_xvgr_tlabel(oenv),
+                      "(degrees)",
+                      oenv);
+    ftiltl = xvgropen(opt2fn("-otl", NFILE, fnm),
+                      "Lateral axis tilts",
+                      output_env_get_xvgr_tlabel(oenv),
+                      "(degrees)",
+                      oenv);
 
     if (bKink)
     {
-        fkink = xvgropen(opt2fn("-ok", NFILE, fnm), "Kink angles", output_env_get_xvgr_tlabel(oenv),
-                         "(degrees)", oenv);
-        fkinkr = xvgropen(opt2fn("-okr", NFILE, fnm), "Radial kink angles",
-                          output_env_get_xvgr_tlabel(oenv), "(degrees)", oenv);
+        fkink  = xvgropen(opt2fn("-ok", NFILE, fnm),
+                         "Kink angles",
+                         output_env_get_xvgr_tlabel(oenv),
+                         "(degrees)",
+                         oenv);
+        fkinkr = xvgropen(opt2fn("-okr", NFILE, fnm),
+                          "Radial kink angles",
+                          output_env_get_xvgr_tlabel(oenv),
+                          "(degrees)",
+                          oenv);
         if (output_env_get_print_xvgr_codes(oenv))
         {
             fprintf(fkinkr, "@ subtitle \"+ = ) (   - = ( )\"\n");
         }
-        fkinkl = xvgropen(opt2fn("-okl", NFILE, fnm), "Lateral kink angles",
-                          output_env_get_xvgr_tlabel(oenv), "(degrees)", oenv);
+        fkinkl = xvgropen(opt2fn("-okl", NFILE, fnm),
+                          "Lateral kink angles",
+                          output_env_get_xvgr_tlabel(oenv),
+                          "(degrees)",
+                          oenv);
     }
 
     if (opt2bSet("-oa", NFILE, fnm))
@@ -370,27 +388,27 @@ int gmx_bundle(int argc, char* argv[])
             fprintf(flen, " %6g", bun.len[i]);
             fprintf(fdist, " %6g", norm(bun.mid[i]));
             fprintf(fz, " %6g", bun.mid[i][ZZ]);
-            fprintf(ftilt, " %6g", RAD2DEG * acos(bun.dir[i][ZZ]));
+            fprintf(ftilt, " %6g", gmx::c_rad2Deg * acos(bun.dir[i][ZZ]));
             comp = bun.mid[i][XX] * bun.dir[i][XX] + bun.mid[i][YY] * bun.dir[i][YY];
-            fprintf(ftiltr, " %6g", RAD2DEG * std::asin(comp / std::hypot(comp, bun.dir[i][ZZ])));
+            fprintf(ftiltr, " %6g", gmx::c_rad2Deg * std::asin(comp / std::hypot(comp, bun.dir[i][ZZ])));
             comp = bun.mid[i][YY] * bun.dir[i][XX] - bun.mid[i][XX] * bun.dir[i][YY];
-            fprintf(ftiltl, " %6g", RAD2DEG * std::asin(comp / std::hypot(comp, bun.dir[i][ZZ])));
+            fprintf(ftiltl, " %6g", gmx::c_rad2Deg * std::asin(comp / std::hypot(comp, bun.dir[i][ZZ])));
             if (bKink)
             {
                 rvec_sub(bun.end[0][i], bun.end[2][i], va);
                 rvec_sub(bun.end[2][i], bun.end[1][i], vb);
                 unitv(va, va);
                 unitv(vb, vb);
-                fprintf(fkink, " %6g", RAD2DEG * acos(iprod(va, vb)));
+                fprintf(fkink, " %6g", gmx::c_rad2Deg * acos(iprod(va, vb)));
                 cprod(va, vb, vc);
                 copy_rvec(bun.mid[i], vr);
                 vr[ZZ] = 0;
                 unitv(vr, vr);
-                fprintf(fkinkr, " %6g", RAD2DEG * std::asin(iprod(vc, vr)));
+                fprintf(fkinkr, " %6g", gmx::c_rad2Deg * std::asin(iprod(vc, vr)));
                 vl[XX] = vr[YY];
                 vl[YY] = -vr[XX];
                 vl[ZZ] = 0;
-                fprintf(fkinkl, " %6g", RAD2DEG * std::asin(iprod(vc, vl)));
+                fprintf(fkinkl, " %6g", gmx::c_rad2Deg * std::asin(iprod(vc, vl)));
             }
         }
         fprintf(flen, "\n");

@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2011,2014,2015,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief
@@ -48,9 +45,9 @@
 
 #include <cstdio>
 
+#include <memory>
+#include <optional>
 #include <string>
-
-#include "gromacs/utility/classhelpers.h"
 
 struct t_symtab;
 
@@ -70,9 +67,9 @@ public:
      * Get name of atom from internal bond atom type number.
      *
      * \param[in] nt Internal number of atom type.
-     * \returns The type name.
+     * \returns The optional type name.
      */
-    const char* atomNameFromBondAtomType(int nt) const;
+    std::optional<const char*> atomNameFromBondAtomType(int nt) const;
 
     /*! \brief
      *  Get bond atom type index for atom type name if present in the database, or NOTSET.
@@ -82,16 +79,17 @@ public:
      *  or an empty optional construct if the entry has not been found.
      *
      *  \param[in] str Input string to search type for.
-     *  \returns Atomtype as integer.
+     *  \returns Optional atomtype as integer.
      */
-    int bondAtomTypeFromName(const std::string& str) const;
+    std::optional<int> bondAtomTypeFromName(const std::string& str) const;
 
     /*! \brief
-     * Add a complete new bond atom type.
+     * Add a unique type to the database.
      *
      * \param[in] tab Symbol table.
      * \param[in] name Atom name.
-     * \returns The number of entries in database or the type number of an already set type.
+     * \returns Index to the type in the database. If the type shares
+     *          a name with an existing type, return the index of that type.
      */
     int addBondAtomType(t_symtab* tab, const std::string& name);
 
@@ -106,7 +104,7 @@ public:
 private:
     class Impl;
     //! Pimpl that holds the data.
-    gmx::PrivateImplPointer<Impl> impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 #endif

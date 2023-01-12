@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief Declares interface to SHAKE code.
@@ -108,17 +107,17 @@ void make_shake_sblock_dd(shakedata* shaked, const InteractionList& ilcon);
  * sblock[n] to sblock[n+1]. Array sblock should be large enough.
  * Return TRUE when OK, FALSE when shake-error
  */
-bool constrain_shake(FILE*                         log,       /* Log file			*/
-                     shakedata*                    shaked,    /* Total number of atoms	*/
-                     const real                    invmass[], /* Atomic masses		*/
-                     const InteractionDefinitions& idef,      /* The interaction def		*/
-                     const t_inputrec&             ir,        /* Input record		        */
-                     ArrayRef<const RVec>          x_s,       /* Coords before update		*/
-                     ArrayRef<RVec>                xprime, /* Output coords when constraining x */
-                     ArrayRef<RVec>                vprime, /* Output coords when constraining v */
-                     const t_pbc*                  pbc,    /* PBC information              */
-                     t_nrnb*                       nrnb,   /* Performance measure          */
-                     real                          lambda, /* FEP lambda                   */
+bool constrain_shake(FILE*                         log,     /* Log file			*/
+                     shakedata*                    shaked,  /* Total number of atoms	*/
+                     gmx::ArrayRef<const real>     invmass, /* Atomic masses		*/
+                     const InteractionDefinitions& idef,    /* The interaction def		*/
+                     const t_inputrec&             ir,      /* Input record		        */
+                     ArrayRef<const RVec>          x_s,     /* Coords before update		*/
+                     ArrayRef<RVec>                xprime,  /* Output coords when constraining x */
+                     ArrayRef<RVec>                vprime,  /* Output coords when constraining v */
+                     const t_pbc*                  pbc,     /* PBC information              */
+                     t_nrnb*                       nrnb,    /* Performance measure          */
+                     real                          lambda,  /* FEP lambda                   */
                      real*                         dvdlambda,  /* FEP force                    */
                      real                          invdt,      /* 1/delta_t                    */
                      ArrayRef<RVec>                v,          /* Also constrain v if not empty  */
@@ -138,7 +137,7 @@ void cshake(const int            iatom[],
             ArrayRef<const RVec> rij,
             ArrayRef<const real> half_of_reduced_mass,
             real                 omega,
-            const real           invmass[],
+            ArrayRef<const real> invmass,
             ArrayRef<const real> distance_squared_tolerance,
             ArrayRef<real>       scaled_lagrange_multiplier,
             int*                 nerror);

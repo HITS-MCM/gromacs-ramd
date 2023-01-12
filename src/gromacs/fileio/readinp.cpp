@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -48,6 +44,7 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/binaryinformation.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
@@ -160,7 +157,7 @@ gmx::KeyValueTreeObject flatKeyValueTreeFromInpFile(gmx::ArrayRef<const t_inpfil
 {
     gmx::KeyValueTreeBuilder builder;
     auto                     root = builder.rootObject();
-    for (auto& local : inp)
+    for (const auto& local : inp)
     {
         root.addValue<std::string>(local.name_, !local.value_.empty() ? local.value_ : "");
     }
@@ -225,7 +222,8 @@ void write_inpfile(gmx::TextOutputStream*  stream,
             }
             else
             {
-                writer.writeLine(formatString("%-24s = %s", local.name_.c_str(),
+                writer.writeLine(formatString("%-24s = %s",
+                                              local.name_.c_str(),
                                               !local.value_.empty() ? local.value_.c_str() : ""));
             }
         }
@@ -263,7 +261,8 @@ void replace_inp_entry(gmx::ArrayRef<t_inpfile> inp, const char* old_entry, cons
                     gmx_fatal(FARGS,
                               "A parameter is present with both the old name '%s' and the new name "
                               "'%s'.",
-                              local.name_.c_str(), inp[foundIndex].name_.c_str());
+                              local.name_.c_str(),
+                              inp[foundIndex].name_.c_str());
                 }
 
                 local.name_.assign(new_entry);
@@ -306,7 +305,7 @@ void mark_einp_set(gmx::ArrayRef<t_inpfile> inp, const char* name)
     }
 }
 
-static int get_einp(std::vector<t_inpfile>* inp, const char* name)
+int get_einp(std::vector<t_inpfile>* inp, const char* name)
 {
     std::vector<t_inpfile>& inpRef   = *inp;
     bool                    notfound = false;
@@ -363,7 +362,8 @@ int get_eint(std::vector<t_inpfile>* inp, const char* name, int def, warninp_t w
             sprintf(warn_buf,
                     "Right hand side '%s' for parameter '%s' in parameter file is not an integer "
                     "value\n",
-                    inpRef[ii].value_.c_str(), inpRef[ii].name_.c_str());
+                    inpRef[ii].value_.c_str(),
+                    inpRef[ii].name_.c_str());
             warning_error(wi, warn_buf);
         }
 
@@ -399,7 +399,8 @@ int64_t get_eint64(std::vector<t_inpfile>* inp, const char* name, int64_t def, w
             sprintf(warn_buf,
                     "Right hand side '%s' for parameter '%s' in parameter file is not an integer "
                     "value\n",
-                    inpRef[ii].value_.c_str(), inpRef[ii].name_.c_str());
+                    inpRef[ii].value_.c_str(),
+                    inpRef[ii].name_.c_str());
             warning_error(wi, warn_buf);
         }
 
@@ -435,7 +436,8 @@ double get_ereal(std::vector<t_inpfile>* inp, const char* name, double def, warn
             sprintf(warn_buf,
                     "Right hand side '%s' for parameter '%s' in parameter file is not a real "
                     "value\n",
-                    inpRef[ii].value_.c_str(), inpRef[ii].name_.c_str());
+                    inpRef[ii].value_.c_str(),
+                    inpRef[ii].name_.c_str());
             warning_error(wi, warn_buf);
         }
 
@@ -505,8 +507,11 @@ int get_eeenum(std::vector<t_inpfile>* inp, const char* name, const char** defs,
 
     if (defs[i] == nullptr)
     {
-        n += sprintf(buf, "Invalid enum '%s' for variable %s, using '%s'\n",
-                     inpRef[ii].value_.c_str(), name, defs[0]);
+        n += sprintf(buf,
+                     "Invalid enum '%s' for variable %s, using '%s'\n",
+                     inpRef[ii].value_.c_str(),
+                     name,
+                     defs[0]);
         n += sprintf(buf + n, "Next time use one of:");
         int j = 0;
         while (defs[j])

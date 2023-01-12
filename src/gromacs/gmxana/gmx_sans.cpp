@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #include "gmxpre.h"
@@ -96,8 +94,6 @@ int gmx_sans(int argc, char* argv[])
     gmx_neutron_atomic_structurefactors_t* gnsf;
     gmx_sans_t*                            gsans;
 
-#define NPA asize(pa)
-
     t_pargs pa[] = {
         { "-bin", FALSE, etREAL, { &binwidth }, "[HIDDEN]Binwidth (nm)" },
         { "-mode", FALSE, etENUM, { emode }, "Mode for sans spectra calculation" },
@@ -157,8 +153,8 @@ int gmx_sans(int argc, char* argv[])
 
     nthreads = gmx_omp_get_max_threads();
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -213,8 +209,7 @@ int gmx_sans(int argc, char* argv[])
     fnTRX = ftp2fn(efTRX, NFILE, fnm);
 
     gnsf = gmx_neutronstructurefactors_init(fnDAT);
-    fprintf(stderr, "Read %d atom names from %s with neutron scattering parameters\n\n",
-            gnsf->nratoms, fnDAT);
+    fprintf(stderr, "Read %d atom names from %s with neutron scattering parameters\n\n", gnsf->nratoms, fnDAT);
 
     snew(top, 1);
     snew(grpname, 1);
@@ -237,8 +232,10 @@ int gmx_sans(int argc, char* argv[])
     natoms = read_first_x(oenv, &status, fnTRX, &t, &x, box);
     if (natoms != top->atoms.nr)
     {
-        fprintf(stderr, "\nWARNING: number of atoms in tpx (%d) and trajectory (%d) do not match\n",
-                natoms, top->atoms.nr);
+        fprintf(stderr,
+                "\nWARNING: number of atoms in tpx (%d) and trajectory (%d) do not match\n",
+                natoms,
+                top->atoms.nr);
     }
 
     do
@@ -254,8 +251,8 @@ int gmx_sans(int argc, char* argv[])
             snew(pr, 1);
         }
         /*  realy calc p(r) */
-        prframecurrent = calc_radial_distribution_histogram(gsans, x, box, index, isize, binwidth,
-                                                            bMC, bNORM, mcover, seed);
+        prframecurrent = calc_radial_distribution_histogram(
+                gsans, x, box, index, isize, binwidth, bMC, bNORM, mcover, seed);
         /* copy prframecurrent -> pr and summ up pr->gr[i] */
         /* allocate and/or resize memory for pr->gr[i] and pr->r[i] */
         if (pr->gr == nullptr)
@@ -296,8 +293,11 @@ int gmx_sans(int argc, char* argv[])
             auto fnmdup = filenames;
             sprintf(suffix, "-t%.2f", t);
             add_suffix_to_output_names(fnmdup.data(), NFILE, suffix);
-            fp = xvgropen(opt2fn_null("-prframe", NFILE, fnmdup.data()), hdr, "Distance (nm)",
-                          "Probability", oenv);
+            fp = xvgropen(opt2fn_null("-prframe", NFILE, fnmdup.data()),
+                          hdr,
+                          "Distance (nm)",
+                          "Probability",
+                          oenv);
             for (i = 0; i < prframecurrent->grn; i++)
             {
                 fprintf(fp, "%10.6f%10.6f\n", prframecurrent->r[i], prframecurrent->gr[i]);
@@ -316,8 +316,8 @@ int gmx_sans(int argc, char* argv[])
             auto fnmdup = filenames;
             sprintf(suffix, "-t%.2f", t);
             add_suffix_to_output_names(fnmdup.data(), NFILE, suffix);
-            fp = xvgropen(opt2fn_null("-sqframe", NFILE, fnmdup.data()), hdr, "q (nm^-1)",
-                          "s(q)/s(0)", oenv);
+            fp = xvgropen(
+                    opt2fn_null("-sqframe", NFILE, fnmdup.data()), hdr, "q (nm^-1)", "s(q)/s(0)", oenv);
             for (i = 0; i < sqframecurrent->qn; i++)
             {
                 fprintf(fp, "%10.6f%10.6f\n", sqframecurrent->q[i], sqframecurrent->s[i]);

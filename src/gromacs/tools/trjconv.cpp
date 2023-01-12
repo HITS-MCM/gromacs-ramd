@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -152,7 +148,10 @@ static void do_trunc(const char* fn, real t0)
             fprintf(stderr,
                     "Do you REALLY want to truncate this trajectory (%s) at:\n"
                     "frame %d, time %g, bytes %ld ??? (type YES if so)\n",
-                    fn, j, t, static_cast<long int>(fpos));
+                    fn,
+                    j,
+                    t,
+                    static_cast<long int>(fpos));
             if (1 != scanf("%s", yesno))
             {
                 gmx_fatal(FARGS, "Error reading user input");
@@ -215,6 +214,99 @@ static std::unique_ptr<gmx_mtop_t> read_mtop_for_tng(const char* tps_file,
     return mtop;
 }
 
+//! Do a deep copy of \c input and store in (pre-allocated) \c copy
+static void copyTrxframeDeeply(const t_trxframe& input, t_trxframe* copy)
+{
+    copy->not_ok    = input.not_ok;
+    copy->bDouble   = input.bDouble;
+    copy->natoms    = input.natoms;
+    copy->bStep     = input.bStep;
+    copy->step      = input.step;
+    copy->bTime     = input.bTime;
+    copy->time      = input.time;
+    copy->bLambda   = input.bLambda;
+    copy->bFepState = input.bFepState;
+    copy->lambda    = input.lambda;
+    copy->fep_state = input.fep_state;
+    copy->bPrec     = input.bPrec;
+    copy->prec      = input.prec;
+    copy->bX        = input.bX;
+    copy->bV        = input.bV;
+    copy->bF        = input.bF;
+    copy->bAtoms    = input.bAtoms;
+    if (input.bAtoms)
+    {
+        done_atom(copy->atoms);
+        copy->atoms = copy_t_atoms(input.atoms);
+    }
+    copy->prec = input.prec;
+    if (copy->bX)
+    {
+        srenew(copy->x, input.natoms);
+        copy_rvecn(input.x, copy->x, 0, input.natoms);
+    }
+    if (copy->bV)
+    {
+        srenew(copy->v, input.natoms);
+        copy_rvecn(input.v, copy->v, 0, input.natoms);
+    }
+    if (copy->bF)
+    {
+        srenew(copy->f, input.natoms);
+        copy_rvecn(input.f, copy->f, 0, input.natoms);
+    }
+    copy->bBox = input.bBox;
+    copy_mat(input.box, copy->box);
+    copy->bPBC    = input.bPBC;
+    copy->pbcType = input.pbcType;
+    copy->bIndex  = input.bIndex;
+    if (input.bIndex)
+    {
+        srenew(copy->index, input.natoms);
+        for (int i = 0; i < input.natoms; i++)
+        {
+            copy->index[i] = input.index[i];
+        }
+    }
+}
+
+//! Swap the contents of \c a and \c b
+static void swapFrames(t_trxframe* a, t_trxframe* b)
+{
+    std::swap(a->not_ok, b->not_ok);
+    std::swap(a->bDouble, b->bDouble);
+    std::swap(a->natoms, b->natoms);
+    std::swap(a->bStep, b->bStep);
+    std::swap(a->step, b->step);
+    std::swap(a->bTime, b->bTime);
+    std::swap(a->time, b->time);
+    std::swap(a->bLambda, b->bLambda);
+    std::swap(a->bFepState, b->bFepState);
+    std::swap(a->lambda, b->lambda);
+    std::swap(a->fep_state, b->fep_state);
+    std::swap(a->bPrec, b->bPrec);
+    std::swap(a->prec, b->prec);
+    std::swap(a->bX, b->bX);
+    std::swap(a->bV, b->bV);
+    std::swap(a->bF, b->bF);
+    std::swap(a->bAtoms, b->bAtoms);
+    std::swap(a->atoms, b->atoms);
+    std::swap(a->prec, b->prec);
+    std::swap(a->x, b->x);
+    std::swap(a->v, b->v);
+    std::swap(a->f, b->f);
+    std::swap(a->bBox, b->bBox);
+    // swap the box
+    matrix temporaryBox;
+    copy_mat(a->box, temporaryBox);
+    copy_mat(b->box, a->box);
+    copy_mat(temporaryBox, b->box);
+    std::swap(a->bPBC, b->bPBC);
+    std::swap(a->pbcType, b->pbcType);
+    std::swap(a->bIndex, b->bIndex);
+    std::swap(a->index, b->index);
+}
+
 int gmx_trjconv(int argc, char* argv[])
 {
     const char* desc[] = {
@@ -239,8 +331,8 @@ int gmx_trjconv(int argc, char* argv[])
         "[PAR]",
 
         "The following formats are supported for input and output:",
-        "[REF].xtc[ref], [REF].trr[ref], [REF].gro[ref], [TT].g96[tt]",
-        "and [REF].pdb[ref].",
+        "[REF].xtc[ref], [REF].trr[ref], [REF].gro[ref], [TT].g96[tt],",
+        "[REF].pdb[ref] and [REF].tng[ref].",
         "The file formats are detected from the file extension.",
         "The precision of the [REF].xtc[ref] output is taken from the",
         "input file for [REF].xtc[ref], [REF].gro[ref] and [REF].pdb[ref],",
@@ -250,7 +342,7 @@ int gmx_trjconv(int argc, char* argv[])
         "output can be single or double precision, depending on the precision",
         "of the [THISMODULE] binary.",
         "Note that velocities are only supported in",
-        "[REF].trr[ref], [REF].gro[ref] and [TT].g96[tt] files.[PAR]",
+        "[REF].trr[ref], [REF].tng[ref], [REF].gro[ref] and [TT].g96[tt] files.[PAR]",
 
         "Option [TT]-sep[tt] can be used to write every frame to a separate",
         "[TT].gro, .g96[tt] or [REF].pdb[ref] file. By default, all frames all written to ",
@@ -263,7 +355,11 @@ int gmx_trjconv(int argc, char* argv[])
         "out the water from a trajectory of a protein in water.",
         "[BB]ALWAYS[bb] put the original trajectory on tape!",
         "We recommend to use the portable [REF].xtc[ref] format for your analysis",
-        "to save disk space and to have portable files.[PAR]",
+        "to save disk space and to have portable files. When writing [REF].tng[ref]",
+        "output the file will contain one molecule type of the correct count",
+        "if the selection name matches the molecule name and the selected atoms",
+        "match all atoms of that molecule. Otherwise the whole selection will",
+        "be treated as one single molecule containing all the selected atoms.[PAR]",
 
         "There are two options for fitting the trajectory to a reference",
         "either for essential dynamics analysis, etc.",
@@ -345,8 +441,8 @@ int gmx_trjconv(int argc, char* argv[])
         "trajectories must be concatenated without having double frames.[PAR]",
 
         "Option [TT]-dump[tt] can be used to extract a frame at or near",
-        "one specific time from your trajectory, but only works reliably",
-        "if the time interval between frames is uniform.[PAR]",
+        "one specific time from your trajectory. If the frames in the trajectory are",
+        "not in temporal order, the result is unspecified.[PAR]",
 
         "Option [TT]-drop[tt] reads an [REF].xvg[ref] file with times and values.",
         "When options [TT]-dropunder[tt] and/or [TT]-dropover[tt] are set,",
@@ -399,14 +495,14 @@ int gmx_trjconv(int argc, char* argv[])
     const char* fit[efNR + 1] = { nullptr,       "none",    "rot+trans",   "rotxy+transxy",
                                   "translation", "transxy", "progressive", nullptr };
 
-    static gmx_bool bSeparate = FALSE, bVels = TRUE, bForce = FALSE, bCONECT = FALSE;
-    static gmx_bool bCenter = FALSE;
-    static int      skip_nr = 1, ndec = 3, nzero = 0;
-    static real     tzero = 0, delta_t = 0, timestep = 0, ttrunc = -1, tdump = -1, split_t = 0;
-    static rvec     newbox = { 0, 0, 0 }, shift = { 0, 0, 0 }, trans = { 0, 0, 0 };
-    static char*    exec_command = nullptr;
-    static real     dropunder = 0, dropover = 0;
-    static gmx_bool bRound = FALSE;
+    gmx_bool bSeparate = FALSE, bVels = TRUE, bForce = FALSE, bCONECT = FALSE;
+    gmx_bool bCenter = FALSE;
+    int      skip_nr = 1, ndec = 3, nzero = 0;
+    real     tzero = 0, delta_t = 0, timestep = 0, ttrunc = -1, tdump = -1, split_t = 0;
+    rvec     newbox = { 0, 0, 0 }, shift = { 0, 0, 0 }, trans = { 0, 0, 0 };
+    char*    exec_command = nullptr;
+    real     dropunder = 0, dropover = 0;
+    gmx_bool bRound = FALSE;
 
     t_pargs pa[] = {
         { "-skip", FALSE, etINT, { &skip_nr }, "Only write every nr-th frame" },
@@ -467,7 +563,7 @@ int gmx_trjconv(int argc, char* argv[])
           FALSE,
           etBOOL,
           { &bCONECT },
-          "Add conect records when writing [REF].pdb[ref] files. Useful "
+          "Add CONECT PDB records when writing [REF].pdb[ref] files. Useful "
           "for visualization of non-standard molecules, e.g. "
           "coarse grained ones" }
     };
@@ -477,7 +573,7 @@ int gmx_trjconv(int argc, char* argv[])
     t_trxstatus* trxout = nullptr;
     t_trxstatus* trxin;
     int          file_nr;
-    t_trxframe   fr, frout;
+    t_trxframe   fr, frout, nextFrame, previousFrame, *frameToDump = nullptr;
     int          flags;
     rvec *       xmem = nullptr, *vmem = nullptr, *fmem = nullptr;
     rvec *       xp    = nullptr, x_shift, hbox;
@@ -498,12 +594,15 @@ int gmx_trjconv(int argc, char* argv[])
     char*       gn_fit;
     int         ndrop = 0, ncol, drop0 = 0, drop1 = 0, dropuse = 0;
     double**    dropval;
-    real        tshift = 0, dt = -1, prec;
+    real        tshift = 0, prec;
     gmx_bool    bFit, bPFit, bReset;
     int         nfitdim;
     gmx_rmpbc_t gpbc = nullptr;
     gmx_bool    bRmPBC, bPBCWhole, bPBCcomRes, bPBCcomMol, bPBCcomAtom, bPBC, bNoJump, bCluster;
-    gmx_bool    bCopy, bDoIt, bIndex, bTDump, bSetTime, bTPS = FALSE, bDTset = FALSE;
+    gmx_bool    bCopy, bDoIt, bIndex, bTDump = false, bSetTime, bTPS = FALSE;
+    gmx_bool    bFrameReadHasPrinted = false;
+    int         frameNumberToPrint   = 0;
+    real        frameTimeToPrint     = 0.0;
     gmx_bool    bExec, bTimeStep = FALSE, bDumpFrame = FALSE, bSetXtcPrec, bNeedPrec;
     gmx_bool    bHaveFirstFrame, bHaveNextFrame, bSetBox, bSetUR, bSplit = FALSE;
     gmx_bool    bDropUnder = FALSE, bDropOver = FALSE, bTrans = FALSE;
@@ -521,8 +620,18 @@ int gmx_trjconv(int argc, char* argv[])
                        { efXVG, "-drop", "drop", ffOPTRD } };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_BEGIN | PCA_CAN_END | PCA_CAN_VIEW | PCA_TIME_UNIT,
-                           NFILE, fnm, NPA, pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_CAN_BEGIN | PCA_CAN_END | PCA_CAN_VIEW | PCA_TIME_UNIT,
+                           NFILE,
+                           fnm,
+                           NPA,
+                           pa,
+                           asize(desc),
+                           desc,
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -594,7 +703,10 @@ int gmx_trjconv(int argc, char* argv[])
                         "WARNING: Option for unitcell representation (-ur %s)\n"
                         "         only has effect in combination with -pbc %s, %s or %s.\n"
                         "         Ingoring unitcell representation.\n\n",
-                        unitcell_opt[0], pbc_opt[2], pbc_opt[3], pbc_opt[4]);
+                        unitcell_opt[0],
+                        pbc_opt[2],
+                        pbc_opt[3],
+                        pbc_opt[4]);
             }
         }
         if (bFit && bPBC)
@@ -676,8 +788,7 @@ int gmx_trjconv(int argc, char* argv[])
 
             if (0 == top->mols.nr && (bCluster || bPBCcomMol))
             {
-                gmx_fatal(FARGS, "Option -pbc %s requires a .tpr file for the -s option",
-                          pbc_opt[pbc_enum]);
+                gmx_fatal(FARGS, "Option -pbc %s requires a .tpr file for the -s option", pbc_opt[pbc_enum]);
             }
 
             /* top_title is only used for gro and pdb,
@@ -757,14 +868,19 @@ int gmx_trjconv(int argc, char* argv[])
         }
         else
         {
-            /* no index file, so read natoms from TRX */
-            if (!read_first_frame(oenv, &trxin, in_file, &fr, TRX_DONT_SKIP))
             {
-                gmx_fatal(FARGS, "Could not read a frame from %s", in_file);
+                t_trxframe   temporaryFrame;
+                t_trxstatus* temporaryStatus;
+                clear_trxframe(&temporaryFrame, true);
+                /* no index file, so read natoms from TRX */
+                if (!read_first_frame(oenv, &temporaryStatus, in_file, &temporaryFrame, TRX_DONT_SKIP))
+                {
+                    gmx_fatal(FARGS, "Could not read a frame from %s", in_file);
+                }
+                natoms = temporaryFrame.natoms;
+                close_trx(temporaryStatus);
+                done_frame(&temporaryFrame);
             }
-            natoms = fr.natoms;
-            close_trx(trxin);
-            sfree(fr.x);
             snew(index, natoms);
             for (i = 0; i < natoms; i++)
             {
@@ -876,26 +992,23 @@ int gmx_trjconv(int argc, char* argv[])
         {
             if (bTDump)
             {
-                // Determine timestep (assuming constant spacing for now) if we
-                // need to dump frames based on time. This is required so we do not
-                // skip the first frame if that was the one that should have been dumped
-                double firstFrameTime = fr.time;
-                if (read_next_frame(oenv, trxin, &fr))
+                clear_trxframe(&previousFrame, true);
+                if (fr.time > tdump)
                 {
-                    dt     = fr.time - firstFrameTime;
-                    bDTset = TRUE;
-                    if (dt <= 0)
-                    {
-                        fprintf(stderr,
-                                "Warning: Frame times are not incrementing - will dump first "
-                                "frame.\n");
-                    }
+                    // The time of the first frame already exceeds
+                    // that of the dump time, so dump the first frame.
+                    frameToDump = &fr;
+                    bDumpFrame  = true;
                 }
-                // Now close and reopen so we are at first frame again
-                close_trx(trxin);
-                done_frame(&fr);
-                // Reopen at first frame (We already know it exists if we got here)
-                read_first_frame(oenv, &trxin, in_file, &fr, flags);
+                else
+                {
+                    // Copy the current frame into the previous frame,
+                    // since we may learn from the second frame that
+                    // the first frame is the one we should dump.
+                    // This also ensures the internal allocations have
+                    // been made.
+                    copyTrxframeDeeply(fr, &previousFrame);
+                }
             }
 
             setTrxFramePbcType(&fr, pbcType);
@@ -922,7 +1035,9 @@ int gmx_trjconv(int argc, char* argv[])
                                   "Index[%d] %d is larger than the number of atoms in the\n"
                                   "trajectory file (%d). There is a mismatch in the contents\n"
                                   "of your -f, -s and/or -n files.",
-                                  i, index[i] + 1, natoms);
+                                  i,
+                                  index[i] + 1,
+                                  natoms);
                     }
                     bCopy = bCopy || (i != index[i]);
                 }
@@ -933,9 +1048,14 @@ int gmx_trjconv(int argc, char* argv[])
             switch (ftp)
             {
                 case efTNG:
-                    trxout = trjtools_gmx_prepare_tng_writing(
-                            out_file, filemode[0], trxin, nullptr, nout, mtop.get(),
-                            gmx::arrayRefFromArray(index, nout), grpnm);
+                    trxout = trjtools_gmx_prepare_tng_writing(out_file,
+                                                              filemode[0],
+                                                              trxin,
+                                                              nullptr,
+                                                              nout,
+                                                              mtop.get(),
+                                                              gmx::arrayRefFromArray(index, nout),
+                                                              grpnm);
                     break;
                 case efXTC:
                 case efTRR:
@@ -975,6 +1095,15 @@ int gmx_trjconv(int argc, char* argv[])
             outframe = 0;
             model_nr = 0;
 
+            // Construct a trxframe for the next frame, so that we can
+            // read the next frame before we finish handling the
+            // current frame. This is important for letting -dump work
+            // out when it should dump the last frame.
+            clear_trxframe(&nextFrame, true);
+            // Copy the current frame to the next frame, just to
+            // ensure the internal allocations have been made. The
+            // content will be overwritten before it is read.
+            copyTrxframeDeeply(fr, &nextFrame);
             /* Main loop over frames */
             do
             {
@@ -984,6 +1113,11 @@ int gmx_trjconv(int argc, char* argv[])
                     fr.step = newstep;
                     newstep++;
                 }
+                // Read the next frame now, so that we know whether
+                // one exists.
+                nextFrame.step = fr.step;
+                bHaveNextFrame = read_next_frame(oenv, trxin, &nextFrame);
+
 
                 if (bSetBox)
                 {
@@ -1018,27 +1152,42 @@ int gmx_trjconv(int argc, char* argv[])
 
                 if (bTDump)
                 {
-                    // If we could not read two frames or times are not incrementing
-                    // we have almost no idea what to do,
-                    // but dump the first frame so output is not broken.
-                    if (dt <= 0 || !bDTset)
+                    // Check we haven't already decided to dump the
+                    // first frame.
+                    if (!bDumpFrame)
                     {
-                        bDumpFrame = true;
-                    }
-                    else
-                    {
-                        // Dump the frame if we are less than half a frame time
-                        // below it. This will also ensure we at least dump a
-                        // somewhat reasonable frame if the spacing is unequal
-                        // and we have overrun the frame time. Once we dump one
-                        // frame based on time we quit, so it does not matter
-                        // that this might be true for all subsequent frames too.
-                        bDumpFrame = (fr.time > tdump - 0.5 * dt);
+                        // Have we reached the dump time?
+                        if (fr.time >= tdump)
+                        {
+                            bDumpFrame = true;
+                            // Do we dump this frame or the previous one?
+                            GMX_RELEASE_ASSERT(tdump - previousFrame.time >= 0,
+                                               "The previous frame should have triggered the "
+                                               "decision on which frame to dump");
+                            const real timeFromCurrentFrame  = fr.time - tdump;
+                            const real timeFromPreviousFrame = tdump - previousFrame.time;
+                            if (timeFromCurrentFrame > timeFromPreviousFrame)
+                            {
+                                frameToDump = &previousFrame;
+                            }
+                            else
+                            {
+                                frameToDump = &fr;
+                            }
+                        }
+                        // Have we run out of frames?
+                        else if (!bHaveNextFrame)
+                        {
+                            // Dump this frame, because it is the last frame
+                            bDumpFrame  = true;
+                            frameToDump = &fr;
+                        }
                     }
                 }
                 else
                 {
-                    bDumpFrame = FALSE;
+                    // Ensure we clear the flag from last iteration when using -fr
+                    bDumpFrame = false;
                 }
 
                 /* determine if an atom jumped across the box and reset it if so */
@@ -1153,7 +1302,7 @@ int gmx_trjconv(int argc, char* argv[])
                      */
                     real frout_time;
 
-                    frout_time = fr.time;
+                    frout_time = bTDump ? frameToDump->time : fr.time;
 
                     /* calc new time */
                     if (bTimeStep)
@@ -1167,7 +1316,8 @@ int gmx_trjconv(int argc, char* argv[])
 
                     if (bTDump)
                     {
-                        fprintf(stderr, "\nDumping frame at t= %g %s\n",
+                        fprintf(stderr,
+                                "\nDumping frame at t= %g %s\n",
                                 output_env_conv_time(oenv, frout_time),
                                 output_env_get_time_unit(oenv).c_str());
                     }
@@ -1183,20 +1333,23 @@ int gmx_trjconv(int argc, char* argv[])
                         else
                         {
                             /* round() is not C89 compatible, so we do this:  */
-                            bDoIt = bRmod(std::floor(frout_time + 0.5), std::floor(tzero + 0.5),
+                            bDoIt = bRmod(std::floor(frout_time + 0.5),
+                                          std::floor(tzero + 0.5),
                                           std::floor(delta_t + 0.5));
                         }
                     }
 
+                    /* Flag whenever the reading routine prints, so that we print after it and do not mangle the line */
+                    if (trxio_should_print_count(oenv, trxin))
+                    {
+                        bFrameReadHasPrinted = true;
+                    }
+
                     if (bDoIt || bTDump)
                     {
-                        /* print sometimes */
-                        if (((outframe % SKIP) == 0) || (outframe < SKIP))
-                        {
-                            fprintf(stderr, " ->  frame %6d time %8.3f      \r", outframe,
-                                    output_env_conv_time(oenv, frout_time));
-                            fflush(stderr);
-                        }
+                        // Whenever a frame is output, store the frame and time to be printed at the next opportunity
+                        frameNumberToPrint = outframe;
+                        frameTimeToPrint   = frout_time;
 
                         if (!bPFit)
                         {
@@ -1243,23 +1396,23 @@ int gmx_trjconv(int argc, char* argv[])
                                     put_atoms_in_triclinic_unitcell(ecenter, fr.box, positionsArrayRef);
                                     break;
                                 case euCompact:
-                                    put_atoms_in_compact_unitcell(pbcType, ecenter, fr.box,
-                                                                  positionsArrayRef);
+                                    put_atoms_in_compact_unitcell(
+                                            pbcType, ecenter, fr.box, positionsArrayRef);
                                     break;
                             }
                         }
                         if (bPBCcomRes)
                         {
-                            put_residue_com_in_box(unitcell_enum, ecenter, natoms, atoms->atom,
-                                                   pbcType, fr.box, fr.x);
+                            put_residue_com_in_box(
+                                    unitcell_enum, ecenter, natoms, atoms->atom, pbcType, fr.box, fr.x);
                         }
                         if (bPBCcomMol)
                         {
-                            put_molecule_com_in_box(unitcell_enum, ecenter, &top->mols, natoms,
-                                                    atoms->atom, pbcType, fr.box, fr.x);
+                            put_molecule_com_in_box(
+                                    unitcell_enum, ecenter, &top->mols, natoms, atoms->atom, pbcType, fr.box, fr.x);
                         }
                         /* Copy the input trxframe struct to the output trxframe struct */
-                        frout        = fr;
+                        frout        = bTDump ? *frameToDump : fr;
                         frout.time   = frout_time;
                         frout.bV     = (frout.bV && bVels);
                         frout.bF     = (frout.bF && bForce);
@@ -1314,7 +1467,8 @@ int gmx_trjconv(int argc, char* argv[])
                             /* round() is not C89 compatible, so we do this: */
                             bSplitHere = bSplit
                                          && bRmod(std::floor(frout.time + 0.5),
-                                                  std::floor(tzero + 0.5), std::floor(split_t + 0.5));
+                                                  std::floor(tzero + 0.5),
+                                                  std::floor(split_t + 0.5));
                         }
                         if (bSeparate || bSplitHere)
                         {
@@ -1373,8 +1527,12 @@ int gmx_trjconv(int argc, char* argv[])
                                 switch (ftp)
                                 {
                                     case efGRO:
-                                        write_hconf_p(out, title.c_str(), &useatoms, frout.x,
-                                                      frout.bV ? frout.v : nullptr, frout.box);
+                                        write_hconf_p(out,
+                                                      title.c_str(),
+                                                      &useatoms,
+                                                      frout.x,
+                                                      frout.bV ? frout.v : nullptr,
+                                                      frout.box);
                                         break;
                                     case efPDB:
                                         fprintf(out, "REMARK    GENERATED BY TRJCONV\n");
@@ -1389,8 +1547,15 @@ int gmx_trjconv(int argc, char* argv[])
                                         {
                                             model_nr++;
                                         }
-                                        write_pdbfile(out, title.c_str(), &useatoms, frout.x,
-                                                      frout.pbcType, frout.box, ' ', model_nr, gc);
+                                        write_pdbfile(out,
+                                                      title.c_str(),
+                                                      &useatoms,
+                                                      frout.x,
+                                                      frout.pbcType,
+                                                      frout.box,
+                                                      ' ',
+                                                      model_nr,
+                                                      gc);
                                         break;
                                     case efG96:
                                         const char* outputTitle = "";
@@ -1442,14 +1607,39 @@ int gmx_trjconv(int argc, char* argv[])
                             }
                         }
                         outframe++;
+                        if (bFrameReadHasPrinted)
+                        {
+                            fprintf(stderr,
+                                    " ->  frame %6d time %8.3f      \r",
+                                    frameNumberToPrint,
+                                    output_env_conv_time(oenv, frameTimeToPrint));
+                            fflush(stderr);
+                            bFrameReadHasPrinted = false;
+                        }
                     }
                 }
                 frame++;
-                bHaveNextFrame = read_next_frame(oenv, trxin, &fr);
+                if (bTDump && !bDumpFrame)
+                {
+                    // Save the current frame so that we can dump it
+                    // next step if it later proves to be the one
+                    // whose time was nearest the dump time.
+                    swapFrames(&fr, &previousFrame);
+                }
+                // Now that we are done with the current frame, we
+                // swap it for the previously-read subsequent frame.
+                if (bHaveNextFrame)
+                {
+                    swapFrames(&fr, &nextFrame);
+                }
             } while (!(bTDump && bDumpFrame) && bHaveNextFrame);
+            fprintf(stderr,
+                    "\nLast written: frame %6d time %8.3f\n",
+                    frameNumberToPrint,
+                    output_env_conv_time(oenv, frameTimeToPrint));
         }
 
-        if (!bHaveFirstFrame || (bTDump && !bDumpFrame))
+        if (!bHaveFirstFrame)
         {
             fprintf(stderr,
                     "\nWARNING no output, "
@@ -1489,6 +1679,11 @@ int gmx_trjconv(int argc, char* argv[])
     sfree(index);
     sfree(cindex);
     done_frame(&fr);
+    done_frame(&nextFrame);
+    if (bTDump)
+    {
+        done_frame(&previousFrame);
+    }
 
     do_view(oenv, out_file, nullptr);
 

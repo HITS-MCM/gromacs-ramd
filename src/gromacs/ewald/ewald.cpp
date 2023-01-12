@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -68,32 +64,26 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/smalloc.h"
 
-struct gmx_ewald_tab_t
-{
-    int        nx, ny, nz, kmax;
-    cvec**     eir;
-    t_complex *tab_xy, *tab_qxyz;
-};
+using cvec = std::array<t_complex, DIM>;
 
-void init_ewald_tab(struct gmx_ewald_tab_t** et, const t_inputrec* ir, FILE* fp)
+gmx_ewald_tab_t::gmx_ewald_tab_t(const t_inputrec& ir, FILE* fp)
 {
-    snew(*et, 1);
     if (fp)
     {
         fprintf(fp, "Will do ordinary reciprocal space Ewald sum.\n");
     }
 
-    (*et)->nx       = ir->nkx + 1;
-    (*et)->ny       = ir->nky + 1;
-    (*et)->nz       = ir->nkz + 1;
-    (*et)->kmax     = std::max((*et)->nx, std::max((*et)->ny, (*et)->nz));
-    (*et)->eir      = nullptr;
-    (*et)->tab_xy   = nullptr;
-    (*et)->tab_qxyz = nullptr;
+    nx   = ir.nkx + 1;
+    ny   = ir.nky + 1;
+    nz   = ir.nkz + 1;
+    kmax = std::max(nx, std::max(ny, nz));
 }
+
+gmx_ewald_tab_t::~gmx_ewald_tab_t() = default;
 
 //! Calculates wave vectors.
 static void calc_lll(const rvec box, rvec lll)
@@ -104,7 +94,7 @@ static void calc_lll(const rvec box, rvec lll)
 }
 
 //! Make tables for the structure factor parts
-static void tabulateStructureFactors(int natom, const rvec x[], int kmax, cvec** eir, const rvec lll)
+static void tabulateStructureFactors(int natom, gmx::ArrayRef<const gmx::RVec> x, int kmax, cvec** eir, const rvec lll)
 {
     int i, j, m;
 
@@ -137,31 +127,34 @@ static void tabulateStructureFactors(int natom, const rvec x[], int kmax, cvec**
     }
 }
 
-real do_ewald(const t_inputrec* ir,
-              const rvec        x[],
-              rvec              f[],
-              const real        chargeA[],
-              const real        chargeB[],
-              const matrix      box,
-              const t_commrec*  cr,
-              int               natoms,
-              matrix            lrvir,
-              real              ewaldcoeff,
-              real              lambda,
-              real*             dvdlambda,
-              gmx_ewald_tab_t*  et)
+real do_ewald(bool                           havePbcXY2Walls,
+              real                           wallEwaldZfac,
+              real                           epsilonR,
+              FreeEnergyPerturbationType     freeEnergyPerturbationType,
+              gmx::ArrayRef<const gmx::RVec> coords,
+              gmx::ArrayRef<gmx::RVec>       forces,
+              gmx::ArrayRef<const real>      chargeA,
+              gmx::ArrayRef<const real>      chargeB,
+              const matrix                   box,
+              const t_commrec*               commrec,
+              int                            natoms,
+              matrix                         lrvir,
+              real                           ewaldcoeff,
+              real                           lambda,
+              real*                          dvdlambda,
+              gmx_ewald_tab_t*               et)
 {
-    real        factor = -1.0 / (4 * ewaldcoeff * ewaldcoeff);
-    const real* charge;
-    real        energy_AB[2], energy;
-    rvec        lll;
-    int         lowiy, lowiz, ix, iy, iz, n, q;
-    real        tmp, cs, ss, ak, akv, mx, my, mz, m2, scale;
-    gmx_bool    bFreeEnergy;
+    real   factor = -1.0 / (4 * ewaldcoeff * ewaldcoeff);
+    real   energy_AB[2], energy;
+    rvec   lll;
+    int    lowiy, lowiz, ix, iy, iz, n, q;
+    real   tmp, cs, ss, ak, akv, mx, my, mz, m2, scale;
+    cvec** eir;
+    bool   bFreeEnergy;
 
-    if (cr != nullptr)
+    if (commrec != nullptr)
     {
-        if (PAR(cr))
+        if (PAR(commrec))
         {
             gmx_fatal(FARGS, "No parallel Ewald. Use PME instead.\n");
         }
@@ -169,7 +162,7 @@ real do_ewald(const t_inputrec* ir,
 
     /* Scale box with Ewald wall factor */
     matrix          scaledBox;
-    EwaldBoxZScaler boxScaler(*ir);
+    EwaldBoxZScaler boxScaler(havePbcXY2Walls, wallEwaldZfac);
     boxScaler.scaleBox(box, scaledBox);
 
     rvec boxDiag;
@@ -179,26 +172,24 @@ real do_ewald(const t_inputrec* ir,
     }
 
     /* 1/(Vol*e0) */
-    real scaleRecip = 4.0 * M_PI / (boxDiag[XX] * boxDiag[YY] * boxDiag[ZZ]) * ONE_4PI_EPS0 / ir->epsilon_r;
+    real scaleRecip = 4.0 * M_PI / (boxDiag[XX] * boxDiag[YY] * boxDiag[ZZ]) * gmx::c_one4PiEps0 / epsilonR;
 
-    if (!et->eir) /* allocate if we need to */
+    snew(eir, et->kmax);
+    for (n = 0; n < et->kmax; n++)
     {
-        snew(et->eir, et->kmax);
-        for (n = 0; n < et->kmax; n++)
-        {
-            snew(et->eir[n], natoms);
-        }
-        snew(et->tab_xy, natoms);
-        snew(et->tab_qxyz, natoms);
+        snew(eir[n], natoms);
     }
+    et->tab_xy.resize(natoms);
+    et->tab_qxyz.resize(natoms);
 
-    bFreeEnergy = (ir->efep != efepNO);
+    bFreeEnergy = (freeEnergyPerturbationType != FreeEnergyPerturbationType::No);
 
     clear_mat(lrvir);
 
     calc_lll(boxDiag, lll);
-    tabulateStructureFactors(natoms, x, et->kmax, et->eir, lll);
+    tabulateStructureFactors(natoms, coords, et->kmax, eir, lll);
 
+    gmx::ArrayRef<const real> charge;
     for (q = 0; q < (bFreeEnergy ? 2 : 1); q++)
     {
         if (!bFreeEnergy)
@@ -229,14 +220,14 @@ real do_ewald(const t_inputrec* ir,
                 {
                     for (n = 0; n < natoms; n++)
                     {
-                        et->tab_xy[n] = cmul(et->eir[ix][n][XX], et->eir[iy][n][YY]);
+                        et->tab_xy[n] = cmul(eir[ix][n][XX], eir[iy][n][YY]);
                     }
                 }
                 else
                 {
                     for (n = 0; n < natoms; n++)
                     {
-                        et->tab_xy[n] = cmul(et->eir[ix][n][XX], conjugate(et->eir[-iy][n][YY]));
+                        et->tab_xy[n] = cmul(eir[ix][n][XX], conjugate(eir[-iy][n][YY]));
                     }
                 }
                 for (iz = lowiz; iz < et->nz; iz++)
@@ -249,15 +240,15 @@ real do_ewald(const t_inputrec* ir,
                     {
                         for (n = 0; n < natoms; n++)
                         {
-                            et->tab_qxyz[n] = rcmul(charge[n], cmul(et->tab_xy[n], et->eir[iz][n][ZZ]));
+                            et->tab_qxyz[n] = rcmul(charge[n], cmul(et->tab_xy[n], eir[iz][n][ZZ]));
                         }
                     }
                     else
                     {
                         for (n = 0; n < natoms; n++)
                         {
-                            et->tab_qxyz[n] = rcmul(
-                                    charge[n], cmul(et->tab_xy[n], conjugate(et->eir[-iz][n][ZZ])));
+                            et->tab_qxyz[n] =
+                                    rcmul(charge[n], cmul(et->tab_xy[n], conjugate(eir[-iz][n][ZZ])));
                         }
                     }
 
@@ -279,14 +270,9 @@ real do_ewald(const t_inputrec* ir,
                     {
                         /*tmp=scale*ak*(cs*tab_qxyz[n].im-ss*tab_qxyz[n].re);*/
                         tmp = scale * ak * (cs * et->tab_qxyz[n].im - ss * et->tab_qxyz[n].re);
-                        f[n][XX] += tmp * mx * 2 * scaleRecip;
-                        f[n][YY] += tmp * my * 2 * scaleRecip;
-                        f[n][ZZ] += tmp * mz * 2 * scaleRecip;
-#if 0
-                        f[n][XX] += tmp*mx;
-                        f[n][YY] += tmp*my;
-                        f[n][ZZ] += tmp*mz;
-#endif
+                        forces[n][XX] += tmp * mx * 2 * scaleRecip;
+                        forces[n][YY] += tmp * my * 2 * scaleRecip;
+                        forces[n][ZZ] += tmp * mz * 2 * scaleRecip;
                     }
                     lowiz = 1 - et->nz;
                 }
@@ -321,47 +307,38 @@ real do_ewald(const t_inputrec* ir,
     return energy;
 }
 
-real ewald_charge_correction(const t_commrec*  cr,
-                             const t_forcerec* fr,
-                             const real        lambda,
-                             const matrix      box,
-                             real*             dvdlambda,
-                             tensor            vir)
+real ewald_charge_correction(const t_commrec*            commrec,
+                             const real                  epsilonR,
+                             const real                  ewaldcoeffQ,
+                             gmx::ArrayRef<const double> qsum,
+                             const real                  lambda,
+                             const matrix                box,
+                             real*                       dvdlambda,
+                             tensor                      vir)
 
 {
-    real vol, fac, qs2A, qs2B, vc, enercorr;
-    int  d;
+    real enercorr = 0;
 
-    if (MASTER(cr))
+    if (MASTER(commrec))
     {
         /* Apply charge correction */
-        vol = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
+        real vol = box[XX][XX] * box[YY][YY] * box[ZZ][ZZ];
 
-        fac = M_PI * ONE_4PI_EPS0
-              / (fr->ic->epsilon_r * 2.0 * vol * vol * gmx::square(fr->ic->ewaldcoeff_q));
+        real fac = M_PI * gmx::c_one4PiEps0 / (epsilonR * 2.0 * vol * vol * gmx::square(ewaldcoeffQ));
 
-        qs2A = fr->qsum[0] * fr->qsum[0];
-        qs2B = fr->qsum[1] * fr->qsum[1];
+        real qs2A = qsum[0] * qsum[0];
+        real qs2B = qsum[1] * qsum[1];
 
-        vc = (qs2A * (1 - lambda) + qs2B * lambda) * fac;
+        real vc = (qs2A * (1 - lambda) + qs2B * lambda) * fac;
 
         enercorr = -vol * vc;
 
         *dvdlambda += -vol * (qs2B - qs2A) * fac;
 
-        for (d = 0; d < DIM; d++)
+        for (int d = 0; d < DIM; d++)
         {
             vir[d][d] += vc;
         }
-
-        if (debug)
-        {
-            fprintf(debug, "Total charge correction: Vcharge=%g\n", enercorr);
-        }
-    }
-    else
-    {
-        enercorr = 0;
     }
 
     return enercorr;

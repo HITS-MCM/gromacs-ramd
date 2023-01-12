@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -138,13 +134,14 @@ static void MBCallback(t_x11* /*x11*/, int dlg_mess, int /*item_id*/, char* /*se
 
 static t_dlg* about_mb(t_x11* x11, t_gmx* gmx)
 {
-    const char* lines[] = { "         G R O M A C S", " Machine for Simulating Chemistry",
+    const char* lines[] = { "         G R O M A C S",
+                            " Machine for Simulating Chemistry",
                             "       Copyright (c) 1992-2013",
                             "  Berk Hess, David van der Spoel, Erik Lindahl",
                             "        and many collaborators!" };
 
-    return MessageBox(x11, gmx->wd->self, gmx->wd->text, asize(lines), lines,
-                      MB_OK | MB_ICONGMX | MBFLAGS, MBCallback, gmx);
+    return MessageBox(
+            x11, gmx->wd->self, gmx->wd->text, asize(lines), lines, MB_OK | MB_ICONGMX | MBFLAGS, MBCallback, gmx);
 }
 
 static void QuitCB(t_x11* x11, int dlg_mess, int /*item_id*/, char* set, void* data)
@@ -166,24 +163,24 @@ static t_dlg* quit_mb(t_x11* x11, t_gmx* gmx)
 {
     const char* lines[] = { " Do you really want to Quit ?" };
 
-    return MessageBox(x11, gmx->wd->self, gmx->wd->text, asize(lines), lines,
-                      MB_YESNO | MB_ICONSTOP | MBFLAGS, QuitCB, gmx);
+    return MessageBox(
+            x11, gmx->wd->self, gmx->wd->text, asize(lines), lines, MB_YESNO | MB_ICONSTOP | MBFLAGS, QuitCB, gmx);
 }
 
 static t_dlg* help_mb(t_x11* x11, t_gmx* gmx)
 {
     const char* lines[] = { " Help will soon be added" };
 
-    return MessageBox(x11, gmx->wd->self, gmx->wd->text, asize(lines), lines,
-                      MB_OK | MB_ICONINFORMATION | MBFLAGS, MBCallback, gmx);
+    return MessageBox(
+            x11, gmx->wd->self, gmx->wd->text, asize(lines), lines, MB_OK | MB_ICONINFORMATION | MBFLAGS, MBCallback, gmx);
 }
 
 static t_dlg* ni_mb(t_x11* x11, t_gmx* gmx)
 {
     const char* lines[] = { " This feature has not been", " implemented yet." };
 
-    return MessageBox(x11, gmx->wd->self, gmx->wd->text, asize(lines), lines,
-                      MB_OK | MB_ICONEXCLAMATION | MBFLAGS, MBCallback, gmx);
+    return MessageBox(
+            x11, gmx->wd->self, gmx->wd->text, asize(lines), lines, MB_OK | MB_ICONEXCLAMATION | MBFLAGS, MBCallback, gmx);
 }
 
 enum
@@ -392,8 +389,8 @@ void init_dlgs(t_x11* x11, t_gmx* gmx)
     snew(gmx->dlgs, edNR);
     for (int i = 0; (i < asize(di)); i++)
     {
-        gmx->dlgs[i] = ReadDlg(x11, gmx->wd->self, di[i].dlgfile, di[i].dlgfile, 0, 0, true, false,
-                               di[i].cb, gmx);
+        gmx->dlgs[i] = ReadDlg(
+                x11, gmx->wd->self, di[i].dlgfile, di[i].dlgfile, 0, 0, true, false, di[i].cb, gmx);
     }
 
     gmx->dlgs[edFilter] = select_filter(x11, gmx);

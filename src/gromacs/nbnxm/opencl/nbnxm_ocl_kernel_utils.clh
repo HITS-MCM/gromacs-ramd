@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *  \brief
@@ -47,7 +45,6 @@
 
 #include "gromacs/gpu_utils/device_utils.clh"
 #include "gromacs/gpu_utils/vectype_ops.clh"
-#include "gromacs/pbcutil/ishift.h"
 
 #include "nbnxm_ocl_consts.h"
 
@@ -116,7 +113,7 @@
 
 
 #    ifdef __GNUC__
-/* GCC, clang, and some ICC pretending to be GCC */
+/* GCC, clang */
 #        define gmx_unused __attribute__((unused))
 #    else
 #        define gmx_unused
@@ -156,10 +153,10 @@ typedef struct
 typedef struct cl_nbparam_params
 {
 
-    //! type of electrostatics, takes values from #eelCu
-    int eeltype;
-    //! type of VdW impl., takes values from #evdwCu
-    int vdwtype;
+    //! type of electrostatics, takes values from #ElecType
+    int elecType;
+    //! type of VdW impl., takes values from #VdwType
+    int vdwType;
 
     //! charge multiplication factor
     float epsfac;
@@ -237,16 +234,16 @@ typedef struct
 } nbnxn_excl_t;
 
 /*! i-cluster interaction mask for a super-cluster with all c_nbnxnGpuNumClusterPerSupercluster bits set */
-__constant unsigned supercl_interaction_mask = ((1U << c_nbnxnGpuNumClusterPerSupercluster) - 1U);
+__constant const unsigned supercl_interaction_mask = ((1U << c_nbnxnGpuNumClusterPerSupercluster) - 1U);
 
 /*! Minimum single precision threshold for r^2 to avoid r^-12 overflow. */
-__constant float c_nbnxnMinDistanceSquared = NBNXM_MIN_DISTANCE_SQUARED_VALUE_FLOAT;
+__constant const float c_nbnxnMinDistanceSquared = NBNXM_MIN_DISTANCE_SQUARED_VALUE_FLOAT;
 
 gmx_opencl_inline void preloadCj4Generic(__local int*        sm_cjPreload,
                                          const __global int* gm_cj,
                                          int                 tidxi,
                                          int                 tidxj,
-                                         bool gmx_unused iMaskCond)
+                                         bool gmx_unused     iMaskCond)
 {
     /* Pre-load cj into shared memory */
 #    if defined _AMD_SOURCE_ // TODO: fix by setting c_nbnxnGpuClusterpairSplit properly
@@ -292,9 +289,9 @@ typedef __local int* CjType;
  */
 gmx_opencl_inline void preloadCj4(CjType gmx_unused* cjs,
                                   const __global int gmx_unused* gm_cj,
-                                  int gmx_unused tidxi,
-                                  int gmx_unused tidxj,
-                                  bool gmx_unused iMaskCond)
+                                  int gmx_unused                 tidxi,
+                                  int gmx_unused                 tidxj,
+                                  bool gmx_unused                iMaskCond)
 {
 #    if USE_SUBGROUP_PRELOAD
     *cjs = preloadCj4Subgroup(gm_cj);
@@ -456,19 +453,28 @@ gmx_opencl_inline void calculate_potential_switch_F_E(const cl_nbparam_params_t*
     *E_lj *= sw;
 }
 
+/*! \brief Fetch C6 grid contribution coefficients and return the product of these.
+ */
+gmx_opencl_inline float calculate_lj_ewald_c6grid(__constant const float2* nbfp_comb, int typei, int typej)
+{
+    const float c6_i = nbfp_comb[typei].x;
+    const float c6_j = nbfp_comb[typej].x;
+    return c6_i * c6_j;
+}
+
 /*! Calculate LJ-PME grid force contribution with
  *  geometric combination rule.
  */
-gmx_opencl_inline void calculate_lj_ewald_comb_geom_F(__constant const float* nbfp_comb_climg2d,
-                                                      int                     typei,
-                                                      int                     typej,
-                                                      float                   r2,
-                                                      float                   inv_r2,
-                                                      float                   lje_coeff2,
-                                                      float                   lje_coeff6_6,
-                                                      float*                  F_invr)
+gmx_opencl_inline void calculate_lj_ewald_comb_geom_F(__constant const float2* nbfp_comb,
+                                                      int                      typei,
+                                                      int                      typej,
+                                                      float                    r2,
+                                                      float                    inv_r2,
+                                                      float                    lje_coeff2,
+                                                      float                    lje_coeff6_6,
+                                                      float*                   F_invr)
 {
-    const float c6grid = nbfp_comb_climg2d[2 * typei] * nbfp_comb_climg2d[2 * typej];
+    const float c6grid = calculate_lj_ewald_c6grid(nbfp_comb, typei, typej);
 
     /* Recalculate inv_r6 without exclusion mask */
     const float inv_r6_nm = inv_r2 * inv_r2 * inv_r2;
@@ -483,7 +489,7 @@ gmx_opencl_inline void calculate_lj_ewald_comb_geom_F(__constant const float* nb
 /*! Calculate LJ-PME grid force + energy contribution with
  *  geometric combination rule.
  */
-gmx_opencl_inline void calculate_lj_ewald_comb_geom_F_E(__constant const float* nbfp_comb_climg2d,
+gmx_opencl_inline void calculate_lj_ewald_comb_geom_F_E(__constant const float2*   nbfp_comb,
                                                         const cl_nbparam_params_t* nbparam,
                                                         int                        typei,
                                                         int                        typej,
@@ -495,7 +501,7 @@ gmx_opencl_inline void calculate_lj_ewald_comb_geom_F_E(__constant const float* 
                                                         float*                     F_invr,
                                                         float*                     E_lj)
 {
-    const float c6grid = nbfp_comb_climg2d[2 * typei] * nbfp_comb_climg2d[2 * typej];
+    const float c6grid = calculate_lj_ewald_c6grid(nbfp_comb, typei, typej);
 
     /* Recalculate inv_r6 without exclusion mask */
     const float inv_r6_nm = inv_r2 * inv_r2 * inv_r2;
@@ -516,7 +522,7 @@ gmx_opencl_inline void calculate_lj_ewald_comb_geom_F_E(__constant const float* 
  *  We use a single F+E kernel with conditional because the performance impact
  *  of this is pretty small and LB on the CPU is anyway very slow.
  */
-gmx_opencl_inline void calculate_lj_ewald_comb_LB_F_E(__constant const float*    nbfp_comb_climg2d,
+gmx_opencl_inline void calculate_lj_ewald_comb_LB_F_E(__constant const float2*   nbfp_comb,
                                                       const cl_nbparam_params_t* nbparam,
                                                       int                        typei,
                                                       int                        typej,
@@ -530,9 +536,10 @@ gmx_opencl_inline void calculate_lj_ewald_comb_LB_F_E(__constant const float*   
                                                       float*                     E_lj)
 {
     /* sigma and epsilon are scaled to give 6*C6 */
-    const float sigma = nbfp_comb_climg2d[2 * typei] + nbfp_comb_climg2d[2 * typej];
-
-    const float epsilon = nbfp_comb_climg2d[2 * typei + 1] * nbfp_comb_climg2d[2 * typej + 1];
+    const float2 c6c12_i = nbfp_comb[typei];
+    const float2 c6c12_j = nbfp_comb[typej];
+    const float  sigma   = c6c12_i.x + c6c12_j.x;
+    const float  epsilon = c6c12_i.y * c6c12_j.y;
 
     const float sigma2 = sigma * sigma;
     const float c6grid = epsilon * sigma2 * sigma2 * sigma2;
@@ -558,16 +565,14 @@ gmx_opencl_inline void calculate_lj_ewald_comb_LB_F_E(__constant const float*   
 /*! Interpolate Ewald coulomb force using the table through the tex_nbfp texture.
  *  Original idea: from the OpenMM project
  */
-gmx_opencl_inline float interpolate_coulomb_force_r(__constant const float* coulomb_tab_climg2d,
-                                                    float                   r,
-                                                    float                   scale)
+gmx_opencl_inline float interpolate_coulomb_force_r(__constant const float* coulomb_tab, float r, float scale)
 {
     float normalized = scale * r;
     int   index      = (int)normalized;
     float fract2     = normalized - (float)index;
     float fract1     = 1.0F - fract2;
 
-    return fract1 * coulomb_tab_climg2d[index] + fract2 * coulomb_tab_climg2d[index + 1];
+    return fract1 * coulomb_tab[index] + fract2 * coulomb_tab[index + 1];
 }
 
 /*! Calculate analytical Ewald correction term. */
@@ -732,14 +737,14 @@ gmx_opencl_inline void reduce_force_i_and_shift_shfl(__private fvec  fci_buf[],
  *  array sizes.
  */
 gmx_opencl_inline void reduce_force_i_and_shift_pow2(volatile __local float* f_buf,
-                                                     __private fvec  fci_buf[],
-                                                     __global float* fout,
-                                                     bool            bCalcFshift,
-                                                     int             tidxi,
-                                                     int             tidxj,
-                                                     int             sci,
-                                                     int             shift,
-                                                     __global float* fshift)
+                                                     __private fvec          fci_buf[],
+                                                     __global float*         fout,
+                                                     bool                    bCalcFshift,
+                                                     int                     tidxi,
+                                                     int                     tidxj,
+                                                     int                     sci,
+                                                     int                     shift,
+                                                     __global float*         fshift)
 {
     float fshift_buf = 0;
     for (int ci_offset = 0; ci_offset < c_nbnxnGpuNumClusterPerSupercluster; ci_offset++)
@@ -811,14 +816,14 @@ gmx_opencl_inline void reduce_force_i_and_shift_pow2(volatile __local float* f_b
 /*! Final i-force reduction
  */
 gmx_opencl_inline void reduce_force_i_and_shift(__local float gmx_unused* f_buf,
-                                                __private fvec  fci_buf[],
-                                                __global float* f,
-                                                bool            bCalcFshift,
-                                                int             tidxi,
-                                                int             tidxj,
-                                                int             sci,
-                                                int             shift,
-                                                __global float* fshift)
+                                                __private fvec            fci_buf[],
+                                                __global float*           f,
+                                                bool                      bCalcFshift,
+                                                int                       tidxi,
+                                                int                       tidxj,
+                                                int                       sci,
+                                                int                       shift,
+                                                __global float*           fshift)
 {
 #    if REDUCE_SHUFFLE
     reduce_force_i_and_shift_shfl(fci_buf, f, bCalcFshift, tidxi, tidxj, sci, shift, fshift);

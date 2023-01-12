@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal
  * \brief Declares the general simulator interface
@@ -44,9 +43,10 @@
 #include "gromacs/mdlib/stophandler.h"
 
 class energyhistory_t;
-struct gmx_ekindata_t;
+class gmx_ekindata_t;
 struct gmx_enerdata_t;
 struct gmx_enfrot;
+struct gmx_localtop_t;
 struct gmx_mtop_t;
 struct gmx_membed_t;
 struct gmx_multisim_t;
@@ -71,10 +71,11 @@ class BoxDeformation;
 class Constraints;
 class MdrunScheduleWorkload;
 class IMDOutputProvider;
-struct MdModulesNotifier;
+struct MDModulesNotifiers;
 class ImdSession;
 class MDLogger;
 class MDAtoms;
+class ObservablesReducerBuilder;
 class StopHandlerBuilder;
 struct MdrunOptions;
 class VirtualSitesHandler;
@@ -123,19 +124,22 @@ public:
                         gmx_enfrot*                         enforcedRotation,
                         BoxDeformation*                     deform,
                         IMDOutputProvider*                  outputProvider,
-                        const MdModulesNotifier&            mdModulesNotifier,
+                        const MDModulesNotifiers&           mdModulesNotifiers,
                         t_inputrec*                         inputrec,
                         ImdSession*                         imdSession,
                         pull_t*                             pull_work,
                         t_swap*                             swap,
-                        gmx_mtop_t*                         top_global,
+                        const gmx_mtop_t&                   top_global,
+                        gmx_localtop_t*                     top,
                         t_state*                            state_global,
+                        t_state*                            state,
                         ObservablesHistory*                 observablesHistory,
                         MDAtoms*                            mdAtoms,
                         t_nrnb*                             nrnb,
                         gmx_wallcycle*                      wcycle,
                         t_forcerec*                         fr,
                         gmx_enerdata_t*                     enerd,
+                        ObservablesReducerBuilder*          observablesReducerBuilder,
                         gmx_ekindata_t*                     ekind,
                         MdrunScheduleWorkload*              runScheduleWork,
                         const ReplicaExchangeParameters&    replExParams,
@@ -157,19 +161,22 @@ public:
         enforcedRotation(enforcedRotation),
         deform(deform),
         outputProvider(outputProvider),
-        mdModulesNotifier(mdModulesNotifier),
+        mdModulesNotifiers(mdModulesNotifiers),
         inputrec(inputrec),
         imdSession(imdSession),
         pull_work(pull_work),
         swap(swap),
         top_global(top_global),
+        top(top),
         state_global(state_global),
+        state(state),
         observablesHistory(observablesHistory),
         mdAtoms(mdAtoms),
         nrnb(nrnb),
         wcycle(wcycle),
         fr(fr),
         enerd(enerd),
+        observablesReducerBuilder(observablesReducerBuilder),
         ekind(ekind),
         runScheduleWork(runScheduleWork),
         replExParams(replExParams),
@@ -208,10 +215,10 @@ public:
     BoxDeformation* deform;
     //! Handles writing output files.
     IMDOutputProvider* outputProvider;
-    //! Handles notifications to MdModules for checkpoint writing
-    const MdModulesNotifier& mdModulesNotifier;
-    //! Contains user input mdp options.
-    t_inputrec* inputrec;
+    //! Handles notifications to MDModules for checkpoint writing
+    const MDModulesNotifiers& mdModulesNotifiers;
+    //! Contains user input mdp options. Note: The const-ness is casted away in a few instances, see #3854.
+    const t_inputrec* inputrec;
     //! The Interactive Molecular Dynamics session.
     ImdSession* imdSession;
     //! The pull work object.
@@ -219,9 +226,13 @@ public:
     //! The coordinate-swapping session.
     t_swap* swap;
     //! Full system topology.
-    const gmx_mtop_t* top_global;
+    const gmx_mtop_t& top_global;
+    //! Handle to local simulation topology.
+    gmx_localtop_t* top;
     //! Full simulation state (only non-nullptr on master rank).
     t_state* state_global;
+    //! Handle to local state of the simulation.
+    t_state* state;
     //! History of simulation observables.
     ObservablesHistory* observablesHistory;
     //! Atom parameters for this domain.
@@ -234,6 +245,8 @@ public:
     t_forcerec* fr;
     //! Data for energy output.
     gmx_enerdata_t* enerd;
+    //! Builder for coordinator of reduction for observables
+    ObservablesReducerBuilder* observablesReducerBuilder;
     //! Kinetic energy data.
     gmx_ekindata_t* ekind;
     //! Schedule of work for each MD step for this task.

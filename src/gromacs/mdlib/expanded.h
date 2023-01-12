@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_MDLIB_EXPANDED_H
 #define GMX_MDLIB_EXPANDED_H
@@ -38,7 +37,6 @@
 #include <stdio.h>
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
 
 struct df_history_t;
 struct gmx_enerdata_t;
@@ -46,24 +44,48 @@ struct t_expanded;
 struct t_extmass;
 struct t_inputrec;
 struct t_lambda;
-struct t_mdatoms;
 struct t_simtemp;
 class t_state;
 
-void init_npt_masses(const t_inputrec* ir, t_state* state, t_extmass* MassQ, gmx_bool bInit);
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+}
 
-void init_expanded_ensemble(gmx_bool bStateFromCP, const t_inputrec* ir, df_history_t* dfhist);
+void init_npt_masses(const t_inputrec* ir, t_state* state, t_extmass* MassQ, bool bInit);
 
-int ExpandedEnsembleDynamics(FILE*                 log,
-                             const t_inputrec*     ir,
-                             const gmx_enerdata_t* enerd,
-                             t_state*              state,
-                             t_extmass*            MassQ,
-                             int                   fep_state,
-                             df_history_t*         dfhist,
-                             int64_t               step,
-                             rvec*                 v,
-                             const t_mdatoms*      mdatoms);
+void init_expanded_ensemble(bool bStateFromCP, const t_inputrec* ir, df_history_t* dfhist);
+
+int ExpandedEnsembleDynamics(FILE*                               log,
+                             t_inputrec*                         ir,
+                             const gmx_enerdata_t*               enerd,
+                             t_state*                            state,
+                             t_extmass*                          MassQ,
+                             int                                 fep_state,
+                             df_history_t*                       dfhist,
+                             int64_t                             step,
+                             rvec*                               v,
+                             int                                 homenr,
+                             gmx::ArrayRef<const unsigned short> cTC);
+
+/*!
+ * \brief Return a new lambda state using expanded ensemble
+ *
+ * \param log  File pointer to the log file
+ * \param ir  The input record
+ * \param enerd  Data for energy output.
+ * \param fep_state  The current lambda state
+ * \param dfhist  Free energy sampling history struct
+ * \param step  The current simulation step
+ * \return  The new lambda state
+ */
+int expandedEnsembleUpdateLambdaState(FILE*                 log,
+                                      const t_inputrec*     ir,
+                                      const gmx_enerdata_t* enerd,
+                                      int                   fep_state,
+                                      df_history_t*         dfhist,
+                                      int64_t               step);
 
 void PrintFreeEnergyInfoToFile(FILE*               outfile,
                                const t_lambda*     fep,

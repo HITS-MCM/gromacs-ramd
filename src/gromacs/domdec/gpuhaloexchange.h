@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  * \brief Declaration of GPU halo exchange.
@@ -42,10 +41,13 @@
 #ifndef GMX_DOMDEC_GPUHALOEXCHANGE_H
 #define GMX_DOMDEC_GPUHALOEXCHANGE_H
 
+#include <memory>
+
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/math/vectypes.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
-#include "gromacs/utility/classhelpers.h"
+#include "gromacs/utility/fixedcapacityvector.h"
 #include "gromacs/utility/gmxmpi.h"
 
 struct gmx_domdec_t;
@@ -65,28 +67,26 @@ class GpuHaloExchange
 public:
     /*! \brief Creates GPU Halo Exchange object.
      *
-     * Coordinate Halo exchange will be performed in \c
-     * StreamNonLocal, and the \c communicateHaloCoordinates
-     * method must be called before any subsequent operations that
-     * access non-local parts of the coordinate buffer (such as
-     * the non-local non-bonded kernels). It also must be called
-     * after the local coordinates buffer operations (where the
-     * coordinates are copied to the device and hence the \c
-     * coordinatesReadyOnDeviceEvent is recorded). Force Halo exchange
-     * will be performed in \c streamNonLocal (also potentally
-     * with buffer clearing in \c streamLocal)and the \c
-     * communicateHaloForces method must be called after the
-     * non-local buffer operations, after the local force buffer
-     * has been copied to the GPU (if CPU forces are present), and
-     * before the local buffer operations. The force halo exchange
-     * does not yet support virial steps.
+     * Coordinate Halo exchange will be performed in its own stream
+     * with appropriate event-based synchronization, and the \c
+     * communicateHaloCoordinates method must be called before any
+     * subsequent operations that access non-local parts of the
+     * coordinate buffer (such as the non-local non-bonded
+     * kernels). It also must be called after the local coordinates
+     * buffer operations (where the coordinates are copied to the
+     * device and hence the \c coordinatesReadyOnDeviceEvent is
+     * recorded). Force Halo exchange will also be performed in its
+     * own stream with appropriate event-based synchronization, and
+     * the \c communicateHaloForces method must be called after the
+     * non-local buffer operations, after the local force buffer has
+     * been copied to the GPU (if CPU forces are present), and before
+     * the local buffer operations. The force halo exchange does not
+     * yet support virial steps.
      *
      * \param [inout] dd                       domdec structure
      * \param [in]    dimIndex                 the dimension index for this instance
      * \param [in]    mpi_comm_mysim           communicator used for simulation
      * \param [in]    deviceContext            GPU device context
-     * \param [in]    streamLocal              local NB CUDA stream.
-     * \param [in]    streamNonLocal           non-local NB CUDA stream.
      * \param [in]    pulse                    the communication pulse for this instance
      * \param [in]    wcycle                   The wallclock counter
      */
@@ -94,8 +94,6 @@ public:
                     int                  dimIndex,
                     MPI_Comm             mpi_comm_mysim,
                     const DeviceContext& deviceContext,
-                    const DeviceStream&  streamLocal,
-                    const DeviceStream&  streamNonLocal,
                     int                  pulse,
                     gmx_wallcycle*       wcycle);
     ~GpuHaloExchange();
@@ -116,15 +114,18 @@ public:
      * Must be called after local setCoordinates (which records an
      * event when the coordinate data has been copied to the
      * device).
-     * \param [in] box  Coordinate box (from which shifts will be constructed)
-     * \param [in] coordinatesReadyOnDeviceEvent event recorded when coordinates have been copied to device
+     * \param [in] box               Coordinate box (from which shifts will be constructed)
+     * \param [in] dependencyEvent   Dependency event for this operation
+     * \returns                      Event recorded when this operation has been launched
      */
-    void communicateHaloCoordinates(const matrix box, GpuEventSynchronizer* coordinatesReadyOnDeviceEvent);
+    GpuEventSynchronizer* communicateHaloCoordinates(const matrix box, GpuEventSynchronizer* dependencyEvent);
 
     /*! \brief GPU halo exchange of force buffer.
      * \param[in] accumulateForces  True if forces should accumulate, otherwise they are set
+     * \param[in] dependencyEvents  Dependency events for this operation
      */
-    void communicateHaloForces(bool accumulateForces);
+    void communicateHaloForces(bool                                           accumulateForces,
+                               FixedCapacityVector<GpuEventSynchronizer*, 2>* dependencyEvents);
 
     /*! \brief Get the event synchronizer for the forces ready on device.
      *  \returns  The event to synchronize the stream that consumes forces on device.
@@ -133,7 +134,7 @@ public:
 
 private:
     class Impl;
-    gmx::PrivateImplPointer<Impl> impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 } // namespace gmx

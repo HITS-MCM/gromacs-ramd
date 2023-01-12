@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -51,7 +47,7 @@
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
 
-static const char* pp_pat[] = { "C", "N", "CA", "C", "N" };
+static const char* const pp_pat[] = { "C", "N", "CA", "C", "N" };
 #define NPP (sizeof(pp_pat) / sizeof(pp_pat[0]))
 
 static bool d_comp(const t_dih& a, const t_dih& b)
@@ -85,8 +81,19 @@ static void calc_dihs(t_xrama* xr)
     for (i = 0; (i < xr->ndih); i++)
     {
         dd      = &(xr->dih[i]);
-        dd->ang = dih_angle(xr->x[dd->ai[0]], xr->x[dd->ai[1]], xr->x[dd->ai[2]], xr->x[dd->ai[3]],
-                            nullptr, r_ij, r_kj, r_kl, m, n, &t1, &t2, &t3);
+        dd->ang = dih_angle(xr->x[dd->ai[0]],
+                            xr->x[dd->ai[1]],
+                            xr->x[dd->ai[2]],
+                            xr->x[dd->ai[3]],
+                            nullptr,
+                            r_ij,
+                            r_kj,
+                            r_kl,
+                            m,
+                            n,
+                            &t1,
+                            &t2,
+                            &t3);
     }
 }
 
@@ -136,7 +143,9 @@ static void add_xr(t_xrama* xr, const int ff[5], const t_atoms* atoms)
     xr->pp[xr->npp].iphi  = xr->ndih - 2;
     xr->pp[xr->npp].ipsi  = xr->ndih - 1;
     xr->pp[xr->npp].bShow = FALSE;
-    sprintf(buf, "%s-%d", *atoms->resinfo[atoms->atom[ff[1]].resind].name,
+    sprintf(buf,
+            "%s-%d",
+            *atoms->resinfo[atoms->atom[ff[1]].resind].name,
             atoms->resinfo[atoms->atom[ff[1]].resind].nr);
     xr->pp[xr->npp].label = gmx_strdup(buf);
     xr->npp++;
@@ -229,8 +238,11 @@ static void get_dih_props(t_xrama* xr, const t_idef* idef, int mult)
     {
         if (xr->dih[i].mult == 0)
         {
-            fprintf(stderr, "Dihedral around %d,%d not found in topology. Using mult=%d\n",
-                    xr->dih[i].ai[1], xr->dih[i].ai[2], mult);
+            fprintf(stderr,
+                    "Dihedral around %d,%d not found in topology. Using mult=%d\n",
+                    xr->dih[i].ai[1],
+                    xr->dih[i].ai[2],
+                    mult);
             xr->dih[i].mult = mult;
             xr->dih[i].phi0 = 180;
         }

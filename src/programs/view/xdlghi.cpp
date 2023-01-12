@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -269,8 +266,8 @@ AddListFItem(t_x11* x11, t_dlgitemlist* list, t_fitem* fitem, t_id GroupID, t_id
     switch (fitem->edlg)
     {
         case edlgBN:
-            AddListItem(list, CreateButton(x11, fitem->name[0], fitem->bDef, (*ID)++, GroupID, x,
-                                           (*y), 0, 0, 0));
+            AddListItem(list,
+                        CreateButton(x11, fitem->name[0], fitem->bDef, (*ID)++, GroupID, x, (*y), 0, 0, 0));
             break;
         case edlgRB:
             std::strcpy(buf, fitem->def);
@@ -289,8 +286,9 @@ AddListFItem(t_x11* x11, t_dlgitemlist* list, t_fitem* fitem, t_id GroupID, t_id
 
             for (i = 0; (i < fitem->nname); i++)
             {
-                AddListItem(list, CreateRadioButton(x11, fitem->name[i], (iSel == i), (*ID)++,
-                                                    GroupID, x, (*y), 0, 0, 0));
+                AddListItem(list,
+                            CreateRadioButton(
+                                    x11, fitem->name[i], (iSel == i), (*ID)++, GroupID, x, (*y), 0, 0, 0));
                 (*y) += list->list[list->nitem - 1]->win.height + OFFS_Y;
                 (*w) = std::max((*w), list->list[list->nitem - 1]->win.width);
                 SetDlgitemOpts(list->list[list->nitem - 1], bUseMon, fitem->set, fitem->get, fitem->help);
@@ -301,18 +299,20 @@ AddListFItem(t_x11* x11, t_dlgitemlist* list, t_fitem* fitem, t_id GroupID, t_id
             bool bCheck;
 
             bCheck = gmx_strcasecmp(fitem->def, "TRUE") == 0;
-            AddListItem(list, CreateCheckBox(x11, fitem->name[0], bCheck, (*ID)++, GroupID, x, (*y),
-                                             0, 0, 0));
+            AddListItem(list,
+                        CreateCheckBox(x11, fitem->name[0], bCheck, (*ID)++, GroupID, x, (*y), 0, 0, 0));
             break;
         }
         case edlgST:
-            AddListItem(list, CreateStaticText(x11, fitem->nname, fitem->name, (*ID)++, GroupID, x,
-                                               (*y), 0, 0, 0));
+            AddListItem(list,
+                        CreateStaticText(
+                                x11, fitem->nname, fitem->name, (*ID)++, GroupID, x, (*y), 0, 0, 0));
             break;
         case edlgET:
             slen = std::strlen(fitem->name[0]) + strlen(fitem->def);
-            AddListItem(list, CreateEditText(x11, fitem->name[0], slen, fitem->def, (*ID)++,
-                                             GroupID, x, (*y), 0, 0, 0));
+            AddListItem(list,
+                        CreateEditText(
+                                x11, fitem->name[0], slen, fitem->def, (*ID)++, GroupID, x, (*y), 0, 0, 0));
             break;
         case edlgPM:
         case edlgGB:
@@ -353,8 +353,8 @@ static void AddListFGroup(t_x11* x11, t_dlgitemlist** grid, t_fgroup* fgroup, t_
     {
         ids[i] = GroupID + i + 1;
     }
-    item->list[0] = CreateGroupBox(x11, fgroup->name, GroupID, item->nitem - 1, ids, 2 * OFFS_X,
-                                   2 * OFFS_Y, w + 2 * OFFS_X, y, 0);
+    item->list[0] = CreateGroupBox(
+            x11, fgroup->name, GroupID, item->nitem - 1, ids, 2 * OFFS_X, 2 * OFFS_Y, w + 2 * OFFS_X, y, 0);
     sfree(ids);
     item->w = fgroup->w;
     item->h = fgroup->h;

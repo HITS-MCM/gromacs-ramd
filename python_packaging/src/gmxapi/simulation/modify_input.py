@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """modify_input operation module
 
@@ -42,7 +41,7 @@ and allows aspects of the simulation input to be overridden.
 
 __all__ = ['modify_input']
 
-import collections
+import collections.abc
 import inspect
 import typing
 
@@ -51,7 +50,7 @@ import gmxapi.abc
 import gmxapi.exceptions
 import gmxapi.operation as _op
 import gmxapi.typing
-from gmxapi.operation import InputCollectionDescription
+from gmxapi.operation import InputCollectionDescription, ResourceManager
 from .abc import ModuleObject
 
 # Initialize module-level logger
@@ -102,7 +101,7 @@ class SessionResources(object):
             _simulation_input: Unspecified. Reserved for implementation details.
 
         """
-        # For the intial implementation, _simulation_input is just a string that
+        # For the initial implementation, _simulation_input is just a string that
         # will be interpreted as a TPR file path. The typing will change in the
         # near term as we build the data flow model. Before 1.0, unusual members
         # like this will be removed or hidden in the interface of the other
@@ -134,8 +133,10 @@ _input = _op.InputCollectionDescription(
      ])
 
 
-def _session_resource_factory(input: _op.InputPack, output: PublishingDataProxy) -> SessionResources:
+def _session_resource_factory(input: _op.InputPack, output: PublishingDataProxy, **kwargs
+                              ) -> SessionResources:
     """Translate resources from the gmxapi.operation Context to the ReadTpr implementation."""
+    # TODO: Either get rid of **kwargs or clarify the roadmap and timeline for doing so.
     filename = input.kwargs['_simulation_input']
     parameters = input.kwargs['parameters']
     return SessionResources(_simulation_input=filename, parameters=parameters, publisher=output)
@@ -157,29 +158,6 @@ def _run(resources: SessionResources):
         setattr(resources.output, named_data, source_value)
 
 
-_next_uid = 0
-
-
-def _make_uid(input) -> str:
-    # TODO: Use input fingerprint for more useful identification.
-    salt = hash(input)
-    global _next_uid
-    new_uid = 'read_tpr_{}_{}'.format(_next_uid, salt)
-    _next_uid += 1
-    return new_uid
-
-
-class ResourceManager(gmxapi.operation.ResourceManager):
-
-    def update_output(self):
-        logger.debug('Updating output for {}.'.format(self.operation_id))
-        super().update_output()
-        for descriptor in _output_descriptors:
-            name = descriptor._name
-            if not self.is_done(name):
-                raise gmxapi.exceptions.ApiError('Expected output {} not updated.'.format(name))
-
-
 # Note: this is a class because we attach the input_description functionality,
 # but all of its functionality can be composed from dispatching functions.
 # TODO: Consider replacing this unique class with a pattern of composed instances of a common class.
@@ -196,6 +174,7 @@ class ResourceFactory(gmxapi.abc.ResourceFactory):
         # context is used for dispatching and annotates the Context of the other arguments.
         # context == None implies inputs are from Python UI.
         if self.source_context is None:
+            # TODO: De-duplicate re: StandardDirector.resource_factory()
             if isinstance(self.target_context, _op.Context):
                 return _standard_node_resource_factory(*args, **kwargs)
         if isinstance(self.source_context, _op.Context):
@@ -204,7 +183,7 @@ class ResourceFactory(gmxapi.abc.ResourceFactory):
             assert 'input' in kwargs
             assert 'output' in kwargs
             return _session_resource_factory(input=kwargs['input'], output=kwargs['output'])
-        raise gmxapi.exceptions.NotImplementedError(
+        raise gmxapi.exceptions.MissingImplementationError(
             'No translation from {} context to {}'.format(self.source_context, self.target_context))
 
     @typing.overload
@@ -214,21 +193,46 @@ class ResourceFactory(gmxapi.abc.ResourceFactory):
     def input_description(self, context: gmxapi.abc.Context):
         if isinstance(context, _op.Context):
             return StandardInputDescription()
-        raise gmxapi.exceptions.NotImplementedError('No input description available for {} context'.format(context))
+        raise gmxapi.exceptions.MissingImplementationError('No input description available for {} context'.format(context))
 
 
 class StandardInputDescription(_op.InputDescription):
-    """Provide the ReadTpr input description in gmxapi.operation Contexts."""
+    """Provide the ModifyInput input description in gmxapi.operation Contexts."""
+
+    # TODO: Improve fingerprinting.
+    # If _make_uid can't make sufficiently unique IDs, use additional "salt".
+    # Without fingerprinting, we cannot consistently hash *input* across processes,
+    # but we can consistently generate integers in the same sequence the first time
+    # we see each distinct input.
+    _next_uid: typing.ClassVar[int] = 0
+    _uids: typing.ClassVar[typing.MutableMapping[int, int]] = {}
+
+    @classmethod
+    def _make_uid(cls, input) -> str:
+        # TODO: Use input fingerprint for more useful identification.
+        # WARNING: The built-in hash will use memory locations, and so will not be consistent across
+        # process ranks, even if the input should be the same.
+        salt = hash(input)
+        if salt not in cls._uids:
+            cls._uids[salt] = cls._next_uid
+            cls._next_uid += 1
+        else:
+            logger.debug(
+                f'Reissuing uid for modify_input({input}): {cls._uids[salt]}'
+            )
+        new_uid = 'modify_input_{}'.format(cls._uids[salt])
+        return new_uid
 
     def signature(self) -> InputCollectionDescription:
         return _input
 
     def make_uid(self, input: _op.DataEdge) -> str:
-        return _make_uid(input)
+        assert isinstance(input, _op.DataEdge)
+        return self._make_uid(input)
 
 
 class RegisteredOperation(_op.OperationImplementation, metaclass=_op.OperationMeta):
-    """Provide the gmxapi compatible ReadTpr implementation."""
+    """Provide the gmxapi compatible ModifyInput implementation."""
 
     # This is a class method to allow the class object to be used in gmxapi.operation._make_registry_key
     @classmethod
@@ -238,11 +242,12 @@ class RegisteredOperation(_op.OperationImplementation, metaclass=_op.OperationMe
 
     @classmethod
     def namespace(self) -> str:
-        """read_tpr is importable from the gmxapi module."""
+        """modify_input is importable from the gmxapi module."""
         return 'gmxapi'
 
     @classmethod
-    def director(cls, context: gmxapi.abc.Context) -> _op.OperationDirector:
+    def director(cls, context: gmxapi.abc.Context):
+        # Currently, we only have a Directory for the gmxapi.operation.Context
         if isinstance(context, _op.Context):
             return StandardDirector(context)
 
@@ -281,11 +286,7 @@ class StandardDirector(gmxapi.abc.OperationDirector):
         builder.set_input_description(StandardInputDescription())
         builder.set_handle(StandardOperationHandle)
 
-        def runner_director(resources):
-            def runner():
-                _run(resources)
-
-            return runner
+        runner_director = _op.RunnerDirector(runner=_run, allow_duplicate=True)
 
         builder.set_runner_director(runner_director)
         builder.set_output_factory(_output_factory)
@@ -316,11 +317,15 @@ class StandardDirector(gmxapi.abc.OperationDirector):
         #
         if target is None:
             target = self.context
+        # TODO: Normalize and consolidate the context-based dispatching.
         if source is None:
+            # `source is None` implies source is coming from UI.
             if isinstance(target, _op.Context):
                 # Return a factory that can bind to function call arguments to produce a DataSourceCollection.
                 return ResourceFactory(target_context=target, source_context=source)
         if isinstance(source, _op.Context):
+            # The source is a gmxapi.operation.Context when the operation is being evaluated through
+            # a gmxapi.operation.ResourceManager. i.e. at run time.
             return ResourceFactory(target_context=target, source_context=source)
         if isinstance(source, ModuleObject):
             if isinstance(target, _op.Context):
@@ -363,13 +368,15 @@ def modify_input(input,
     """
     handle_context = context
     if handle_context is not None:
-        raise gmxapi.exceptions.NotImplementedError(
+        raise gmxapi.exceptions.MissingImplementationError(
             'context must be None. This factory is only for the Python UI right now.')
 
     target_context = _op.current_context()
     assert isinstance(target_context, _op.Context)
     # Get a director that will create a node in the standard context.
-    node_director = _op._get_operation_director(RegisteredOperation, context=target_context)
+    # TODO: For clarity, restructure code to use module-local helper functors that produce callables with clear
+    #  interfaces. (May clash with the current ABC scheme.)
+    node_director: StandardDirector = _op._get_operation_director(RegisteredOperation, context=target_context)
     assert isinstance(node_director, StandardDirector)
     # TODO: refine this protocol
     assert handle_context is None
@@ -385,7 +392,7 @@ def modify_input(input,
     # The source Context here is None (the handle Context). The resources themselves
     # may be from different Contexts, so we should dispatch at the add_resource
     # builder method, not here in the director client.
-    resource_factory = node_director.resource_factory(source=source_context, target=target_context)
-    resources = resource_factory(input=input, parameters=parameters)
+    resource_factory: ResourceFactory = node_director.resource_factory(source=source_context, target=target_context)
+    resources: _op.DataSourceCollection = resource_factory(input=input, parameters=parameters)
     handle = node_director(resources=resources, label=label)
     return handle

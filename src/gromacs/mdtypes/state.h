@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \file
@@ -63,11 +59,12 @@
 #include "gromacs/math/paddedvector.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/basedefinitions.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/real.h"
 
 struct t_inputrec;
+struct t_lambda;
+enum class FreeEnergyPerturbationType;
 
 namespace gmx
 {
@@ -87,48 +84,58 @@ using PaddedHostVector = gmx::PaddedHostVector<T>;
  * Currently the random seeds for SD and BD are missing.
  */
 
-/* \brief Enum for all entries in \p t_state
+/*! \brief Enum for all entries in \p t_state
  *
  * These enums are used in flags as (1<<est...).
  * The order of these enums should not be changed,
  * since that affects the checkpoint (.cpt) file format.
  */
-enum
+enum class StateEntry : int
 {
-    estLAMBDA,
-    estBOX,
-    estBOX_REL,
-    estBOXV,
-    estPRES_PREV,
-    estNH_XI,
-    estTHERM_INT,
-    estX,
-    estV,
-    estSDX_NOTSUPPORTED,
-    estCGP,
-    estLD_RNG_NOTSUPPORTED,
-    estLD_RNGI_NOTSUPPORTED,
-    estDISRE_INITF,
-    estDISRE_RM3TAV,
-    estORIRE_INITF,
-    estORIRE_DTAV,
-    estSVIR_PREV,
-    estNH_VXI,
-    estVETA,
-    estVOL0,
-    estNHPRES_XI,
-    estNHPRES_VXI,
-    estFVIR_PREV,
-    estFEPSTATE,
-    estMC_RNG_NOTSUPPORTED,
-    estMC_RNGI_NOTSUPPORTED,
-    estBAROS_INT,
-    estPULLCOMPREVSTEP,
-    estNR
+    Lambda,
+    Box,
+    BoxRel,
+    BoxV,
+    PressurePrevious,
+    Nhxi,
+    ThermInt,
+    X,
+    V,
+    SDxNotSupported,
+    Cgp,
+    LDRngNotSupported,
+    LDRngINotSupported,
+    DisreInitF,
+    DisreRm3Tav,
+    OrireInitF,
+    OrireDtav,
+    SVirPrev,
+    Nhvxi,
+    Veta,
+    Vol0,
+    Nhpresxi,
+    Nhpresvxi,
+    FVirPrev,
+    FepState,
+    MCRngNotSupported,
+    MCRngINotSupported,
+    BarosInt,
+    PullComPrevStep,
+    Count
 };
 
-//! \brief The names of the state entries, defined in src/gmxlib/checkpoint.c
-extern const char* est_names[estNR];
+//! \brief The names of the state entries, defined in src/gromacs/fileio/checkpoint.cpp
+const char* enumValueToString(StateEntry enumValue);
+/*! \brief Convert enum to bitmask value.
+ *
+ * Used for setting flags in checkpoint header and verifying which flags are set.
+ */
+template<typename Enum>
+inline int enumValueToBitMask(Enum enumValue)
+{
+    static_assert(static_cast<int>(Enum::Count) <= std::numeric_limits<int>::digits);
+    return 1 << static_cast<int>(enumValue);
+}
 
 /*! \libinternal \brief History information for NMR distance and orientation restraints
  *
@@ -142,12 +149,10 @@ class history_t
 public:
     history_t();
 
-    real  disre_initf;  //!< The scaling factor for initializing the time av.
-    int   ndisrepairs;  //!< The number of distance restraints
-    real* disre_rm3tav; //!< The r^-3 time averaged pair distances
-    real  orire_initf;  //!< The scaling factor for initializing the time av.
-    int   norire_Dtav;  //!< The number of matrix element in dtav (npair*5)
-    real* orire_Dtav;   //!< The time averaged orientation tensors
+    real              disre_initf;  //!< The scaling factor for initializing the time av.
+    std::vector<real> disre_rm3tav; //!< The r^-3 time averaged pair distances
+    real              orire_initf;  //!< The scaling factor for initializing the time av.
+    std::vector<real> orire_Dtav;   //!< The time averaged orientation tensors
 };
 
 /*! \libinternal \brief Struct used for checkpointing only
@@ -162,7 +167,7 @@ class ekinstate_t
 public:
     ekinstate_t();
 
-    gmx_bool            bUpToDate;      //!< Test if all data is up to date
+    bool                bUpToDate;      //!< Test if all data is up to date
     int                 ekin_n;         //!< The number of tensors
     tensor*             ekinh;          //!< Half step Ekin, size \p ekin_n
     tensor*             ekinf;          //!< Full step Ekin, size \p ekin_n
@@ -193,14 +198,14 @@ public:
  *
  * \todo Split out into microstate and observables history.
  */
-typedef struct df_history_t
+struct df_history_t
 {
     int nlambda; //!< total number of lambda states - for history
 
-    gmx_bool bEquil;   //!< Have we reached equilibration
-    int*     n_at_lam; //!< number of points observed at each lambda
-    real*    wl_histo; //!< histogram for WL flatness determination
-    real     wl_delta; //!< current wang-landau delta
+    bool  bEquil;   //!< Have we reached equilibration
+    int*  n_at_lam; //!< number of points observed at each lambda
+    real* wl_histo; //!< histogram for WL flatness determination
+    real  wl_delta; //!< current wang-landau delta
 
     real* sum_weights; //!< weights of the states
     real* sum_dg; //!< free energies of the states -- not actually used for weighting, but informational
@@ -215,7 +220,15 @@ typedef struct df_history_t
     real** Tij;           //!< transition matrix
     real** Tij_empirical; //!< Empirical transition matrix
 
-} df_history_t;
+    /*! \brief Allows to read and write checkpoint within modular simulator
+     *
+     * \tparam operation  Whether we're reading or writing
+     * \param checkpointData  The CheckpointData object
+     * \param elamstats  How the lambda weights are calculated
+     */
+    template<gmx::CheckpointDataOperation operation>
+    void doCheckpoint(gmx::CheckpointData<operation> checkpointData, LambdaWeightCalculation elamstats);
+};
 
 
 /*! \brief The microstate of the system
@@ -237,22 +250,22 @@ public:
     int nnhpres;       //!< The number of NH-chains for the MTTK barostat (always 1 or 0)
     int nhchainlength; //!< The NH-chain length for temperature coupling and MTTK barostat
     int flags; //!< Set of bit-flags telling which entries are present, see enum at the top of the file
-    int                      fep_state;      //!< indicates which of the alchemical states we are in
-    std::array<real, efptNR> lambda;         //!< Free-energy lambda vector
-    matrix                   box;            //!< Matrix of box vectors
-    matrix                   box_rel;        //!< Relative box vectors to preserve box shape
-    matrix                   boxv;           //!< Box velocities for Parrinello-Rahman P-coupling
-    matrix                   pres_prev;      //!< Pressure of the previous step for pcoupl
-    matrix                   svir_prev;      //!< Shake virial for previous step for pcoupl
-    matrix                   fvir_prev;      //!< Force virial of the previous step for pcoupl
-    std::vector<double>      nosehoover_xi;  //!< Nose-Hoover coordinates (ngtc)
-    std::vector<double>      nosehoover_vxi; //!< Nose-Hoover velocities (ngtc)
-    std::vector<double>      nhpres_xi;      //!< Pressure Nose-Hoover coordinates
-    std::vector<double>      nhpres_vxi;     //!< Pressure Nose-Hoover velocities
-    std::vector<double>      therm_integral; //!< Work exterted N-H/V-rescale T-coupling (ngtc)
-    double                   baros_integral; //!< For Berendsen P-coupling conserved quantity
-    real                     veta;           //!< Trotter based isotropic P-coupling
-    real vol0; //!< Initial volume,required for computing MTTK conserved quantity
+    int fep_state; //!< indicates which of the alchemical states we are in
+    gmx::EnumerationArray<FreeEnergyPerturbationCouplingType, real> lambda; //!< Free-energy lambda vector
+    matrix                                                          box; //!< Matrix of box vectors
+    matrix              box_rel;        //!< Relative box vectors to preserve box shape
+    matrix              boxv;           //!< Box velocities for Parrinello-Rahman P-coupling
+    matrix              pres_prev;      //!< Pressure of the previous step for pcoupl
+    matrix              svir_prev;      //!< Shake virial for previous step for pcoupl
+    matrix              fvir_prev;      //!< Force virial of the previous step for pcoupl
+    std::vector<double> nosehoover_xi;  //!< Nose-Hoover coordinates (ngtc)
+    std::vector<double> nosehoover_vxi; //!< Nose-Hoover velocities (ngtc)
+    std::vector<double> nhpres_xi;      //!< Pressure Nose-Hoover coordinates
+    std::vector<double> nhpres_vxi;     //!< Pressure Nose-Hoover velocities
+    std::vector<double> therm_integral; //!< Work exterted N-H/V-rescale T-coupling (ngtc)
+    double              baros_integral; //!< For Berendsen P-coupling conserved quantity
+    real                veta;           //!< Trotter based isotropic P-coupling
+    real                vol0; //!< Initial volume,required for computing MTTK conserved quantity
     PaddedHostVector<gmx::RVec> x;    //!< The coordinates (natoms)
     PaddedHostVector<gmx::RVec> v;    //!< The velocities (natoms)
     PaddedHostVector<gmx::RVec> cg_p; //!< p vector for conjugate gradient minimization
@@ -284,17 +297,6 @@ struct t_extmass
     tensor              Winvm; /* inverse pressure mass tensor, computed       */
 };
 
-
-typedef struct
-{
-    real    veta;
-    double  rscale;
-    double  vscale;
-    double  rvscale;
-    double  alpha;
-    double* vscale_nhc;
-} t_vetavars;
-
 #endif // DOXYGEN
 
 //! Resizes the T- and P-coupling state variables
@@ -307,7 +309,7 @@ void state_change_natoms(t_state* state, int natoms);
 void init_dfhist_state(t_state* state, int dfhistNumLambda);
 
 /*! \brief Compares two states, write the differences to stdout */
-void comp_state(const t_state* st1, const t_state* st2, gmx_bool bRMSD, real ftol, real abstol);
+void comp_state(const t_state* st1, const t_state* st2, bool bRMSD, real ftol, real abstol);
 
 /*! \brief Allocates an rvec pointer and copy the contents of v to it */
 rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::index n);
@@ -358,7 +360,7 @@ static inline gmx::ArrayRef<const gmx::RVec> positionsFromStatePointer(const t_s
  * \param[in] lambda The array of lambda values.
  * \param[in] isInitialOutput Whether this output is the initial lambda state or not.
  */
-void printLambdaStateToLog(FILE* fplog, gmx::ArrayRef<real> lambda, bool isInitialOutput);
+void printLambdaStateToLog(FILE* fplog, gmx::ArrayRef<const real> lambda, bool isInitialOutput);
 
 
 /*! \brief Fills fep_state and lambda if needed
@@ -367,6 +369,14 @@ void printLambdaStateToLog(FILE* fplog, gmx::ArrayRef<real> lambda, bool isIniti
  * and lambda on master rank.
  *
  * Reports the initial lambda state to the log file. */
-void initialize_lambdas(FILE* fplog, const t_inputrec& ir, bool isMaster, int* fep_state, gmx::ArrayRef<real> lambda);
+void initialize_lambdas(FILE*                      fplog,
+                        FreeEnergyPerturbationType freeEnergyPerturbationType,
+                        bool                       haveSimulatedTempering,
+                        const t_lambda&            fep,
+                        gmx::ArrayRef<const real>  simulatedTemperingTemps,
+                        gmx::ArrayRef<real>        ref_t,
+                        bool                       isMaster,
+                        int*                       fep_state,
+                        gmx::ArrayRef<real>        lambda);
 
 #endif

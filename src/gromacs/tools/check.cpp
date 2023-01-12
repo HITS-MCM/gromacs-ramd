@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2013, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -117,9 +113,9 @@ static void comp_tpx(const char* fn1, const char* fn2, gmx_bool bRMSD, real ftol
     }
     else
     {
-        if (ir[0]->efep == efepNO)
+        if (ir[0]->efep == FreeEnergyPerturbationType::No)
         {
-            fprintf(stdout, "inputrec->efep = %s\n", efep_names[ir[0]->efep]);
+            fprintf(stdout, "inputrec->efep = %s\n", enumValueToString(ir[0]->efep));
         }
         else
         {
@@ -271,8 +267,12 @@ static void chk_bonds(const InteractionDefinitions* idef, PbcType pbcType, rvec*
                     deviation = gmx::square(blen - b0);
                     if (std::sqrt(deviation / gmx::square(b0)) > tol)
                     {
-                        fprintf(stderr, "Distance between atoms %d and %d is %.3f, should be %.3f\n",
-                                ai + 1, aj + 1, blen, b0);
+                        fprintf(stderr,
+                                "Distance between atoms %d and %d is %.3f, should be %.3f\n",
+                                ai + 1,
+                                aj + 1,
+                                blen,
+                                b0);
                     }
                 }
             }
@@ -298,7 +298,7 @@ static void chk_trj(const gmx_output_env_t* oenv, const char* fn, const char* tp
     {
         read_tpx_state(tpr, &ir, &state, &mtop);
         top = std::make_unique<gmx_localtop_t>(mtop.ffparams);
-        gmx_mtop_generate_local_top(mtop, top.get(), ir.efep != efepNO);
+        gmx_mtop_generate_local_top(mtop, top.get(), ir.efep != FreeEnergyPerturbationType::No);
     }
     new_natoms = -1;
     natoms     = -1;
@@ -357,8 +357,12 @@ static void chk_trj(const gmx_output_env_t* oenv, const char* fn, const char* tp
                 > 0.1 * (std::fabs(fr.time - old_t1) + std::fabs(old_t1 - old_t2)))
             {
                 bShowTimestep = FALSE;
-                fprintf(stderr, "%sTimesteps at t=%g don't match (%g, %g)\n", newline ? "\n" : "",
-                        old_t1, old_t1 - old_t2, fr.time - old_t1);
+                fprintf(stderr,
+                        "%sTimesteps at t=%g don't match (%g, %g)\n",
+                        newline ? "\n" : "",
+                        old_t1,
+                        old_t1 - old_t2,
+                        fr.time - old_t1);
             }
         }
         natoms = new_natoms;
@@ -486,15 +490,18 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
                 ekin += 0.5 * atoms->atom[i].m * v[i][j] * v[i][j];
             }
         }
-        temp1 = (2.0 * ekin) / (natom * DIM * BOLTZ);
-        temp2 = (2.0 * ekin) / (natom * (DIM - 1) * BOLTZ);
+        temp1 = (2.0 * ekin) / (natom * DIM * gmx::c_boltz);
+        temp2 = (2.0 * ekin) / (natom * (DIM - 1) * gmx::c_boltz);
         fprintf(stderr, "Kinetic energy: %g (kJ/mol)\n", ekin);
         fprintf(stderr,
                 "Assuming the number of degrees of freedom to be "
                 "Natoms * %d or Natoms * %d,\n"
                 "the velocities correspond to a temperature of the system\n"
                 "of %g K or %g K respectively.\n\n",
-                DIM, DIM - 1, temp1, temp2);
+                DIM,
+                DIM - 1,
+                temp1,
+                temp2);
     }
 
     /* check coordinates */
@@ -507,17 +514,25 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
         fprintf(stderr,
                 "Checking for atoms closer than %g and not between %g and %g,\n"
                 "relative to sum of Van der Waals distance:\n",
-                vdw_fac, bon_lo, bon_hi);
+                vdw_fac,
+                bon_lo,
+                bon_hi);
         snew(atom_vdw, natom);
         AtomProperties aps;
         for (i = 0; (i < natom); i++)
         {
-            aps.setAtomProperty(epropVDW, *(atoms->resinfo[atoms->atom[i].resind].name),
-                                *(atoms->atomname[i]), &(atom_vdw[i]));
+            aps.setAtomProperty(epropVDW,
+                                *(atoms->resinfo[atoms->atom[i].resind].name),
+                                *(atoms->atomname[i]),
+                                &(atom_vdw[i]));
             if (debug)
             {
-                fprintf(debug, "%5d %4s %4s %7g\n", i + 1, *(atoms->resinfo[atoms->atom[i].resind].name),
-                        *(atoms->atomname[i]), atom_vdw[i]);
+                fprintf(debug,
+                        "%5d %4s %4s %7g\n",
+                        i + 1,
+                        *(atoms->resinfo[atoms->atom[i].resind].name),
+                        *(atoms->atomname[i]),
+                        atom_vdw[i]);
             }
         }
         if (bB)
@@ -549,15 +564,32 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
                 {
                     if (bFirst)
                     {
-                        fprintf(stderr, "\r%5s %4s %8s %5s  %5s %4s %8s %5s  %6s\n", "atom#", "name",
-                                "residue", "r_vdw", "atom#", "name", "residue", "r_vdw", "distance");
+                        fprintf(stderr,
+                                "\r%5s %4s %8s %5s  %5s %4s %8s %5s  %6s\n",
+                                "atom#",
+                                "name",
+                                "residue",
+                                "r_vdw",
+                                "atom#",
+                                "name",
+                                "residue",
+                                "r_vdw",
+                                "distance");
                         bFirst = FALSE;
                     }
-                    fprintf(stderr, "\r%5d %4s %4s%4d %-5.3g  %5d %4s %4s%4d %-5.3g  %-6.4g\n", i + 1,
-                            *(atoms->atomname[i]), *(atoms->resinfo[atoms->atom[i].resind].name),
-                            atoms->resinfo[atoms->atom[i].resind].nr, atom_vdw[i], j + 1,
-                            *(atoms->atomname[j]), *(atoms->resinfo[atoms->atom[j].resind].name),
-                            atoms->resinfo[atoms->atom[j].resind].nr, atom_vdw[j], std::sqrt(r2));
+                    fprintf(stderr,
+                            "\r%5d %4s %4s%4d %-5.3g  %5d %4s %4s%4d %-5.3g  %-6.4g\n",
+                            i + 1,
+                            *(atoms->atomname[i]),
+                            *(atoms->resinfo[atoms->atom[i].resind].name),
+                            atoms->resinfo[atoms->atom[i].resind].nr,
+                            atom_vdw[i],
+                            j + 1,
+                            *(atoms->atomname[j]),
+                            *(atoms->resinfo[atoms->atom[j].resind].name),
+                            atoms->resinfo[atoms->atom[j].resind].nr,
+                            atom_vdw[j],
+                            std::sqrt(r2));
                 }
             }
         }
@@ -593,12 +625,20 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
                                 "):\n"
                                 "(These may occur often and are normally not a problem)\n"
                                 "%5s %4s %8s %5s  %s\n",
-                                "atom#", "name", "residue", "r_vdw", "coordinate");
+                                "atom#",
+                                "name",
+                                "residue",
+                                "r_vdw",
+                                "coordinate");
                         bFirst = FALSE;
                     }
-                    fprintf(stderr, "%5d %4s %4s%4d %-5.3g", i, *(atoms->atomname[i]),
+                    fprintf(stderr,
+                            "%5d %4s %4s%4d %-5.3g",
+                            i,
+                            *(atoms->atomname[i]),
                             *(atoms->resinfo[atoms->atom[i].resind].name),
-                            atoms->resinfo[atoms->atom[i].resind].nr, atom_vdw[i]);
+                            atoms->resinfo[atoms->atom[i].resind].nr,
+                            atom_vdw[i]);
                     for (j = 0; (j < DIM); j++)
                     {
                         fprintf(stderr, " %6.3g", x[i][j]);
@@ -637,8 +677,12 @@ static void chk_ndx(const char* fn)
         printf("Nr.   Group               #Entries   First    Last\n");
         for (i = 0; (i < grps->nr); i++)
         {
-            printf("%4d  %-20s%8d%8d%8d\n", i, grpname[i], grps->index[i + 1] - grps->index[i],
-                   grps->a[grps->index[i]] + 1, grps->a[grps->index[i + 1] - 1] + 1);
+            printf("%4d  %-20s%8d%8d%8d\n",
+                   i,
+                   grpname[i],
+                   grps->index[i + 1] - grps->index[i],
+                   grps->a[grps->index[i]] + 1,
+                   grps->a[grps->index[i + 1] - 1] + 1);
         }
     }
     for (i = 0; (i < grps->nr); i++)
@@ -681,8 +725,7 @@ static void chk_enx(const char* fn)
                 > 0.1 * (fabs(fr->t - old_t1) + std::fabs(old_t1 - old_t2)))
             {
                 bShowTStep = FALSE;
-                fprintf(stderr, "\nTimesteps at t=%g don't match (%g, %g)\n", old_t1,
-                        old_t1 - old_t2, fr->t - old_t1);
+                fprintf(stderr, "\nTimesteps at t=%g don't match (%g, %g)\n", old_t1, old_t1 - old_t2, fr->t - old_t1);
             }
         }
         old_t2 = old_t1;
@@ -694,8 +737,7 @@ static void chk_enx(const char* fn)
         }
         if (fnr == 0)
         {
-            fprintf(stderr, "\rframe: %6s (index %6d), t: %10.3f\n", gmx_step_str(fr->step, buf),
-                    fnr, fr->t);
+            fprintf(stderr, "\rframe: %6s (index %6d), t: %10.3f\n", gmx_step_str(fr->step, buf), fnr, fr->t);
         }
         fnr++;
     }
@@ -753,14 +795,14 @@ int gmx_check(int argc, char* argv[])
     const char *fn1 = nullptr, *fn2 = nullptr, *tex = nullptr;
 
     gmx_output_env_t* oenv;
-    static real       vdw_fac  = 0.8;
-    static real       bon_lo   = 0.4;
-    static real       bon_hi   = 0.7;
-    static gmx_bool   bRMSD    = FALSE;
-    static real       ftol     = 0.001;
-    static real       abstol   = 0.001;
-    static gmx_bool   bCompAB  = FALSE;
-    static char*      lastener = nullptr;
+    real              vdw_fac  = 0.8;
+    real              bon_lo   = 0.4;
+    real              bon_hi   = 0.7;
+    gmx_bool          bRMSD    = FALSE;
+    real              ftol     = 0.001;
+    real              abstol   = 0.001;
+    gmx_bool          bCompAB  = FALSE;
+    char*             lastener = nullptr;
     static t_pargs    pa[]     = {
         { "-vdwfac",
           FALSE,

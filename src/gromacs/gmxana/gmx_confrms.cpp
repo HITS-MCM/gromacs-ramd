@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -51,6 +47,7 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/math/do_fit.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/rmpbc.h"
@@ -280,7 +277,12 @@ static int find_next_match_res(int*       rnr1,
     {
         if (debug)
         {
-            fprintf(debug, "%d.%d.%dX%sX%s", dx, rr1, rr2, *resinfo1[index1[rr1 + 1]].name,
+            fprintf(debug,
+                    "%d.%d.%dX%sX%s",
+                    dx,
+                    rr1,
+                    rr2,
+                    *resinfo1[index1[rr1 + 1]].name,
                     *resinfo2[index2[rr2 + 1]].name);
         }
         dx = 1;
@@ -417,8 +419,16 @@ static void find_matching_names(int*           isize1,
             }
             if (debug)
             {
-                fprintf(debug, " -> %s%d-%s%d %s%d-%s%d", *resinfo1[rnr1].name, rnr1, *atnms1[index1[i1]],
-                        index1[i1], *resinfo2[rnr2].name, rnr2, *atnms2[index2[i2]], index2[i2]);
+                fprintf(debug,
+                        " -> %s%d-%s%d %s%d-%s%d",
+                        *resinfo1[rnr1].name,
+                        rnr1,
+                        *atnms1[index1[i1]],
+                        index1[i1],
+                        *resinfo2[rnr2].name,
+                        rnr2,
+                        *atnms2[index2[i2]],
+                        index2[i2]);
             }
             m1 = find_res_end(i1, *isize1, index1, atoms1);
             m2 = find_res_end(i2, *isize2, index2, atoms2);
@@ -550,8 +560,8 @@ int gmx_confrms(int argc, char* argv[])
     real* msds;
 
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa, asize(desc), desc,
-                           0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -601,8 +611,12 @@ int gmx_confrms(int argc, char* argv[])
         if (matchndxfile)
         {
             fp = gmx_ffopen(matchndxfile, "w");
-            fprintf(fp, "; Matching atoms between %s from %s and %s from %s\n", groupnames1,
-                    conf1file, groupnames2, conf2file);
+            fprintf(fp,
+                    "; Matching atoms between %s from %s and %s from %s\n",
+                    groupnames1,
+                    conf1file,
+                    groupnames2,
+                    conf2file);
             fprintf(fp, "[ Match_%s_%s ]\n", conf1file, groupnames1);
             for (i = 0; i < isize1; i++)
             {
@@ -630,8 +644,13 @@ int gmx_confrms(int argc, char* argv[])
         {
             if (warn < 20)
             {
-                fprintf(stderr, "Warning: atomnames at index %d don't match: %d %s, %d %s\n", i + 1,
-                        index1[i] + 1, name1, index2[i] + 1, name2);
+                fprintf(stderr,
+                        "Warning: atomnames at index %d don't match: %d %s, %d %s\n",
+                        i + 1,
+                        index1[i] + 1,
+                        name1,
+                        index2[i] + 1,
+                        name2);
             }
             warn++;
         }
@@ -736,7 +755,7 @@ int gmx_confrms(int argc, char* argv[])
                 /* Avoid segfaults when writing the pdb-file */
                 for (i = 0; i < atoms1->nr; i++)
                 {
-                    atoms1->pdbinfo[i].type         = eptAtom;
+                    atoms1->pdbinfo[i].type         = PdbRecordType::Atom;
                     atoms1->pdbinfo[i].occup        = 1.00;
                     atoms1->pdbinfo[i].bAnisotropic = FALSE;
                     if (bBfac)
@@ -765,7 +784,7 @@ int gmx_confrms(int argc, char* argv[])
 
                 for (i = 0; i < atoms2->nr; i++)
                 {
-                    atoms2->pdbinfo[i].type         = eptAtom;
+                    atoms2->pdbinfo[i].type         = PdbRecordType::Atom;
                     atoms2->pdbinfo[i].occup        = 1.00;
                     atoms2->pdbinfo[i].bAnisotropic = FALSE;
                     if (bBfac)
@@ -814,12 +833,14 @@ int gmx_confrms(int argc, char* argv[])
         default:
             if (bBfac)
             {
-                fprintf(stderr, "WARNING: cannot write B-factor values to %s file\n",
+                fprintf(stderr,
+                        "WARNING: cannot write B-factor values to %s file\n",
                         ftp2ext(fn2ftp(outfile)));
             }
             if (!bOne)
             {
-                fprintf(stderr, "WARNING: cannot write the reference structure to %s file\n",
+                fprintf(stderr,
+                        "WARNING: cannot write the reference structure to %s file\n",
                         ftp2ext(fn2ftp(outfile)));
             }
             write_sto_conf(outfile, *top2->name, atoms2, x2, v2, pbcType2, box2);

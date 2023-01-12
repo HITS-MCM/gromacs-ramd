@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *  \brief Define infrastructure for OpenCL JIT compilation for Gromacs
@@ -80,7 +78,7 @@ static bool useBuildCache = getenv("GMX_OCL_GENCACHE") != nullptr;
 
 /*! \brief Handles writing the OpenCL JIT compilation log to \c fplog.
  *
- * If \c fplog is non-null and either the GMX_OCL_DUMP_LOG environment
+ * If \c fplog is non-null and either the \c GMX_OCL_DUMP_LOG environment
  * variable is set or the compilation failed, then the OpenCL
  * compilation log is written.
  *
@@ -89,7 +87,8 @@ static bool useBuildCache = getenv("GMX_OCL_GENCACHE") != nullptr;
  * \param deviceId            Id of the device for which compilation took place
  * \param kernelFilename      File name containing the kernel
  * \param preprocessorOptions String containing the preprocessor command-line options used for the
- * build \param buildFailed         Whether the OpenCL build succeeded
+ *                            build
+ * \param buildFailed         Whether the OpenCL build succeeded
  *
  * \throws std::bad_alloc if out of memory */
 static void writeOclBuildLog(FILE*              fplog,
@@ -126,8 +125,8 @@ static void writeOclBuildLog(FILE*              fplog,
         buildLogGuard.reset(buildLog);
 
         /* Get the actual compilation log */
-        cl_error = clGetProgramBuildInfo(program, deviceId, CL_PROGRAM_BUILD_LOG, buildLogSize,
-                                         buildLog, nullptr);
+        cl_error = clGetProgramBuildInfo(
+                program, deviceId, CL_PROGRAM_BUILD_LOG, buildLogSize, buildLog, nullptr);
         if (cl_error != CL_SUCCESS)
         {
             GMX_THROW(InternalError("Could not get OpenCL program build log, error was "
@@ -168,8 +167,9 @@ static std::string selectCompilerOptions(DeviceVendor deviceVendor)
         compilerOptions += " -cl-opt-disable";
     }
 
-    /* Fastmath imprves performance on all supported arch */
-    if (getenv("GMX_OCL_DISABLE_FASTMATH") == nullptr)
+    /* Fastmath improves performance on all supported arch,
+     * but is tends to cause problems on Intel (Issue #3898) */
+    if ((deviceVendor != DeviceVendor::Intel) && (getenv("GMX_OCL_DISABLE_FASTMATH") == nullptr))
     {
         compilerOptions += " -cl-fast-relaxed-math";
 
@@ -248,9 +248,8 @@ static std::string getSourceRootPath(const std::string& sourceRelativePath)
 size_t getKernelWarpSize(cl_kernel kernel, cl_device_id deviceId)
 {
     size_t warpSize = 0;
-    cl_int cl_error =
-            clGetKernelWorkGroupInfo(kernel, deviceId, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE,
-                                     sizeof(warpSize), &warpSize, nullptr);
+    cl_int cl_error = clGetKernelWorkGroupInfo(
+            kernel, deviceId, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(warpSize), &warpSize, nullptr);
     if (cl_error != CL_SUCCESS)
     {
         GMX_THROW(InternalError("Could not query OpenCL preferred workgroup size, error was "
@@ -450,7 +449,8 @@ cl_program compileProgram(FILE*              fplog,
                 // Failing to read from the cache is not a critical error
                 formatExceptionMessageToFile(fplog, e);
             }
-            fprintf(fplog, "OpenCL binary cache file %s is present, will load kernels.\n",
+            fprintf(fplog,
+                    "OpenCL binary cache file %s is present, will load kernels.\n",
                     cacheFilename.c_str());
         }
         else
@@ -487,8 +487,7 @@ cl_program compileProgram(FILE*              fplog,
 
     /* Write log first, and then throw exception that the user know what is
        the issue even if the build fails. */
-    writeOclBuildLog(fplog, program, deviceId, kernelFilename, preprocessorOptions,
-                     buildStatus != CL_SUCCESS);
+    writeOclBuildLog(fplog, program, deviceId, kernelFilename, preprocessorOptions, buildStatus != CL_SUCCESS);
 
     if (buildStatus != CL_SUCCESS)
     {

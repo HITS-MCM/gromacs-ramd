@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*
@@ -42,25 +41,28 @@
 #define GMX_MDLIB_SWAPHISTORY_H
 
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/utility/enumerationhelpers.h"
 
+enum class Domain : int;
+enum class ChannelHistory : int;
 /* History of an ion type used in position swapping
  */
-typedef struct swapstateIons_t
+struct swapstateIons_t
 {
-    int  nMolReq[eCompNR];      // Requested # of molecules per compartment
-    int* nMolReq_p[eCompNR];    // Pointer to this data (for checkpoint writing)
-    int  inflow_net[eCompNR];   // Flux determined from the # of swaps
-    int* inflow_net_p[eCompNR]; // Pointer to this data
-    int* nMolPast[eCompNR];     // Array with nAverage entries for history
-    int* nMolPast_p[eCompNR];   // Pointer points to the first entry only
+    gmx::EnumerationArray<Compartment, int> nMolReq; // Requested # of molecules per compartment
+    gmx::EnumerationArray<Compartment, int*> nMolReq_p; // Pointer to this data (for checkpoint writing)
+    gmx::EnumerationArray<Compartment, int>  inflow_net;   // Flux determined from the # of swaps
+    gmx::EnumerationArray<Compartment, int*> inflow_net_p; // Pointer to this data
+    gmx::EnumerationArray<Compartment, int*> nMolPast;   // Array with nAverage entries for history
+    gmx::EnumerationArray<Compartment, int*> nMolPast_p; // Pointer points to the first entry only
 
     // Channel flux detection, this is counting only and has no influence on whether swaps are performed or not:                                                                 */
-    int            fluxfromAtoB[eCompNR];   // Flux determined from the split cylinders
-    int*           fluxfromAtoB_p[eCompNR]; // Pointer to this data
-    int            nMol;                    // Number of molecules, size of the following arrays
-    unsigned char* comp_from;               // Ion came from which compartment?
-    unsigned char* channel_label;           // Through which channel did this ion pass?
-} swapstateIons_t;
+    gmx::EnumerationArray<Channel, int>  fluxfromAtoB;   // Flux determined from the split cylinders
+    gmx::EnumerationArray<Channel, int*> fluxfromAtoB_p; // Pointer to this data
+    int                                  nMol; // Number of molecules, size of the following arrays
+    Domain*                              comp_from;     // Ion came from which compartment?
+    ChannelHistory*                      channel_label; // Through which channel did this ion pass?
+};
 
 /* Position swapping state
  *
@@ -74,16 +76,16 @@ typedef struct swapstateIons_t
  */
 typedef struct swaphistory_t
 {
-    int  eSwapCoords; // Swapping along x, y, or z-direction?
-    int  nIonTypes;   // Number of ion types, this is the size of the following arrays
+    SwapType eSwapCoords; // Swapping along x, y, or z-direction?
+    int      nIonTypes;   // Number of ion types, this is the size of the following arrays
     int  nAverage; // Use average over this many swap attempt steps when determining the ion counts
     int  fluxleak; // Ions not going through any channel (bad!)
-    int* fluxleak_p;               // Pointer to this data
-    gmx_bool         bFromCpt;     // Did we start from a checkpoint file?
-    int              nat[eChanNR]; // Size of xc_old_whole, i.e. the number of atoms in each channel
-    rvec*            xc_old_whole[eChanNR]; // Last known whole positions of the two channels (important for multimeric ch.!)
-    rvec**           xc_old_whole_p[eChanNR]; // Pointer to these positions
-    swapstateIons_t* ionType;                 // History information for one ion type
+    int* fluxleak_p;                         // Pointer to this data
+    bool bFromCpt;                           // Did we start from a checkpoint file?
+    gmx::EnumerationArray<Channel, int> nat; // Size of xc_old_whole, i.e. the number of atoms in each channel
+    gmx::EnumerationArray<Channel, rvec*> xc_old_whole; // Last known whole positions of the two channels (important for multimeric ch.!)
+    gmx::EnumerationArray<Channel, rvec**> xc_old_whole_p; // Pointer to these positions
+    swapstateIons_t*                       ionType;        // History information for one ion type
 } swaphistory_t;
 
 #endif

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -170,8 +166,18 @@ int gmx_polystat(int argc, char* argv[])
     char **           legp, buf[STRLEN];
     gmx_rmpbc_t       gpbc = nullptr;
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME | PCA_TIME_UNIT, NFILE, fnm,
-                           asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_CAN_VIEW | PCA_CAN_TIME | PCA_TIME_UNIT,
+                           NFILE,
+                           fnm,
+                           asize(pa),
+                           pa,
+                           asize(desc),
+                           desc,
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -213,8 +219,11 @@ int gmx_polystat(int argc, char* argv[])
 
     if (opt2bSet("-v", NFILE, fnm))
     {
-        outv = xvgropen(opt2fn("-v", NFILE, fnm), "Principal components",
-                        output_env_get_xvgr_tlabel(oenv), "(nm)", oenv);
+        outv = xvgropen(opt2fn("-v", NFILE, fnm),
+                        "Principal components",
+                        output_env_get_xvgr_tlabel(oenv),
+                        "(nm)",
+                        oenv);
         snew(legp, DIM * DIM);
         for (d = 0; d < DIM; d++)
         {
@@ -233,8 +242,11 @@ int gmx_polystat(int argc, char* argv[])
 
     if (opt2bSet("-p", NFILE, fnm))
     {
-        outp = xvgropen(opt2fn("-p", NFILE, fnm), "Persistence length",
-                        output_env_get_xvgr_tlabel(oenv), "bonds", oenv);
+        outp = xvgropen(opt2fn("-p", NFILE, fnm),
+                        "Persistence length",
+                        output_env_get_xvgr_tlabel(oenv),
+                        "bonds",
+                        oenv);
         snew(bond, nat_max - 1);
         snew(sum_inp, nat_min / 2);
         snew(ninp, nat_min / 2);
@@ -246,9 +258,9 @@ int gmx_polystat(int argc, char* argv[])
 
     if (opt2bSet("-i", NFILE, fnm))
     {
-        outi = xvgropen(opt2fn("-i", NFILE, fnm), "Internal distances", "n",
-                        "<R\\S2\\N(n)>/n (nm\\S2\\N)", oenv);
-        i    = index[molind[1] - 1] - index[molind[0]]; /* Length of polymer -1 */
+        outi = xvgropen(
+                opt2fn("-i", NFILE, fnm), "Internal distances", "n", "<R\\S2\\N(n)>/n (nm\\S2\\N)", oenv);
+        i = index[molind[1] - 1] - index[molind[0]]; /* Length of polymer -1 */
         snew(intd, i);
     }
     else
@@ -391,8 +403,13 @@ int gmx_polystat(int argc, char* argv[])
 
         gyro_eigen(gyr_all, eig, eigv, ord);
 
-        fprintf(out, "%10.3f %8.4f %8.4f %8.4f %8.4f %8.4f", t * output_env_get_time_factor(oenv),
-                std::sqrt(sum_eed2), sqrt(sum_gyro), std::sqrt(eig[ord[0]]), std::sqrt(eig[ord[1]]),
+        fprintf(out,
+                "%10.3f %8.4f %8.4f %8.4f %8.4f %8.4f",
+                t * output_env_get_time_factor(oenv),
+                std::sqrt(sum_eed2),
+                sqrt(sum_gyro),
+                std::sqrt(eig[ord[0]]),
+                std::sqrt(eig[ord[1]]),
                 std::sqrt(eig[ord[2]]));
         if (bPC)
         {

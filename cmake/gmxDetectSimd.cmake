@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2012- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 # - Check the username performing the build, as well as date and time
 #
@@ -126,14 +124,10 @@ function(gmx_suggest_simd _suggested_simd)
         else()
             if(CPU_DETECTION_FEATURES MATCHES " vsx ")
                 set(OUTPUT_SIMD "IBM_VSX")
-            elseif(CPU_DETECTION_FEATURES MATCHES " vmx ")
-                set(OUTPUT_SIMD "IBM_VMX")
             elseif(CPU_DETECTION_FEATURES MATCHES " sve ")
                 set(OUTPUT_SIMD "ARM_SVE")
             elseif(CPU_DETECTION_FEATURES MATCHES " neon_asimd ")
                 set(OUTPUT_SIMD "ARM_NEON_ASIMD")
-            elseif(CPU_DETECTION_FEATURES MATCHES " neon " AND NOT GMX_DOUBLE)
-                set(OUTPUT_SIMD "ARM_NEON")
             endif()
         endif()
         if (NOT SUGGEST_SIMD_QUIETLY)
@@ -151,15 +145,7 @@ endfunction()
 
 function(gmx_detect_simd _suggested_simd)
     if(GMX_SIMD STREQUAL "AUTO")
-        if(GMX_TARGET_FUJITSU_SPARC64)
-            # HPC-ACE is always present. In the future we
-            # should add detection for HPC-ACE2 here.
-            set(${_suggested_simd} "Sparc64_HPC_ACE")
-        elseif(GMX_TARGET_MIC)
-            set(${_suggested_simd} "MIC")
-        else()
-            gmx_suggest_simd(${_suggested_simd})
-        endif()
+        gmx_suggest_simd(${_suggested_simd})
 
         string(TOUPPER "${${_suggested_simd}}" ${_suggested_simd})
         set(${_suggested_simd} ${${_suggested_simd}} PARENT_SCOPE)

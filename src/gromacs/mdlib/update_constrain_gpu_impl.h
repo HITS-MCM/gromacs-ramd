@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -48,12 +47,16 @@
 
 #include "gmxpre.h"
 
-#include "gromacs/gpu_utils/gpueventsynchronizer.cuh"
+#include "config.h"
+
+#include "gromacs/gpu_utils/gpueventsynchronizer.h"
 #include "gromacs/mdlib/leapfrog_gpu.h"
-#include "gromacs/mdlib/lincs_gpu.cuh"
-#include "gromacs/mdlib/settle_gpu.cuh"
+#include "gromacs/mdlib/lincs_gpu.h"
+#include "gromacs/mdlib/settle_gpu.h"
 #include "gromacs/mdlib/update_constrain_gpu.h"
 #include "gromacs/mdtypes/inputrec.h"
+
+class GpuEventSynchronizer;
 
 namespace gmx
 {
@@ -66,27 +69,23 @@ public:
     /*! \brief Create Update-Constrain object.
      *
      * The constructor is given a non-nullptr \p deviceStream, in which all the update and constrain
-     * routines are executed. \p xUpdatedOnDevice should mark the completion of all kernels that
-     * modify coordinates. The event is maintained outside this class and also passed to all (if
-     * any) consumers of the updated coordinates. The \p xUpdatedOnDevice also can not be a nullptr
-     * because the markEvent(...) method is called unconditionally.
+     * routines are executed.
      *
-     * \param[in] ir                Input record data: LINCS takes number of iterations and order of
-     *                              projection from it.
-     * \param[in] mtop              Topology of the system: SETTLE gets the masses for O and H atoms
-     *                              and target O-H and H-H distances from this object.
-     * \param[in] deviceContext     GPU device context.
-     * \param[in] deviceStream      GPU stream to use.
-     * \param[in] xUpdatedOnDevice  The event synchronizer to use to mark that
-     *                              update is done on the GPU.
-     * \param[in] wcycle            The wallclock counter
+     * \param[in] ir                  Input record data: LINCS takes number of iterations and order of
+     *                                projection from it.
+     * \param[in] mtop                Topology of the system: SETTLE gets the masses for O and H atoms
+     *                                and target O-H and H-H distances from this object.
+     * \param[in] numTempScaleValues  Number of temperature scaling groups. Set zero for no temperature coupling.
+     * \param[in] deviceContext       GPU device context.
+     * \param[in] deviceStream        GPU stream to use.
+     * \param[in] wcycle              The wallclock counter
      */
-    Impl(const t_inputrec&     ir,
-         const gmx_mtop_t&     mtop,
-         const DeviceContext&  deviceContext,
-         const DeviceStream&   deviceStream,
-         GpuEventSynchronizer* xUpdatedOnDevice,
-         gmx_wallcycle*        wcycle);
+    Impl(const t_inputrec&    ir,
+         const gmx_mtop_t&    mtop,
+         int                  numTempScaleValues,
+         const DeviceContext& deviceContext,
+         const DeviceStream&  deviceStream,
+         gmx_wallcycle*       wcycle);
 
     ~Impl();
 
@@ -147,14 +146,12 @@ public:
      * \param[in]      d_f            Device buffer with forces.
      * \param[in] idef                System topology
      * \param[in] md                  Atoms data.
-     * \param[in] numTempScaleValues  Number of temperature scaling groups. Set zero for no temperature coupling.
      */
-    void set(DeviceBuffer<RVec>            d_x,
-             DeviceBuffer<RVec>            d_v,
-             const DeviceBuffer<RVec>      d_f,
+    void set(DeviceBuffer<Float3>          d_x,
+             DeviceBuffer<Float3>          d_v,
+             DeviceBuffer<Float3>          d_f,
              const InteractionDefinitions& idef,
-             const t_mdatoms&              md,
-             const int                     numTempScaleValues);
+             const t_mdatoms&              md);
 
     /*! \brief
      * Update PBC data.
@@ -168,7 +165,7 @@ public:
 
     /*! \brief Return the synchronizer associated with the event indicated that the coordinates are ready on the device.
      */
-    GpuEventSynchronizer* getCoordinatesReadySync();
+    GpuEventSynchronizer* xUpdatedOnDeviceEvent();
 
     /*! \brief
      * Returns whether the maximum number of coupled constraints is supported
@@ -193,14 +190,14 @@ private:
     int numAtoms_;
 
     //! Local copy of the pointer to the device positions buffer
-    float3* d_x_;
+    DeviceBuffer<Float3> d_x_;
     //! Local copy of the pointer to the device velocities buffer
-    float3* d_v_;
+    DeviceBuffer<Float3> d_v_;
     //! Local copy of the pointer to the device forces buffer
-    float3* d_f_;
+    DeviceBuffer<Float3> d_f_;
 
     //! Device buffer for intermediate positions (maintained internally)
-    float3* d_xp_;
+    DeviceBuffer<Float3> d_xp_;
     //! Number of elements in shifted coordinates buffer
     int numXp_ = -1;
     //! Allocation size for the shifted coordinates buffer
@@ -208,7 +205,7 @@ private:
 
 
     //! 1/mass for all atoms (GPU)
-    real* d_inverseMasses_;
+    DeviceBuffer<real> d_inverseMasses_;
     //! Number of elements in reciprocal masses buffer
     int numInverseMasses_ = -1;
     //! Allocation size for the reciprocal masses buffer
@@ -221,8 +218,8 @@ private:
     //! SETTLE GPU object for water constrains
     std::unique_ptr<SettleGpu> settleGpu_;
 
-    //! An pointer to the event to indicate when the update of coordinates is complete
-    GpuEventSynchronizer* coordinatesReady_;
+    //! The event to indicate when the update of coordinates is complete
+    GpuEventSynchronizer xUpdatedOnDeviceEvent_;
     //! The wallclock counter
     gmx_wallcycle* wcycle_ = nullptr;
 };

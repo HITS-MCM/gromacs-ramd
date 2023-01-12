@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2015,2016,2018,2019, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2015- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 # This file implements the custom build type "MSAN", to be used to run
 # the Memory Sanitizer checker in clang. The code here follows the
@@ -72,17 +71,17 @@ function(gmxManageMsanBuild)
     foreach(_language C CXX)
         string(REPLACE "X" "+" _human_readable_language ${_language})
         if (CMAKE_${_language}_COMPILER_ID MATCHES "Clang")
-	    if(${_language} MATCHES CXX)
+            if(${_language} MATCHES CXX)
                 set(_language_flags "${_flags} -nostdinc++")
-		if(GMX_MSAN_PATH)
+                if(GMX_MSAN_PATH)
                     set(_language_flags "${_language_flags} -isystem ${GMX_MSAN_PATH}/include -isystem ${GMX_MSAN_PATH}/include/c++/v1")
-		endif()
-	    else()
+                endif()
+            else()
                 set(_language_flags "${_flags}")
             endif()
             set(CMAKE_${_language}_FLAGS_MSAN ${_language_flags} CACHE STRING "${_human_readable_language} flags for Memory Sanitizer" FORCE)
             mark_as_advanced(CMAKE_${_language}_FLAGS_MSAN)
-	else()
+        else()
             message(FATAL_ERROR "The Memory Sanitizer build is only available with clang ${_human_readable_language} compiler, but it was ${CMAKE_${_language}_COMPILER_ID}.")
         endif()
     endforeach()

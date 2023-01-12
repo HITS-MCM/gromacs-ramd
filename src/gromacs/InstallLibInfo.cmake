@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2014,2016,2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2014- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 function (do_pkgconfig)
     set(PKG_CFLAGS "")
@@ -79,19 +78,19 @@ function (do_cmake_config)
                    gromacs-config.cmake @ONLY)
     configure_file(gromacs-config-version.cmake.cmakein
                    gromacs-config-version.cmake @ONLY)
-    configure_file(gromacs-toolchain.cmake.cmakein
-                   gromacs-toolchain.cmake @ONLY)
-    option(GMX_REQUIRE_VALID_TOOLCHAIN "Force CMake error if generated toolchain file is not usable." OFF)
-    mark_as_advanced(GMX_REQUIRE_VALID_TOOLCHAIN)
-    if (GMX_REQUIRE_VALID_TOOLCHAIN)
+    configure_file(gromacs-hints.in.cmake
+                   gromacs-hints.cmake @ONLY)
+    option(GMX_REQUIRE_VALID_CMAKE_HINTS "Force CMake error if generated hints are not usable." OFF)
+    mark_as_advanced(GMX_REQUIRE_VALID_CMAKE_HINTS)
+    if (GMX_REQUIRE_VALID_CMAKE_HINTS)
         # Test the generated toolchain file.
         set(TEMPDIR "${CMAKE_CURRENT_BINARY_DIR}/cmake-configure-test")
         file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/cmake-configure-test)
         execute_process(COMMAND
                             ${CMAKE_COMMAND}
                             -G "${CMAKE_GENERATOR}"
-                            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_BINARY_DIR}/gromacs-toolchain.cmake
-                            -DGMX_REQUIRE_VALID_TOOLCHAIN=FALSE
+                            -C ${CMAKE_CURRENT_BINARY_DIR}/gromacs-hints.cmake
+                            -DGMX_REQUIRE_VALID_CMAKE_HINTS=FALSE
                             ${CMAKE_SOURCE_DIR}
                         RESULT_VARIABLE result
                         OUTPUT_VARIABLE output
@@ -100,9 +99,12 @@ function (do_cmake_config)
                         ERROR_STRIP_TRAILING_WHITESPACE
                         WORKING_DIRECTORY ${TEMPDIR})
         if (result)
-            message(FATAL_ERROR "Generated gromacs-toolchain.cmake does not produce a valid CMake environment: ${output}")
+            message(FATAL_ERROR "Generated gromacs-hints.cmake does not produce a valid CMake environment: ${output}")
         else()
-            message(STATUS "Verified gromacs-toolchain.cmake")
+            # Note: We confirm that the hints file does not result in errors, but we do not check
+            # the degree to which it produces a compatible build system. As inadequacies are
+            # encountered, we can add additional checks here.
+            message(STATUS "Verified usability of gromacs-hints.cmake")
             # We clean up after ourselves
             FILE(REMOVE_RECURSE ${TEMPDIR})
         endif ()
@@ -120,9 +122,9 @@ function (do_cmake_config)
             DESTINATION ${GMX_INSTALL_CMAKEPKGDIR}
             RENAME "gromacs${GMX_LIBS_SUFFIX}-config-version.cmake"
             COMPONENT development)
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/gromacs-toolchain.cmake
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/gromacs-hints.cmake
             DESTINATION ${GMX_INSTALL_CMAKEPKGDIR}
-            RENAME "gromacs-toolchain${GMX_LIBS_SUFFIX}.cmake"
+            RENAME "gromacs-hints${GMX_LIBS_SUFFIX}.cmake"
             COMPONENT development)
 endfunction()
 

@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -83,8 +81,8 @@ public:
     void parseFromArgs(unsigned long flags, gmx::ArrayRef<t_filenm> fnm, gmx::ArrayRef<t_pargs> pa)
     {
         fileCount_ = fnm.size();
-        bool bOk   = parse_common_args(&args_.argc(), args_.argv(), flags, fnm.size(), fnm.data(),
-                                     pa.size(), pa.data(), 0, nullptr, 0, nullptr, &oenv_);
+        bool bOk   = parse_common_args(
+                &args_.argc(), args_.argv(), flags, fnm.size(), fnm.data(), pa.size(), pa.data(), 0, nullptr, 0, nullptr, &oenv_);
         EXPECT_TRUE(bOk);
     }
     void parseFromArray(gmx::ArrayRef<const char* const> cmdline,
@@ -189,6 +187,40 @@ TEST_F(ParseCommonArgsTest, ParsesBooleanArgs)
     EXPECT_FALSE(value1);
     EXPECT_TRUE(value2);
     EXPECT_TRUE(value3);
+}
+
+TEST_F(ParseCommonArgsTest, ParsesBooleanArgsToValuesOfSuitableEnum)
+{
+    enum class LikeBool : bool
+    {
+        No  = false,
+        Yes = true
+    };
+    // Set up the default values
+    LikeBool value1 = LikeBool::No;
+    LikeBool value2 = LikeBool::No;
+    LikeBool value3 = LikeBool::No;
+    LikeBool value4 = LikeBool::Yes;
+    LikeBool value5 = LikeBool::Yes;
+    LikeBool value6 = LikeBool::Yes;
+    // Set up 6 options
+    t_pargs pa[] = { { "-b1", FALSE, etBOOL, { &value1 }, "Description" },
+                     { "-b2", FALSE, etBOOL, { &value2 }, "Description" },
+                     { "-b3", FALSE, etBOOL, { &value3 }, "Description" },
+                     { "-b4", FALSE, etBOOL, { &value4 }, "Description" },
+                     { "-b5", FALSE, etBOOL, { &value5 }, "Description" },
+                     { "-b6", FALSE, etBOOL, { &value6 }, "Description" } };
+    // Set some to yes and no, leave some as default
+    const char* const cmdline[] = { "test", "-b1", "-nob2", "-b4", "-nob5" };
+
+    parseFromArray(cmdline, 0, {}, pa);
+    // Expetactions
+    EXPECT_EQ(value1, LikeBool::Yes) << "set to yes";
+    EXPECT_EQ(value2, LikeBool::No) << "set to no";
+    EXPECT_EQ(value3, LikeBool::No) << "preserves the default of no";
+    EXPECT_EQ(value4, LikeBool::Yes) << "set to yes";
+    EXPECT_EQ(value5, LikeBool::No) << "set to no";
+    EXPECT_EQ(value6, LikeBool::Yes) << "preserves the default of yes";
 }
 
 TEST_F(ParseCommonArgsTest, ParsesVectorArgs)

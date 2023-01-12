@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2008, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,33 +26,50 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
-#ifndef _nb_free_energy_h_
-#define _nb_free_energy_h_
+#ifndef GMX_GMXLIB_NONBONDED_NB_FREE_ENERGY_H
+#define GMX_GMXLIB_NONBONDED_NB_FREE_ENERGY_H
 
-#include "gromacs/gmxlib/nrnb.h"
-#include "gromacs/gmxlib/nonbonded/nb_kernel.h"
 #include "gromacs/math/vectypes.h"
-#include "gromacs/mdtypes/nblist.h"
+#include "gromacs/utility/basedefinitions.h"
 
 struct t_forcerec;
-struct t_mdatoms;
+struct t_nrnb;
+struct t_nblist;
+struct interaction_const_t;
 namespace gmx
 {
-class ForceWithShiftForces;
-}
+template<typename>
+class ArrayRef;
+template<typename>
+class ArrayRefWithPadding;
+} // namespace gmx
 
-void gmx_nb_free_energy_kernel(const t_nblist* gmx_restrict nlist,
-                               rvec* gmx_restrict         xx,
-                               gmx::ForceWithShiftForces* forceWithShiftForces,
-                               const t_forcerec* gmx_restrict fr,
-                               const t_mdatoms* gmx_restrict mdatoms,
-                               nb_kernel_data_t* gmx_restrict kernel_data,
-                               t_nrnb* gmx_restrict nrnb);
+void gmx_nb_free_energy_kernel(const t_nblist&                                  nlist,
+                               const gmx::ArrayRefWithPadding<const gmx::RVec>& coords,
+                               bool                                             useSimd,
+                               int                                              ntype,
+                               real                                             rlist,
+                               const interaction_const_t&                       ic,
+                               gmx::ArrayRef<const gmx::RVec>                   shiftvec,
+                               gmx::ArrayRef<const real>                        nbfp,
+                               gmx::ArrayRef<const real>                        nbfp_grid,
+                               gmx::ArrayRef<const real>                        chargeA,
+                               gmx::ArrayRef<const real>                        chargeB,
+                               gmx::ArrayRef<const int>                         typeA,
+                               gmx::ArrayRef<const int>                         typeB,
+                               int                                              flags,
+                               gmx::ArrayRef<const real>                        lambda,
+                               t_nrnb* gmx_restrict                             nrnb,
+                               gmx::ArrayRefWithPadding<gmx::RVec>              threadForceBuffer,
+                               rvec*               threadForceShiftBuffer,
+                               gmx::ArrayRef<real> threadVc,
+                               gmx::ArrayRef<real> threadVv,
+                               gmx::ArrayRef<real> threadDvdl);
 
 #endif

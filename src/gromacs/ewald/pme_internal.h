@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -61,7 +57,6 @@
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/utility/alignedallocator.h"
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/defaultinitializationallocator.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/gmxmpi.h"
@@ -74,8 +69,9 @@ typedef struct gmx_parallel_3dfft* gmx_parallel_3dfft_t;
 struct t_commrec;
 struct t_inputrec;
 struct PmeGpu;
-
+class EwaldBoxZScaler;
 enum class PmeRunMode;
+enum class LongRangeVdW : int;
 
 //@{
 //! Grid indices for A state for charge and Lennard-Jones C6
@@ -320,21 +316,23 @@ struct gmx_pme_t
     MPI_Datatype rvec_mpi; /* the pme vector's MPI type */
 #endif
 
-    gmx_bool bUseThreads; /* Does any of the PME ranks have nthread>1 ?  */
-    int      nthread;     /* The number of threads doing PME on our rank */
+    bool bUseThreads; /* Does any of the PME ranks have nthread>1 ?  */
+    int  nthread;     /* The number of threads doing PME on our rank */
 
-    gmx_bool bPPnode;   /* Node also does particle-particle forces */
-    bool     doCoulomb; /* Apply PME to electrostatics */
-    bool     doLJ;      /* Apply PME to Lennard-Jones r^-6 interactions */
-    gmx_bool bFEP;      /* Compute Free energy contribution */
-    gmx_bool bFEP_q;
-    gmx_bool bFEP_lj;
-    int      nkx, nky, nkz; /* Grid dimensions */
-    gmx_bool bP3M;          /* Do P3M: optimize the influence function */
-    int      pme_order;
-    real     ewaldcoeff_q;  /* Ewald splitting coefficient for Coulomb */
-    real     ewaldcoeff_lj; /* Ewald splitting coefficient for r^-6 */
-    real     epsilon_r;
+    bool bPPnode;   /* Node also does particle-particle forces */
+    bool doCoulomb; /* Apply PME to electrostatics */
+    bool doLJ;      /* Apply PME to Lennard-Jones r^-6 interactions */
+    bool bFEP;      /* Compute Free energy contribution */
+    bool bFEP_q;
+    bool bFEP_lj;
+    int  nkx, nky, nkz; /* Grid dimensions */
+    bool bP3M;          /* Do P3M: optimize the influence function */
+    int  pme_order;
+    real ewaldcoeff_q;  /* Ewald splitting coefficient for Coulomb */
+    real ewaldcoeff_lj; /* Ewald splitting coefficient for r^-6 */
+    real epsilon_r;
+    int  pmeGpuGridHalo = 0; /* Size of the grid halo region with PME GPU decomposition */
+    real haloExtentForAtomDisplacement = .0; /* extent of halo region in nm to account for atom */
 
 
     enum PmeRunMode runMode; /* Which codepath is the PME runner taking - CPU, GPU, mixed;
@@ -354,22 +352,22 @@ struct gmx_pme_t
                   */
 
 
-    class EwaldBoxZScaler* boxScaler; /**< The scaling data Ewald uses with walls (set at pme_init constant for the entire run) */
+    std::unique_ptr<EwaldBoxZScaler> boxScaler; /**< The scaling data Ewald uses with walls (set at pme_init constant for the entire run) */
 
 
-    int ljpme_combination_rule; /* Type of combination rule in LJ-PME */
+    LongRangeVdW ljpme_combination_rule; /* Type of combination rule in LJ-PME */
 
     int ngrids; /* number of grids we maintain for pmegrid, (c)fftgrid and pfft_setups*/
 
-    pmegrids_t pmegrid[DO_Q_AND_LJ_LB]; /* Grids on which we do spreading/interpolation,
-                                         * includes overlap Grid indices are ordered as
-                                         * follows:
-                                         * 0: Coloumb PME, state A
-                                         * 1: Coloumb PME, state B
-                                         * 2-8: LJ-PME
-                                         * This can probably be done in a better way
-                                         * but this simple hack works for now
-                                         */
+    std::array<pmegrids_t, DO_Q_AND_LJ_LB> pmegrid; /* Grids on which we do spreading/interpolation,
+                                                     * includes overlap Grid indices are ordered as
+                                                     * follows:
+                                                     * 0: Coloumb PME, state A
+                                                     * 1: Coloumb PME, state B
+                                                     * 2-8: LJ-PME
+                                                     * This can probably be done in a better way
+                                                     * but this simple hack works for now
+                                                     */
 
     /* The PME coefficient spreading grid sizes/strides, includes pme_order-1 */
     int pmegrid_nx, pmegrid_ny, pmegrid_nz;
@@ -384,12 +382,8 @@ struct gmx_pme_t
     pme_spline_work* spline_work;
 
     real** fftgrid; /* Grids for FFT. With 1D FFT decomposition this can be a pointer */
-    /* inside the interpolation grid, but separate for 2D PME decomp. */
-    int fftgrid_nx, fftgrid_ny, fftgrid_nz;
 
     t_complex** cfftgrid; /* Grids for complex FFT data */
-
-    int cfftgrid_nx, cfftgrid_ny, cfftgrid_nz;
 
     gmx_parallel_3dfft_t* pfft_setup;
 
@@ -408,7 +402,7 @@ struct gmx_pme_t
     FastVector<real> lb_buf1;
     FastVector<real> lb_buf2;
 
-    pme_overlap_t overlap[2]; /* Indexed on dimension, 0=x, 1=y */
+    std::array<pme_overlap_t, 2> overlap; /* Indexed on dimension, 0=x, 1=y */
 
     /* Atom step for energy only calculation in gmx_pme_calc_energy() */
     std::unique_ptr<PmeAtomComm> atc_energy;
@@ -420,10 +414,6 @@ struct gmx_pme_t
 
     /* thread local work data for solve_pme */
     struct pme_solve_work_t* solve_work;
-
-    /* Work data for sum_qgrid */
-    real* sum_qgrid_tmp;
-    real* sum_qgrid_dd_tmp;
 };
 
 //! @endcond

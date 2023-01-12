@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_MDLIB_FORCEREC_H
 #define GMX_MDLIB_FORCEREC_H
@@ -51,19 +47,35 @@ struct gmx_localtop_t;
 struct gmx_mtop_t;
 struct gmx_wallcycle;
 struct interaction_const_t;
+union t_iparams;
+enum class LongRangeVdW : int;
 
 namespace gmx
 {
 class MDLogger;
 class PhysicalNodeCommunicator;
+class SimulationWorkload;
 } // namespace gmx
 
-/*! \brief Print the contents of the forcerec to a file
+/*! \brief Create nonbonded parameter lists
  *
- * \param[in] fplog The log file to print to
- * \param[in] fr    The forcerec structure
+ * \param[in] numAtomTypes           The number of atom types
+ * \param[in] iparams                The LJ parameters
+ * \param[in] useBuckinghamPotential Use Buckingham potential
  */
-void pr_forcerec(FILE* fplog, t_forcerec* fr);
+std::vector<real> makeNonBondedParameterLists(int                            numAtomTypes,
+                                              gmx::ArrayRef<const t_iparams> iparams,
+                                              bool useBuckinghamPotential);
+
+/*! \brief Calculate c6 parameters for grid correction
+ *
+ * \param[in] numAtomTypes           The number of atom types
+ * \param[in] iparams                The LJ parameters
+ * \param[in] ljpme_combination_rule How long range LJ is treated
+ */
+std::vector<real> makeLJPmeC6GridCorrectionParameters(int                            numAtomTypes,
+                                                      gmx::ArrayRef<const t_iparams> iparams,
+                                                      LongRangeVdW ljpme_combination_rule);
 
 /*! \brief Set the number of charge groups and atoms.
  *
@@ -91,10 +103,11 @@ void init_interaction_const_tables(FILE* fp, interaction_const_t* ic, real rlist
  *
  * \param[in]  fplog              File for printing
  * \param[in]  mdlog              File for printing
- * \param[out] fr                 The forcerec
- * \param[in]  ir                 Inputrec structure
+ * \param[out] forcerec                 The forcerec
+ * \param[in]  simulationWork           Simulation workload flags
+ * \param[in]  inputrec                 Inputrec structure
  * \param[in]  mtop               Molecular topology
- * \param[in]  cr                 Communication structures
+ * \param[in]  commrec                 Communication structures
  * \param[in]  box                Simulation box
  * \param[in]  tabfn              Table potential file for non-bonded interactions
  * \param[in]  tabpfn             Table potential file for pair interactions
@@ -103,33 +116,15 @@ void init_interaction_const_tables(FILE* fp, interaction_const_t* ic, real rlist
  */
 void init_forcerec(FILE*                            fplog,
                    const gmx::MDLogger&             mdlog,
-                   t_forcerec*                      fr,
-                   const t_inputrec*                ir,
-                   const gmx_mtop_t*                mtop,
-                   const t_commrec*                 cr,
+                   const gmx::SimulationWorkload&   simulationWork,
+                   t_forcerec*                      forcerec,
+                   const t_inputrec&                inputrec,
+                   const gmx_mtop_t&                mtop,
+                   const t_commrec*                 commrec,
                    matrix                           box,
                    const char*                      tabfn,
                    const char*                      tabpfn,
                    gmx::ArrayRef<const std::string> tabbfnm,
                    real                             print_force);
-
-/*! \brief Check whether molecules are ever distributed over PBC boundaries
- *
- * Note: This covers only the non-DD case. For DD runs, domdec.h offers an
- *       equivalent dd_bonded_molpbc(...) function.
- *
- * \param[in]  ir                 Inputrec structure
- * \param[in]  mtop               Molecular topology
- * \param[in]  mdlog              File for printing
- */
-bool areMoleculesDistributedOverPbc(const t_inputrec& ir, const gmx_mtop_t& mtop, const gmx::MDLogger& mdlog);
-
-/*! \brief Divide exclusions over threads
- *
- * Set the exclusion load for the local exclusions and possibly threads
- * \param[out] fr  The force record
- * \param[in]  top The topology
- */
-void forcerec_set_excl_load(t_forcerec* fr, const gmx_localtop_t* top);
 
 #endif

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines SETTLE code.
@@ -57,7 +53,6 @@
 #include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/constr.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/pbc_simd.h"
@@ -66,6 +61,7 @@
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/topology/mtop_util.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 
@@ -146,8 +142,7 @@ settleParameters(const real mO, const real mH, const real invmO, const real invm
     if (debug)
     {
         fprintf(debug, "wh =%g, rc = %g, ra = %g\n", params.wh, params.rc, params.ra);
-        fprintf(debug, "rb = %g, irc2 = %g, dHH = %g, dOH = %g\n", params.rb, params.irc2,
-                params.dHH, params.dOH);
+        fprintf(debug, "rb = %g, irc2 = %g, dHH = %g, dOH = %g\n", params.rb, params.irc2, params.dHH, params.dOH);
     }
 
     return params;
@@ -157,13 +152,11 @@ SettleData::SettleData(const gmx_mtop_t& mtop) :
     useSimd_(getenv("GMX_DISABLE_SIMD_KERNELS") == nullptr)
 {
     /* Check that we have only one settle type */
-    int                  settle_type = -1;
-    gmx_mtop_ilistloop_t iloop       = gmx_mtop_ilistloop_init(mtop);
-    int                  nmol;
-    const int            nral1 = 1 + NRAL(F_SETTLE);
-    while (const InteractionLists* ilists = gmx_mtop_ilistloop_next(iloop, &nmol))
+    int       settle_type = -1;
+    const int nral1       = 1 + NRAL(F_SETTLE);
+    for (const auto ilists : IListRange(mtop))
     {
-        const InteractionList& ilist = (*ilists)[F_SETTLE];
+        const InteractionList& ilist = ilists.list()[F_SETTLE];
         for (int i = 0; i < ilist.size(); i += nral1)
         {
             if (settle_type == -1)
@@ -197,10 +190,10 @@ SettleData::SettleData(const gmx_mtop_t& mtop) :
     parametersAllMasses1_ = settleParameters(1.0, 1.0, 1.0, 1.0, dOH, dHH);
 }
 
-void SettleData::setConstraints(const InteractionList& il_settle,
-                                const int              numHomeAtoms,
-                                const real*            masses,
-                                const real*            inverseMasses)
+void SettleData::setConstraints(const InteractionList&    il_settle,
+                                const int                 numHomeAtoms,
+                                gmx::ArrayRef<const real> masses,
+                                gmx::ArrayRef<const real> inverseMasses)
 {
 #if GMX_SIMD_HAVE_REAL
     const int pack_size = GMX_SIMD_REAL_WIDTH;
@@ -221,9 +214,12 @@ void SettleData::setConstraints(const InteractionList& il_settle,
         {
             int firstO              = iatoms[1];
             int firstH              = iatoms[2];
-            parametersMassWeighted_ = settleParameters(
-                    masses[firstO], masses[firstH], inverseMasses[firstO], inverseMasses[firstH],
-                    parametersAllMasses1_.dOH, parametersAllMasses1_.dHH);
+            parametersMassWeighted_ = settleParameters(masses[firstO],
+                                                       masses[firstH],
+                                                       inverseMasses[firstO],
+                                                       inverseMasses[firstH],
+                                                       parametersAllMasses1_.dOH,
+                                                       parametersAllMasses1_.dHH);
         }
 
         const int paddedSize = ((nsettle + pack_size - 1) / pack_size) * pack_size;
@@ -368,13 +364,13 @@ void settle_proj(const SettleData&    settled,
 
 /*! \brief The actual settle code, templated for real/SimdReal and for optimization */
 template<typename T, typename TypeBool, int packSize, typename TypePbc, bool bCorrectVelocity, bool bCalcVirial>
-static void settleTemplate(const SettleData& settled,
-                           int               settleStart,
-                           int               settleEnd,
-                           const TypePbc     pbc,
-                           const real*       x,
-                           real*             xprime,
-                           real              invdt,
+static void settleTemplate(const SettleData&  settled,
+                           int                settleStart,
+                           int                settleEnd,
+                           const TypePbc      pbc,
+                           const real*        x,
+                           real*              xprime,
+                           real               invdt,
                            real* gmx_restrict v,
                            tensor             vir_r_m_dr,
                            bool*              bErrorHasOccurred)
@@ -770,8 +766,7 @@ void csettle(const SettleData&               settled,
         set_pbc_simd(pbc, pbcSimd);
 
         settleTemplateWrapper<SimdReal, SimdBool, GMX_SIMD_REAL_WIDTH, const real*>(
-                settled, nthread, thread, pbcSimd, xPtr, xprimePtr, invdt, vPtr, bCalcVirial,
-                vir_r_m_dr, bErrorHasOccurred);
+                settled, nthread, thread, pbcSimd, xPtr, xprimePtr, invdt, vPtr, bCalcVirial, vir_r_m_dr, bErrorHasOccurred);
     }
     else
 #endif
@@ -790,9 +785,8 @@ void csettle(const SettleData&               settled,
             pbcNonNull = &pbcNo;
         }
 
-        settleTemplateWrapper<real, bool, 1, const t_pbc*>(settled, nthread, thread, pbcNonNull,
-                                                           &xPtr[0], &xprimePtr[0], invdt, &vPtr[0],
-                                                           bCalcVirial, vir_r_m_dr, bErrorHasOccurred);
+        settleTemplateWrapper<real, bool, 1, const t_pbc*>(
+                settled, nthread, thread, pbcNonNull, &xPtr[0], &xprimePtr[0], invdt, &vPtr[0], bCalcVirial, vir_r_m_dr, bErrorHasOccurred);
     }
 }
 

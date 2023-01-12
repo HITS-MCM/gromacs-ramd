@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -94,26 +90,27 @@ static void gmx_pme_send_coeffs_coords_wait(gmx_domdec_t* dd)
 }
 
 /*! \brief Send data to PME ranks */
-static void gmx_pme_send_coeffs_coords(t_forcerec*      fr,
-                                       const t_commrec* cr,
-                                       unsigned int     flags,
-                                       real gmx_unused* chargeA,
-                                       real gmx_unused* chargeB,
-                                       real gmx_unused* c6A,
-                                       real gmx_unused* c6B,
-                                       real gmx_unused* sigmaA,
-                                       real gmx_unused* sigmaB,
-                                       const matrix     box,
-                                       const rvec gmx_unused* x,
-                                       real                   lambda_q,
-                                       real                   lambda_lj,
-                                       int                    maxshift_x,
-                                       int                    maxshift_y,
-                                       int64_t                step,
-                                       bool                   useGpuPmePpComms,
-                                       bool                   reinitGpuPmePpComms,
-                                       bool                   sendCoordinatesFromGpu,
-                                       GpuEventSynchronizer*  coordinatesReadyOnDeviceEvent)
+static void gmx_pme_send_coeffs_coords(t_forcerec*                    fr,
+                                       const t_commrec*               cr,
+                                       unsigned int                   flags,
+                                       gmx::ArrayRef<const real>      chargeA,
+                                       gmx::ArrayRef<const real>      chargeB,
+                                       gmx::ArrayRef<const real>      c6A,
+                                       gmx::ArrayRef<const real>      c6B,
+                                       gmx::ArrayRef<const real>      sigmaA,
+                                       gmx::ArrayRef<const real>      sigmaB,
+                                       const matrix                   box,
+                                       gmx::ArrayRef<const gmx::RVec> x,
+                                       real                           lambda_q,
+                                       real                           lambda_lj,
+                                       int                            maxshift_x,
+                                       int                            maxshift_y,
+                                       int64_t                        step,
+                                       bool                           useGpuPmePpComms,
+                                       bool                           reinitGpuPmePpComms,
+                                       bool                           sendCoordinatesFromGpu,
+                                       bool                           receiveForcesToGpu,
+                                       GpuEventSynchronizer*          coordinatesReadyOnDeviceEvent)
 {
     gmx_domdec_t*         dd;
     gmx_pme_comm_n_box_t* cnb;
@@ -124,14 +121,24 @@ static void gmx_pme_send_coeffs_coords(t_forcerec*      fr,
 
     if (debug)
     {
-        fprintf(debug, "PP rank %d sending to PME rank %d: %d%s%s%s%s\n", cr->sim_nodeid, dd->pme_nodeid,
-                n, (flags & PP_PME_CHARGE) ? " charges" : "", (flags & PP_PME_SQRTC6) ? " sqrtC6" : "",
-                (flags & PP_PME_SIGMA) ? " sigma" : "", (flags & PP_PME_COORD) ? " coordinates" : "");
+        fprintf(debug,
+                "PP rank %d sending to PME rank %d: %d%s%s%s%s\n",
+                cr->sim_nodeid,
+                dd->pme_nodeid,
+                n,
+                (flags & PP_PME_CHARGE) ? " charges" : "",
+                (flags & PP_PME_SQRTC6) ? " sqrtC6" : "",
+                (flags & PP_PME_SIGMA) ? " sigma" : "",
+                (flags & PP_PME_COORD) ? " coordinates" : "");
     }
 
     if (useGpuPmePpComms)
     {
         flags |= PP_PME_GPUCOMMS;
+        if (receiveForcesToGpu)
+        {
+            flags |= PP_PME_RECVFTOGPU;
+        }
     }
 
     if (c_useDelayedWait)
@@ -161,7 +168,12 @@ static void gmx_pme_send_coeffs_coords(t_forcerec*      fr,
             copy_mat(box, cnb->box);
         }
 #if GMX_MPI
-        MPI_Isend(cnb, sizeof(*cnb), MPI_BYTE, dd->pme_nodeid, eCommType_CNB, cr->mpi_comm_mysim,
+        MPI_Isend(cnb,
+                  sizeof(*cnb),
+                  MPI_BYTE,
+                  dd->pme_nodeid,
+                  eCommType_CNB,
+                  cr->mpi_comm_mysim,
                   &dd->req_pme[dd->nreq_pme++]);
 #endif
     }
@@ -169,7 +181,12 @@ static void gmx_pme_send_coeffs_coords(t_forcerec*      fr,
     {
 #if GMX_MPI
         /* Communicate only the number of atoms */
-        MPI_Isend(&n, sizeof(n), MPI_BYTE, dd->pme_nodeid, eCommType_CNB, cr->mpi_comm_mysim,
+        MPI_Isend(&n,
+                  sizeof(n),
+                  MPI_BYTE,
+                  dd->pme_nodeid,
+                  eCommType_CNB,
+                  cr->mpi_comm_mysim,
                   &dd->req_pme[dd->nreq_pme++]);
 #endif
     }
@@ -179,61 +196,107 @@ static void gmx_pme_send_coeffs_coords(t_forcerec*      fr,
     {
         if (flags & PP_PME_CHARGE)
         {
-            MPI_Isend(chargeA, n * sizeof(real), MPI_BYTE, dd->pme_nodeid, eCommType_ChargeA,
-                      cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+            MPI_Isend(chargeA.data(),
+                      n * sizeof(real),
+                      MPI_BYTE,
+                      dd->pme_nodeid,
+                      eCommType_ChargeA,
+                      cr->mpi_comm_mysim,
+                      &dd->req_pme[dd->nreq_pme++]);
         }
         if (flags & PP_PME_CHARGEB)
         {
-            MPI_Isend(chargeB, n * sizeof(real), MPI_BYTE, dd->pme_nodeid, eCommType_ChargeB,
-                      cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+            MPI_Isend(chargeB.data(),
+                      n * sizeof(real),
+                      MPI_BYTE,
+                      dd->pme_nodeid,
+                      eCommType_ChargeB,
+                      cr->mpi_comm_mysim,
+                      &dd->req_pme[dd->nreq_pme++]);
         }
         if (flags & PP_PME_SQRTC6)
         {
-            MPI_Isend(c6A, n * sizeof(real), MPI_BYTE, dd->pme_nodeid, eCommType_SQRTC6A,
-                      cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+            MPI_Isend(c6A.data(),
+                      n * sizeof(real),
+                      MPI_BYTE,
+                      dd->pme_nodeid,
+                      eCommType_SQRTC6A,
+                      cr->mpi_comm_mysim,
+                      &dd->req_pme[dd->nreq_pme++]);
         }
         if (flags & PP_PME_SQRTC6B)
         {
-            MPI_Isend(c6B, n * sizeof(real), MPI_BYTE, dd->pme_nodeid, eCommType_SQRTC6B,
-                      cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+            MPI_Isend(c6B.data(),
+                      n * sizeof(real),
+                      MPI_BYTE,
+                      dd->pme_nodeid,
+                      eCommType_SQRTC6B,
+                      cr->mpi_comm_mysim,
+                      &dd->req_pme[dd->nreq_pme++]);
         }
         if (flags & PP_PME_SIGMA)
         {
-            MPI_Isend(sigmaA, n * sizeof(real), MPI_BYTE, dd->pme_nodeid, eCommType_SigmaA,
-                      cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+            MPI_Isend(sigmaA.data(),
+                      n * sizeof(real),
+                      MPI_BYTE,
+                      dd->pme_nodeid,
+                      eCommType_SigmaA,
+                      cr->mpi_comm_mysim,
+                      &dd->req_pme[dd->nreq_pme++]);
         }
         if (flags & PP_PME_SIGMAB)
         {
-            MPI_Isend(sigmaB, n * sizeof(real), MPI_BYTE, dd->pme_nodeid, eCommType_SigmaB,
-                      cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+            MPI_Isend(sigmaB.data(),
+                      n * sizeof(real),
+                      MPI_BYTE,
+                      dd->pme_nodeid,
+                      eCommType_SigmaB,
+                      cr->mpi_comm_mysim,
+                      &dd->req_pme[dd->nreq_pme++]);
         }
         if (flags & PP_PME_COORD)
         {
             if (reinitGpuPmePpComms)
             {
+                changePinningPolicy(&cr->dd->pmeForceReceiveBuffer, gmx::PinningPolicy::PinnedIfSupported);
+                cr->dd->pmeForceReceiveBuffer.resize(n);
                 fr->pmePpCommGpu->reinit(n);
             }
 
-
-            /* MPI_Isend does not accept a const buffer pointer */
-            real* xRealPtr = const_cast<real*>(x[0]);
             if (useGpuPmePpComms && (fr != nullptr))
             {
-                void* sendPtr = sendCoordinatesFromGpu
-                                        ? static_cast<void*>(fr->stateGpu->getCoordinates())
-                                        : static_cast<void*>(xRealPtr);
-                fr->pmePpCommGpu->sendCoordinatesToPmeCudaDirect(sendPtr, n, sendCoordinatesFromGpu,
-                                                                 coordinatesReadyOnDeviceEvent);
+                if (sendCoordinatesFromGpu)
+                {
+                    fr->pmePpCommGpu->sendCoordinatesToPmeFromGpu(
+                            fr->stateGpu->getCoordinates(), n, coordinatesReadyOnDeviceEvent);
+                }
+                else
+                {
+                    fr->pmePpCommGpu->sendCoordinatesToPmeFromCpu(
+                            const_cast<gmx::RVec*>(x.data()), n, coordinatesReadyOnDeviceEvent);
+                }
             }
             else
             {
-                MPI_Isend(xRealPtr, n * sizeof(rvec), MPI_BYTE, dd->pme_nodeid, eCommType_COORD,
-                          cr->mpi_comm_mysim, &dd->req_pme[dd->nreq_pme++]);
+                MPI_Isend(x.data(),
+                          n * sizeof(rvec),
+                          MPI_BYTE,
+                          dd->pme_nodeid,
+                          eCommType_COORD,
+                          cr->mpi_comm_mysim,
+                          &dd->req_pme[dd->nreq_pme++]);
             }
         }
     }
 #else
     GMX_UNUSED_VALUE(fr);
+    GMX_UNUSED_VALUE(chargeA);
+    GMX_UNUSED_VALUE(chargeB);
+    GMX_UNUSED_VALUE(c6A);
+    GMX_UNUSED_VALUE(c6B);
+    GMX_UNUSED_VALUE(sigmaA);
+    GMX_UNUSED_VALUE(sigmaB);
+    GMX_UNUSED_VALUE(x);
     GMX_UNUSED_VALUE(reinitGpuPmePpComms);
     GMX_UNUSED_VALUE(sendCoordinatesFromGpu);
     GMX_UNUSED_VALUE(coordinatesReadyOnDeviceEvent);
@@ -249,25 +312,25 @@ static void gmx_pme_send_coeffs_coords(t_forcerec*      fr,
 }
 
 void gmx_pme_send_parameters(const t_commrec*           cr,
-                             const interaction_const_t* ic,
-                             gmx_bool                   bFreeEnergy_q,
-                             gmx_bool                   bFreeEnergy_lj,
-                             real*                      chargeA,
-                             real*                      chargeB,
-                             real*                      sqrt_c6A,
-                             real*                      sqrt_c6B,
-                             real*                      sigmaA,
-                             real*                      sigmaB,
+                             const interaction_const_t& interactionConst,
+                             bool                       bFreeEnergy_q,
+                             bool                       bFreeEnergy_lj,
+                             gmx::ArrayRef<const real>  chargeA,
+                             gmx::ArrayRef<const real>  chargeB,
+                             gmx::ArrayRef<const real>  sqrt_c6A,
+                             gmx::ArrayRef<const real>  sqrt_c6B,
+                             gmx::ArrayRef<const real>  sigmaA,
+                             gmx::ArrayRef<const real>  sigmaB,
                              int                        maxshift_x,
                              int                        maxshift_y)
 {
     unsigned int flags = 0;
 
-    if (EEL_PME(ic->eeltype))
+    if (EEL_PME(interactionConst.eeltype))
     {
         flags |= PP_PME_CHARGE;
     }
-    if (EVDW_PME(ic->vdwtype))
+    if (EVDW_PME(interactionConst.vdwtype))
     {
         flags |= (PP_PME_SQRTC6 | PP_PME_SIGMA);
     }
@@ -278,46 +341,82 @@ void gmx_pme_send_parameters(const t_commrec*           cr,
         flags |= (flags << 1);
     }
 
-    gmx_pme_send_coeffs_coords(nullptr, cr, flags, chargeA, chargeB, sqrt_c6A, sqrt_c6B, sigmaA,
-                               sigmaB, nullptr, nullptr, 0, 0, maxshift_x, maxshift_y, -1, false,
-                               false, false, nullptr);
+    gmx_pme_send_coeffs_coords(nullptr,
+                               cr,
+                               flags,
+                               chargeA,
+                               chargeB,
+                               sqrt_c6A,
+                               sqrt_c6B,
+                               sigmaA,
+                               sigmaB,
+                               nullptr,
+                               gmx::ArrayRef<gmx::RVec>(),
+                               0,
+                               0,
+                               maxshift_x,
+                               maxshift_y,
+                               -1,
+                               false,
+                               false,
+                               false,
+                               false,
+                               nullptr);
 }
 
-void gmx_pme_send_coordinates(t_forcerec*           fr,
-                              const t_commrec*      cr,
-                              const matrix          box,
-                              const rvec*           x,
-                              real                  lambda_q,
-                              real                  lambda_lj,
-                              bool                  computeEnergyAndVirial,
-                              int64_t               step,
-                              bool                  useGpuPmePpComms,
-                              bool                  receiveCoordinateAddressFromPme,
-                              bool                  sendCoordinatesFromGpu,
-                              GpuEventSynchronizer* coordinatesReadyOnDeviceEvent,
-                              gmx_wallcycle*        wcycle)
+void gmx_pme_send_coordinates(t_forcerec*                    fr,
+                              const t_commrec*               cr,
+                              const matrix                   box,
+                              gmx::ArrayRef<const gmx::RVec> x,
+                              real                           lambda_q,
+                              real                           lambda_lj,
+                              bool                           computeEnergyAndVirial,
+                              int64_t                        step,
+                              bool                           useGpuPmePpComms,
+                              bool                           receiveCoordinateAddressFromPme,
+                              bool                           sendCoordinatesFromGpu,
+                              bool                           receiveForcesToGpu,
+                              GpuEventSynchronizer*          coordinatesReadyOnDeviceEvent,
+                              gmx_wallcycle*                 wcycle)
 {
-    wallcycle_start(wcycle, ewcPP_PMESENDX);
+    wallcycle_start(wcycle, WallCycleCounter::PpPmeSendX);
 
     unsigned int flags = PP_PME_COORD;
     if (computeEnergyAndVirial)
     {
         flags |= PP_PME_ENER_VIR;
     }
-    gmx_pme_send_coeffs_coords(fr, cr, flags, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                               box, x, lambda_q, lambda_lj, 0, 0, step, useGpuPmePpComms,
-                               receiveCoordinateAddressFromPme, sendCoordinatesFromGpu,
+    gmx_pme_send_coeffs_coords(fr,
+                               cr,
+                               flags,
+                               {},
+                               {},
+                               {},
+                               {},
+                               {},
+                               {},
+                               box,
+                               x,
+                               lambda_q,
+                               lambda_lj,
+                               0,
+                               0,
+                               step,
+                               useGpuPmePpComms,
+                               receiveCoordinateAddressFromPme,
+                               sendCoordinatesFromGpu,
+                               receiveForcesToGpu,
                                coordinatesReadyOnDeviceEvent);
 
-    wallcycle_stop(wcycle, ewcPP_PMESENDX);
+    wallcycle_stop(wcycle, WallCycleCounter::PpPmeSendX);
 }
 
 void gmx_pme_send_finish(const t_commrec* cr)
 {
     unsigned int flags = PP_PME_FINISH;
 
-    gmx_pme_send_coeffs_coords(nullptr, cr, flags, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                               nullptr, nullptr, 0, 0, 0, 0, -1, false, false, false, nullptr);
+    gmx_pme_send_coeffs_coords(
+            nullptr, cr, flags, {}, {}, {}, {}, {}, {}, nullptr, gmx::ArrayRef<gmx::RVec>(), 0, 0, 0, 0, -1, false, false, false, false, nullptr);
 }
 
 void gmx_pme_send_switchgrid(const t_commrec* cr, ivec grid_size, real ewaldcoeff_q, real ewaldcoeff_lj)
@@ -376,8 +475,10 @@ static void receive_virial_energy(const t_commrec*      cr,
     {
         if (debug)
         {
-            fprintf(debug, "PP rank %d receiving from PME rank %d: virial and energy\n",
-                    cr->sim_nodeid, cr->dd->pme_nodeid);
+            fprintf(debug,
+                    "PP rank %d receiving from PME rank %d: virial and energy\n",
+                    cr->sim_nodeid,
+                    cr->dd->pme_nodeid);
         }
 #if GMX_MPI
         MPI_Recv(&cve, sizeof(cve), MPI_BYTE, cr->dd->pme_nodeid, 1, cr->mpi_comm_mysim, MPI_STATUS_IGNORE);
@@ -393,7 +494,7 @@ static void receive_virial_energy(const t_commrec*      cr,
         *dvdlambda_lj += cve.dvdlambda_lj;
         *pme_cycles = cve.cycles;
 
-        if (cve.stop_cond != gmx_stop_cond_none)
+        if (cve.stop_cond != StopCondition::None)
         {
             gmx_set_stop_condition(cve.stop_cond);
         }
@@ -417,17 +518,17 @@ static void recvFFromPme(gmx::PmePpCommGpu* pmePpCommGpu,
     if (useGpuPmePpComms)
     {
         GMX_ASSERT(pmePpCommGpu != nullptr, "Need valid pmePpCommGpu");
-        // Receive directly using CUDA memory copy
-        pmePpCommGpu->receiveForceFromPmeCudaDirect(recvptr, n, receivePmeForceToGpu);
+        // Receive forces from PME rank
+        pmePpCommGpu->receiveForceFromPme(static_cast<gmx::RVec*>(recvptr), n, receivePmeForceToGpu);
     }
     else
     {
         // Receive data using MPI
 #if GMX_MPI
-        MPI_Recv(recvptr, n * sizeof(rvec), MPI_BYTE, cr->dd->pme_nodeid, 0, cr->mpi_comm_mysim,
-                 MPI_STATUS_IGNORE);
+        MPI_Recv(recvptr, n * sizeof(rvec), MPI_BYTE, cr->dd->pme_nodeid, 0, cr->mpi_comm_mysim, MPI_STATUS_IGNORE);
 #else
         GMX_UNUSED_VALUE(cr);
+        GMX_UNUSED_VALUE(n);
 #endif
     }
 }
@@ -450,14 +551,14 @@ void gmx_pme_receive_f(gmx::PmePpCommGpu*    pmePpCommGpu,
         gmx_pme_send_coeffs_coords_wait(cr->dd);
     }
 
-    const int               natoms = dd_numHomeAtoms(*cr->dd);
-    std::vector<gmx::RVec>& buffer = cr->dd->pmeForceReceiveBuffer;
+    const int                   natoms = dd_numHomeAtoms(*cr->dd);
+    gmx::HostVector<gmx::RVec>& buffer = cr->dd->pmeForceReceiveBuffer;
     buffer.resize(natoms);
 
     void* recvptr = reinterpret_cast<void*>(buffer.data());
     recvFFromPme(pmePpCommGpu, recvptr, natoms, cr, useGpuPmePpComms, receivePmeForceToGpu);
 
-    int nt = gmx_omp_nthreads_get_simple_rvec_task(emntDefault, natoms);
+    int nt = gmx_omp_nthreads_get_simple_rvec_task(ModuleMultiThread::Default, natoms);
 
     gmx::ArrayRef<gmx::RVec> f = forceWithVirial->force_;
 

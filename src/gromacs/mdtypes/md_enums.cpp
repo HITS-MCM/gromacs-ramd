@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,16 +26,18 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include "md_enums.h"
 
-const char* enum_name(int index, int max_index, const char* names[])
+#include "gromacs/utility/enumerationhelpers.h"
+
+const char* enum_name(int index, int max_index, const char* const names[])
 {
     if (index < 0 || index >= max_index)
     {
@@ -52,142 +50,359 @@ const char* enum_name(int index, int max_index, const char* names[])
     }
 }
 
-const char* yesno_names[BOOL_NR + 1] = { "no", "yes", nullptr };
+const char* enumValueToString(IntegrationAlgorithm enumValue)
+{
+    static constexpr gmx::EnumerationArray<IntegrationAlgorithm, const char*> interationAlgorithmNames = {
+        "md",  "steep", "cg", "bd",    "sd2 - removed", "nm",   "l-bfgs",
+        "tpi", "tpic",  "sd", "md-vv", "md-vv-avek",    "mimic"
+    };
+    return interationAlgorithmNames[enumValue];
+}
 
-const char* ei_names[eiNR + 1] = { "md",    "steep",      "cg",    "bd",   "sd2 - removed",
-                                   "nm",    "l-bfgs",     "tpi",   "tpic", "sd",
-                                   "md-vv", "md-vv-avek", "mimic", nullptr };
+const char* enumValueToString(CoulombInteractionType enumValue)
+{
+    static constexpr gmx::EnumerationArray<CoulombInteractionType, const char*> coloumbTreatmentNames = {
+        "Cut-off",
+        "Reaction-Field",
+        "Generalized-Reaction-Field (unused)",
+        "PME",
+        "Ewald",
+        "P3M-AD",
+        "Poisson",
+        "Switch",
+        "Shift",
+        "User",
+        "Generalized-Born (unused)",
+        "Reaction-Field-nec (unsupported)",
+        "Encad-shift (unused)",
+        "PME-User",
+        "PME-Switch",
+        "PME-User-Switch",
+        "Reaction-Field-zero"
+    };
+    return coloumbTreatmentNames[enumValue];
+}
 
-const char* ecutscheme_names[ecutsNR + 1] = { "Verlet", "Group", nullptr };
+const char* enumValueToString(EwaldGeometry enumValue)
+{
+    static constexpr gmx::EnumerationArray<EwaldGeometry, const char*> ewaldGeometryNames = {
+        "3d", "3dc"
+    };
+    return ewaldGeometryNames[enumValue];
+}
 
-const char* erefscaling_names[erscNR + 1] = { "No", "All", "COM", nullptr };
+const char* enumValueToString(LongRangeVdW enumValue)
+{
+    static constexpr gmx::EnumerationArray<LongRangeVdW, const char*> longRangeVdWNames = {
+        "Geometric", "Lorentz-Berthelot"
+    };
+    return longRangeVdWNames[enumValue];
+}
 
-const char* eel_names[eelNR + 1] = { "Cut-off",
-                                     "Reaction-Field",
-                                     "Generalized-Reaction-Field (unused)",
-                                     "PME",
-                                     "Ewald",
-                                     "P3M-AD",
-                                     "Poisson",
-                                     "Switch",
-                                     "Shift",
-                                     "User",
-                                     "Generalized-Born (unused)",
-                                     "Reaction-Field-nec (unsupported)",
-                                     "Encad-shift (unused)",
-                                     "PME-User",
-                                     "PME-Switch",
-                                     "PME-User-Switch",
-                                     "Reaction-Field-zero",
-                                     nullptr };
+const char* enumValueToString(VanDerWaalsType enumValue)
+{
+    static constexpr gmx::EnumerationArray<VanDerWaalsType, const char*> vanDerWaalsTypeNames = {
+        "Cut-off", "Switch", "Shift", "User", "Encad-shift (unused)", "PME"
+    };
+    return vanDerWaalsTypeNames[enumValue];
+}
 
-const char* eewg_names[eewgNR + 1] = { "3d", "3dc", nullptr };
+const char* enumValueToString(ConstraintAlgorithm enumValue)
+{
+    static constexpr gmx::EnumerationArray<ConstraintAlgorithm, const char*> constraintAlgorithmNames = {
+        "Lincs", "Shake"
+    };
+    return constraintAlgorithmNames[enumValue];
+}
 
-const char* eljpme_names[eljpmeNR + 1] = { "Geometric", "Lorentz-Berthelot", nullptr };
+const char* enumValueToString(InteractionModifiers enumValue)
+{
+    static constexpr gmx::EnumerationArray<InteractionModifiers, const char*> interactionModifierNames = {
+        "Potential-shift-Verlet", "Potential-shift", "None",
+        "Potential-switch",       "Exact-cutoff",    "Force-switch"
+    };
+    return interactionModifierNames[enumValue];
+}
 
-const char* evdw_names[evdwNR + 1] = { "Cut-off", "Switch", "Shift", "User", "Encad-shift (unused)",
-                                       "PME",     nullptr };
+const char* enumValueToString(TemperatureCoupling enumValue)
+{
+    static constexpr gmx::EnumerationArray<TemperatureCoupling, const char*> temperatureCouplingNames = {
+        "No", "Berendsen", "Nose-Hoover", "yes", "Andersen", "Andersen-massive", "V-rescale"
+    }; /* yes is alias for berendsen */
+    return temperatureCouplingNames[enumValue];
+}
 
-const char* econstr_names[econtNR + 1] = { "Lincs", "Shake", nullptr };
+const char* enumValueToString(PressureCoupling enumValue)
+{
+    static constexpr gmx::EnumerationArray<PressureCoupling, const char*> pressureCouplingNames = {
+        "No", "Berendsen", "Parrinello-Rahman", "Isotropic", "MTTK", "C-rescale"
+    }; /* isotropic is alias for berendsen */
+    return pressureCouplingNames[enumValue];
+}
 
-const char* eintmod_names[eintmodNR + 1] = {
-    "Potential-shift-Verlet", "Potential-shift", "None", "Potential-switch",
-    "Exact-cutoff",           "Force-switch",    nullptr
-};
+const char* enumValueToString(Boolean enumValue)
+{
+    static constexpr gmx::EnumerationArray<Boolean, const char*> booleanNames = { "no", "yes" };
+    return booleanNames[enumValue];
+}
 
-const char* etcoupl_names[etcNR + 1] = {
-    "No", "Berendsen", "Nose-Hoover", "yes", "Andersen", "Andersen-massive", "V-rescale", nullptr
-}; /* yes is alias for berendsen */
+const char* booleanValueToString(bool value)
+{
+    Boolean enumValue = value ? Boolean::Yes : Boolean::No;
+    return enumValueToString(enumValue);
+}
 
-const char* epcoupl_names[epcNR + 1] = { "No",        "Berendsen", "Parrinello-Rahman",
-                                         "Isotropic", "MTTK",      "C-rescale",
-                                         nullptr }; /* isotropic is alias for berendsen */
+const char* enumValueToString(RefCoordScaling enumValue)
+{
+    static constexpr gmx::EnumerationArray<RefCoordScaling, const char*> refCoordScalingNames = {
+        "No", "All", "COM"
+    };
+    return refCoordScalingNames[enumValue];
+}
 
-const char* epcoupltype_names[epctNR + 1] = { "Isotropic", "Semiisotropic", "Anisotropic",
-                                              "Surface-Tension", nullptr };
+const char* enumValueToString(CutoffScheme enumValue)
+{
+    static constexpr gmx::EnumerationArray<CutoffScheme, const char*> cutoffSchemeNames = {
+        "Verlet", "Group"
+    };
+    return cutoffSchemeNames[enumValue];
+}
 
-const char* edisre_names[edrNR + 1] = { "No", "Simple", "Ensemble", nullptr };
+const char* enumValueToString(PressureCouplingType enumValue)
+{
+    static constexpr gmx::EnumerationArray<PressureCouplingType, const char*> pressureCouplingTypeNames = {
+        "Isotropic", "Semiisotropic", "Anisotropic", "Surface-Tension"
+    };
+    return pressureCouplingTypeNames[enumValue];
+}
 
-const char* edisreweighting_names[edrwNR + 1] = { "Conservative", "Equal", nullptr };
+const char* enumValueToString(DistanceRestraintRefinement enumValue)
+{
+    static constexpr gmx::EnumerationArray<DistanceRestraintRefinement, const char*> distanceRestraintRefinementNames = {
+        "No", "Simple", "Ensemble"
+    };
+    return distanceRestraintRefinementNames[enumValue];
+}
 
-const char* enbf_names[eNBF_NR + 1] = { "", "LJ", "Buckingham", nullptr };
+const char* enumValueToString(DistanceRestraintWeighting enumValue)
+{
+    static constexpr gmx::EnumerationArray<DistanceRestraintWeighting, const char*> distanceRestraintWeightingNames = {
+        "Conservative", "Equal"
+    };
+    return distanceRestraintWeightingNames[enumValue];
+}
 
-const char* ecomb_names[eCOMB_NR + 1] = { "", "Geometric", "Arithmetic", "GeomSigEps", nullptr };
+const char* enumValueToString(VanDerWaalsPotential enumValue)
+{
+    static constexpr gmx::EnumerationArray<VanDerWaalsPotential, const char*> vanDerWaalsPotentialNames = {
+        "None", "LJ", "Buckingham"
+    };
+    return vanDerWaalsPotentialNames[enumValue];
+}
 
-const char* esimtemp_names[esimtempNR + 1] = { "geometric", "exponential", "linear", nullptr };
+const char* enumValueToString(CombinationRule enumValue)
+{
+    static constexpr gmx::EnumerationArray<CombinationRule, const char*> combinationRuleNames = {
+        "None", "Geometric", "Arithmetic", "GeomSigEps"
+    };
+    return combinationRuleNames[enumValue];
+}
 
-const char* efep_names[efepNR + 1] = { "no", "yes", "static", "slow-growth", "expanded", nullptr };
+const char* enumValueToString(SimulatedTempering enumValue)
+{
+    static constexpr gmx::EnumerationArray<SimulatedTempering, const char*> simulatedTemperingNames = {
+        "geometric", "exponential", "linear"
+    };
+    return simulatedTemperingNames[enumValue];
+}
 
-const char* efpt_names[efptNR + 1] = { "fep-lambdas",         "mass-lambdas",   "coul-lambdas",
-                                       "vdw-lambdas",         "bonded-lambdas", "restraint-lambdas",
-                                       "temperature-lambdas", nullptr };
+const char* enumValueToString(FreeEnergyPerturbationType enumValue)
+{
+    static constexpr gmx::EnumerationArray<FreeEnergyPerturbationType, const char*> freeEnergyPerturbationTypeNames = {
+        "no", "yes", "static", "slow-growth", "expanded"
+    };
+    return freeEnergyPerturbationTypeNames[enumValue];
+}
 
-const char* efpt_singular_names[efptNR + 1] = { "fep-lambda",         "mass-lambda",
-                                                "coul-lambda",        "vdw-lambda",
-                                                "bonded-lambda",      "restraint-lambda",
-                                                "temperature-lambda", nullptr };
+const char* enumValueToString(FreeEnergyPerturbationCouplingType enumValue)
+{
+    static constexpr gmx::EnumerationArray<FreeEnergyPerturbationCouplingType, const char*> freeEnergyPerturbationCouplingTypeNames = {
+        "fep-lambdas",    "mass-lambdas",      "coul-lambdas",       "vdw-lambdas",
+        "bonded-lambdas", "restraint-lambdas", "temperature-lambdas"
+    };
+    return freeEnergyPerturbationCouplingTypeNames[enumValue];
+}
 
-const char* edHdLPrintEnergy_names[edHdLPrintEnergyNR + 1] = { "no", "total", "potential", "yes", nullptr };
+const char* enumValueToStringSingular(FreeEnergyPerturbationCouplingType enumValue)
+{
+    static constexpr gmx::EnumerationArray<FreeEnergyPerturbationCouplingType, const char*> freeEnergyPerturbationCouplingTypeNames = {
+        "fep-lambda",    "mass-lambda",      "coul-lambda",       "vdw-lambda",
+        "bonded-lambda", "restraint-lambda", "temperature-lambda"
+    };
+    return freeEnergyPerturbationCouplingTypeNames[enumValue];
+}
 
-const char* elamstats_names[elamstatsNR + 1] = {
-    "no",     "metropolis-transition", "barker-transition",
-    "minvar", "wang-landau",           "weighted-wang-landau",
-    nullptr
-};
+const char* enumValueToString(FreeEnergyPrintEnergy enumValue)
+{
+    static constexpr gmx::EnumerationArray<FreeEnergyPrintEnergy, const char*> freeEnergyPrintNames = {
+        "no", "total", "potential", "yes"
+    };
+    return freeEnergyPrintNames[enumValue];
+}
 
-const char* elmcmove_names[elmcmoveNR + 1] = { "no",    "metropolis",         "barker",
-                                               "gibbs", "metropolized-gibbs", nullptr };
+const char* enumValueToString(LambdaWeightCalculation enumValue)
+{
+    static constexpr gmx::EnumerationArray<LambdaWeightCalculation, const char*> lambdaWeightCalculationNames = {
+        "no",     "metropolis-transition", "barker-transition",
+        "minvar", "wang-landau",           "weighted-wang-landau"
+    };
+    return lambdaWeightCalculationNames[enumValue];
+}
 
-const char* elmceq_names[elmceqNR + 1] = { "no",           "yes",
-                                           "wl-delta",     "number-all-lambda",
-                                           "number-steps", "number-samples",
-                                           "count-ratio",  nullptr };
+const char* enumValueToString(LambdaMoveCalculation enumValue)
+{
+    static constexpr gmx::EnumerationArray<LambdaMoveCalculation, const char*> lambdaMoveCalculationNames = {
+        "no", "metropolis", "barker", "gibbs", "metropolized-gibbs"
+    };
+    return lambdaMoveCalculationNames[enumValue];
+}
 
-const char* separate_dhdl_file_names[esepdhdlfileNR + 1] = { "yes", "no", nullptr };
+const char* enumValueToString(LambdaWeightWillReachEquilibrium enumValue)
+{
+    static constexpr gmx::EnumerationArray<LambdaWeightWillReachEquilibrium, const char*> lambdaWeightEquilibriumNames = {
+        "no",         "yes", "wl-delta", "number-all-lambda", "number-steps", "number-samples",
+        "count-ratio"
+    };
+    return lambdaWeightEquilibriumNames[enumValue];
+}
 
-const char* dhdl_derivatives_names[edhdlderivativesNR + 1] = { "yes", "no", nullptr };
+const char* enumValueToString(SeparateDhdlFile enumValue)
+{
+    static constexpr gmx::EnumerationArray<SeparateDhdlFile, const char*> separateDhdlFileNames = {
+        "yes", "no"
+    };
+    return separateDhdlFileNames[enumValue];
+}
 
-const char* esol_names[esolNR + 1] = { "No", "SPC", "TIP4p", nullptr };
+const char* enumValueToString(SoftcoreType enumValue)
+{
+    static constexpr gmx::EnumerationArray<SoftcoreType, const char*> softcoreTypeNames = {
+        "beutler", "gapsys"
+    };
+    return softcoreTypeNames[enumValue];
+}
 
-const char* edispc_names[edispcNR + 1] = { "No",          "EnerPres", "Ener",
-                                           "AllEnerPres", "AllEner",  nullptr };
+const char* enumValueToString(KernelSoftcoreType enumValue)
+{
+    static constexpr gmx::EnumerationArray<KernelSoftcoreType, const char*> softcoreTypeNames = {
+        "beutler", "gapsys", "none"
+    };
+    return softcoreTypeNames[enumValue];
+}
 
-const char* ecm_names[ecmNR + 1] = { "Linear", "Angular", "None", "Linear-acceleration-correction", nullptr };
+const char* enumValueToString(DhDlDerivativeCalculation enumValue)
+{
+    static constexpr gmx::EnumerationArray<DhDlDerivativeCalculation, const char*> dhdlDerivativeCalculationNames = {
+        "yes", "no"
+    };
+    return dhdlDerivativeCalculationNames[enumValue];
+}
 
-const char* eann_names[eannNR + 1] = { "No", "Single", "Periodic", nullptr };
+const char* enumValueToString(SolventModel enumValue)
+{
+    static constexpr gmx::EnumerationArray<SolventModel, const char*> solventModelNames = {
+        "No", "SPC", "TIP4p"
+    };
+    return solventModelNames[enumValue];
+}
 
-const char* ewt_names[ewtNR + 1] = { "9-3", "10-4", "table", "12-6", nullptr };
+const char* enumValueToString(DispersionCorrectionType enumValue)
+{
+    static constexpr gmx::EnumerationArray<DispersionCorrectionType, const char*> dispersionCorrectionTypeNames = {
+        "No", "EnerPres", "Ener", "AllEnerPres", "AllEner"
+    };
+    return dispersionCorrectionTypeNames[enumValue];
+}
 
-const char* epull_names[epullNR + 1] = { "umbrella",    "constraint",       "constant-force",
-                                         "flat-bottom", "flat-bottom-high", "external-potential",
-                                         nullptr };
+const char* enumValueToString(SimulatedAnnealing enumValue)
+{
+    static constexpr gmx::EnumerationArray<SimulatedAnnealing, const char*> simulatedAnnealingNames = {
+        "No", "Single", "Periodic"
+    };
+    return simulatedAnnealingNames[enumValue];
+}
 
-const char* epullg_names[epullgNR + 1] = { "distance",           "direction",          "cylinder",
-                                           "direction-periodic", "direction-relative", "angle",
-                                           "dihedral",           "angle-axis",         nullptr };
+const char* enumValueToString(WallType enumValue)
+{
+    static constexpr gmx::EnumerationArray<WallType, const char*> wallTypeNames = {
+        "9-3", "10-4", "table", "12-6"
+    };
+    return wallTypeNames[enumValue];
+}
 
-const char* erotg_names[erotgNR + 1] = { "iso",   "iso-pf",  "pm",     "pm-pf", "rm",
-                                         "rm-pf", "rm2",     "rm2-pf", "flex",  "flex-t",
-                                         "flex2", "flex2-t", nullptr };
+const char* enumValueToString(PullingAlgorithm enumValue)
+{
+    static constexpr gmx::EnumerationArray<PullingAlgorithm, const char*> pullAlgorithmNames = {
+        "umbrella",    "constraint",       "constant-force",
+        "flat-bottom", "flat-bottom-high", "external-potential"
+    };
+    return pullAlgorithmNames[enumValue];
+}
 
-const char* erotg_fitnames[erotgFitNR + 1] = { "rmsd", "norm", "potential", nullptr };
+const char* enumValueToString(PullGroupGeometry enumValue)
+{
+    static constexpr gmx::EnumerationArray<PullGroupGeometry, const char*> pullGroupControlNames = {
+        "distance", "direction", "cylinder",   "direction-periodic", "direction-relative",
+        "angle",    "dihedral",  "angle-axis", "transformation"
+    };
+    return pullGroupControlNames[enumValue];
+}
 
-const char* eSwapTypes_names[eSwapTypesNR + 1] = { "no", "X", "Y", "Z", nullptr };
+const char* enumValueToString(EnforcedRotationGroupType enumValue)
+{
+    static constexpr gmx::EnumerationArray<EnforcedRotationGroupType, const char*> enforcedRotationGroupNames = {
+        "iso", "iso-pf", "pm",   "pm-pf",  "rm",    "rm-pf",
+        "rm2", "rm2-pf", "flex", "flex-t", "flex2", "flex2-t"
+    };
+    return enforcedRotationGroupNames[enumValue];
+}
 
-const char* eSwapFixedGrp_names[eSwapFixedGrpNR + 1] = { "Split0", "Split1", "Solvent", nullptr };
+const char* enumValueToString(RotationGroupFitting enumValue)
+{
+    static constexpr gmx::EnumerationArray<RotationGroupFitting, const char*> rotationGroupFittingNames = {
+        "rmsd", "norm", "potential"
+    };
+    return rotationGroupFittingNames[enumValue];
+}
 
-const char* gmx_nblist_geometry_names[GMX_NBLIST_GEOMETRY_NR + 1] = {
-    "Particle-Particle", "Water3-Particle", "Water3-Water3", "Water4-Particle",
-    "Water4-Water4",     "CG-CG",           nullptr
-};
+const char* enumValueToString(SwapType enumValue)
+{
+    static constexpr gmx::EnumerationArray<SwapType, const char*> swapTypeNames = {
+        "no", "X", "Y", "Z"
+    };
+    return swapTypeNames[enumValue];
+}
 
-const char* gmx_nblist_interaction_names[GMX_NBLIST_INTERACTION_NR + 1] = { "Standard",
-                                                                            "Free_Energy", nullptr };
+const char* enumValueToString(SwapGroupSplittingType enumValue)
+{
+    static constexpr gmx::EnumerationArray<SwapGroupSplittingType, const char*> swapGroupSplittingTypeNames = {
+        "Split0", "Split1", "Solvent"
+    };
+    return swapGroupSplittingTypeNames[enumValue];
+}
 
-const char* gmx_nbkernel_elec_names[GMX_NBKERNEL_ELEC_NR + 1] = {
-    "None", "Coulomb", "Reaction-Field", "Cubic-Spline-Table", "Ewald", nullptr
-};
+const char* enumValueToString(NbkernelElecType enumValue)
+{
+    static constexpr gmx::EnumerationArray<NbkernelElecType, const char*> nbkernelElecTypeNames = {
+        "None", "Coulomb", "Reaction-Field", "Cubic-Spline-Table", "Ewald"
+    };
+    return nbkernelElecTypeNames[enumValue];
+}
 
-const char* gmx_nbkernel_vdw_names[GMX_NBKERNEL_VDW_NR + 1] = { "None",       "Lennard-Jones",
-                                                                "Buckingham", "Cubic-Spline-Table",
-                                                                "LJEwald",    nullptr };
+const char* enumValueToString(NbkernelVdwType enumValue)
+{
+    static constexpr gmx::EnumerationArray<NbkernelVdwType, const char*> nbkernelVdwTypeNames = {
+        "None", "Lennard-Jones", "Buckingham", "Cubic-Spline-Table", "LJEwald"
+    };
+    return nbkernelVdwTypeNames[enumValue];
+}

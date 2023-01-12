@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,19 +26,21 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
 #include "ter_db.h"
 
+#include <array>
 #include <cctype>
 #include <cstring>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,44 +52,39 @@
 #include "gromacs/gmxpreprocess/notset.h"
 #include "gromacs/gmxpreprocess/toputil.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strdb.h"
+#include "gromacs/utility/stringtoenumvalueconverter.h"
 
 #include "hackblock.h"
 #include "resall.h"
 
 /* use bonded types definitions in hackblock.h */
-#define ekwRepl (ebtsNR + 1)
-#define ekwAdd (ebtsNR + 2)
-#define ekwDel (ebtsNR + 3)
-#define ekwNR 3
-static const char* kw_names[ekwNR] = { "replace", "add", "delete" };
-
-static int find_kw(char* keyw)
+enum class ReplaceType : int
 {
-    int i;
+    Repl,
+    Add,
+    Del,
+    Count
+};
 
-    for (i = 0; i < ebtsNR; i++)
-    {
-        if (gmx_strcasecmp(btsNames[i], keyw) == 0)
-        {
-            return i;
-        }
-    }
-    for (i = 0; i < ekwNR; i++)
-    {
-        if (gmx_strcasecmp(kw_names[i], keyw) == 0)
-        {
-            return ebtsNR + 1 + i;
-        }
-    }
-
-    return NOTSET;
+static const char* enumValueToString(ReplaceType enumValue)
+{
+    constexpr gmx::EnumerationArray<ReplaceType, const char*> replaceTypeNames = { "replace",
+                                                                                   "add",
+                                                                                   "delete" };
+    return replaceTypeNames[enumValue];
 }
 
-#define FATAL() gmx_fatal(FARGS, "Reading Termini Database: not enough items on line\n%s", line)
+template<typename EnumType>
+static std::optional<EnumType> findTypeFromKeyword(char* keyw)
+{
+    gmx::StringToEnumValueConverter<EnumType, enumValueToString, gmx::StringCompareType::CaseInsensitive, gmx::StripStrings::Yes> converter;
+    return converter.valueFrom(keyw);
+}
 
 static void read_atom(char* line, bool bAdd, std::string* nname, t_atom* a, PreprocessingAtomTypes* atype, int* cgnr)
 {
@@ -120,7 +113,10 @@ static void read_atom(char* line, bool bAdd, std::string* nname, t_atom* a, Prep
         gmx_fatal(FARGS,
                   "Reading Termini Database: expected %d or %d items of atom data in stead of %d "
                   "on line\n%s",
-                  3, 4, nr, line);
+                  3,
+                  4,
+                  nr,
+                  line);
     }
     i = 0;
     if (!bAdd)
@@ -134,7 +130,7 @@ static void read_atom(char* line, bool bAdd, std::string* nname, t_atom* a, Prep
             *nname = "";
         }
     }
-    a->type = atype->atomTypeFromName(buf[i++]);
+    a->type = *atype->atomTypeFromName(buf[i++]);
     sscanf(buf[i++], "%lf", &m);
     a->m = m;
     sscanf(buf[i++], "%lf", &q);
@@ -151,7 +147,7 @@ static void read_atom(char* line, bool bAdd, std::string* nname, t_atom* a, Prep
 
 static void print_atom(FILE* out, const t_atom& a, PreprocessingAtomTypes* atype)
 {
-    fprintf(out, "\t%s\t%g\t%g\n", atype->atomNameFromAtomType(a.type), a.m, a.q);
+    fprintf(out, "\t%s\t%g\t%g\n", *atype->atomNameFromAtomType(a.type), a.m, a.q);
 }
 
 static void print_ter_db(const char*                                ff,
@@ -166,10 +162,11 @@ static void print_ter_db(const char*                                ff,
     {
         fprintf(out, "[ %s ]\n", modification.name.c_str());
 
-        if (std::any_of(modification.hack.begin(), modification.hack.end(),
-                        [](const auto& mod) { return mod.type() == MoleculePatchType::Replace; }))
+        if (std::any_of(modification.hack.begin(), modification.hack.end(), [](const auto& mod) {
+                return mod.type() == MoleculePatchType::Replace;
+            }))
         {
-            fprintf(out, "[ %s ]\n", kw_names[ekwRepl - ebtsNR - 1]);
+            fprintf(out, "[ %s ]\n", enumValueToString(ReplaceType::Repl));
             for (const auto& hack : modification.hack)
             {
                 if (hack.type() == MoleculePatchType::Replace)
@@ -179,10 +176,11 @@ static void print_ter_db(const char*                                ff,
                 }
             }
         }
-        if (std::any_of(modification.hack.begin(), modification.hack.end(),
-                        [](const auto& mod) { return mod.type() == MoleculePatchType::Add; }))
+        if (std::any_of(modification.hack.begin(), modification.hack.end(), [](const auto& mod) {
+                return mod.type() == MoleculePatchType::Add;
+            }))
         {
-            fprintf(out, "[ %s ]\n", kw_names[ekwAdd - ebtsNR - 1]);
+            fprintf(out, "[ %s ]\n", enumValueToString(ReplaceType::Add));
             for (const auto& hack : modification.hack)
             {
                 if (hack.type() == MoleculePatchType::Add)
@@ -192,10 +190,11 @@ static void print_ter_db(const char*                                ff,
                 }
             }
         }
-        if (std::any_of(modification.hack.begin(), modification.hack.end(),
-                        [](const auto& mod) { return mod.type() == MoleculePatchType::Delete; }))
+        if (std::any_of(modification.hack.begin(), modification.hack.end(), [](const auto& mod) {
+                return mod.type() == MoleculePatchType::Delete;
+            }))
         {
-            fprintf(out, "[ %s ]\n", kw_names[ekwDel - ebtsNR - 1]);
+            fprintf(out, "[ %s ]\n", enumValueToString(ReplaceType::Del));
             for (const auto& hack : modification.hack)
             {
                 if (hack.type() == MoleculePatchType::Delete)
@@ -204,14 +203,14 @@ static void print_ter_db(const char*                                ff,
                 }
             }
         }
-        for (int bt = 0; bt < ebtsNR; bt++)
+        for (auto bt : gmx::EnumerationWrapper<BondedTypes>{})
         {
             if (!modification.rb[bt].b.empty())
             {
-                fprintf(out, "[ %s ]\n", btsNames[bt]);
+                fprintf(out, "[ %s ]\n", enumValueToString(bt));
                 for (const auto& b : modification.rb[bt].b)
                 {
-                    for (int k = 0; k < btsNiatoms[bt]; k++)
+                    for (int k = 0; k < enumValueToNumIAtoms(bt); k++)
                     {
                         fprintf(out, "%s%s", k ? "\t" : "", b.a[k].c_str());
                     }
@@ -245,7 +244,8 @@ static void read_ter_db_file(const char*                         fn,
 
     FILE* in = fflib_open(fn);
 
-    int kwnr = NOTSET;
+    std::optional<BondedTypes> btkw;
+    std::optional<ReplaceType> rtkw;
     get_a_line(in, line, STRLEN);
     MoleculePatchDatabase* block = nullptr;
     while (!feof(in))
@@ -253,9 +253,10 @@ static void read_ter_db_file(const char*                         fn,
         if (get_header(line, header))
         {
             /* this is a new block, or a new keyword */
-            kwnr = find_kw(header);
+            btkw = findTypeFromKeyword<BondedTypes>(header);
+            rtkw = findTypeFromKeyword<ReplaceType>(header);
 
-            if (kwnr == NOTSET)
+            if (!btkw.has_value() && !rtkw.has_value())
             {
                 tbptr->emplace_back(MoleculePatchDatabase());
                 block = &tbptr->back();
@@ -275,7 +276,7 @@ static void read_ter_db_file(const char*                         fn,
                           line);
             }
             /* this is not a header, so it must be data */
-            if (kwnr >= ebtsNR)
+            if (!btkw.has_value())
             {
                 /* this is a hack: add/rename/delete atoms */
                 /* make space for hacks */
@@ -284,33 +285,37 @@ static void read_ter_db_file(const char*                         fn,
 
                 /* get data */
                 int n = 0;
-                if (kwnr == ekwRepl || kwnr == ekwDel)
+                if (*rtkw == ReplaceType::Repl || *rtkw == ReplaceType::Del)
                 {
                     if (sscanf(line, "%s%n", buf, &n) != 1)
                     {
                         gmx_fatal(FARGS,
                                   "Reading Termini Database '%s': "
                                   "expected atom name on line\n%s",
-                                  fn, line);
+                                  fn,
+                                  line);
                     }
                     hack->oname = buf;
                     /* we only replace or delete one atom at a time */
                     hack->nr = 1;
                 }
-                else if (kwnr == ekwAdd)
+                else if (*rtkw == ReplaceType::Add)
                 {
                     read_ab(line, fn, hack);
                     get_a_line(in, line, STRLEN);
                 }
                 else
                 {
-                    gmx_fatal(FARGS, "unimplemented keyword number %d (%s:%d)", kwnr, __FILE__, __LINE__);
+                    gmx_fatal(FARGS,
+                              "unimplemented keyword number %d (%s:%d)",
+                              static_cast<int>(*rtkw),
+                              __FILE__,
+                              __LINE__);
                 }
-                if (kwnr == ekwRepl || kwnr == ekwAdd)
+                if (*rtkw == ReplaceType::Repl || *rtkw == ReplaceType::Add)
                 {
                     hack->atom.emplace_back();
-                    read_atom(line + n, kwnr == ekwAdd, &hack->nname, &hack->atom.back(), atype,
-                              &hack->cgnr);
+                    read_atom(line + n, *rtkw == ReplaceType::Add, &hack->nname, &hack->atom.back(), atype, &hack->cgnr);
                     if (hack->nname.empty())
                     {
                         if (!hack->oname.empty())
@@ -322,18 +327,19 @@ static void read_ter_db_file(const char*                         fn,
                             gmx_fatal(FARGS,
                                       "Reading Termini Database '%s': don't know which name the "
                                       "new atom should have on line\n%s",
-                                      fn, line);
+                                      fn,
+                                      line);
                         }
                     }
                 }
             }
-            else if (kwnr >= 0 && kwnr < ebtsNR)
+            else if (*btkw >= BondedTypes::Bonds && *btkw < BondedTypes::Count)
             {
                 /* this is bonded data: bonds, angles, dihedrals or impropers */
                 int n = 0;
-                block->rb[kwnr].b.emplace_back();
-                BondedInteraction* newBond = &block->rb[kwnr].b.back();
-                for (int j = 0; j < btsNiatoms[kwnr]; j++)
+                block->rb[*btkw].b.emplace_back();
+                BondedInteraction* newBond = &block->rb[*btkw].b.back();
+                for (int j = 0; j < enumValueToNumIAtoms(*btkw); j++)
                 {
                     int ni;
                     if (sscanf(line + n, "%s%n", buf, &ni) == 1)
@@ -345,7 +351,10 @@ static void read_ter_db_file(const char*                         fn,
                         gmx_fatal(FARGS,
                                   "Reading Termini Database '%s': expected %d atom names (found "
                                   "%d) on line\n%s",
-                                  fn, btsNiatoms[kwnr], j - 1, line);
+                                  fn,
+                                  enumValueToNumIAtoms(*btkw),
+                                  j - 1,
+                                  line);
                     }
                     n += ni;
                 }
@@ -501,7 +510,9 @@ MoleculePatchDatabase* choose_ter(gmx::ArrayRef<MoleculePatchDatabase*> tb, cons
     for (const auto& modification : tb)
     {
         bool bIsZwitterion = (0 == gmx_wcmatch("*ZWITTERION*", modification->name.c_str()));
-        printf("%2d: %s%s\n", i, modification->name.c_str(),
+        printf("%2d: %s%s\n",
+               i,
+               modification->name.c_str(),
                bIsZwitterion ? " (only use with zwitterions containing exactly one residue)" : "");
         i++;
     }

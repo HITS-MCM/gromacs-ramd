@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #ifndef GMX_SIMD_IMPL_X86_AVX_512_SIMD_DOUBLE_H
@@ -315,8 +313,8 @@ static inline SimdDouble frexp(SimdDouble value, SimdDInt32* exponent)
         iExponent = _mm256_add_epi32(iExponent, _mm256_set1_epi32(1));
 
         // Set result to value (+-0) when it is zero.
-        result = _mm512_mask_getmant_pd(value.simdInternal_, valueIsNonZero, value.simdInternal_,
-                                        _MM_MANT_NORM_p5_1, _MM_MANT_SIGN_src);
+        result = _mm512_mask_getmant_pd(
+                value.simdInternal_, valueIsNonZero, value.simdInternal_, _MM_MANT_NORM_p5_1, _MM_MANT_SIGN_src);
     }
     else
     {
@@ -423,7 +421,8 @@ static inline SimdDouble gmx_simdcall copysign(SimdDouble a, SimdDouble b)
 {
     return { _mm512_castsi512_pd(_mm512_ternarylogic_epi64(_mm512_castpd_si512(a.simdInternal_),
                                                            _mm512_castpd_si512(b.simdInternal_),
-                                                           _mm512_set1_epi64(INT64_MIN), 0xD8)) };
+                                                           _mm512_set1_epi64(INT64_MIN),
+                                                           0xD8)) };
 }
 
 static inline SimdDInt32 gmx_simdcall operator&(SimdDInt32 a, SimdDInt32 b)
@@ -463,20 +462,25 @@ static inline SimdDInt32 gmx_simdcall operator*(SimdDInt32 a, SimdDInt32 b)
 
 static inline SimdDIBool gmx_simdcall operator==(SimdDInt32 a, SimdDInt32 b)
 {
-    return { _mm512_mask_cmp_epi32_mask(avx512Int2Mask(0xFF), _mm512_castsi256_si512(a.simdInternal_),
-                                        _mm512_castsi256_si512(b.simdInternal_), _MM_CMPINT_EQ) };
+    return { _mm512_mask_cmp_epi32_mask(avx512Int2Mask(0xFF),
+                                        _mm512_castsi256_si512(a.simdInternal_),
+                                        _mm512_castsi256_si512(b.simdInternal_),
+                                        _MM_CMPINT_EQ) };
 }
 
 static inline SimdDIBool gmx_simdcall testBits(SimdDInt32 a)
 {
-    return { _mm512_mask_test_epi32_mask(avx512Int2Mask(0xFF), _mm512_castsi256_si512(a.simdInternal_),
+    return { _mm512_mask_test_epi32_mask(avx512Int2Mask(0xFF),
+                                         _mm512_castsi256_si512(a.simdInternal_),
                                          _mm512_castsi256_si512(a.simdInternal_)) };
 }
 
 static inline SimdDIBool gmx_simdcall operator<(SimdDInt32 a, SimdDInt32 b)
 {
-    return { _mm512_mask_cmp_epi32_mask(avx512Int2Mask(0xFF), _mm512_castsi256_si512(a.simdInternal_),
-                                        _mm512_castsi256_si512(b.simdInternal_), _MM_CMPINT_LT) };
+    return { _mm512_mask_cmp_epi32_mask(avx512Int2Mask(0xFF),
+                                        _mm512_castsi256_si512(a.simdInternal_),
+                                        _mm512_castsi256_si512(b.simdInternal_),
+                                        _MM_CMPINT_LT) };
 }
 
 static inline SimdDIBool gmx_simdcall operator&&(SimdDIBool a, SimdDIBool b)
@@ -508,9 +512,9 @@ static inline SimdDInt32 gmx_simdcall selectByNotMask(SimdDInt32 a, SimdDIBool m
 
 static inline SimdDInt32 gmx_simdcall blend(SimdDInt32 a, SimdDInt32 b, SimdDIBool sel)
 {
-    return { _mm512_castsi512_si256(
-            _mm512_mask_blend_epi32(sel.simdInternal_, _mm512_castsi256_si512(a.simdInternal_),
-                                    _mm512_castsi256_si512(b.simdInternal_))) };
+    return { _mm512_castsi512_si256(_mm512_mask_blend_epi32(sel.simdInternal_,
+                                                            _mm512_castsi256_si512(a.simdInternal_),
+                                                            _mm512_castsi256_si512(b.simdInternal_))) };
 }
 
 static inline SimdDInt32 gmx_simdcall cvtR2I(SimdDouble a)

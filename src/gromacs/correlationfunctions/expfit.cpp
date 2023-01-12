@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013-2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal
  * \file
@@ -69,12 +66,14 @@ static const int nfp_ffn[effnNR] = { 0, 1, 2, 3, 5, 7, 9, 2, 4, 3, 6 };
  * hence there are many more NULL field (which have to be at the end of
  * the array).
  */
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 const char* s_ffn[effnNR + 2] = { nullptr, "none",  "exp",   "aexp",  "exp_exp", "exp5", "exp7",
                                   "exp9",  nullptr, nullptr, nullptr, nullptr,   nullptr };
 
 // clang-format off
 // needed because clang-format wants to break the lines below
 /*! \brief Long description for each fitting function type */
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 static const char* longs_ffn[effnNR]
         = { "no fit",
             "y = exp(-x/|a0|)",
@@ -389,6 +388,7 @@ static double lmc_errest_3_parm(double x, const double* a)
 }
 
 /*! \brief array of fitting functions corresponding to the pre-defined types */
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 t_lmcurve lmcurves[effnNR + 1] = { lmc_exp_one_parm,  lmc_exp_one_parm, lmc_exp_two_parm,
                                    lmc_exp_exp,       lmc_exp_5_parm,   lmc_exp_7_parm,
                                    lmc_exp_9_parm,    lmc_vac_2_parm,   lmc_erffit,
@@ -566,8 +566,12 @@ static void print_chi2_params(FILE*        fp,
         double yfit = lmcurves[eFitFn](x[i], fitparms);
         chi2 += gmx::square(y[i] - yfit);
     }
-    fprintf(fp, "There are %d data points, %d parameters, %s chi2 = %g\nparams:", nfitpnts,
-            effnNparams(eFitFn), label, chi2);
+    fprintf(fp,
+            "There are %d data points, %d parameters, %s chi2 = %g\nparams:",
+            nfitpnts,
+            effnNparams(eFitFn),
+            label,
+            chi2);
     for (i = 0; (i < effnNparams(eFitFn)); i++)
     {
         fprintf(fp, "  %10g", fitparms[i]);
@@ -601,8 +605,7 @@ real do_lmfit(int                     ndata,
     if (debug)
     {
         fprintf(debug, "There are %d points to fit %d vars!\n", ndata, effnNparams(eFitFn));
-        fprintf(debug, "Fit to function %d from %g through %g, dt=%g\n", eFitFn, begintimefit,
-                endtimefit, dt);
+        fprintf(debug, "Fit to function %d from %g through %g, dt=%g\n", eFitFn, begintimefit, endtimefit, dt);
     }
 
     snew(x, ndata);
@@ -761,19 +764,24 @@ real fit_acf(int                     ncorr,
 
     if (bPrint)
     {
-        printf("COR: Correlation time (plain integral from %6.3f to %6.3f ps) = %8.5f ps\n", 0.0,
-               dt * nf_int, sum);
+        printf("COR: Correlation time (plain integral from %6.3f to %6.3f ps) = %8.5f ps\n", 0.0, dt * nf_int, sum);
         printf("COR: Relaxation times are computed as fit to an exponential:\n");
         printf("COR:   %s\n", effnDescription(fitfn));
         printf("COR: Fit to correlation function from %6.3f ps to %6.3f ps, results in a\n",
-               tbeginfit, std::min(ncorr * dt, tendfit));
+               tbeginfit,
+               std::min(ncorr * dt, tendfit));
     }
 
     tStart = 0;
     if (bPrint)
     {
-        printf("COR:%11s%11s%11s%11s%11s%11s%11s\n", "Fit from", "Integral", "Tail Value",
-               "Sum (ps)", " a1 (ps)", (effnNparams(fitfn) >= 2) ? " a2 ()" : "",
+        printf("COR:%11s%11s%11s%11s%11s%11s%11s\n",
+               "Fit from",
+               "Integral",
+               "Tail Value",
+               "Sum (ps)",
+               " a1 (ps)",
+               (effnNparams(fitfn) >= 2) ? " a2 ()" : "",
                (effnNparams(fitfn) >= 3) ? " a3 (ps)" : "");
     }
 
@@ -843,9 +851,9 @@ real fit_acf(int                     ncorr,
 
         nf_int    = std::min(ncorr, static_cast<int>((tStart + 1e-4) / dt));
         sum       = print_and_integrate(debug, nf_int, dt, c1, nullptr, 1);
-        tail_corr = do_lmfit(ncorr, c1, sig, dt, nullptr, tStart, tendfit, oenv, bDebugMode(),
-                             fitfn, fitparm, 0, nullptr);
-        sumtot    = sum + tail_corr;
+        tail_corr = do_lmfit(
+                ncorr, c1, sig, dt, nullptr, tStart, tendfit, oenv, bDebugMode(), fitfn, fitparm, 0, nullptr);
+        sumtot = sum + tail_corr;
         if (fit && ((jmax == 1) || (j == 1)))
         {
             double mfp[3];

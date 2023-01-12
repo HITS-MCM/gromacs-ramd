@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,19 +26,21 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_MDLIB_MD_SUPPORT_H
 #define GMX_MDLIB_MD_SUPPORT_H
+
+#include <cstdint>
 
 #include "gromacs/mdlib/vcm.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/timing/wallcycle.h"
 
-struct gmx_ekindata_t;
+class gmx_ekindata_t;
 struct gmx_enerdata_t;
 struct gmx_global_stat;
 struct gmx_signalling_t;
@@ -58,8 +56,8 @@ namespace gmx
 {
 template<typename T>
 class ArrayRef;
-class Constraints;
 class MDLogger;
+class ObservablesReducer;
 class SimulationSignaller;
 } // namespace gmx
 
@@ -85,16 +83,17 @@ class SimulationSignaller;
 #define CGLO_READEKIN (1u << 10u)
 /* we need to reset the ekin rescaling factor here */
 #define CGLO_SCALEEKIN (1u << 11u)
-/* After a new DD partitioning, we need to set a flag to schedule
- * global reduction of the total number of bonded interactions that
- * will be computed, to check none are missing. */
-#define CGLO_CHECK_NUMBER_OF_BONDED_INTERACTIONS (1u << 12u)
-
 
 /*! \brief Return the number of steps that will take place between
  * intra-simulation communications, given the constraints of the
  * inputrec. */
-int computeGlobalCommunicationPeriod(const gmx::MDLogger& mdlog, t_inputrec* ir, const t_commrec* cr);
+int computeGlobalCommunicationPeriod(const t_inputrec* ir);
+
+/*! \brief Return the number of steps that will take place between
+ * intra-simulation communications, given the constraints of the
+ * inputrec, and write information to log.
+ * Calls computeGlobalCommunicationPeriod(ir) internally. */
+int computeGlobalCommunicationPeriod(const gmx::MDLogger& mdlog, const t_inputrec* ir, const t_commrec* cr);
 
 void rerun_parallel_comm(t_commrec* cr, t_trxframe* fr, gmx_bool* bLastStep);
 
@@ -118,17 +117,17 @@ void compute_globals(gmx_global_stat*               gstat,
                      const t_mdatoms*               mdatoms,
                      t_nrnb*                        nrnb,
                      t_vcm*                         vcm,
-                     gmx_wallcycle_t                wcycle,
+                     gmx_wallcycle*                 wcycle,
                      gmx_enerdata_t*                enerd,
                      tensor                         force_vir,
                      tensor                         shake_vir,
                      tensor                         total_vir,
                      tensor                         pres,
-                     gmx::Constraints*              constr,
                      gmx::SimulationSignaller*      signalCoordinator,
                      const matrix                   lastbox,
-                     int*                           totalNumberOfBondedInteractions,
                      gmx_bool*                      bSumEkinhOld,
-                     int                            flags);
+                     int                            flags,
+                     int64_t                        step,
+                     gmx::ObservablesReducer*       observablesReducer);
 
 #endif

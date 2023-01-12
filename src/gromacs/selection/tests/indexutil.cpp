@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -143,8 +141,8 @@ void IndexBlockTest::checkBlocka(const char* id)
     for (int i = 0; i < blocka_.nr; ++i)
     {
         gmx::test::TestReferenceChecker blockCompound(compound.checkCompound("Block", nullptr));
-        blockCompound.checkSequence(&blocka_.a[blocka_.index[i]], &blocka_.a[blocka_.index[i + 1]],
-                                    "Atoms");
+        blockCompound.checkSequence(
+                &blocka_.a[blocka_.index[i]], &blocka_.a[blocka_.index[i + 1]], "Atoms");
     }
 }
 
@@ -545,8 +543,8 @@ void IndexMapTest::checkMapping(int atomCount, const int atoms[], const char* na
     for (int i = 0; i < map_.mapb.nr; ++i)
     {
         gmx::test::TestReferenceChecker blockCompound(compound.checkCompound("Block", nullptr));
-        blockCompound.checkSequence(&atoms[map_.mapb.index[i]], &atoms[map_.mapb.index[i + 1]],
-                                    "Atoms");
+        blockCompound.checkSequence(
+                &atoms[map_.mapb.index[i]], &atoms[map_.mapb.index[i + 1]], "Atoms");
         blockCompound.checkInteger(map_.refid[i], "RefId");
         blockCompound.checkInteger(map_.mapid[i], "MapId");
         int originalIdIndex = (map_.refid[i] != -1 ? map_.refid[i] : i);
@@ -673,8 +671,9 @@ public:
         addGroupToBlocka_(indicesGroupSecondA_);
         addGroupToBlocka_(indicesGroupC_);
 
-        const char* const namesAsConstCharArray[4] = { groupNames[0].c_str(), groupNames[1].c_str(),
-                                                       groupNames[2].c_str(), groupNames[3].c_str() };
+        const char* const namesAsConstCharArray[4] = {
+            groupNames[0].c_str(), groupNames[1].c_str(), groupNames[2].c_str(), groupNames[3].c_str()
+        };
         indexGroupAndNames_ = std::make_unique<gmx::IndexGroupsAndNames>(blockA_, namesAsConstCharArray);
     }
     ~IndexGroupsAndNamesTest() override { done_blocka(&blockA_); }

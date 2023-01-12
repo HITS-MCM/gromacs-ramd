@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2021- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -51,9 +50,6 @@
 #include "nblib/nblib.h"
 
 using namespace nblib;
-
-// Main function to write the MD program.
-int main(); // Keep the compiler happy
 
 int main()
 {
@@ -96,8 +92,8 @@ int main()
     HarmonicBondType ohHarmonicBond(1, 1);
     HarmonicBondType hcHarmonicBond(2, 1);
 
-    HarmonicAngleType hohAngle(Degrees(120), 1);
-    HarmonicAngleType hchAngle(Degrees(109.5), 1);
+    HarmonicAngle hohAngle(1, Degrees(120));
+    HarmonicAngle hchAngle(1, Degrees(109.5));
 
     // add harmonic bonds for water
     water.addInteraction(ParticleName("O"), ParticleName("H1"), ohHarmonicBond);
@@ -177,19 +173,24 @@ int main()
     SimulationState simulationState(coordinates, velocities, forces, box, topology);
 
     // The non-bonded force calculator contains all the data needed to compute forces
-    ForceCalculator forceCalculator(simulationState, options);
+    auto forceCalculator = setupGmxForceCalculatorCpu(simulationState.topology(), options);
+
+    // build the pair list
+    forceCalculator->updatePairlist(simulationState.coordinates(), simulationState.box());
 
     // The listed force calculator is also initialized with the required arguments
-    ListedForceCalculator listedForceCalculator(topology.getInteractionData(),
-                                                topology.numParticles(), 4, box);
+    ListedForceCalculator listedForceCalculator(
+            topology.getInteractionData(), topology.numParticles(), 4, box);
 
     // Integrator is initialized with an array of inverse masses (constructed from topology) and
     // the bounding box
-    LeapFrog integrator(topology, box);
+    LeapFrog integrator(simulationState.topology(), simulationState.box());
 
     // Print some diagnostic info
-    printf("initial position of particle 0: x %4f y %4f z %4f\n", simulationState.coordinates()[0][0],
-           simulationState.coordinates()[0][1], simulationState.coordinates()[0][2]);
+    printf("initial position of particle 0: x %4f y %4f z %4f\n",
+           simulationState.coordinates()[0][0],
+           simulationState.coordinates()[0][1],
+           simulationState.coordinates()[0][2]);
 
     // MD Loop
     int numSteps = 2;
@@ -198,17 +199,21 @@ int main()
     {
         zeroCartesianArray(simulationState.forces());
 
-        forceCalculator.compute(simulationState.coordinates(), simulationState.forces());
+        forceCalculator->compute(
+                simulationState.coordinates(), simulationState.box(), simulationState.forces());
 
-        listedForceCalculator.compute(simulationState.coordinates(), simulationState.forces());
+        listedForceCalculator.compute(
+                simulationState.coordinates(), simulationState.forces(), gmx::ArrayRef<real>{});
 
         // Integrate with a time step of 1 fs, positions, velocities and forces
-        integrator.integrate(1.0, simulationState.coordinates(), simulationState.velocities(),
-                             simulationState.forces());
+        integrator.integrate(
+                1.0, simulationState.coordinates(), simulationState.velocities(), simulationState.forces());
     }
 
-    printf("  final position of particle 9: x %4f y %4f z %4f\n", simulationState.coordinates()[9][0],
-           simulationState.coordinates()[9][1], simulationState.coordinates()[9][2]);
+    printf("  final position of particle 9: x %4f y %4f z %4f\n",
+           simulationState.coordinates()[9][0],
+           simulationState.coordinates()[9][1],
+           simulationState.coordinates()[9][2]);
 
     return 0;
 } // main

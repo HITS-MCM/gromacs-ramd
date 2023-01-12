@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \inpublicapi \file
  * \brief
@@ -65,7 +64,7 @@ namespace nblib
 class Box;
 class PbcHolder;
 template<class T>
-class ForceBuffer;
+class ForceBufferProxy;
 
 /*! \internal \brief Object to calculate forces and energies of listed forces
  *
@@ -90,29 +89,29 @@ public:
      * This function also stores the forces and energies from listed interactions in the internal
      * buffer of the ListedForceCalculator object
      *
-     * \param[in] coordinates to be used for the force calculation
-     * \param[out] forces buffer to store the output forces
+     * \param[in]  coordinates     input coordinates for the force calculation
+     * \param[inout] forces        output for adding the forces
+     * \param[inout] shiftForces   output for adding shift forces
+     * \param[out] energies        output for potential energies
+     * \param[in]  usePbc          whether or not to consider periodic boundary conditions
      */
-    void compute(gmx::ArrayRef<const Vec3> coordinates, gmx::ArrayRef<Vec3> forces, bool usePbc = false);
-
-    //! Alternative overload with the energies in an output buffer
     void compute(gmx::ArrayRef<const Vec3> coordinates,
                  gmx::ArrayRef<Vec3>       forces,
-                 EnergyType&               energies,
+                 gmx::ArrayRef<Vec3>       shiftForces,
+                 gmx::ArrayRef<real>       energies,
                  bool                      usePbc = false);
 
-    /*! \brief We need to declare the destructor here to move the (still default) implementation
-     *  to the .cpp file. Omitting this declaration would mean an inline destructor
-     *  which can't compile because the unique_ptr dtor needs ~ForceBuffer, which is not available
-     * here because it's incomplete.
-     */
+    //! \brief Alternative overload without shift forces
+    void compute(gmx::ArrayRef<const Vec3> coordinates,
+                 gmx::ArrayRef<Vec3>       forces,
+                 gmx::ArrayRef<real>       energies,
+                 bool                      usePbc = false);
+
+    //! \brief default, but moved to separate compilation unit
     ~ListedForceCalculator();
 
 private:
     int numThreads;
-
-    //! the main buffer to hold the final listed forces
-    std::vector<gmx::RVec> masterForceBuffer_;
 
     //! holds the array of energies computed
     EnergyType energyBuffer_;
@@ -121,13 +120,20 @@ private:
     std::vector<ListedInteractionData> threadedInteractions_;
 
     //! reduction force buffers
-    std::vector<std::unique_ptr<ForceBuffer<gmx::RVec>>> threadedForceBuffers_;
+    std::vector<ForceBufferProxy<Vec3>> threadedForceBuffers_;
+
+    //! reduction shift force buffers
+    std::vector<std::vector<Vec3>> threadedShiftForceBuffers_;
 
     //! PBC objects
     std::unique_ptr<PbcHolder> pbcHolder_;
 
     //! compute listed forces and energies, overwrites the internal buffers
-    void computeForcesAndEnergies(gmx::ArrayRef<const Vec3> x, bool usePbc = false);
+    template<class ShiftForce>
+    void computeForcesAndEnergies(gmx::ArrayRef<const Vec3>                  x,
+                                  gmx::ArrayRef<Vec3>                        forces,
+                                  [[maybe_unused]] gmx::ArrayRef<ShiftForce> shiftForces,
+                                  bool                                       usePbc = false);
 };
 
 } // namespace nblib

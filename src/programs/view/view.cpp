@@ -1,12 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2017,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -29,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -129,8 +126,13 @@ static bool HandleClient(t_x11* x11, int ID, t_gmx* gmx)
         case IDIMPORT:
         case IDEXPORT: ShowDlg(gmx->dlgs[edExport]); break;
         case IDDOEXPORT:
-            write_sto_conf(gmx->confout, *gmx->man->top.name, &(gmx->man->top.atoms), gmx->man->x,
-                           nullptr, gmx->man->molw->pbcType, gmx->man->box);
+            write_sto_conf(gmx->confout,
+                           *gmx->man->top.name,
+                           &(gmx->man->top.atoms),
+                           gmx->man->x,
+                           nullptr,
+                           gmx->man->molw->pbcType,
+                           gmx->man->box);
             break;
         case IDQUIT: show_mb(gmx, emQuit); break;
         case IDTERM: done_gmx(x11, gmx); return true;
@@ -259,17 +261,18 @@ static void init_gmx(t_x11* x11, char* program, int nfile, t_filenm fnm[], gmx_o
     w0 = DisplayWidth(x11->disp, x11->screen) - 132;
     h0 = DisplayHeight(x11->disp, x11->screen) - 140;
     InitWin(gmx->wd, 0, 0, w0, h0, 3, gmx::bromacs().c_str());
-    gmx->wd->self = XCreateSimpleWindow(x11->disp, x11->root, gmx->wd->x, gmx->wd->y, gmx->wd->width,
-                                        gmx->wd->height, gmx->wd->bwidth, WHITE, BLACK);
-    pm = XCreatePixmapFromBitmapData(x11->disp, x11->root, (char*)gromacs_bits, gromacs_width,
-                                     gromacs_height, WHITE, BLACK, 1);
+    gmx->wd->self = XCreateSimpleWindow(
+            x11->disp, x11->root, gmx->wd->x, gmx->wd->y, gmx->wd->width, gmx->wd->height, gmx->wd->bwidth, WHITE, BLACK);
+    pm = XCreatePixmapFromBitmapData(
+            x11->disp, x11->root, (char*)gromacs_bits, gromacs_width, gromacs_height, WHITE, BLACK, 1);
     hints.flags      = PMinSize;
     hints.min_width  = 2 * EWIDTH + 40;
     hints.min_height = EHEIGHT + LDHEIGHT + LEGHEIGHT + 40;
     XSetStandardProperties(x11->disp, gmx->wd->self, gmx->wd->text, program, pm, nullptr, 0, &hints);
 
     x11->RegisterCallback(x11, gmx->wd->self, x11->root, MainCallBack, gmx);
-    x11->SetInputMask(x11, gmx->wd->self,
+    x11->SetInputMask(x11,
+                      gmx->wd->self,
                       ButtonPressMask | ButtonReleaseMask | OwnerGrabButtonMask | ExposureMask
                               | StructureNotifyMask);
 
@@ -285,8 +288,8 @@ static void init_gmx(t_x11* x11, char* program, int nfile, t_filenm fnm[], gmx_o
     map_man(x11, gmx->man);
 
     /* Pull Down menu */
-    gmx->pd = init_pd(x11, gmx->wd->self, gmx->wd->width, x11->fg, x11->bg, MSIZE, gmx_pd_size,
-                      gmx_pd, MenuTitle);
+    gmx->pd = init_pd(
+            x11, gmx->wd->self, gmx->wd->width, x11->fg, x11->bg, MSIZE, gmx_pd_size, gmx_pd, MenuTitle);
 
     /* Dialogs & Filters */
 
@@ -328,8 +331,8 @@ int gmx_view(int argc, char* argv[])
                        { efNDX, nullptr, nullptr, ffOPTRD } };
 #define NFILE asize(fnm)
 
-    if (parse_common_args(&argc, argv, PCA_CAN_TIME, NFILE, fnm, 0, nullptr, asize(desc), desc,
-                          asize(bugs), bugs, &oenv))
+    if (parse_common_args(
+                &argc, argv, PCA_CAN_TIME, NFILE, fnm, 0, nullptr, asize(desc), desc, asize(bugs), bugs, &oenv))
     {
 #if !GMX_X11
         std::fprintf(stderr, "Compiled without X-Windows - can not run viewer.\n");
@@ -349,6 +352,10 @@ int gmx_view(int argc, char* argv[])
             x11->CleanUp(x11);
         }
 #endif
+        std::fprintf(stderr,
+                     "\ngmx view is deprecated because it has no maintainer and no tests. See\n"
+                     "https://gitlab.com/gromacs/gromacs/-/issues/4296 to volunteer to save "
+                     "it!\n");
     }
     return 0;
 }

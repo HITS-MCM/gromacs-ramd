@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #include "gmxpre.h"
@@ -48,6 +44,7 @@
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/coupling.h"
@@ -66,6 +63,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/mdatom.h"
+#include "gromacs/mdtypes/observablesreducer.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
@@ -88,18 +86,14 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
                                 gmx_bool                       bEkinAveVel)
 {
     int                         g;
-    gmx::ArrayRef<t_grp_tcstat> tcstat  = ekind->tcstat;
-    gmx::ArrayRef<t_grp_acc>    grpstat = ekind->grpstat;
+    gmx::ArrayRef<t_grp_tcstat> tcstat = ekind->tcstat;
 
     /* three main: VV with AveVel, vv with AveEkin, leap with AveEkin.  Leap with AveVel is also
        an option, but not supported now.
        bEkinAveVel: If TRUE, we sum into ekin, if FALSE, into ekinh.
      */
 
-    /* group velocities are calculated in update_ekindata and
-     * accumulated in acumulate_groups.
-     * Now the partial global and groups ekin.
-     */
+    // Now accumulate the partial global and groups ekin.
     for (g = 0; (g < opts->ngtc); g++)
     {
         copy_mat(tcstat[g].ekinh, tcstat[g].ekinh_old);
@@ -114,7 +108,7 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
         }
     }
     ekind->dekindl_old = ekind->dekindl;
-    int nthread        = gmx_omp_nthreads_get(emntUpdate);
+    int nthread        = gmx_omp_nthreads_get(ModuleMultiThread::Update);
 
 #pragma omp parallel for num_threads(nthread) schedule(static)
     for (int thread = 0; thread < nthread; thread++)
@@ -123,8 +117,7 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
         // or memory allocation. It should not be able to throw, so for now
         // we do not need a try/catch wrapper.
         int     start_t, end_t, n;
-        int     ga, gt;
-        rvec    v_corrt;
+        int     gt;
         real    hm;
         int     d, m;
         matrix* ekin_sum;
@@ -142,14 +135,9 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
         }
         *dekindl_sum = 0.0;
 
-        ga = 0;
         gt = 0;
         for (n = start_t; n < end_t; n++)
         {
-            if (md->cACC)
-            {
-                ga = md->cACC[n];
-            }
             if (md->cTC)
             {
                 gt = md->cTC[n];
@@ -158,19 +146,15 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
 
             for (d = 0; (d < DIM); d++)
             {
-                v_corrt[d] = v[n][d] - grpstat[ga].u[d];
-            }
-            for (d = 0; (d < DIM); d++)
-            {
                 for (m = 0; (m < DIM); m++)
                 {
-                    /* if we're computing a full step velocity, v_corrt[d] has v(t).  Otherwise, v(t+dt/2) */
-                    ekin_sum[gt][m][d] += hm * v_corrt[m] * v_corrt[d];
+                    /* if we're computing a full step velocity, v[d] has v(t).  Otherwise, v(t+dt/2) */
+                    ekin_sum[gt][m][d] += hm * v[n][m] * v[n][d];
                 }
             }
             if (md->nMassPerturbed && md->bPerturbed[n])
             {
-                *dekindl_sum += 0.5 * (md->massB[n] - md->massA[n]) * iprod(v_corrt, v_corrt);
+                *dekindl_sum += 0.5 * (md->massB[n] - md->massA[n]) * iprod(v[n], v[n]);
             }
         }
     }
@@ -305,39 +289,38 @@ void compute_globals(gmx_global_stat*               gstat,
                      const t_mdatoms*               mdatoms,
                      t_nrnb*                        nrnb,
                      t_vcm*                         vcm,
-                     gmx_wallcycle_t                wcycle,
+                     gmx_wallcycle*                 wcycle,
                      gmx_enerdata_t*                enerd,
                      tensor                         force_vir,
                      tensor                         shake_vir,
                      tensor                         total_vir,
                      tensor                         pres,
-                     gmx::Constraints*              constr,
                      gmx::SimulationSignaller*      signalCoordinator,
                      const matrix                   lastbox,
-                     int*                           totalNumberOfBondedInteractions,
                      gmx_bool*                      bSumEkinhOld,
-                     const int                      flags)
+                     const int                      flags,
+                     int64_t                        step,
+                     gmx::ObservablesReducer*       observablesReducer)
 {
     gmx_bool bEner, bPres, bTemp;
     gmx_bool bStopCM, bGStat, bReadEkin, bEkinAveVel, bScaleEkin, bConstrain;
-    gmx_bool bCheckNumberOfBondedInteractions;
     real     dvdl_ekin;
 
     /* translate CGLO flags to gmx_booleans */
-    bStopCM                          = ((flags & CGLO_STOPCM) != 0);
-    bGStat                           = ((flags & CGLO_GSTAT) != 0);
-    bReadEkin                        = ((flags & CGLO_READEKIN) != 0);
-    bScaleEkin                       = ((flags & CGLO_SCALEEKIN) != 0);
-    bEner                            = ((flags & CGLO_ENERGY) != 0);
-    bTemp                            = ((flags & CGLO_TEMPERATURE) != 0);
-    bPres                            = ((flags & CGLO_PRESSURE) != 0);
-    bConstrain                       = ((flags & CGLO_CONSTRAINT) != 0);
-    bCheckNumberOfBondedInteractions = ((flags & CGLO_CHECK_NUMBER_OF_BONDED_INTERACTIONS) != 0);
+    bStopCM    = ((flags & CGLO_STOPCM) != 0);
+    bGStat     = ((flags & CGLO_GSTAT) != 0);
+    bReadEkin  = ((flags & CGLO_READEKIN) != 0);
+    bScaleEkin = ((flags & CGLO_SCALEEKIN) != 0);
+    bEner      = ((flags & CGLO_ENERGY) != 0);
+    bTemp      = ((flags & CGLO_TEMPERATURE) != 0);
+    bPres      = ((flags & CGLO_PRESSURE) != 0);
+    bConstrain = ((flags & CGLO_CONSTRAINT) != 0);
 
     /* we calculate a full state kinetic energy either with full-step velocity verlet
        or half step where we need the pressure */
 
-    bEkinAveVel = (ir->eI == eiVV || (ir->eI == eiVVAK && bPres) || bReadEkin);
+    bEkinAveVel = (ir->eI == IntegrationAlgorithm::VV
+                   || (ir->eI == IntegrationAlgorithm::VVAK && bPres) || bReadEkin);
 
     /* in initalization, it sums the shake virial in vv, and to
        sums ekinh_old in leapfrog (or if we are calculating ekinh_old) for other reasons */
@@ -346,14 +329,6 @@ void compute_globals(gmx_global_stat*               gstat,
 
     if (bTemp)
     {
-        /* Non-equilibrium MD: this is parallellized, but only does communication
-         * when there really is NEMD.
-         */
-
-        if (PAR(cr) && (ekind->bNEMD))
-        {
-            accumulate_u(cr, &(ir->opts), ekind);
-        }
         if (!bReadEkin)
         {
             calc_ke_part(x, v, box, &(ir->opts), mdatoms, ekind, nrnb, bEkinAveVel);
@@ -366,7 +341,7 @@ void compute_globals(gmx_global_stat*               gstat,
         calc_vcm_grp(*mdatoms, x, v, vcm);
     }
 
-    if (bTemp || bStopCM || bPres || bEner || bConstrain || bCheckNumberOfBondedInteractions)
+    if (bTemp || bStopCM || bPres || bEner || bConstrain || observablesReducer->isReductionRequired())
     {
         if (!bGStat)
         {
@@ -380,11 +355,21 @@ void compute_globals(gmx_global_stat*               gstat,
             gmx::ArrayRef<real> signalBuffer = signalCoordinator->getCommunicationBuffer();
             if (PAR(cr))
             {
-                wallcycle_start(wcycle, ewcMoveE);
-                global_stat(gstat, cr, enerd, force_vir, shake_vir, ir, ekind, constr,
-                            bStopCM ? vcm : nullptr, signalBuffer.size(), signalBuffer.data(),
-                            totalNumberOfBondedInteractions, *bSumEkinhOld, flags);
-                wallcycle_stop(wcycle, ewcMoveE);
+                wallcycle_start(wcycle, WallCycleCounter::MoveE);
+                global_stat(*gstat,
+                            cr,
+                            enerd,
+                            force_vir,
+                            shake_vir,
+                            *ir,
+                            ekind,
+                            bStopCM ? vcm : nullptr,
+                            signalBuffer,
+                            *bSumEkinhOld,
+                            flags,
+                            step,
+                            observablesReducer);
+                wallcycle_stop(wcycle, WallCycleCounter::MoveE);
             }
             signalCoordinator->finalizeSignals();
             *bSumEkinhOld = FALSE;
@@ -407,7 +392,7 @@ void compute_globals(gmx_global_stat*               gstat,
            If FALSE, we average ekinh_old and ekinh*ekinscale_nhc to get an averaged half step kinetic energy.
          */
         enerd->term[F_TEMP] = sum_ekin(&(ir->opts), ekind, &dvdl_ekin, bEkinAveVel, bScaleEkin);
-        enerd->dvdl_lin[efptMASS] = static_cast<double>(dvdl_ekin);
+        enerd->dvdl_lin[FreeEnergyPerturbationCouplingType::Mass] = static_cast<double>(dvdl_ekin);
 
         enerd->term[F_EKIN] = trace(ekind->ekin);
     }
@@ -458,17 +443,17 @@ static int lcd4(int i1, int i2, int i3, int i4)
     return nst;
 }
 
-int computeGlobalCommunicationPeriod(const gmx::MDLogger& mdlog, t_inputrec* ir, const t_commrec* cr)
+int computeGlobalCommunicationPeriod(const t_inputrec* ir)
 {
-    int nstglobalcomm;
+    int nstglobalcomm = 10;
     {
         // Set up the default behaviour
-        if (!(ir->nstcalcenergy > 0 || ir->nstlist > 0 || ir->etc != etcNO || ir->epc != epcNO))
+        if (!(ir->nstcalcenergy > 0 || ir->nstlist > 0 || ir->etc != TemperatureCoupling::No
+              || ir->epc != PressureCoupling::No))
         {
             /* The user didn't choose the period for anything
                important, so we just make sure we can send signals and
                write output suitably. */
-            nstglobalcomm = 10;
             if (ir->nstenergy > 0 && ir->nstenergy < nstglobalcomm)
             {
                 nstglobalcomm = ir->nstenergy;
@@ -485,20 +470,18 @@ int computeGlobalCommunicationPeriod(const gmx::MDLogger& mdlog, t_inputrec* ir,
              * here a leftover of the twin-range scheme? Can we remove
              * nstlist when we remove the group scheme?
              */
-            nstglobalcomm = lcd4(ir->nstcalcenergy, ir->nstlist, ir->etc != etcNO ? ir->nsttcouple : 0,
-                                 ir->epc != epcNO ? ir->nstpcouple : 0);
+            nstglobalcomm = lcd4(ir->nstcalcenergy,
+                                 ir->nstlist,
+                                 ir->etc != TemperatureCoupling::No ? ir->nsttcouple : 0,
+                                 ir->epc != PressureCoupling::No ? ir->nstpcouple : 0);
         }
     }
+    return nstglobalcomm;
+}
 
-    // TODO change this behaviour. Instead grompp should print
-    // a (performance) note and mdrun should not change ir.
-    if (ir->comm_mode != ecmNO && ir->nstcomm < nstglobalcomm)
-    {
-        GMX_LOG(mdlog.warning)
-                .asParagraph()
-                .appendTextFormatted("WARNING: Changing nstcomm from %d to %d", ir->nstcomm, nstglobalcomm);
-        ir->nstcomm = nstglobalcomm;
-    }
+int computeGlobalCommunicationPeriod(const gmx::MDLogger& mdlog, const t_inputrec* ir, const t_commrec* cr)
+{
+    const int nstglobalcomm = computeGlobalCommunicationPeriod(ir);
 
     if (cr->nnodes > 1)
     {
@@ -533,67 +516,66 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
      * with what is needed, so we correct this here.
      */
     state->flags = 0;
-    if (ir->efep != efepNO || ir->bExpanded)
+    if (ir->efep != FreeEnergyPerturbationType::No || ir->bExpanded)
     {
-        state->flags |= (1 << estLAMBDA);
-        state->flags |= (1 << estFEPSTATE);
+        state->flags |= enumValueToBitMask(StateEntry::Lambda);
+        state->flags |= enumValueToBitMask(StateEntry::FepState);
     }
-    state->flags |= (1 << estX);
+    state->flags |= enumValueToBitMask(StateEntry::X);
     GMX_RELEASE_ASSERT(state->x.size() == state->natoms,
                        "We should start a run with an initialized state->x");
     if (EI_DYNAMICS(ir->eI))
     {
-        state->flags |= (1 << estV);
+        state->flags |= enumValueToBitMask(StateEntry::V);
     }
 
     state->nnhpres = 0;
     if (ir->pbcType != PbcType::No)
     {
-        state->flags |= (1 << estBOX);
+        state->flags |= enumValueToBitMask(StateEntry::Box);
         if (inputrecPreserveShape(ir))
         {
-            state->flags |= (1 << estBOX_REL);
+            state->flags |= enumValueToBitMask(StateEntry::BoxRel);
         }
-        if ((ir->epc == epcPARRINELLORAHMAN) || (ir->epc == epcMTTK))
+        if ((ir->epc == PressureCoupling::ParrinelloRahman) || (ir->epc == PressureCoupling::Mttk))
         {
-            state->flags |= (1 << estBOXV);
+            state->flags |= enumValueToBitMask(StateEntry::BoxV);
             if (!useModularSimulator)
             {
-                state->flags |= (1 << estPRES_PREV);
+                state->flags |= enumValueToBitMask(StateEntry::PressurePrevious);
             }
         }
         if (inputrecNptTrotter(ir) || (inputrecNphTrotter(ir)))
         {
             state->nnhpres = 1;
-            state->flags |= (1 << estNHPRES_XI);
-            state->flags |= (1 << estNHPRES_VXI);
-            state->flags |= (1 << estSVIR_PREV);
-            state->flags |= (1 << estFVIR_PREV);
-            state->flags |= (1 << estVETA);
-            state->flags |= (1 << estVOL0);
+            state->flags |= enumValueToBitMask(StateEntry::Nhpresxi);
+            state->flags |= enumValueToBitMask(StateEntry::Nhpresvxi);
+            state->flags |= enumValueToBitMask(StateEntry::SVirPrev);
+            state->flags |= enumValueToBitMask(StateEntry::FVirPrev);
+            state->flags |= enumValueToBitMask(StateEntry::Veta);
+            state->flags |= enumValueToBitMask(StateEntry::Vol0);
         }
-        if (ir->epc == epcBERENDSEN || ir->epc == epcCRESCALE)
+        if (ir->epc == PressureCoupling::Berendsen || ir->epc == PressureCoupling::CRescale)
         {
-            state->flags |= (1 << estBAROS_INT);
+            state->flags |= enumValueToBitMask(StateEntry::BarosInt);
         }
     }
 
-    if (ir->etc == etcNOSEHOOVER)
+    if (ir->etc == TemperatureCoupling::NoseHoover)
     {
-        state->flags |= (1 << estNH_XI);
-        state->flags |= (1 << estNH_VXI);
+        state->flags |= enumValueToBitMask(StateEntry::Nhxi);
+        state->flags |= enumValueToBitMask(StateEntry::Nhvxi);
     }
 
-    if (ir->etc == etcVRESCALE || ir->etc == etcBERENDSEN)
+    if (ir->etc == TemperatureCoupling::VRescale || ir->etc == TemperatureCoupling::Berendsen)
     {
-        state->flags |= (1 << estTHERM_INT);
+        state->flags |= enumValueToBitMask(StateEntry::ThermInt);
     }
 
-    init_gtc_state(state, state->ngtc, state->nnhpres,
-                   ir->opts.nhchainlength); /* allocate the space for nose-hoover chains */
+    init_gtc_state(state, state->ngtc, state->nnhpres, ir->opts.nhchainlength); /* allocate the space for nose-hoover chains */
     init_ekinstate(&state->ekinstate, ir);
 
-    if (ir->bExpanded)
+    if (ir->bExpanded && !useModularSimulator)
     {
         snew(state->dfhist, 1);
         init_df_history(state->dfhist, ir->fepvals->n_lambda);
@@ -601,6 +583,6 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
 
     if (ir->pull && ir->pull->bSetPbcRefToPrevStepCOM)
     {
-        state->flags |= (1 << estPULLCOMPREVSTEP);
+        state->flags |= enumValueToBitMask(StateEntry::PullComPrevStep);
     }
 }

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2012,2013,2014,2015,2017 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -53,7 +49,7 @@
 
 static real pot(real x, real qq, real c6, real cn, int npow)
 {
-    return cn * pow(x, -npow) - c6 / gmx::power6(x) + qq * ONE_4PI_EPS0 / x;
+    return cn * pow(x, -npow) - c6 / gmx::power6(x) + qq * gmx::c_one4PiEps0 / x;
 }
 
 static real bhpot(real x, real A, real B, real C)
@@ -64,7 +60,7 @@ static real bhpot(real x, real A, real B, real C)
 static real dpot(real x, real qq, real c6, real cn, int npow)
 {
     return -(npow * cn * std::pow(x, -npow - 1) - 6 * c6 / (x * gmx::power6(x))
-             + qq * ONE_4PI_EPS0 / gmx::square(x));
+             + qq * gmx::c_one4PiEps0 / gmx::square(x));
 }
 
 int gmx_sigeps(int argc, char* argv[])
@@ -104,8 +100,8 @@ int gmx_sigeps(int argc, char* argv[])
     int         cur = 0;
 #define next (1 - cur)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa, asize(desc), desc,
-                           0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -169,8 +165,7 @@ int gmx_sigeps(int argc, char* argv[])
             {
                 minimum = oldx + dp[cur] * (x - oldx) / (dp[cur] - dp[next]);
                 mval    = pot(minimum, qq, c6, cn, npow);
-                printf("Van der Waals + Coulomb minimum at r = %g (nm). Value = %g (kJ/mol)\n",
-                       minimum, mval);
+                printf("Van der Waals + Coulomb minimum at r = %g (nm). Value = %g (kJ/mol)\n", minimum, mval);
             }
         }
         cur  = next;

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -84,7 +83,8 @@ std::unique_ptr<gmx_multisim_t> buildMultiSimulation(MPI_Comm                   
     {
         auto message = gmx::formatString(
                 "The number of ranks (%d) is not a multiple of the number of simulations (%td)",
-                numRanks, multidirs.ssize());
+                numRanks,
+                multidirs.ssize());
         GMX_THROW(gmx::InconsistentInputError(message));
     }
 
@@ -94,8 +94,11 @@ std::unique_ptr<gmx_multisim_t> buildMultiSimulation(MPI_Comm                   
 
     if (debug)
     {
-        fprintf(debug, "We have %td simulations, %d ranks per simulation, local simulation is %d\n",
-                multidirs.ssize(), numRanksPerSimulation, rankWithinWorldComm / numRanksPerSimulation);
+        fprintf(debug,
+                "We have %td simulations, %d ranks per simulation, local simulation is %d\n",
+                multidirs.ssize(),
+                numRanksPerSimulation,
+                rankWithinWorldComm / numRanksPerSimulation);
     }
 
     int numSimulations = multidirs.size();
@@ -165,46 +168,14 @@ gmx_multisim_t::~gmx_multisim_t()
 #if GMX_MPI
 static void gmx_sumd_comm(int nr, double r[], MPI_Comm mpi_comm)
 {
-#    if MPI_IN_PLACE_EXISTS
     MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_DOUBLE, MPI_SUM, mpi_comm);
-#    else
-    /* this function is only used in code that is not performance critical,
-       (during setup, when comm_rec is not the appropriate communication
-       structure), so this isn't as bad as it looks. */
-    double* buf;
-    int     i;
-
-    snew(buf, nr);
-    MPI_Allreduce(r, buf, nr, MPI_DOUBLE, MPI_SUM, mpi_comm);
-    for (i = 0; i < nr; i++)
-    {
-        r[i] = buf[i];
-    }
-    sfree(buf);
-#    endif
 }
 #endif
 
 #if GMX_MPI
 static void gmx_sumf_comm(int nr, float r[], MPI_Comm mpi_comm)
 {
-#    if MPI_IN_PLACE_EXISTS
     MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_FLOAT, MPI_SUM, mpi_comm);
-#    else
-    /* this function is only used in code that is not performance critical,
-       (during setup, when comm_rec is not the appropriate communication
-       structure), so this isn't as bad as it looks. */
-    float* buf;
-    int    i;
-
-    snew(buf, nr);
-    MPI_Allreduce(r, buf, nr, MPI_FLOAT, MPI_SUM, mpi_comm);
-    for (i = 0; i < nr; i++)
-    {
-        r[i] = buf[i];
-    }
-    sfree(buf);
-#    endif
 }
 #endif
 
@@ -231,14 +202,7 @@ void gmx_sumi_sim(int gmx_unused nr, int gmx_unused r[], const gmx_multisim_t gm
 #if !GMX_MPI
     GMX_RELEASE_ASSERT(false, "Invalid call to gmx_sumi_sim");
 #else
-#    if MPI_IN_PLACE_EXISTS
     MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_INT, MPI_SUM, ms->mastersComm_);
-#    else
-    /* this is thread-unsafe, but it will do for now: */
-    ms->intBuffer.resize(nr);
-    MPI_Allreduce(r, ms->intBuffer.data(), ms->intBuffer.size(), MPI_INT, MPI_SUM, ms->mastersComm_);
-    std::copy(std::begin(ms->intBuffer), std::end(ms->intBuffer), r);
-#    endif
 #endif
 }
 
@@ -247,14 +211,7 @@ void gmx_sumli_sim(int gmx_unused nr, int64_t gmx_unused r[], const gmx_multisim
 #if !GMX_MPI
     GMX_RELEASE_ASSERT(false, "Invalid call to gmx_sumli_sim");
 #else
-#    if MPI_IN_PLACE_EXISTS
     MPI_Allreduce(MPI_IN_PLACE, r, nr, MPI_INT64_T, MPI_SUM, ms->mastersComm_);
-#    else
-    /* this is thread-unsafe, but it will do for now: */
-    ms->int64Buffer.resize(nr);
-    MPI_Allreduce(r, ms->int64Buffer.data(), ms->int64Buffer.size(), MPI_INT64_T, MPI_SUM, ms->mastersComm_);
-    std::copy(std::begin(ms->int64Buffer), std::end(ms->int64Buffer), r);
-#    endif
 #endif
 }
 

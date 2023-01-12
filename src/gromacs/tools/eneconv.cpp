@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -187,7 +183,10 @@ static int scan_ene_files(const std::vector<std::string>& files, real* readtime,
                 fprintf(stderr,
                         "Energy files don't match, different number of energies:\n"
                         " %s: %d\n %s: %d\n",
-                        files[f - 1].c_str(), nresav, files[f].c_str(), fr->nre);
+                        files[f - 1].c_str(),
+                        nresav,
+                        files[f].c_str(),
+                        fr->nre);
                 fprintf(stderr,
                         "\nContinue conversion using only the first %d terms (n/y)?\n"
                         "(you should be sure that the energy terms match)\n",
@@ -442,7 +441,7 @@ int gmx_eneconv(int argc, char* argv[])
         "Reads one energy file and writes another, applying the [TT]-dt[tt],",
         "[TT]-offset[tt], [TT]-t0[tt] and [TT]-settime[tt] options and",
         "converting to a different format if necessary (indicated by file",
-        "extentions).[PAR]",
+        "extensions).[PAR]",
         "[TT]-settime[tt] is applied first, then [TT]-dt[tt]/[TT]-offset[tt]",
         "followed by [TT]-b[tt] and [TT]-e[tt] to select which frames to write."
     };
@@ -500,8 +499,8 @@ int gmx_eneconv(int argc, char* argv[])
         { "-error", FALSE, etBOOL, { &bError }, "Stop on errors in the file" }
     };
 
-    if (!parse_common_args(&argc, argv, 0, NFILE, fnm, asize(pa), pa, asize(desc), desc,
-                           asize(bugs), bugs, &oenv))
+    if (!parse_common_args(
+                &argc, argv, 0, NFILE, fnm, asize(pa), pa, asize(desc), desc, asize(bugs), bugs, &oenv))
     {
         return 0;
     }
@@ -598,8 +597,12 @@ int gmx_eneconv(int argc, char* argv[])
 
             if (debug)
             {
-                fprintf(debug, "fr->step %s, fr->t %.4f, fro->step %s fro->t %.4f, w %s\n",
-                        gmx_step_str(fr->step, buf), fr->t, gmx_step_str(fro->step, buf2), fro->t,
+                fprintf(debug,
+                        "fr->step %s, fr->t %.4f, fro->step %s fro->t %.4f, w %s\n",
+                        gmx_step_str(fr->step, buf),
+                        fr->t,
+                        gmx_step_str(fro->step, buf2),
+                        fro->t,
                         gmx::boolToString(bWrite));
             }
 
@@ -632,7 +635,9 @@ int gmx_eneconv(int argc, char* argv[])
                 if (bNewOutput)
                 {
                     bNewOutput = FALSE;
-                    fprintf(stderr, "\nContinue writing frames from t=%g, step=%s\n", fro->t,
+                    fprintf(stderr,
+                            "\nContinue writing frames from t=%g, step=%s\n",
+                            fro->t,
                             gmx_step_str(fro->step, buf));
                 }
 
@@ -742,7 +747,8 @@ int gmx_eneconv(int argc, char* argv[])
                                                "samples away.\n"
                                                "         Use g_energy -odh option to extract these "
                                                "samples.\n",
-                                               files[f].c_str(), size);
+                                               files[f].c_str(),
+                                               size);
                                         warned_about_dh = TRUE;
                                         break;
                                     }
@@ -764,7 +770,9 @@ int gmx_eneconv(int argc, char* argv[])
         {
             f--;
         }
-        printf("\nLast step written from %s: t %g, step %s\n", files[f].c_str(), last_t,
+        printf("\nLast step written from %s: t %g, step %s\n",
+               files[f].c_str(),
+               last_t,
                gmx_step_str(laststep, buf));
         lastfilestep = laststep;
 
@@ -797,8 +805,7 @@ int gmx_eneconv(int argc, char* argv[])
     }
     else
     {
-        fprintf(stderr, "Last frame written was at step %s, time %f\n",
-                gmx_step_str(fro->step, buf), fro->t);
+        fprintf(stderr, "Last frame written was at step %s, time %f\n", gmx_step_str(fro->step, buf), fro->t);
         fprintf(stderr, "Wrote %d frames\n", noutfr);
     }
 

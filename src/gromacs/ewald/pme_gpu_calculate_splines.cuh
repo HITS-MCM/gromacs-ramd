@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -65,7 +64,7 @@
  * \returns Index into theta or dtheta array using GPU layout.
  */
 template<int order, int atomsPerWarp>
-int __device__ __forceinline__ getSplineParamIndexBase(int warpIndex, int atomWarpIndex)
+static int __device__ __forceinline__ getSplineParamIndexBase(int warpIndex, int atomWarpIndex)
 {
     assert((atomWarpIndex >= 0) && (atomWarpIndex < atomsPerWarp));
     const int dimIndex    = 0;
@@ -89,7 +88,7 @@ int __device__ __forceinline__ getSplineParamIndexBase(int warpIndex, int atomWa
  * \returns Index into theta or dtheta array using GPU layout.
  */
 template<int order, int atomsPerWarp>
-int __device__ __forceinline__ getSplineParamIndex(int paramIndexBase, int dimIndex, int splineIndex)
+static int __device__ __forceinline__ getSplineParamIndex(int paramIndexBase, int dimIndex, int splineIndex)
 {
     assert((dimIndex >= XX) && (dimIndex < DIM));
     assert((splineIndex >= 0) && (splineIndex < order));
@@ -104,10 +103,10 @@ int __device__ __forceinline__ getSplineParamIndex(int paramIndexBase, int dimIn
  *
  * This is called from the spline_and_spread and gather PME kernels.
  */
-int __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient)
+static bool __device__ __forceinline__ pme_gpu_check_atom_charge(const float coefficient)
 {
     assert(isfinite(coefficient));
-    return c_skipNeutralAtoms ? (coefficient != 0.0f) : 1;
+    return c_skipNeutralAtoms ? (coefficient != 0.0F) : true;
 }
 
 //! Controls if the atom and charge data is prefeched into shared memory or loaded per thread from global
@@ -121,36 +120,36 @@ static const bool c_useAtomDataPrefetch = true;
  * \param[in] arg  Argument to check.
  */
 template<typename T>
-__device__ inline void assertIsFinite(T arg);
+static __device__ inline void assertIsFinite(T arg);
 
 template<>
 __device__ inline void assertIsFinite(float3 gmx_unused arg)
 {
-    assert(isfinite(float(arg.x)));
-    assert(isfinite(float(arg.y)));
-    assert(isfinite(float(arg.z)));
+    assert(isfinite(static_cast<float>(arg.x)));
+    assert(isfinite(static_cast<float>(arg.y)));
+    assert(isfinite(static_cast<float>(arg.z)));
 }
 
 template<typename T>
-__device__ inline void assertIsFinite(T gmx_unused arg)
+static __device__ inline void assertIsFinite(T gmx_unused arg)
 {
-    assert(isfinite(float(arg)));
+    assert(isfinite(static_cast<float>(arg)));
 }
 
 /*! \brief
  * General purpose function for loading atom-related data from global to shared memory.
  *
- * \tparam[in] T                  Data type (float/int/...)
- * \tparam[in] atomsPerBlock      Number of atoms processed by a block - should be accounted for in
+ * \tparam     T                  Data type (float/int/...)
+ * \tparam     atomsPerBlock      Number of atoms processed by a block - should be accounted for in
  * the size of the shared memory array.
- * \tparam[in] dataCountPerAtom   Number of data elements per single atom (e.g. DIM for an rvec
+ * \tparam     dataCountPerAtom   Number of data elements per single atom (e.g. DIM for an rvec
  * coordinates array).
  * \param[out] sm_destination     Shared memory array for output.
  * \param[in]  gm_source          Global memory array for input.
  */
 template<typename T, int atomsPerBlock, int dataCountPerAtom>
-__device__ __forceinline__ void pme_gpu_stage_atom_data(T* __restrict__ sm_destination,
-                                                        const T* __restrict__ gm_source)
+static __device__ __forceinline__ void pme_gpu_stage_atom_data(T* __restrict__ sm_destination,
+                                                               const T* __restrict__ gm_source)
 {
     const int blockIndex       = blockIdx.y * gridDim.x + blockIdx.x;
     const int threadLocalIndex = ((threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x) + threadIdx.x;
@@ -169,12 +168,16 @@ __device__ __forceinline__ void pme_gpu_stage_atom_data(T* __restrict__ sm_desti
  * This corresponds to the CPU functions calc_interpolation_idx() and make_bsplines().
  * First stage of the whole kernel.
  *
- * \tparam[in] order                PME interpolation order.
- * \tparam[in] atomsPerBlock        Number of atoms processed by a block - should be accounted for
+ * \tparam     order                PME interpolation order.
+ * \tparam     atomsPerBlock        Number of atoms processed by a block - should be accounted for
  *                                  in the sizes of the shared memory arrays.
- * \tparam[in] atomsPerWarp         Number of atoms processed by a warp
- * \tparam[in] writeSmDtheta        Bool controling if the theta derivative should be written to shared memory. Enables calculation of dtheta if set.
- * \tparam[in] writeGlobal          A boolean which tells if the theta values and gridlines should be written to global memory. Enables calculation of dtheta if set.
+ * \tparam     atomsPerWarp         Number of atoms processed by a warp
+ * \tparam     writeSmDtheta        Bool controlling if the theta derivative should be written to
+ *                                  shared memory. Enables calculation of dtheta if set.
+ * \tparam     writeGlobal          A boolean which tells if the theta values and gridlines should
+ *                                  be written to global memory. Enables calculation of dtheta if
+ *                                  set.
+ * \tparam     numGrids             The number of grids using the splines.
  * \param[in]  kernelParams         Input PME CUDA data in constant memory.
  * \param[in]  atomIndexOffset      Starting atom index for the execution block w.r.t. global memory.
  * \param[in]  atomX                Atom coordinate of atom processed by thread.
@@ -184,15 +187,18 @@ __device__ __forceinline__ void pme_gpu_stage_atom_data(T* __restrict__ sm_desti
  * \param[out] sm_gridlineIndices   Atom gridline indices in the shared memory.
  */
 
-template<int order, int atomsPerBlock, int atomsPerWarp, bool writeSmDtheta, bool writeGlobal>
-__device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams kernelParams,
-                                                  const int                    atomIndexOffset,
-                                                  const float3                 atomX,
-                                                  const float                  atomCharge,
-                                                  float* __restrict__ sm_theta,
-                                                  float* __restrict__ sm_dtheta,
-                                                  int* __restrict__ sm_gridlineIndices)
+template<int order, int atomsPerBlock, int atomsPerWarp, bool writeSmDtheta, bool writeGlobal, int numGrids>
+static __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams kernelParams,
+                                                         const int    atomIndexOffset,
+                                                         const float3 atomX,
+                                                         const float  atomCharge,
+                                                         float* __restrict__ sm_theta,
+                                                         float* __restrict__ sm_dtheta,
+                                                         int* __restrict__ sm_gridlineIndices)
 {
+    assert(numGrids == 1 || numGrids == 2);
+    assert(numGrids == 1 || c_skipNeutralAtoms == false);
+
     /* Global memory pointers for output */
     float* __restrict__ gm_theta         = kernelParams.atoms.d_theta;
     float* __restrict__ gm_dtheta        = kernelParams.atoms.d_dtheta;
@@ -268,7 +274,7 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
             const float shift = c_pmeMaxUnitcellShift;
             /* Fractional coordinates along box vectors, adding a positive shift to ensure t is positive for triclinic boxes */
             t    = (t + shift) * n;
-            tInt = (int)t;
+            tInt = static_cast<int>(t);
             assert(sharedMemoryIndex < atomsPerBlock * DIM);
             sm_fractCoords[sharedMemoryIndex] = t - tInt;
             tableIndex += tInt;
@@ -277,12 +283,12 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
 
             // TODO have shared table for both parameters to share the fetch, as index is always same?
             // TODO compare texture/LDG performance
-            sm_fractCoords[sharedMemoryIndex] +=
-                    fetchFromParamLookupTable(kernelParams.grid.d_fractShiftsTable,
-                                              kernelParams.fractShiftsTableTexture, tableIndex);
+            sm_fractCoords[sharedMemoryIndex] += fetchFromParamLookupTable(
+                    kernelParams.grid.d_fractShiftsTable, kernelParams.fractShiftsTableTexture, tableIndex);
             sm_gridlineIndices[sharedMemoryIndex] =
                     fetchFromParamLookupTable(kernelParams.grid.d_gridlineIndicesTable,
-                                              kernelParams.gridlineIndicesTableTexture, tableIndex);
+                                              kernelParams.gridlineIndicesTableTexture,
+                                              tableIndex);
             if (writeGlobal)
             {
                 gm_gridlineIndices[atomIndexOffset * DIM + sharedMemoryIndex] =
@@ -293,7 +299,8 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
         /* B-spline calculation */
 
         const int chargeCheck = pme_gpu_check_atom_charge(atomCharge);
-        if (chargeCheck)
+        /* With FEP (numGrids == 2), we might have 0 charge in state A, but !=0 in state B, so we always calculate splines */
+        if (numGrids == 2 || chargeCheck)
         {
             float div;
             int o = orderIndex; // This is an index that is set once for PME_GPU_PARALLEL_SPLINE == 1
@@ -302,14 +309,14 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
             assert(isfinite(dr));
 
             /* dr is relative offset from lower cell limit */
-            splineData[order - 1] = 0.0f;
+            splineData[order - 1] = 0.0F;
             splineData[1]         = dr;
-            splineData[0]         = 1.0f - dr;
+            splineData[0]         = 1.0F - dr;
 
 #pragma unroll
             for (int k = 3; k < order; k++)
             {
-                div               = 1.0f / (k - 1.0f);
+                div               = 1.0F / (k - 1.0F);
                 splineData[k - 1] = div * dr * splineData[k - 2];
 #pragma unroll
                 for (int l = 1; l < (k - 1); l++)
@@ -317,7 +324,7 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
                     splineData[k - l - 1] =
                             div * ((dr + l) * splineData[k - l - 2] + (k - l - dr) * splineData[k - l - 1]);
                 }
-                splineData[0] = div * (1.0f - dr) * splineData[0];
+                splineData[0] = div * (1.0F - dr) * splineData[0];
             }
 
             const int thetaIndexBase =
@@ -333,7 +340,7 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
                     const int thetaIndex =
                             getSplineParamIndex<order, atomsPerWarp>(thetaIndexBase, dimIndex, o);
 
-                    const float dtheta = ((o > 0) ? splineData[o - 1] : 0.0f) - splineData[o];
+                    const float dtheta = ((o > 0) ? splineData[o - 1] : 0.0F) - splineData[o];
                     assert(isfinite(dtheta));
                     assert(thetaIndex < order * DIM * atomsPerBlock);
                     if (writeSmDtheta)
@@ -348,7 +355,7 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
                 }
             }
 
-            div                   = 1.0f / (order - 1.0f);
+            div                   = 1.0F / (order - 1.0F);
             splineData[order - 1] = div * dr * splineData[order - 2];
 #pragma unroll
             for (int k = 1; k < (order - 1); k++)
@@ -357,7 +364,7 @@ __device__ __forceinline__ void calculate_splines(const PmeGpuCudaKernelParams k
                                             * ((dr + k) * splineData[order - k - 2]
                                                + (order - k - dr) * splineData[order - k - 1]);
             }
-            splineData[0] = div * (1.0f - dr) * splineData[0];
+            splineData[0] = div * (1.0F - dr) * splineData[0];
 
             /* Storing the spline values (theta) */
 #pragma unroll

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -313,7 +312,7 @@ __kernel void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const struct PmeOpenCLKe
 #define gridlineIndicesSize (atomsPerBlock * DIM)
 #define splineParamsSize (atomsPerBlock * DIM * order)
 
-    __local int sm_gridlineIndices[gridlineIndicesSize];
+    __local int    sm_gridlineIndices[gridlineIndicesSize];
     __local float2 sm_splineParams[splineParamsSize]; /* Theta/dtheta pairs  as .x/.y */
 
     /* Spline Y/Z coordinates */
@@ -390,8 +389,8 @@ __kernel void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const struct PmeOpenCLKe
 
     if (chargeCheck)
     {
-        sumForceComponents(&fx, &fy, &fz, ixBase, nx, pny, pnz, constOffset, splineIndexBase, tdy,
-                           tdz, sm_splineParams, gm_gridA);
+        sumForceComponents(
+                &fx, &fy, &fz, ixBase, nx, pny, pnz, constOffset, splineIndexBase, tdy, tdz, sm_splineParams, gm_gridA);
     }
 
     // Reduction of partial force contributions
@@ -400,8 +399,16 @@ __kernel void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const struct PmeOpenCLKe
     __local float  sm_forceReduction[totalSharedMemory];
     __local float* sm_forceTemp[DIM];
 
-    reduce_atom_forces(sm_forces, atomIndexLocal, splineIndex, lineIndex,
-                       kernelParams.grid.realGridSizeFP, fx, fy, fz, sm_forceReduction, sm_forceTemp);
+    reduce_atom_forces(sm_forces,
+                       atomIndexLocal,
+                       splineIndex,
+                       lineIndex,
+                       kernelParams.grid.realGridSizeFP,
+                       fx,
+                       fy,
+                       fz,
+                       sm_forceReduction,
+                       sm_forceTemp);
     barrier(CLK_LOCAL_MEM_FENCE);
 
     /* Calculating the final forces with no component branching, atomsPerBlock threads */
@@ -410,8 +417,8 @@ __kernel void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const struct PmeOpenCLKe
     const float scale            = kernelParams.current.scale;
     if (forceIndexLocal < atomsPerBlock)
     {
-        calculateAndStoreGridForces(sm_forces, forceIndexLocal, forceIndexGlobal,
-                                    kernelParams.current.recipBox, scale, gm_coefficientsA);
+        calculateAndStoreGridForces(
+                sm_forces, forceIndexLocal, forceIndexGlobal, kernelParams.current.recipBox, scale, gm_coefficientsA);
     }
 
 #if !defined(_AMD_SOURCE_) && !defined(_NVIDIA_SOURCE_)
@@ -448,16 +455,28 @@ __kernel void CUSTOMIZED_KERNEL_NAME(pme_gather_kernel)(const struct PmeOpenCLKe
         chargeCheck = pme_gpu_check_atom_charge(gm_coefficientsB[atomIndexGlobal]);
         if (chargeCheck)
         {
-            sumForceComponents(&fx, &fy, &fz, ixBase, nx, pny, pnz, constOffset, splineIndexBase,
-                               tdy, tdz, sm_splineParams, gm_gridB);
+            sumForceComponents(
+                    &fx, &fy, &fz, ixBase, nx, pny, pnz, constOffset, splineIndexBase, tdy, tdz, sm_splineParams, gm_gridB);
         }
-        reduce_atom_forces(sm_forces, atomIndexLocal, splineIndex, lineIndex,
-                           kernelParams.grid.realGridSizeFP, fx, fy, fz, sm_forceReduction, sm_forceTemp);
+        reduce_atom_forces(sm_forces,
+                           atomIndexLocal,
+                           splineIndex,
+                           lineIndex,
+                           kernelParams.grid.realGridSizeFP,
+                           fx,
+                           fy,
+                           fz,
+                           sm_forceReduction,
+                           sm_forceTemp);
         barrier(CLK_LOCAL_MEM_FENCE);
         if (forceIndexLocal < atomsPerBlock)
         {
-            calculateAndStoreGridForces(sm_forces, forceIndexLocal, forceIndexGlobal,
-                                        kernelParams.current.recipBox, 1.0F - scale, gm_coefficientsB);
+            calculateAndStoreGridForces(sm_forces,
+                                        forceIndexLocal,
+                                        forceIndexGlobal,
+                                        kernelParams.current.recipBox,
+                                        1.0F - scale,
+                                        gm_coefficientsB);
         }
 
 #if !defined(_AMD_SOURCE_) && !defined(_NVIDIA_SOURCE_)

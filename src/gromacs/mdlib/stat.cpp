@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -49,7 +45,6 @@
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
-#include "gromacs/mdlib/constr.h"
 #include "gromacs/mdlib/md_support.h"
 #include "gromacs/mdlib/rbin.h"
 #include "gromacs/mdlib/tgroup.h"
@@ -59,6 +54,7 @@
 #include "gromacs/mdtypes/group.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/observablesreducer.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
@@ -141,46 +137,44 @@ static int filter_enerdterm(const real* afrom, gmx_bool bToBuffer, real* ato, gm
     return to;
 }
 
-void global_stat(const gmx_global_stat*  gs,
-                 const t_commrec*        cr,
-                 gmx_enerdata_t*         enerd,
-                 tensor                  fvir,
-                 tensor                  svir,
-                 const t_inputrec*       inputrec,
-                 gmx_ekindata_t*         ekind,
-                 const gmx::Constraints* constr,
-                 t_vcm*                  vcm,
-                 int                     nsig,
-                 real*                   sig,
-                 int*                    totalNumberOfBondedInteractions,
-                 bool                    bSumEkinhOld,
-                 int                     flags)
+void global_stat(const gmx_global_stat&   gs,
+                 const t_commrec*         cr,
+                 gmx_enerdata_t*          enerd,
+                 tensor                   fvir,
+                 tensor                   svir,
+                 const t_inputrec&        inputrec,
+                 gmx_ekindata_t*          ekind,
+                 t_vcm*                   vcm,
+                 gmx::ArrayRef<real>      sig,
+                 bool                     bSumEkinhOld,
+                 int                      flags,
+                 int64_t                  step,
+                 gmx::ObservablesReducer* observablesReducer)
 /* instead of current system, gmx_booleans for summing virial, kinetic energy, and other terms */
 {
-    t_bin* rb;
-    int *  itc0, *itc1;
-    int    ie = 0, ifv = 0, isv = 0, irmsd = 0;
-    int idedl = 0, idedlo = 0, idvdll = 0, idvdlnl = 0, iepl = 0, icm = 0, imass = 0, ica = 0, inb = 0;
-    int      isig = -1;
-    int      icj = -1, ici = -1, icx = -1;
-    int      inn[egNR];
-    real     copyenerd[F_NRE];
-    int      nener, j;
-    double   nb;
-    gmx_bool bVV, bTemp, bEner, bPres, bConstrVir, bEkinAveVel, bReadEkin;
-    bool checkNumberOfBondedInteractions = (flags & CGLO_CHECK_NUMBER_OF_BONDED_INTERACTIONS) != 0;
+    int ie = 0, ifv = 0, isv = 0;
+    int idedl = 0, idedlo = 0, idvdll = 0, idvdlnl = 0, iepl = 0, icm = 0, imass = 0, ica = 0;
+    int isig = -1;
+    int icj = -1, ici = -1, icx = -1;
 
-    bVV         = EI_VV(inputrec->eI);
-    bTemp       = ((flags & CGLO_TEMPERATURE) != 0);
-    bEner       = ((flags & CGLO_ENERGY) != 0);
-    bPres       = ((flags & CGLO_PRESSURE) != 0);
-    bConstrVir  = ((flags & CGLO_CONSTRAINT) != 0);
-    bEkinAveVel = (inputrec->eI == eiVV || (inputrec->eI == eiVVAK && bPres));
-    bReadEkin   = ((flags & CGLO_READEKIN) != 0);
+    bool bVV         = EI_VV(inputrec.eI);
+    bool bTemp       = ((flags & CGLO_TEMPERATURE) != 0);
+    bool bEner       = ((flags & CGLO_ENERGY) != 0);
+    bool bPres       = ((flags & CGLO_PRESSURE) != 0);
+    bool bConstrVir  = ((flags & CGLO_CONSTRAINT) != 0);
+    bool bEkinAveVel = (inputrec.eI == IntegrationAlgorithm::VV
+                        || (inputrec.eI == IntegrationAlgorithm::VVAK && bPres));
+    bool bReadEkin   = ((flags & CGLO_READEKIN) != 0);
 
-    rb   = gs->rb;
-    itc0 = gs->itc0;
-    itc1 = gs->itc1;
+    // This structure implements something akin to a vector. As
+    // modules add their data into it with add_bin[rd], they save the
+    // index it returns, which allows them to look up their data later
+    // after the reduction with extract_bin[rd]. The various index
+    // variables are mostly named following the pattern
+    // "i<abbreviation for module>".
+    t_bin* rb   = gs.rb;
+    int*   itc0 = gs.itc0;
+    int*   itc1 = gs.itc1;
 
 
     reset_bin(rb);
@@ -193,7 +187,8 @@ void global_stat(const gmx_global_stat*  gs,
        communicated and summed when they need to be, to avoid repeating
        the sums and overcounting. */
 
-    nener = filter_enerdterm(enerd->term, TRUE, copyenerd, bTemp, bPres, bEner);
+    std::array<real, F_NRE> copyenerd;
+    int nener = filter_enerdterm(enerd->term.data(), TRUE, copyenerd.data(), bTemp, bPres, bEner);
 
     /* First, the data that needs to be communicated with velocity verlet every time
        This is just the constraint virial.*/
@@ -207,7 +202,7 @@ void global_stat(const gmx_global_stat*  gs,
     {
         if (ekind)
         {
-            for (j = 0; (j < inputrec->opts.ngtc); j++)
+            for (int j = 0; (j < inputrec.opts.ngtc); j++)
             {
                 if (bSumEkinhOld)
                 {
@@ -240,30 +235,22 @@ void global_stat(const gmx_global_stat*  gs,
         ifv = add_binr(rb, DIM * DIM, fvir[0]);
     }
 
-    gmx::ArrayRef<real> rmsdData;
+    gmx::EnumerationArray<NonBondedEnergyTerms, int> inn;
     if (bEner)
     {
-        ie = add_binr(rb, nener, copyenerd);
-        if (constr)
+        ie = add_binr(rb, nener, copyenerd.data());
+        for (auto key : gmx::keysOf(inn))
         {
-            rmsdData = constr->rmsdData();
-            if (!rmsdData.empty())
-            {
-                irmsd = add_binr(rb, 2, rmsdData.data());
-            }
+            inn[key] = add_binr(rb, enerd->grpp.nener, enerd->grpp.energyGroupPairTerms[key].data());
         }
-
-        for (j = 0; (j < egNR); j++)
+        if (inputrec.efep != FreeEnergyPerturbationType::No)
         {
-            inn[j] = add_binr(rb, enerd->grpp.nener, enerd->grpp.ener[j].data());
-        }
-        if (inputrec->efep != efepNO)
-        {
-            idvdll  = add_bind(rb, efptNR, enerd->dvdl_lin);
-            idvdlnl = add_bind(rb, efptNR, enerd->dvdl_nonlin);
+            idvdll  = add_bind(rb, enerd->dvdl_lin);
+            idvdlnl = add_bind(rb, enerd->dvdl_nonlin);
             if (enerd->foreignLambdaTerms.numLambdas() > 0)
             {
-                iepl = add_bind(rb, enerd->foreignLambdaTerms.energies().size(),
+                iepl = add_bind(rb,
+                                enerd->foreignLambdaTerms.energies().size(),
                                 enerd->foreignLambdaTerms.energies().data());
             }
         }
@@ -273,7 +260,7 @@ void global_stat(const gmx_global_stat*  gs,
     {
         icm   = add_binr(rb, DIM * vcm->nr, vcm->group_p[0]);
         imass = add_binr(rb, vcm->nr, vcm->group_mass.data());
-        if (vcm->mode == ecmANGULAR)
+        if (vcm->mode == ComRemovalAlgorithm::Angular)
         {
             icj = add_binr(rb, DIM * vcm->nr, vcm->group_j[0]);
             icx = add_binr(rb, DIM * vcm->nr, vcm->group_x[0]);
@@ -281,21 +268,25 @@ void global_stat(const gmx_global_stat*  gs,
         }
     }
 
-    if (checkNumberOfBondedInteractions)
+    if (!sig.empty())
     {
-        nb  = cr->dd->nbonded_local;
-        inb = add_bind(rb, 1, &nb);
-    }
-    if (nsig > 0)
-    {
-        isig = add_binr(rb, nsig, sig);
+        isig = add_binr(rb, sig);
     }
 
-    /* Global sum it all */
-    if (debug)
+    // When this point is reached, some other code has required a
+    // reduction, so the observablesReducer needs to be told that, so
+    // it can decide whether to add any
+    // ReductionRequirement::Eventually work.
+    const bool            reductionRequired = true;
+    gmx::ArrayRef<double> observablesReducerBuffer =
+            observablesReducer->communicationBuffer(reductionRequired);
+    int tbinIndexForObservablesReducer = 0;
+    if (!observablesReducerBuffer.empty())
     {
-        fprintf(debug, "Summing %d energies\n", rb->maxreal);
+        tbinIndexForObservablesReducer =
+                add_bind(rb, observablesReducerBuffer.ssize(), observablesReducerBuffer.data());
     }
+
     sum_bin(rb, cr);
 
     /* Extract all the data locally */
@@ -310,7 +301,7 @@ void global_stat(const gmx_global_stat*  gs,
     {
         if (ekind)
         {
-            for (j = 0; (j < inputrec->opts.ngtc); j++)
+            for (int j = 0; (j < inputrec.opts.ngtc); j++)
             {
                 if (bSumEkinhOld)
                 {
@@ -343,35 +334,32 @@ void global_stat(const gmx_global_stat*  gs,
 
     if (bEner)
     {
-        extract_binr(rb, ie, nener, copyenerd);
-        if (!rmsdData.empty())
+        extract_binr(rb, ie, nener, copyenerd.data());
+        for (auto key : gmx::keysOf(inn))
         {
-            extract_binr(rb, irmsd, rmsdData);
+            extract_binr(rb, inn[key], enerd->grpp.nener, enerd->grpp.energyGroupPairTerms[key].data());
         }
-
-        for (j = 0; (j < egNR); j++)
+        if (inputrec.efep != FreeEnergyPerturbationType::No)
         {
-            extract_binr(rb, inn[j], enerd->grpp.nener, enerd->grpp.ener[j].data());
-        }
-        if (inputrec->efep != efepNO)
-        {
-            extract_bind(rb, idvdll, efptNR, enerd->dvdl_lin);
-            extract_bind(rb, idvdlnl, efptNR, enerd->dvdl_nonlin);
+            extract_bind(rb, idvdll, enerd->dvdl_lin);
+            extract_bind(rb, idvdlnl, enerd->dvdl_nonlin);
             if (enerd->foreignLambdaTerms.numLambdas() > 0)
             {
-                extract_bind(rb, iepl, enerd->foreignLambdaTerms.energies().size(),
+                extract_bind(rb,
+                             iepl,
+                             enerd->foreignLambdaTerms.energies().size(),
                              enerd->foreignLambdaTerms.energies().data());
             }
         }
 
-        filter_enerdterm(copyenerd, FALSE, enerd->term, bTemp, bPres, bEner);
+        filter_enerdterm(copyenerd.data(), FALSE, enerd->term.data(), bTemp, bPres, bEner);
     }
 
     if (vcm)
     {
         extract_binr(rb, icm, DIM * vcm->nr, vcm->group_p[0]);
         extract_binr(rb, imass, vcm->nr, vcm->group_mass.data());
-        if (vcm->mode == ecmANGULAR)
+        if (vcm->mode == ComRemovalAlgorithm::Angular)
         {
             extract_binr(rb, icj, DIM * vcm->nr, vcm->group_j[0]);
             extract_binr(rb, icx, DIM * vcm->nr, vcm->group_x[0]);
@@ -379,14 +367,17 @@ void global_stat(const gmx_global_stat*  gs,
         }
     }
 
-    if (checkNumberOfBondedInteractions)
+    if (!sig.empty())
     {
-        extract_bind(rb, inb, 1, &nb);
-        *totalNumberOfBondedInteractions = gmx::roundToInt(nb);
+        extract_binr(rb, isig, sig);
     }
 
-    if (nsig > 0)
+    if (!observablesReducerBuffer.empty())
     {
-        extract_binr(rb, isig, nsig, sig);
+        extract_bind(rb,
+                     tbinIndexForObservablesReducer,
+                     observablesReducerBuffer.ssize(),
+                     observablesReducerBuffer.data());
+        observablesReducer->reductionComplete(step);
     }
 }

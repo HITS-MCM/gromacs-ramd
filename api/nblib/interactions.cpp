@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -137,7 +136,8 @@ ParticleTypesInteractions& ParticleTypesInteractions::add(const ParticleTypeName
             std::string message = formatString(
                     "Attempting to add nonbonded interaction parameters between the particle types "
                     "{} {} twice",
-                    particleTypeName1.value(), particleTypeName2.value());
+                    particleTypeName1.value(),
+                    particleTypeName2.value());
             throw InputException(message);
         }
     }
@@ -162,8 +162,8 @@ NonBondedInteractionMap ParticleTypesInteractions::generateTable() const
             C6  c6_combo{ combineNonbondedParameters(c6_1, c6_2, combinationRule_) };
             C12 c12_combo{ combineNonbondedParameters(c12_1, c12_2, combinationRule_) };
 
-            nonbondedParameters_.setInteractions(particleType1.first, particleType2.first, c6_combo,
-                                                 c12_combo);
+            nonbondedParameters_.setInteractions(
+                    particleType1.first, particleType2.first, c6_combo, c12_combo);
         }
     }
 
@@ -194,7 +194,8 @@ NonBondedInteractionMap ParticleTypesInteractions::generateTable() const
             if (nonbondedParameters_.count(interactionKey) == 0)
             {
                 std::string message = formatString("Missing interaction between {} {}",
-                                                   particleTypeName1.value(), particleTypeName2.value());
+                                                   particleTypeName1.value(),
+                                                   particleTypeName2.value());
                 throw InputException(message);
             }
         }
@@ -216,7 +217,9 @@ void ParticleTypesInteractions::merge(const ParticleTypesInteractions& other)
 
     for (const auto& keyval : other.twoParticlesInteractionsMap_)
     {
-        add(std::get<0>(keyval.first), std::get<1>(keyval.first), std::get<0>(keyval.second),
+        add(std::get<0>(keyval.first),
+            std::get<1>(keyval.first),
+            std::get<0>(keyval.second),
             std::get<1>(keyval.second));
     }
 }

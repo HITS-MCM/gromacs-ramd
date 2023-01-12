@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,14 +26,16 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
-# For compilers which might require libstdc++ (Clang and Intel), find it and set CMAKE_CXX_FLAGS.
+# For compilers which might require libstdc++ (Clang and Intel), and do
+# not already work, find it and set CMAKE_CXX_FLAGS.
 #
-# Does nothing if compiler includes std-library (e.g. GCC) or compiler uses different std-library
+# Does nothing if compiler includes std-library (e.g. GCC), or already
+# works, or compiler uses different std-library
 # (either because of different defaults (e.g. on MacOS) or user flags (e.g. -stdlib=libc++)).
 # The heuristic by the compiler of how to find libstdc++ is ignored. Any user-provided flags in
 # e.g. CXXFLAGS for the location of libstdc++ are honored. The user can choose the libstdc++ by setting
@@ -42,23 +43,44 @@
 # Gives error if no g++ is found or the g++ found isn't new enough (5.1 is required).
 # The location of g++ is cached as GMX_GPLUSPLUS_PATH making sure that the same libstdc++ is used
 # for builds at different times using the same cache file (so that e.g. module loading is
-# not required for a reproducible build).
+# not required for a reproducible build). Note that GMX_GPLUSPLUS_PATH is ignored if it is
+# not needed because the compiler already found a std library via some other mechanism.
 
 if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Intel") # Compilers supported
     return()
 endif()
 
-# If the compiler isn't using libstdc++ (via its heuristics), then the
-# compiler is set up to use some other standard library (e.g. libc++
-# or the MSVC library). If so, then there is nothing to manage. Note
-# that at this point we don't care *which* libstdc++ (or version) is
-# found.
 include(CheckCXXSourceCompiles)
+
+# Test that required 2017 standard library features work.
+# Note that this check also requires linking to succeed.
+set (SAMPLE_CODE_TO_TEST_CXX17 "
+#include <string>
+#include <string_view>
+#include <optional>
+int main(int argc, char **argv) {
+  std::optional<std::string> input(argv[0]);
+  std::string_view view(input.value());
+  return int(view[0]);
+}")
+check_cxx_source_compiles("${SAMPLE_CODE_TO_TEST_CXX17}" CXX17_COMPILES)
+
+if (CXX17_COMPILES)
+    # The compiler has been set up properly to find a standard
+    # library, and if so GROMACS should leave it alone.
+    return()
+endif()
+
+# The compiler couldn't use the standard libary for an unknown reason.
+# See if the compiler is using libstdc++ (via libstc++ heuristics). If so,
+# then we may be able to help the compiler find the standard library.
 check_cxx_source_compiles("#include <new>
 int main() { return __GLIBCXX__; }" USING_LIBSTDCXX)
 
 if (NOT USING_LIBSTDCXX)
-    return()
+    message(FATAL_ERROR "The C++ compiler cannot find a working standard library and it is "
+            "not libstdc++. The GROMACS build cannot handle this case. Please use a working "
+            "C++17 compiler and standard library.")
 endif()
 
 if (DEFINED GMX_GPLUSGPLUS_PATH)
@@ -128,10 +150,6 @@ if(NEED_TO_FIND_GPLUSPLUS)
             message(FATAL_ERROR "${GMX_GPLUSPLUS_PATH}/include/c++ doesn't exist even though it should. "
                 "Please report to developers.")
         endif()
-    else() #Intel
-        if (${GMX_GPLUSPLUS_VERSION} VERSION_GREATER_EQUAL 7 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19)
-            message(FATAL_ERROR "ICC versions below 19 don't support GCC versions above 6.")
-        endif ()
     endif()
 
     # Set up to use the libstdc++ from that g++. Note that we checked
@@ -139,19 +157,15 @@ if(NEED_TO_FIND_GPLUSPLUS)
     # we will not override any user settings here.
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --gcc-toolchain=${GMX_GPLUSPLUS_PATH}")
-    else() #Intel
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gcc-name=${GMX_GPLUSPLUS_PATH}")
     endif()
 endif()
 
 # Now run a sanity check on the compiler using libstdc++, regardless
 # of how it was specified or found.
 
-# Test required 2017 standard library features.
-check_cxx_source_compiles("
-#include <string_view>
-#include <optional>
-int main() { std::string_view(); std::optional<int>(); }" CXX17_COMPILES)
+# Test required 2017 standard library features again.
+unset(CXX17_COMPILES CACHE)
+check_cxx_source_compiles("${SAMPLE_CODE_TO_TEST_CXX17}" CXX17_COMPILES)
 
 if (NOT CXX17_COMPILES)
     if (NEED_TO_FIND_GPLUSPLUS)

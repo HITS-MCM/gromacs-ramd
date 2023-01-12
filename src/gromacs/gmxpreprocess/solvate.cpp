@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -55,6 +51,7 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/boxutilities.h"
 #include "gromacs/pbcutil/pbc.h"
+#include "gromacs/random/seed.h"
 #include "gromacs/selection/nbsearch.h"
 #include "gromacs/topology/atomprop.h"
 #include "gromacs/topology/atoms.h"
@@ -109,8 +106,8 @@ static void sort_molecule(t_atoms** atoms_solvt, t_atoms** newatoms, std::vector
                 {
                     numAtomsInMolType++;
                 }
-                molTypes.emplace_back(MoleculeType{ *atoms->resinfo[atoms->atom[i].resind].name,
-                                                    numAtomsInMolType, 1 });
+                molTypes.emplace_back(MoleculeType{
+                        *atoms->resinfo[atoms->atom[i].resind].name, numAtomsInMolType, 1 });
             }
             else
             {
@@ -119,12 +116,14 @@ static void sort_molecule(t_atoms** atoms_solvt, t_atoms** newatoms, std::vector
         }
     }
 
-    fprintf(stderr, "Found %zu%s molecule type%s:\n", molTypes.size(),
-            molTypes.size() == 1 ? "" : " different", molTypes.size() == 1 ? "" : "s");
+    fprintf(stderr,
+            "Found %zu%s molecule type%s:\n",
+            molTypes.size(),
+            molTypes.size() == 1 ? "" : " different",
+            molTypes.size() == 1 ? "" : "s");
     for (const auto& molType : molTypes)
     {
-        fprintf(stderr, "%7s (%4d atoms): %5d residues\n", molType.name.c_str(), molType.numAtoms,
-                molType.numMolecules);
+        fprintf(stderr, "%7s (%4d atoms): %5d residues\n", molType.name.c_str(), molType.numAtoms, molType.numMolecules);
     }
 
     /* if we have only 1 moleculetype, we don't have to sort */
@@ -277,8 +276,7 @@ static void replicateSolventBox(t_atoms*           atoms,
         }
         nmol *= n_box[i];
     }
-    fprintf(stderr, "Will generate new solvent configuration of %dx%dx%d boxes\n", n_box[XX],
-            n_box[YY], n_box[ZZ]);
+    fprintf(stderr, "Will generate new solvent configuration of %dx%dx%d boxes\n", n_box[XX], n_box[YY], n_box[ZZ]);
 
     // Create arrays for storing the generated system (cannot be done in-place
     // in case the target box is smaller than the original in one dimension,
@@ -460,8 +458,7 @@ static void removeSolventBoxOverlap(t_atoms*           atoms,
     remover.removeMarkedElements(r);
     const int originalAtomCount = atoms->nr;
     remover.removeMarkedAtoms(atoms);
-    fprintf(stderr, "Removed %d solvent atoms due to solvent-solvent overlap\n",
-            originalAtomCount - atoms->nr);
+    fprintf(stderr, "Removed %d solvent atoms due to solvent-solvent overlap\n", originalAtomCount - atoms->nr);
 }
 
 /*! \brief
@@ -508,8 +505,10 @@ static void removeSolventOutsideShell(t_atoms*                 atoms,
     remover.removeMarkedElements(r);
     const int originalAtomCount = atoms->nr;
     remover.removeMarkedAtoms(atoms);
-    fprintf(stderr, "Removed %d solvent atoms more than %f nm from solute.\n",
-            originalAtomCount - atoms->nr, rshell);
+    fprintf(stderr,
+            "Removed %d solvent atoms more than %f nm from solute.\n",
+            originalAtomCount - atoms->nr,
+            rshell);
 }
 
 /*! \brief
@@ -564,8 +563,7 @@ static void removeSolventOverlappingWithSolute(t_atoms*                 atoms,
     remover.removeMarkedElements(r);
     const int originalAtomCount = atoms->nr;
     remover.removeMarkedAtoms(atoms);
-    fprintf(stderr, "Removed %d solvent atoms due to solute-solvent overlap\n",
-            originalAtomCount - atoms->nr);
+    fprintf(stderr, "Removed %d solvent atoms due to solute-solvent overlap\n", originalAtomCount - atoms->nr);
 }
 
 /*! \brief
@@ -583,8 +581,7 @@ static void removeSolventOverlappingWithSolute(t_atoms*                 atoms,
 static void removeExtraSolventMolecules(t_atoms* atoms, std::vector<RVec>* x, std::vector<RVec>* v, int numberToRemove)
 {
     gmx::AtomsRemover               remover(*atoms);
-    std::random_device              rd;
-    std::mt19937                    randomNumberGenerator(rd());
+    std::mt19937                    randomNumberGenerator(gmx::makeRandomSeed());
     std::uniform_int_distribution<> randomDistribution(0, atoms->nr - 1);
     while (numberToRemove > 0)
     {
@@ -624,11 +621,16 @@ static void add_solv(const char*        filename,
     fprintf(stderr, "Reading solvent configuration\n");
     bool  bTprFileWasRead;
     rvec *temporaryX = nullptr, *temporaryV = nullptr;
-    readConfAndTopology(gmx::findLibraryFile(filename).c_str(), &bTprFileWasRead, &topSolvent,
-                        &pbcTypeSolvent, &temporaryX, &temporaryV, boxSolvent);
+    readConfAndTopology(gmx::findLibraryFile(filename).c_str(),
+                        &bTprFileWasRead,
+                        &topSolvent,
+                        &pbcTypeSolvent,
+                        &temporaryX,
+                        &temporaryV,
+                        boxSolvent);
     t_atoms* atomsSolvent;
     snew(atomsSolvent, 1);
-    *atomsSolvent = gmx_mtop_global_atoms(&topSolvent);
+    *atomsSolvent = gmx_mtop_global_atoms(topSolvent);
     xSolvent.assign(temporaryX, temporaryX + topSolvent.natoms);
     sfree(temporaryX);
     vSolvent.assign(temporaryV, temporaryV + topSolvent.natoms);
@@ -676,11 +678,11 @@ static void add_solv(const char*        filename,
     {
         if (rshell > 0.0)
         {
-            removeSolventOutsideShell(atomsSolvent, &xSolvent, &vSolvent, &exclusionDistances_solvt,
-                                      pbc, *x, rshell);
+            removeSolventOutsideShell(
+                    atomsSolvent, &xSolvent, &vSolvent, &exclusionDistances_solvt, pbc, *x, rshell);
         }
-        removeSolventOverlappingWithSolute(atomsSolvent, &xSolvent, &vSolvent,
-                                           &exclusionDistances_solvt, pbc, *x, exclusionDistances);
+        removeSolventOverlappingWithSolute(
+                atomsSolvent, &xSolvent, &vSolvent, &exclusionDistances_solvt, pbc, *x, exclusionDistances);
     }
 
     if (max_sol > 0 && atomsSolvent->nres > max_sol)
@@ -708,7 +710,9 @@ static void add_solv(const char*        filename,
         gmx::AtomsBuilder builder(atoms, symtab);
         builder.mergeAtoms(*sortedAtomsSolvent);
     }
-    fprintf(stderr, "Generated solvent containing %d atoms in %d residues\n", atomsSolvent->nr,
+    fprintf(stderr,
+            "Generated solvent containing %d atoms in %d residues\n",
+            atomsSolvent->nr,
             atomsSolvent->nres);
 
     if (newatoms)
@@ -744,15 +748,17 @@ static void update_top(t_atoms*        atoms,
     mtot = 0;
     for (i = 0; (i < atoms->nr); i++)
     {
-        aps->setAtomProperty(epropMass, std::string(*atoms->resinfo[atoms->atom[i].resind].name),
-                             std::string(*atoms->atomname[i]), &mm);
+        aps->setAtomProperty(epropMass,
+                             std::string(*atoms->resinfo[atoms->atom[i].resind].name),
+                             std::string(*atoms->atomname[i]),
+                             &mm);
         mtot += mm;
     }
 
     vol = det(box);
 
     fprintf(stderr, "Volume                 :  %10g (nm^3)\n", vol);
-    fprintf(stderr, "Density                :  %10g (g/l)\n", (mtot * 1e24) / (AVOGADRO * vol));
+    fprintf(stderr, "Density                :  %10g (g/l)\n", (mtot * 1e24) / (gmx::c_avogadro * vol));
     fprintf(stderr, "Number of solvent molecules:  %5d   \n\n", nsol);
 
     /* open topology file and append sol molecules */
@@ -825,7 +831,9 @@ static void update_top(t_atoms*        atoms,
                     fprintf(stdout,
                             "Adding line for %d solvent molecules with resname (%s) to "
                             "topology file (%s)\n",
-                            resCount, currRes.c_str(), topinout);
+                            resCount,
+                            currRes.c_str(),
+                            topinout);
                     fprintf(fpout, "%-15s %5d\n", currRes.c_str(), resCount);
                     currRes  = *atoms->resinfo[i].name;
                     resCount = 1;
@@ -835,7 +843,9 @@ static void update_top(t_atoms*        atoms,
             fprintf(stdout,
                     "Adding line for %d solvent molecules with resname (%s) to "
                     "topology file (%s)\n",
-                    resCount, currRes.c_str(), topinout);
+                    resCount,
+                    currRes.c_str(),
+                    topinout);
             fprintf(fpout, "%-15s %5d\n", currRes.c_str(), resCount);
         }
         gmx_ffclose(fpout);
@@ -941,8 +951,8 @@ int gmx_solvate(int argc, char* argv[])
         { "-vel", FALSE, etBOOL, { &bReadV }, "Keep velocities from input solute and solvent" },
     };
 
-    if (!parse_common_args(&argc, argv, 0, NFILE, fnm, asize(pa), pa, asize(desc), desc,
-                           asize(bugs), bugs, &oenv))
+    if (!parse_common_args(
+                &argc, argv, 0, NFILE, fnm, asize(pa), pa, asize(desc), desc, asize(bugs), bugs, &oenv))
     {
         return 0;
     }
@@ -975,9 +985,9 @@ int gmx_solvate(int argc, char* argv[])
         fprintf(stderr, "Reading solute configuration%s\n", bReadV ? " and velocities" : "");
         bool  bTprFileWasRead;
         rvec *temporaryX = nullptr, *temporaryV = nullptr;
-        readConfAndTopology(conf_prot, &bTprFileWasRead, &top, &pbcType, &temporaryX,
-                            bReadV ? &temporaryV : nullptr, box);
-        *atoms = gmx_mtop_global_atoms(&top);
+        readConfAndTopology(
+                conf_prot, &bTprFileWasRead, &top, &pbcType, &temporaryX, bReadV ? &temporaryV : nullptr, box);
+        *atoms = gmx_mtop_global_atoms(top);
         x.assign(temporaryX, temporaryX + top.natoms);
         sfree(temporaryX);
         if (temporaryV)
@@ -1015,15 +1025,19 @@ int gmx_solvate(int argc, char* argv[])
                   "or give explicit -box command line option");
     }
 
-    add_solv(solventFileName, atoms, &top.symtab, &x, &v, pbcTypeForOutput, box, &aps,
-             defaultDistance, scaleFactor, r_shell, max_sol);
+    add_solv(solventFileName, atoms, &top.symtab, &x, &v, pbcTypeForOutput, box, &aps, defaultDistance, scaleFactor, r_shell, max_sol);
 
     /* write new configuration 1 to file confout */
     confout = ftp2fn(efSTO, NFILE, fnm);
     fprintf(stderr, "Writing generated configuration to %s\n", confout);
     const char* outputTitle = (bProt ? *top.name : "Generated by gmx solvate");
-    write_sto_conf(confout, outputTitle, atoms, as_rvec_array(x.data()),
-                   !v.empty() ? as_rvec_array(v.data()) : nullptr, pbcTypeForOutput, box);
+    write_sto_conf(confout,
+                   outputTitle,
+                   atoms,
+                   as_rvec_array(x.data()),
+                   !v.empty() ? as_rvec_array(v.data()) : nullptr,
+                   pbcTypeForOutput,
+                   box);
 
     /* print size of generated configuration */
     fprintf(stderr, "\nOutput configuration contains %d atoms in %d residues\n", atoms->nr, atoms->nres);

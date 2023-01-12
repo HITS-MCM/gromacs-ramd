@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -92,7 +91,7 @@ struct OutputQuantities
     //! Derivative with respect to lambda
     real dvdlambda = 0;
     //! Shift vectors
-    rvec fshift[N_IVEC] = { { 0 } };
+    rvec fshift[c_numShiftVectors] = { { 0 } };
     //! Forces
     alignas(GMX_REAL_MAX_SIMD_WIDTH * sizeof(real)) rvec4 f[c_numAtoms] = { { 0 } };
 };
@@ -451,17 +450,15 @@ public:
      * \param[in] a      Thole factor
      * \param[in] alpha1 Polarizability 1 (nm^3)
      * \param[in] alpha2 Polarizability 2 (nm^3)
-     * \param[in] rfac   Distance factor
      * \return The structure itself.
      */
-    iListInput setTholePolarization(real a, real alpha1, real alpha2, real rfac)
+    iListInput setTholePolarization(real a, real alpha1, real alpha2)
     {
         ftype                = F_THOLE_POL;
         fep                  = false;
         iparams.thole.a      = a;
         iparams.thole.alpha1 = alpha1;
         iparams.thole.alpha2 = alpha2;
-        iparams.thole.rfac   = rfac;
         return *this;
     }
     /*! \brief Set parameters for Water Polarization
@@ -565,17 +562,19 @@ protected:
         // have an implementation for uint64_t(!) but this is likely to
         // work because that type is likely to be a typedef for one of
         // the other numerical types that happens to be 64-bits wide.
-        shiftForcesTolerance_ = FloatingPointTolerance(singleShiftForcesAbsoluteTolerance, 1e-8, 1e-6,
-                                                       1e-12, std::numeric_limits<uint64_t>::max(),
-                                                       std::numeric_limits<uint64_t>::max(), false);
+        shiftForcesTolerance_ = FloatingPointTolerance(singleShiftForcesAbsoluteTolerance,
+                                                       1e-8,
+                                                       1e-6,
+                                                       1e-12,
+                                                       std::numeric_limits<uint64_t>::max(),
+                                                       std::numeric_limits<uint64_t>::max(),
+                                                       false);
     }
     void testOneIfunc(TestReferenceChecker* checker, const std::vector<t_iatom>& iatoms, const real lambda)
     {
         SCOPED_TRACE(std::string("Testing PBC type: ") + c_pbcTypeNames[pbcType_]);
         std::vector<int>  ddgatindex = { 0, 1, 2, 3 };
-        std::vector<real> chargeA    = { 1.5, -2.0, 1.5, -1.0 };
-        t_mdatoms         mdatoms    = { 0 };
-        mdatoms.chargeA              = chargeA.data();
+        std::vector<real> charge     = { 1.5, -2.0, 1.5, -1.0 };
         /* Here we run both the standard, plain-C force+shift-forces+energy+free-energy
          * kernel flavor and the potentially optimized, with SIMD and less output,
          * force only kernels. Note that we also run the optimized kernel for free-energy
@@ -590,11 +589,22 @@ protected:
         {
             SCOPED_TRACE("Testing bonded kernel flavor: " + c_bondedKernelFlavorStrings[flavor]);
             OutputQuantities output;
-            output.energy =
-                    calculateSimpleBond(input_.ftype, iatoms.size(), iatoms.data(), &input_.iparams,
-                                        as_rvec_array(x_.data()), output.f, output.fshift, &pbc_,
-                                        lambda, &output.dvdlambda, &mdatoms,
-                                        /* struct t_fcdata * */ nullptr, ddgatindex.data(), flavor);
+            output.energy = calculateSimpleBond(input_.ftype,
+                                                iatoms.size(),
+                                                iatoms.data(),
+                                                &input_.iparams,
+                                                as_rvec_array(x_.data()),
+                                                output.f,
+                                                output.fshift,
+                                                &pbc_,
+                                                lambda,
+                                                &output.dvdlambda,
+                                                charge,
+                                                /* struct t_fcdata * */ nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                ddgatindex.data(),
+                                                flavor);
             // Internal consistency test of both test input
             // and bonded functions.
             EXPECT_TRUE((input_.fep || (output.dvdlambda == 0.0))) << "dvdlambda was " << output.dvdlambda;
@@ -603,7 +613,7 @@ protected:
             if (computeVirial(flavor))
             {
                 shiftForcesChecker.setDefaultTolerance(shiftForcesTolerance_);
-                shiftForcesChecker.checkVector(output.fshift[CENTRAL], "Central");
+                shiftForcesChecker.checkVector(output.fshift[c_centralShiftIndex], "Central");
             }
             else
             {
@@ -695,7 +705,7 @@ std::vector<iListInput> c_InputDihs = {
 std::vector<iListInput> c_InputPols = {
     { iListInput(2e-5, 1e-8).setPolarization(0.12) },
     { iListInput(2e-3, 1e-8).setAnharmPolarization(0.0013, 0.02, 1235.6) },
-    { iListInput(1.4e-3, 1e-8).setTholePolarization(0.26, 0.07, 0.09, 1.6) },
+    { iListInput(1.4e-3, 1e-8).setTholePolarization(0.26, 0.07, 0.09) },
     { iListInput(2e-3, 1e-8).setWaterPolarization(0.001, 0.0012, 0.0016, 0.095, 0.15, 0.02) },
 };
 
@@ -770,50 +780,47 @@ std::vector<PaddedVector<RVec>> c_coordinatesForTestsZeroAngle = {
 //! PBC values for testing
 std::vector<PbcType> c_pbcForTests = { PbcType::No, PbcType::XY, PbcType::Xyz };
 
-// Those tests give errors with the intel compiler and nothing else, so we disable them only there.
-#ifndef __INTEL_COMPILER
-INSTANTIATE_TEST_CASE_P(Bond,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputBonds),
-                                           ::testing::ValuesIn(c_coordinatesForTests),
-                                           ::testing::ValuesIn(c_pbcForTests)));
+INSTANTIATE_TEST_SUITE_P(Bond,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputBonds),
+                                            ::testing::ValuesIn(c_coordinatesForTests),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
-INSTANTIATE_TEST_CASE_P(Angle,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputAngles),
-                                           ::testing::ValuesIn(c_coordinatesForTests),
-                                           ::testing::ValuesIn(c_pbcForTests)));
+INSTANTIATE_TEST_SUITE_P(Angle,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputAngles),
+                                            ::testing::ValuesIn(c_coordinatesForTests),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
-INSTANTIATE_TEST_CASE_P(Dihedral,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputDihs),
-                                           ::testing::ValuesIn(c_coordinatesForTests),
-                                           ::testing::ValuesIn(c_pbcForTests)));
+INSTANTIATE_TEST_SUITE_P(Dihedral,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputDihs),
+                                            ::testing::ValuesIn(c_coordinatesForTests),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
-INSTANTIATE_TEST_CASE_P(Polarize,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputPols),
-                                           ::testing::ValuesIn(c_coordinatesForTests),
-                                           ::testing::ValuesIn(c_pbcForTests)));
+INSTANTIATE_TEST_SUITE_P(Polarize,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputPols),
+                                            ::testing::ValuesIn(c_coordinatesForTests),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
-INSTANTIATE_TEST_CASE_P(Restraints,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputRestraints),
-                                           ::testing::ValuesIn(c_coordinatesForTests),
-                                           ::testing::ValuesIn(c_pbcForTests)));
+INSTANTIATE_TEST_SUITE_P(Restraints,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputRestraints),
+                                            ::testing::ValuesIn(c_coordinatesForTests),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
-INSTANTIATE_TEST_CASE_P(BondZeroLength,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputBondsZeroLength),
-                                           ::testing::ValuesIn(c_coordinatesForTestsZeroBondLength),
-                                           ::testing::ValuesIn(c_pbcForTests)));
+INSTANTIATE_TEST_SUITE_P(BondZeroLength,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputBondsZeroLength),
+                                            ::testing::ValuesIn(c_coordinatesForTestsZeroBondLength),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
-INSTANTIATE_TEST_CASE_P(AngleZero,
-                        ListedForcesTest,
-                        ::testing::Combine(::testing::ValuesIn(c_InputAnglesZeroAngle),
-                                           ::testing::ValuesIn(c_coordinatesForTestsZeroAngle),
-                                           ::testing::ValuesIn(c_pbcForTests)));
-#endif
+INSTANTIATE_TEST_SUITE_P(AngleZero,
+                         ListedForcesTest,
+                         ::testing::Combine(::testing::ValuesIn(c_InputAnglesZeroAngle),
+                                            ::testing::ValuesIn(c_coordinatesForTestsZeroAngle),
+                                            ::testing::ValuesIn(c_pbcForTests)));
 
 } // namespace
 

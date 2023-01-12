@@ -1,11 +1,9 @@
-#!/usr/bin/env python
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2019- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 """Tests for dynamically defined operations.
 
@@ -41,103 +39,129 @@ the high-level machinery of the package, effectively serving as integration
 tests of the operation-building utilities in the modules depended on by
 commandline.py.
 """
-
+import logging
 import os
 import shutil
 import stat
-import unittest
+
+import pytest
 
 import gmxapi as gmx
-import pytest
+import gmxapi.operation
 from gmxapi import commandline
+from gmxapi.testsupport import scoped_chdir
+
+try:
+    from mpi4py import MPI
+
+    comm = MPI.COMM_WORLD
+    rank_number = comm.Get_rank()
+    comm_size = comm.Get_size()
+except ImportError:
+    comm = None
+    rank_number = 0
+    comm_size = 1
+    rank_tag = ''
+    MPI = None
+else:
+    rank_tag = 'rank{}:'.format(rank_number)
 
 
-class SimpleCliTestCase(unittest.TestCase):
-    """Test creation and execution of the basic cli() command line wrapper."""
+# if rank_number == 1:
+#     import pydevd_pycharm
+#     pydevd_pycharm.settrace('localhost', port=12345, stdoutToServer=True, stderrToServer=True)
 
-    def test_true(self):
-        """Test a command known to produce a return code of 0."""
+
+def test_true_base(cleandir):
+    """Test a command known to produce a return code of 0."""
+    work_dir = cleandir
+    if comm_size > 1:
+        work_dir = comm.bcast(work_dir, root=0)
+    if rank_number != 0:
+        assert work_dir != cleandir
+    with scoped_chdir(work_dir):
+        current_dir = os.getcwd()
+        logging.warning(f'{current_dir}')
         command = shutil.which('true')
         operation = commandline.cli(command=[command], shell=False)
 
-        # Note: 'stdout' and 'stderr' not mapped.
         # Note: getitem not implemented.
-        # assert not 'stdout' in operation.output
-        # assert not 'stderr' in operation.output
-        assert not hasattr(operation.output, 'stdout')
-        assert not hasattr(operation.output, 'stderr')
-
-        # Check for the attributes that we _do_ expect.
-        assert hasattr(operation.output, 'erroroutput')
+        # assert 'stdout' in operation.output
+        # assert 'stderr' in operation.output
+        assert hasattr(operation.output, 'stdout')
+        assert hasattr(operation.output, 'stderr')
+        assert not hasattr(operation.output, 'erroroutput')
         assert hasattr(operation.output, 'returncode')
 
         operation.run()
         # assert operation.output.returncode.result() == 0
         assert operation.output.returncode.result() == 0
 
-    def test_false_explicit(self):
-        """Test a command known to produce a return code of 1."""
-        command = shutil.which('false')
-        operation = commandline.cli(command=[command], shell=False)
-        # Explicitly run the operation.
-        operation.run()
-        assert operation.output.returncode.result() == 1
 
-    def test_false_implicit(self):
-        command = shutil.which('false')
-        operation = commandline.cli(command=[command], shell=False)
-        # Allow the operation to be executed implicitly to satisfy data constraint.
-        assert operation.output.returncode.result() == 1
-
-    def test_command_with_arguments(self):
-        """Test that cli() can wrap a command with arguments."""
-        # TODO: (FR5+) do we want to pipeline or checkpoint stdout somehow?
-        operation = commandline.cli(command=[shutil.which('echo'), 'hi', 'there'], shell=False)
-        assert operation.output.returncode.result() == 0
-
-    def test_command_with_stdin(self):
-        """Test that cli() can handle string input."""
-        stdin = 'hi\nthere\n'
-        subcommand = '{wc} -l | {grep} -q 2'.format(wc=shutil.which('wc'), grep=shutil.which('grep'))
-
-        operation = commandline.cli(command=['/bin/sh', '-c', subcommand], shell=False, stdin=stdin)
-        assert operation.output.returncode.result() == 0
-        operation = commandline.commandline_operation('/bin/sh', ['-c', subcommand], stdin=stdin)
-        assert operation.output.returncode.result() == 0
-
-        subcommand = '{wc} -l | {grep} -q 1'.format(wc=shutil.which('wc'), grep=shutil.which('grep'))
-
-        operation = commandline.cli(command=['/bin/sh', '-c', subcommand], shell=False, stdin=stdin)
-        assert operation.output.returncode.result() != 0
-        operation = commandline.commandline_operation('/bin/sh', ['-c', subcommand], stdin=stdin)
-        assert operation.output.returncode.result() != 0
+def test_false_explicit(cleandir):
+    """Test a command known to produce a return code of 1."""
+    command = shutil.which('false')
+    operation = commandline.cli(command=[command], shell=False)
+    # Explicitly run the operation.
+    operation.run()
+    assert operation.output.returncode.result() == 1
 
 
-class CommandLineOperationSimpleTestCase(unittest.TestCase):
-    """Test the command line wrapper operation factory."""
+def test_false_implicit(cleandir):
+    command = shutil.which('false')
+    operation = commandline.cli(command=[command], shell=False)
+    # Allow the operation to be executed implicitly to satisfy data constraint.
+    assert operation.output.returncode.result() == 1
 
-    def test_true(self):
-        operation = commandline.commandline_operation(executable='true')
-        # Note: 'stdout' and 'stderr' not mapped.
-        # Note: getitem not implemented.
-        # assert not 'stdout' in operation.output
-        # assert not 'stderr' in operation.output
-        assert not hasattr(operation.output, 'stdout')
-        assert not hasattr(operation.output, 'stderr')
-        assert hasattr(operation.output, 'file')
-        assert hasattr(operation.output, 'erroroutput')
-        assert hasattr(operation.output, 'returncode')
-        assert operation.output.returncode.result() == 0
 
-    def test_false(self):
-        operation = commandline.commandline_operation(executable='false')
-        assert operation.output.returncode.result() == 1
+def test_command_with_arguments(cleandir):
+    """Test that cli() can wrap a command with arguments."""
+    # TODO: (FR5+) do we want to pipeline or checkpoint stdout somehow?
+    operation = commandline.cli(command=[shutil.which('echo'), 'hi', 'there'], shell=False)
+    assert operation.output.returncode.result() == 0
 
-    def test_echo(self):
-        # TODO: (FR5+) do we want to pipeline or checkpoint stdout somehow?
-        operation = commandline.commandline_operation(executable='echo',
-                                                      arguments=['hi there'])
-        assert operation.output.returncode.result() == 0
+
+def test_command_with_stdin(cleandir):
+    """Test that cli() can handle string input."""
+    stdin = 'hi\nthere\n'
+    subcommand = '{wc} -l | {grep} -q 2'.format(wc=shutil.which('wc'), grep=shutil.which('grep'))
+
+    operation = commandline.cli(command=['/bin/sh', '-c', subcommand], shell=False, stdin=stdin)
+    assert operation.output.returncode.result() == 0
+    operation = commandline.commandline_operation('/bin/sh', ['-c', subcommand], stdin=stdin)
+    assert operation.output.returncode.result() == 0
+
+    subcommand = '{wc} -l | {grep} -q 1'.format(wc=shutil.which('wc'), grep=shutil.which('grep'))
+
+    operation = commandline.cli(command=['/bin/sh', '-c', subcommand], shell=False, stdin=stdin)
+    assert operation.output.returncode.result() != 0
+    operation = commandline.commandline_operation('/bin/sh', ['-c', subcommand], stdin=stdin)
+    assert operation.output.returncode.result() != 0
+
+
+def test_true(cleandir):
+    operation = commandline.commandline_operation(executable='true')
+    # Note: getitem not implemented.
+    # assert 'stdout' in operation.output
+    # assert 'stderr' in operation.output
+    assert not hasattr(operation.output, 'erroroutput')
+    assert hasattr(operation.output, 'file')
+    assert hasattr(operation.output, 'stdout')
+    assert hasattr(operation.output, 'stderr')
+    assert hasattr(operation.output, 'returncode')
+    assert operation.output.returncode.result() == 0
+
+
+def test_false(cleandir):
+    operation = commandline.commandline_operation(executable='false')
+    assert operation.output.returncode.result() == 1
+
+
+def test_echo(cleandir):
+    operation = commandline.commandline_operation(executable='echo',
+                                                  arguments=['hi there'])
+    assert operation.output.stdout.result() == 'hi there\n'
+    assert operation.output.returncode.result() == 0
 
 
 def test_file_dependency_chain(cleandir):
@@ -163,6 +187,8 @@ def test_file_dependency_chain(cleandir):
                                             arguments=[line1],
                                             input_files={'-i': os.devnull},
                                             output_files={'-o': file1})
+    assert isinstance(filewriter1.output, gmxapi.operation.DataProxyBase)
+    assert filewriter1.output.ensemble_width == 1
 
     line2 = 'second line'
     filewriter2 = gmx.commandline_operation(scriptname,
@@ -172,15 +198,79 @@ def test_file_dependency_chain(cleandir):
 
     filewriter2.run()
     # Check that the files have the expected lines
-    with open(file1, 'r') as fh:
+    with open(filewriter1.output.file['-o'].result(), 'r') as fh:
         lines = [text.rstrip() for text in fh]
     assert len(lines) == 1
     assert lines[0] == line1
-    with open(file2, 'r') as fh:
+    with open(filewriter2.output.file['-o'].result(), 'r') as fh:
         lines = [text.rstrip() for text in fh]
     assert len(lines) == 2
     assert lines[0] == line1
     assert lines[1] == line2
+
+    # Make sure that the temporary directory is not removed before all ranks have done
+    # the file checks.
+    if comm_size > 1:
+        comm.barrier()
+
+
+def test_file_dependency_ensemble_chain(cleandir):
+    """Test the command line wrapper input/output file handling.
+
+    Operation output can be used as operation input.
+    """
+    file1 = (os.path.join(cleandir, 'input1'), os.path.join(cleandir, 'input2'))
+    file2 = 'output'
+
+    # Make a shell script that acts like the type of tool we are wrapping.
+    scriptname = os.path.join(cleandir, 'clicommand.sh')
+    with open(scriptname, 'w') as fh:
+        fh.write('\n'.join(['#!' + shutil.which('bash'),
+                            '# Concatenate an input file and a string argument to an output file.',
+                            '# Mock a utility with the tested syntax.',
+                            '#     clicommand.sh "some words" -i inputfile -o outputfile',
+                            'echo $1 | cat $3 - > $5\n']))
+    os.chmod(scriptname, stat.S_IRWXU)
+
+    line1 = ['first line A', 'first line B']
+    filewriter1 = gmx.commandline_operation(scriptname,
+                                            arguments=[[line] for line in line1],
+                                            input_files={'-i': os.devnull},
+                                            output_files=[{'-o': name} for name in file1])
+    assert isinstance(filewriter1.output, gmxapi.operation.DataProxyBase)
+    assert filewriter1.output.ensemble_width == 2
+
+    line2 = 'second line'
+    filewriter2 = gmx.commandline_operation(scriptname,
+                                            arguments=[line2],
+                                            input_files={'-i': filewriter1.output.file['-o']},
+                                            output_files={'-o': file2})
+    assert filewriter2.output.ensemble_width == 2
+    filewriter2.run()
+
+    # Check that the files have the expected lines
+    for member in range(2):
+        with open(filewriter1.output.file['-o'].result()[member], 'r') as fh:
+            lines = [text.rstrip() for text in fh]
+        assert len(lines) == 1
+        assert lines[0] == line1[member]
+
+    outputs = filewriter2.output.file['-o'].result()
+    assert len(outputs) == 2
+    assert outputs[0] != outputs[1]
+    for member in range(2):
+        path = outputs[member]
+        assert os.path.exists(path)
+        with open(path, 'r') as fh:
+            lines = [text.rstrip() for text in fh]
+            assert len(lines) == 2
+            assert lines[0] == line1[member]
+            assert lines[1] == line2
+    # Make sure that the temporary directory is not removed before all ranks have done
+    # the file checks.
+    if comm_size > 1:
+        comm.barrier()
+
 
 def test_failure(cleandir):
     """The operation should not deliver file output if the subprocess fails."""
@@ -205,10 +295,22 @@ def test_failure(cleandir):
                                             input_files={'-i': filewriter1.output.file['-o']},
                                             output_files={'-o': file2})
 
-    # filewriter1 has a non-zero exit code and should have no output files available.
-    with pytest.raises(KeyError):
-        filewriter2.run()
+    with pytest.warns(UserWarning, match=r'Trouble getting .*'):
+        # We expect this to generate errors, warnings, and log messages.
+        # We assert the exception and warning, and suppress the logged error
+        # to avoid misleading output from the test suite.
 
+        class _Filter(logging.Filter):
+            def filter(self, record: logging.LogRecord):
+                if record.name == 'gmxapi.operation' and 'Trouble getting' in record.msg:
+                    return 0
+                else:
+                    return 1
 
-if __name__ == '__main__':
-    unittest.main()
+        _filter = _Filter()
+        logging.getLogger('gmxapi.operation').addFilter(_filter)
+
+        with pytest.raises(KeyError):
+            filewriter2.run()
+
+        logging.getLogger('gmxapi.operation').removeFilter(_filter)

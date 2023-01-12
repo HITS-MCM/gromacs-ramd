@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -96,6 +95,10 @@ namespace
  *  \note This is an internal routine that should only be called from
  *        gmx::alignedMalloc(). Just like system-provided routines, it provides
  *        memory that is aligned - but not padded.
+ *
+ *  \note This functionality is provided by C++17 std::aligned_alloc,
+ *  and it would be preferable to use that instead, however it is not
+ *  yet widely enough available to depend on. See #3968.
  */
 gmx_unused void* alignedMallocGeneric(std::size_t bytes, std::size_t alignment)
 {
@@ -149,7 +152,7 @@ gmx_unused void alignedFreeGeneric(void* p)
 //! Implement malloc of \c bytes of memory, aligned to \c alignment.
 void* mallocImpl(std::size_t bytes, std::size_t alignment)
 {
-    void* p;
+    void* p = nullptr;
 
 #if HAVE__MM_MALLOC
     p = _mm_malloc(bytes, alignment);
@@ -228,7 +231,7 @@ void AlignedAllocationPolicy::free(void* p)
 //! \todo Move this function into sysinfo.cpp where other OS-specific code/includes live
 static std::size_t getPageSize()
 {
-    long pageSize;
+    long pageSize = 0;
 #if GMX_NATIVE_WINDOWS
     SYSTEM_INFO si;
     GetNativeSystemInfo(&si);

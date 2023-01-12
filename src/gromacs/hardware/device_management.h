@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016, by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \libinternal \file
  *  \brief Declares functions to manage GPU resources.
@@ -61,6 +59,21 @@
 
 struct DeviceInformation;
 enum class DeviceVendor : int;
+
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+class MDLogger;
+} // namespace gmx
+
+/*! \brief Warn to the logger when the detected device was not one of
+ * the targets selected at configure time for compilation.
+ *
+ * \param[in] mdlog       Logger
+ * \param[in] deviceInfo  The device to potentially warn about
+ */
+void warnWhenDeviceNotTargeted(const gmx::MDLogger& mdlog, const DeviceInformation& deviceInfo);
 
 /*! \brief Return whether GPUs can be detected.
  *
@@ -153,7 +166,7 @@ getCompatibleDevices(const std::vector<std::unique_ptr<DeviceInformation>>& devi
  *
  * \return  Vector of compatible GPU ids.
  */
-std::vector<int> getCompatibleDeviceIds(const std::vector<std::unique_ptr<DeviceInformation>>& deviceInfoList);
+std::vector<int> getCompatibleDeviceIds(gmx::ArrayRef<const std::unique_ptr<DeviceInformation>> deviceInfoList);
 
 /*! \brief Return whether \p deviceId is found in \p deviceInfoList and is compatible
  *
@@ -167,8 +180,8 @@ std::vector<int> getCompatibleDeviceIds(const std::vector<std::unique_ptr<Device
  *
  * \return  Whether \c deviceId is compatible.
  */
-bool deviceIdIsCompatible(const std::vector<std::unique_ptr<DeviceInformation>>& deviceInfoList,
-                          int                                                    deviceId);
+bool deviceIdIsCompatible(gmx::ArrayRef<const std::unique_ptr<DeviceInformation>> deviceInfoList,
+                          int                                                     deviceId);
 
 /*! \brief Set the active GPU.
  *
@@ -219,7 +232,7 @@ std::string getDeviceInformationString(const DeviceInformation& deviceInfo);
  * \param[in] deviceId       An index of the device to check
  * \returns                  A string describing the compatibility status, useful for error messages.
  */
-std::string getDeviceCompatibilityDescription(const std::vector<std::unique_ptr<DeviceInformation>>& deviceInfoList,
+std::string getDeviceCompatibilityDescription(gmx::ArrayRef<const std::unique_ptr<DeviceInformation>> deviceInfoList,
                                               int deviceId);
 
 /*! \brief Serialization of information on devices for MPI broadcasting.

@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -51,6 +47,7 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -328,8 +325,8 @@ static void calc_tetra_order_parm(const char*             fnNDX,
     nframes = 0;
     do
     {
-        find_nearest_neighbours(pbcType, natoms, box, x, isize[0], index[0], &sg, &sk, nslice,
-                                slice_dim, sg_slice, sk_slice, gpbc);
+        find_nearest_neighbours(
+                pbcType, natoms, box, x, isize[0], index[0], &sg, &sk, nslice, slice_dim, sg_slice, sk_slice, gpbc);
         for (i = 0; (i < nslice); i++)
         {
             sg_slice_tot[i] += sg_slice[i];
@@ -353,9 +350,13 @@ static void calc_tetra_order_parm(const char*             fnNDX,
     fpsk = xvgropen(skslfn, "S\\sk\\N Distance Order Parameter / Slab", "(nm)", "S\\sk\\N", oenv);
     for (i = 0; (i < nslice); i++)
     {
-        fprintf(fpsg, "%10g  %10g\n", (i + 0.5) * box[slice_dim][slice_dim] / nslice,
+        fprintf(fpsg,
+                "%10g  %10g\n",
+                (i + 0.5) * box[slice_dim][slice_dim] / nslice,
                 sg_slice_tot[i] / static_cast<real>(nframes));
-        fprintf(fpsk, "%10g  %10g\n", (i + 0.5) * box[slice_dim][slice_dim] / nslice,
+        fprintf(fpsk,
+                "%10g  %10g\n",
+                (i + 0.5) * box[slice_dim][slice_dim] / nslice,
                 sk_slice_tot[i] / static_cast<real>(nframes));
     }
     xvgrclose(fpsg);
@@ -371,8 +372,11 @@ static void print_types(const int index[], int a[], int ngrps, char* groups[], c
     fprintf(stderr, "Using following groups: \n");
     for (i = 0; i < ngrps; i++)
     {
-        fprintf(stderr, "Groupname: %s First atomname: %s First atomnr %d\n", groups[i],
-                *(top->atoms.atomname[a[index[i]]]), a[index[i]]);
+        fprintf(stderr,
+                "Groupname: %s First atomname: %s First atomnr %d\n",
+                groups[i],
+                *(top->atoms.atomname[a[index[i]]]),
+                a[index[i]]);
     }
     fprintf(stderr, "\n");
 }
@@ -384,7 +388,9 @@ static void check_length(real length, int a, int b)
         fprintf(stderr,
                 "WARNING: distance between atoms %d and "
                 "%d > 0.3 nm (%f). Index file might be corrupt.\n",
-                a, b, length);
+                a,
+                b,
+                length);
     }
 }
 
@@ -426,10 +432,10 @@ static void calc_order(const char*             fn,
             nr_tails,                      /* nr tails, to check if index file is correct    */
             size = 0,                      /* nr. of atoms in group. same as nr_tails        */
             i, j, m, k, teller = 0, slice; /* current slice number                           */
-    real        nr_frames = 0;
-    int*        slCount;      /* nr. of atoms in one slice                      */
-    real        sdbangle = 0; /* sum of these angles                            */
-    gmx_bool    use_unitvector = FALSE; /* use a specified unit vector instead of axis to specify unit normal*/
+    real nr_frames = 0;
+    int* slCount;                /* nr. of atoms in one slice                      */
+    real sdbangle           = 0; /* sum of these angles                            */
+    gmx_bool use_unitvector = FALSE; /* use a specified unit vector instead of axis to specify unit normal*/
     rvec        direction, com;
     int         comsize, distsize;
     int *       comidx = nullptr, *distidx = nullptr;
@@ -746,7 +752,11 @@ static void calc_order(const char*             fn,
     for (i = 1; i < ngrps - 1; i++)
     {
         svmul(1.0 / nr_frames, (*order)[i], (*order)[i]);
-        fprintf(stderr, "Atom %d Tensor: x=%g , y=%g, z=%g\n", i, (*order)[i][XX], (*order)[i][YY],
+        fprintf(stderr,
+                "Atom %d Tensor: x=%g , y=%g, z=%g\n",
+                i,
+                (*order)[i][XX],
+                (*order)[i][YY],
                 (*order)[i][ZZ]);
         if (bSliced || permolecule)
         {
@@ -766,7 +776,8 @@ static void calc_order(const char*             fn,
 
     if (bUnsat)
     {
-        fprintf(stderr, "Average angle between double bond and normal: %f\n",
+        fprintf(stderr,
+                "Average angle between double bond and normal: %f\n",
                 180 * sdbangle / (nr_frames * static_cast<real>(size) * M_PI));
     }
 
@@ -813,7 +824,9 @@ static void order_plot(rvec                    order[],
         slOrd = xvgropen(bfile, buf, "Molecule", "S", oenv);
         for (atom = 1; atom < ngrps - 1; atom++)
         {
-            fprintf(ord, "%12d   %12g\n", atom,
+            fprintf(ord,
+                    "%12d   %12g\n",
+                    atom,
                     -1.0 * (2.0 / 3.0 * order[atom][XX] + 1.0 / 3.0 * order[atom][YY]));
         }
 
@@ -852,8 +865,7 @@ static void order_plot(rvec                    order[],
             {
                 S += slOrder[slice][atom];
             }
-            fprintf(slOrd, "%12g     %12g\n", static_cast<real>(slice) * slWidth,
-                    S / static_cast<real>(atom));
+            fprintf(slOrd, "%12g     %12g\n", static_cast<real>(slice) * slWidth, S / static_cast<real>(atom));
         }
     }
     else
@@ -865,9 +877,10 @@ static void order_plot(rvec                    order[],
 
         for (atom = 1; atom < ngrps - 1; atom++)
         {
-            fprintf(ord, "%12d   %12g   %12g   %12g\n", atom, order[atom][XX], order[atom][YY],
-                    order[atom][ZZ]);
-            fprintf(slOrd, "%12d   %12g\n", atom,
+            fprintf(ord, "%12d   %12g   %12g   %12g\n", atom, order[atom][XX], order[atom][YY], order[atom][ZZ]);
+            fprintf(slOrd,
+                    "%12d   %12g\n",
+                    atom,
                     -1.0 * (2.0 / 3.0 * order[atom][XX] + 1.0 / 3.0 * order[atom][YY]));
         }
     }
@@ -912,7 +925,7 @@ static void write_bfactors(t_filenm*         fnm,
     /*initialize PDBinfo*/
     for (i = 0; i < useatoms.nr; ++i)
     {
-        useatoms.pdbinfo[i].type         = 0;
+        useatoms.pdbinfo[i].type         = PdbRecordType::Atom;
         useatoms.pdbinfo[i].occup        = 0.0;
         useatoms.pdbinfo[i].bfac         = 0.0;
         useatoms.pdbinfo[i].bAnisotropic = FALSE;
@@ -937,8 +950,8 @@ static void write_bfactors(t_filenm*         fnm,
         }
     }
 
-    write_sto_conf(opt2fn("-ob", nfile, fnm), "Order parameters", &useatoms, frout.x, nullptr,
-                   frout.pbcType, frout.box);
+    write_sto_conf(
+            opt2fn("-ob", nfile, fnm), "Order parameters", &useatoms, frout.x, nullptr, frout.pbcType, frout.box);
 
     sfree(frout.x);
     done_atom(&useatoms);
@@ -1034,8 +1047,8 @@ int gmx_order(int argc, char* argv[])
     const char *      sgfnm, *skfnm, *ndxfnm, *tpsfnm, *trxfnm;
     gmx_output_env_t* oenv;
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -1081,8 +1094,16 @@ int gmx_order(int argc, char* argv[])
         /* If either of theoptions is set we compute both */
         sgfnm = opt2fn("-Sg", NFILE, fnm);
         skfnm = opt2fn("-Sk", NFILE, fnm);
-        calc_tetra_order_parm(ndxfnm, tpsfnm, trxfnm, sgfnm, skfnm, nslices, axis,
-                              opt2fn("-Sgsl", NFILE, fnm), opt2fn("-Sksl", NFILE, fnm), oenv);
+        calc_tetra_order_parm(ndxfnm,
+                              tpsfnm,
+                              trxfnm,
+                              sgfnm,
+                              skfnm,
+                              nslices,
+                              axis,
+                              opt2fn("-Sgsl", NFILE, fnm),
+                              opt2fn("-Sksl", NFILE, fnm),
+                              oenv);
         /* view xvgr files */
         do_view(oenv, opt2fn("-Sg", NFILE, fnm), nullptr);
         do_view(oenv, opt2fn("-Sk", NFILE, fnm), nullptr);
@@ -1136,18 +1157,43 @@ int gmx_order(int argc, char* argv[])
         /* show atomtypes, to check if index file is correct */
         print_types(index, a, ngrps, grpname, top);
 
-        calc_order(ftp2fn(efTRX, NFILE, fnm), index, a, &order, &slOrder, &slWidth, nslices,
-                   bSliced, bUnsat, top, pbcType, ngrps, axis, permolecule, radial, distcalc,
-                   opt2fn_null("-nr", NFILE, fnm), &distvals, oenv);
+        calc_order(ftp2fn(efTRX, NFILE, fnm),
+                   index,
+                   a,
+                   &order,
+                   &slOrder,
+                   &slWidth,
+                   nslices,
+                   bSliced,
+                   bUnsat,
+                   top,
+                   pbcType,
+                   ngrps,
+                   axis,
+                   permolecule,
+                   radial,
+                   distcalc,
+                   opt2fn_null("-nr", NFILE, fnm),
+                   &distvals,
+                   oenv);
 
         if (radial)
         {
             ngrps--; /*don't print the last group--was used for
                                center-of-mass determination*/
         }
-        order_plot(order, slOrder, opt2fn("-o", NFILE, fnm), opt2fn("-os", NFILE, fnm),
-                   opt2fn("-od", NFILE, fnm), ngrps, nslices, slWidth, bSzonly, permolecule,
-                   distvals, oenv);
+        order_plot(order,
+                   slOrder,
+                   opt2fn("-o", NFILE, fnm),
+                   opt2fn("-os", NFILE, fnm),
+                   opt2fn("-od", NFILE, fnm),
+                   ngrps,
+                   nslices,
+                   slWidth,
+                   bSzonly,
+                   permolecule,
+                   distvals,
+                   oenv);
 
         if (opt2bSet("-ob", NFILE, fnm))
         {

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines helper functionality for device transfers for tests
@@ -58,28 +57,28 @@ void doDeviceTransfers(const DeviceInformation& deviceInfo, ArrayRef<const char>
 
     try
     {
-        cl::sycl::queue syclQueue(deviceInfo.syclDevice);
+        sycl::queue syclQueue(deviceInfo.syclDevice);
 
-        cl::sycl::property_list syclBufferProperties{ cl::sycl::property::buffer::context_bound(
+        sycl::property_list syclBufferProperties{ sycl::property::buffer::context_bound(
                 syclQueue.get_context()) };
 
-        cl::sycl::buffer<char> syclBuffer(cl::sycl::range<1>(input.size()), syclBufferProperties);
+        sycl::buffer<char> syclBuffer(sycl::range<1>(input.size()), syclBufferProperties);
 
         syclQueue
-                .submit([&](cl::sycl::handler& cgh) {
-                    auto accessor = syclBuffer.get_access<cl::sycl::access::mode::discard_write>(cgh);
+                .submit([&](sycl::handler& cgh) {
+                    auto accessor = syclBuffer.get_access(cgh, sycl::write_only, sycl::no_init);
                     cgh.copy(input.data(), accessor);
                 })
                 .wait_and_throw();
 
         syclQueue
-                .submit([&](cl::sycl::handler& cgh) {
-                    auto accessor = syclBuffer.get_access<cl::sycl::access::mode::read>(cgh);
+                .submit([&](sycl::handler& cgh) {
+                    auto accessor = syclBuffer.get_access(cgh, sycl::read_only);
                     cgh.copy(accessor, output.data());
                 })
                 .wait_and_throw();
     }
-    catch (cl::sycl::exception& e)
+    catch (sycl::exception& e)
     {
         GMX_THROW(InternalError(
                 formatString("Failure while checking data transfer, error was %s", e.what())));

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_SIMD_SUPPORT_H
 #define GMX_SIMD_SUPPORT_H
@@ -67,13 +66,9 @@ enum class SimdType
     X86_Avx2_128,  //!< 128-bit AVX2, better than 256-bit for AMD Ryzen
     X86_Avx512,    //!< AVX_512
     X86_Avx512Knl, //!< AVX_512_KNL
-    X86_Mic,       //!< Knight's corner
-    Arm_Neon,      //!< 32-bit ARM NEON
     Arm_NeonAsimd, //!< 64-bit ARM AArch64 Advanced SIMD
     Arm_Sve,       //!< ARM Scalable Vector Extensions
-    Ibm_Vmx,       //!< IBM VMX SIMD (Altivec on Power6 and later)
-    Ibm_Vsx,       //!< IBM VSX SIMD (Power7 and later)
-    Fujitsu_HpcAce //!< Fujitsu K-computer
+    Ibm_Vsx        //!< IBM VSX SIMD (Power7 and later)
 };
 
 /*! \libinternal \brief Return a string with the name of a SIMD type

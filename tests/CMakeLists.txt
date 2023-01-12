@@ -1,11 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2012,2013,2014,2015,2016, The GROMACS development team.
-# Copyright (c) 2017,2018,2019,2020,2021, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2012- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 set(REGRESSIONTEST_PATH "" CACHE PATH "Directory containing regressiontests")
 mark_as_advanced(REGRESSIONTEST_PATH)
@@ -88,13 +86,12 @@ log: ${log}")
     set(REGRESSIONTEST_DOWNLOAD OFF CACHE BOOL "Tests already downloaded. Set to yes to download again" FORCE)
 endif()
 
-if(REGRESSIONTEST_PATH AND (CMAKE_CROSSCOMPILING OR CMAKE_CONFIGURATION_TYPES OR GMX_BUILD_MDRUN_ONLY))
+if(REGRESSIONTEST_PATH AND (CMAKE_CROSSCOMPILING OR CMAKE_CONFIGURATION_TYPES))
     # TODO: It would be nicer to do these checks before potentially downloading the tests.
     # Cross-compiling toolchains require us to compile both front-end and
     # back-end binaries to run gmxtest.pl.
-    # Testing an mdrun-only builds require supporting binaries from a full build
     message(WARNING
-        "With cross-compiling, multi-configuration generators (e.g. Visual Studio), or with mdrun-only builds, running regressiontests from build system is not supported. Please run gmxtest.pl directly.")
+        "With cross-compiling or multi-configuration generators (e.g. Visual Studio), running regressiontests from build system is not supported. Please run gmxtest.pl directly.")
     set(REGRESSIONTEST_PATH OFF CACHE BOOL
         "With cross-compiling or multi-configuration generators, running regressiontests from build system is not supported." FORCE)
 endif()
@@ -136,7 +133,7 @@ if(REGRESSIONTEST_PATH)
         list(APPEND ARGS -suffix ${GMX_BINARY_SUFFIX})
     endif()
     #crosscompile is only used to disable checking whether binaries work
-    #given that we know they are there and that mdrun might not be exectuable
+    #given that we know they are there and that mdrun might not be executable
     #(e.g. Cray) we enable it.
     list(APPEND ARGS -crosscompile)
 
@@ -206,15 +203,14 @@ if(GMX_PHYSICAL_VALIDATION)
             "GMX_PHYSICAL_VALIDATION set, but physical validation script not found in ${PHYSVALTEST_SOURCE_PATH}.")
     endif()
 
-    if(CMAKE_CROSSCOMPILING OR CMAKE_CONFIGURATION_TYPES OR GMX_BUILD_MDRUN_ONLY)
+    if(CMAKE_CROSSCOMPILING OR CMAKE_CONFIGURATION_TYPES)
         # The following comment is copied from regression tests:
         #     Cross-compiling toolchains require us to compile both front-end and
         #     back-end binaries to run gmxtest.pl.
-        #     Testing an mdrun-only builds require supporting binaries from a full build
         # TODO: Look into the details of this.
         # For now, turn it off - our python-gmx interface is probably not that stable for special cases anyway
         message(WARNING
-                "With cross-compiling, multi-configuration generators (e.g. Visual Studio), or with mdrun-only builds,\
+                "With cross-compiling or multi-configuration generators (e.g. Visual Studio),\
                 running physical validation tests from build system is not supported.\
                 Please run physicalvalidation.py directly.")
         set(GMX_PHYSICAL_VALIDATION OFF CACHE BOOL

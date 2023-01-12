@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2014,2015,2016,2017,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2014- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -92,7 +90,7 @@ protected:
     }
 
     // Static initiation, only run once every test.
-    static void SetUpTestCase()
+    static void SetUpTestSuite()
     {
         int         n        = 0;
         std::string fileName = "testCOS3.xvg";
@@ -101,7 +99,7 @@ protected:
         tempArgs_            = add_acf_pargs(&n, nullptr);
     }
 
-    static void TearDownTestCase()
+    static void TearDownTestSuite()
     {
         sfree(tempArgs_);
         tempArgs_ = nullptr;
@@ -124,9 +122,22 @@ protected:
             }
         }
         real* ptr = result.data();
-        low_do_autocorr(nullptr, nullptr, nullptr, nrFrames_, 1, get_acfnout(), &ptr,
-                        data_->getDt(), mode, nrRestart, bAverage, bNormalize, bVerbose,
-                        data_->getStartTime(), data_->getEndTime(), effnNONE);
+        low_do_autocorr(nullptr,
+                        nullptr,
+                        nullptr,
+                        nrFrames_,
+                        1,
+                        get_acfnout(),
+                        &ptr,
+                        data_->getDt(),
+                        mode,
+                        nrRestart,
+                        bAverage,
+                        bNormalize,
+                        bVerbose,
+                        data_->getStartTime(),
+                        data_->getEndTime(),
+                        effnNONE);
 
         double testResult = 0;
         for (int i = 0; i < get_acfnout(); i++)

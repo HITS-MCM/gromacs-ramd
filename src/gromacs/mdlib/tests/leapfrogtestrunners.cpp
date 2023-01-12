@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Runner for CPU-based implementation of the integrator.
@@ -67,16 +66,38 @@ void LeapFrogHostTestRunner::integrate(LeapFrogTestData* testData, int numSteps)
         testData->state_.v[i] = testData->v_[i];
     }
 
-    gmx_omp_nthreads_set(emntUpdate, 1);
+    gmx_omp_nthreads_set(ModuleMultiThread::Update, 1);
 
     for (int step = 0; step < numSteps; step++)
     {
         testData->update_->update_coords(
-                testData->inputRecord_, step, &testData->mdAtoms_, &testData->state_, testData->f_,
-                testData->forceCalculationData_, &testData->kineticEnergyData_,
-                testData->velocityScalingMatrix_, etrtNONE, nullptr, false);
-        testData->update_->finish_update(testData->inputRecord_, &testData->mdAtoms_,
-                                         &testData->state_, nullptr, false);
+                testData->inputRecord_,
+                step,
+                testData->mdAtoms_.homenr,
+                testData->mdAtoms_.havePartiallyFrozenAtoms,
+                testData->mdAtoms_.ptype
+                        ? gmx::arrayRefFromArray(testData->mdAtoms_.ptype, testData->mdAtoms_.nr)
+                        : gmx::ArrayRef<ParticleType>{},
+                testData->mdAtoms_.invmass
+                        ? gmx::arrayRefFromArray(testData->mdAtoms_.invmass, testData->mdAtoms_.nr)
+                        : gmx::ArrayRef<real>{},
+                testData->mdAtoms_.invMassPerDim ? gmx::arrayRefFromArray(
+                        testData->mdAtoms_.invMassPerDim, testData->mdAtoms_.nr)
+                                                 : gmx::ArrayRef<rvec>{},
+                &testData->state_,
+                testData->f_,
+                &testData->forceCalculationData_,
+                &testData->kineticEnergyData_,
+                testData->velocityScalingMatrix_,
+                etrtNONE,
+                nullptr,
+                false);
+        testData->update_->finish_update(testData->inputRecord_,
+                                         testData->mdAtoms_.havePartiallyFrozenAtoms,
+                                         testData->mdAtoms_.homenr,
+                                         &testData->state_,
+                                         nullptr,
+                                         false);
     }
     const auto xp = makeArrayRef(*testData->update_->xp()).subArray(0, testData->numAtoms_);
     for (int i = 0; i < testData->numAtoms_; i++)

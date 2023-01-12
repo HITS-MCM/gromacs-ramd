@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -67,8 +66,8 @@ namespace gmx
 HistogramSize::HistogramSize(const AwhBiasParams& awhBiasParams, double histogramSizeInitial) :
     numUpdates_(0),
     histogramSize_(histogramSizeInitial),
-    inInitialStage_(awhBiasParams.eGrowth == eawhgrowthEXP_LINEAR),
-    equilibrateHistogram_(awhBiasParams.equilibrateHistogram),
+    inInitialStage_(awhBiasParams.growthType() == AwhHistogramGrowthType::ExponentialLinear),
+    equilibrateHistogram_(awhBiasParams.equilibrateHistogram()),
     logScaledSampleWeight_(0),
     maxLogScaledSampleWeight_(0),
     havePrintedAboutCovering_(false)
@@ -150,12 +149,12 @@ namespace
  * \param[in] pointStates  The state of the bias points.
  * \returns true if the histogram is equilibrated.
  */
-bool histogramIsEquilibrated(const std::vector<PointState>& pointStates)
+bool histogramIsEquilibrated(ArrayRef<const PointState> pointStates)
 {
     /* Get the total weight of the total weight histogram; needed for normalization. */
     double totalWeight     = 0;
     int    numTargetPoints = 0;
-    for (auto& pointState : pointStates)
+    for (const auto& pointState : pointStates)
     {
         if (!pointState.inTargetRegion())
         {
@@ -177,7 +176,7 @@ bool histogramIsEquilibrated(const std::vector<PointState>& pointStates)
     /* Sum up weight of points that do or don't pass the check. */
     double equilibratedWeight    = 0;
     double notEquilibratedWeight = 0;
-    for (auto& pointState : pointStates)
+    for (const auto& pointState : pointStates)
     {
         double targetWeight  = pointState.target();
         double sampledWeight = pointState.weightSumTot() * inverseTotalWeight;
@@ -207,12 +206,12 @@ bool histogramIsEquilibrated(const std::vector<PointState>& pointStates)
 
 } // namespace
 
-double HistogramSize::newHistogramSize(const BiasParams&              params,
-                                       double                         t,
-                                       bool                           covered,
-                                       const std::vector<PointState>& pointStates,
-                                       ArrayRef<double>               weightsumCovering,
-                                       FILE*                          fplog)
+double HistogramSize::newHistogramSize(const BiasParams&          params,
+                                       double                     t,
+                                       bool                       covered,
+                                       ArrayRef<const PointState> pointStates,
+                                       ArrayRef<double>           weightsumCovering,
+                                       FILE*                      fplog)
 {
     double newHistogramSize;
     if (inInitialStage_)
@@ -232,8 +231,10 @@ double HistogramSize::newHistogramSize(const BiasParams&              params,
                 }
                 else if (!havePrintedAboutCovering_)
                 {
-                    fprintf(fplog, "%s covered but histogram not equilibrated at t = %g ps.\n",
-                            prefix.c_str(), t);
+                    fprintf(fplog,
+                            "%s covered but histogram not equilibrated at t = %g ps.\n",
+                            prefix.c_str(),
+                            t);
                     havePrintedAboutCovering_ = true; /* Just print once. */
                 }
             }

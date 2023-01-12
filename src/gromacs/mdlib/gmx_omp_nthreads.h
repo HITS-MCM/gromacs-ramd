@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 #ifndef GMX_OMP_NTHREADS_H
@@ -49,32 +47,32 @@ class MDLogger;
 }
 
 /** Enum values corresponding to multithreaded algorithmic modules. */
-typedef enum module_nth
+enum class ModuleMultiThread : int
 {
     /* Default is meant to be used in OMP regions outside the named
      * algorithmic modules listed below. */
-    emntDefault,
-    emntDomdec,
-    emntPairsearch,
-    emntNonbonded,
-    emntBonded,
-    emntPME,
-    emntUpdate,
-    emntVSITE,
-    emntLINCS,
-    emntSETTLE,
-    emntNR
-} module_nth_t;
+    Default,
+    Domdec,
+    Pairsearch,
+    Nonbonded,
+    Bonded,
+    Pme,
+    Update,
+    VirtualSite,
+    Lincs,
+    Settle,
+    Count
+};
 
 /*! \brief
  * Initializes the per-module thread count.
  *
  * It is compatible with tMPI, thread-safety is ensured (for the features
  * available with tMPI).
- * This function should caled only once during the initialization of mdrun. */
+ * This function should be called only once during the initialization of mdrun. */
 void gmx_omp_nthreads_init(const gmx::MDLogger& fplog,
                            t_commrec*           cr,
-                           int                  nthreads_hw_avail,
+                           int                  maxThreads,
                            int                  numRanksOnThisNode,
                            int                  omp_nthreads_req,
                            int                  omp_nthreads_pme_req,
@@ -82,7 +80,7 @@ void gmx_omp_nthreads_init(const gmx::MDLogger& fplog,
 
 /*! \brief
  * Returns the number of threads to be used in the given module \p mod. */
-int gmx_omp_nthreads_get(int mod);
+int gmx_omp_nthreads_get(ModuleMultiThread mod);
 
 /*! \brief
  * Returns the number of threads to be used in the given module \p mod for simple rvec operations.
@@ -92,7 +90,7 @@ int gmx_omp_nthreads_get(int mod);
  * the reduction in computional cost due to parallelization. This routine
  * returns 1 when the overhead is expected to be higher than the gain.
  */
-static inline int gmx_omp_nthreads_get_simple_rvec_task(int mod, int nrvec)
+static inline int gmx_omp_nthreads_get_simple_rvec_task(ModuleMultiThread mod, int nrvec)
 {
     /* There can be a relatively large overhead to an OpenMP parallel for loop.
      * This overhead increases, slowly, with the numbe of threads used.
@@ -121,7 +119,7 @@ static inline int gmx_omp_nthreads_get_simple_rvec_task(int mod, int nrvec)
 /*! \brief Sets the number of threads to be used in module.
  *
  * Intended for use in testing. */
-void gmx_omp_nthreads_set(int mod, int nthreads);
+void gmx_omp_nthreads_set(ModuleMultiThread mod, int nthreads);
 
 /*! \brief
  * Read the OMP_NUM_THREADS env. var. and check against the value set on the

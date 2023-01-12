@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2011-2018, The GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2011- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -190,12 +188,12 @@ static double calc_Shs(double f, double y)
 {
     double fy = f * y;
 
-    return BOLTZ * (std::log(calc_compress(fy)) + fy * (3 * fy - 4) / gmx::square(1 - fy));
+    return gmx::c_boltz * (std::log(calc_compress(fy)) + fy * (3 * fy - 4) / gmx::square(1 - fy));
 }
 
 static real wCsolid(real nu, real beta)
 {
-    real bhn = beta * PLANCK * nu;
+    real bhn = beta * gmx::c_planck * nu;
     real ebn, koko;
 
     if (bhn == 0)
@@ -212,7 +210,7 @@ static real wCsolid(real nu, real beta)
 
 static real wSsolid(real nu, real beta)
 {
-    real bhn = beta * PLANCK * nu;
+    real bhn = beta * gmx::c_planck * nu;
 
     if (bhn == 0)
     {
@@ -226,7 +224,7 @@ static real wSsolid(real nu, real beta)
 
 static real wAsolid(real nu, real beta)
 {
-    real bhn = beta * PLANCK * nu;
+    real bhn = beta * gmx::c_planck * nu;
 
     if (bhn == 0)
     {
@@ -240,7 +238,7 @@ static real wAsolid(real nu, real beta)
 
 static real wEsolid(real nu, real beta)
 {
-    real bhn = beta * PLANCK * nu;
+    real bhn = beta * gmx::c_planck * nu;
 
     if (bhn == 0)
     {
@@ -334,14 +332,14 @@ int gmx_dos(int argc, char* argv[])
 
     npargs = asize(pa);
     ppa    = add_acf_pargs(&npargs, pa);
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, npargs, ppa,
-                           asize(desc), desc, asize(bugs), bugs, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, npargs, ppa, asize(desc), desc, asize(bugs), bugs, &oenv))
     {
         sfree(ppa);
         return 0;
     }
 
-    beta = 1 / (Temp * BOLTZ);
+    beta = 1 / (Temp * gmx::c_boltz);
 
     fplog = gmx_fio_fopen(ftp2fn(efLOG, NFILE, fnm), "w");
     fprintf(fplog, "Doing density of states analysis based on trajectory.\n");
@@ -410,8 +408,7 @@ int gmx_dos(int argc, char* argv[])
 
     if (nframes < min_frames)
     {
-        gmx_fatal(FARGS, "You need at least %d frames in the trajectory and you only have %d.",
-                  min_frames, nframes);
+        gmx_fatal(FARGS, "You need at least %d frames in the trajectory and you only have %d.", min_frames, nframes);
     }
     dt = (t1 - t0) / (nframes - 1);
     if (nV > 0)
@@ -437,8 +434,8 @@ int gmx_dos(int argc, char* argv[])
     normalizeAutocorrelation = opt2parg_bool("-normalize", npargs, ppa);
 
     /* Note that we always disable normalization here, regardless of user settings */
-    low_do_autocorr(nullptr, oenv, nullptr, nframes, gnx, nframes, c1, dt, eacNormal, 0, FALSE,
-                    FALSE, FALSE, -1, -1, 0);
+    low_do_autocorr(
+            nullptr, oenv, nullptr, nframes, gnx, nframes, c1, dt, eacNormal, 0, FALSE, FALSE, FALSE, -1, -1, 0);
     snew(dos, DOS_NR);
     for (j = 0; (j < DOS_NR); j++)
     {
@@ -460,8 +457,8 @@ int gmx_dos(int argc, char* argv[])
         }
     }
 
-    fp = xvgropen(opt2fn("-vacf", NFILE, fnm), "Velocity autocorrelation function", "Time (ps)",
-                  "C(t)", oenv);
+    fp = xvgropen(
+            opt2fn("-vacf", NFILE, fnm), "Velocity autocorrelation function", "Time (ps)", "C(t)", oenv);
     snew(tt, nframes / 2);
 
     invNormalize = normalizeAutocorrelation ? 1.0 / dos[VACF][0] : 1.0;
@@ -473,8 +470,11 @@ int gmx_dos(int argc, char* argv[])
     }
     xvgrclose(fp);
 
-    fp = xvgropen(opt2fn("-mvacf", NFILE, fnm), "Mass-weighted velocity autocorrelation function",
-                  "Time (ps)", "C(t)", oenv);
+    fp = xvgropen(opt2fn("-mvacf", NFILE, fnm),
+                  "Mass-weighted velocity autocorrelation function",
+                  "Time (ps)",
+                  "C(t)",
+                  oenv);
 
     invNormalize = normalizeAutocorrelation ? 1.0 / dos[VACF][0] : 1.0;
 
@@ -525,15 +525,16 @@ int gmx_dos(int argc, char* argv[])
     DoS0 = dos[DOS][0];
 
     /* Note this eqn. is incorrect in Pascal2011a! */
-    Delta = ((2 * DoS0 / (9 * Natom)) * std::sqrt(M_PI * BOLTZ * Temp * Natom / tmass)
+    Delta = ((2 * DoS0 / (9 * Natom)) * std::sqrt(M_PI * gmx::c_boltz * Temp * Natom / tmass)
              * std::pow((Natom / V), 1.0 / 3.0) * std::pow(6.0 / M_PI, 2.0 / 3.0));
     f     = calc_fluidicity(Delta, toler);
     y     = calc_y(f, Delta, toler);
     z     = calc_compress(y);
-    Sig   = BOLTZ
-          * (5.0 / 2.0 + std::log(2 * M_PI * BOLTZ * Temp / (gmx::square(PLANCK)) * V / (f * Natom)));
+    Sig   = gmx::c_boltz
+          * (5.0 / 2.0
+             + std::log(2 * M_PI * gmx::c_boltz * Temp / (gmx::square(gmx::c_planck)) * V / (f * Natom)));
     Shs   = Sig + calc_Shs(f, y);
-    rho   = (tmass * AMU) / (V * NANO * NANO * NANO);
+    rho   = (tmass * gmx::c_amu) / (V * gmx::c_nano * gmx::c_nano * gmx::c_nano);
     sigHS = std::cbrt(6 * y * V / (M_PI * Natom));
 
     fprintf(fplog, "System = \"%s\"\n", *top.name);
@@ -559,22 +560,29 @@ int gmx_dos(int argc, char* argv[])
     fprintf(fplog, "DoSTot = %g\n", dostot);
 
     /* Now compute solid (2) and diffusive (3) components */
-    fp = xvgropen(opt2fn("-dos", NFILE, fnm), "Density of states",
-                  bRecip ? "E (cm\\S-1\\N)" : "\\f{12}n\\f{4} (1/ps)", "\\f{4}S(\\f{12}n\\f{4})", oenv);
+    fp = xvgropen(opt2fn("-dos", NFILE, fnm),
+                  "Density of states",
+                  bRecip ? "E (cm\\S-1\\N)" : "\\f{12}n\\f{4} (1/ps)",
+                  "\\f{4}S(\\f{12}n\\f{4})",
+                  oenv);
     xvgr_legend(fp, asize(DoSlegend), DoSlegend, oenv);
-    recip_fac = bRecip ? (1e7 / SPEED_OF_LIGHT) : 1.0;
+    recip_fac = bRecip ? (1e7 / gmx::c_speedOfLight) : 1.0;
     for (j = 0; (j < nframes / 4); j++)
     {
         dos[DOS_DIFF][j]  = DoS0 / (1 + gmx::square(DoS0 * M_PI * nu[j] / (6 * f * Natom)));
         dos[DOS_SOLID][j] = dos[DOS][j] - dos[DOS_DIFF][j];
-        fprintf(fp, "%10g  %10g  %10g  %10g\n", recip_fac * nu[j], dos[DOS][j] / recip_fac,
-                dos[DOS_SOLID][j] / recip_fac, dos[DOS_DIFF][j] / recip_fac);
+        fprintf(fp,
+                "%10g  %10g  %10g  %10g\n",
+                recip_fac * nu[j],
+                dos[DOS][j] / recip_fac,
+                dos[DOS_SOLID][j] / recip_fac,
+                dos[DOS_DIFF][j] / recip_fac);
     }
     xvgrclose(fp);
 
     /* Finally analyze the results! */
     wCdiff = 0.5;
-    wSdiff = Shs / (3 * BOLTZ); /* Is this correct? */
+    wSdiff = Shs / (3 * gmx::c_boltz); /* Is this correct? */
     wEdiff = 0.5;
     wAdiff = wEdiff - wSdiff;
     for (j = 0; (j < nframes / 4); j++)
@@ -589,7 +597,8 @@ int gmx_dos(int argc, char* argv[])
     fprintf(fplog, "Diffusion coefficient from VACF %g 10^-5 cm^2/s\n", DiffCoeff);
     fprintf(fplog, "Diffusion coefficient from DoS %g 10^-5 cm^2/s\n", 1000 * DoS0 / (12 * tmass * beta));
 
-    cP = BOLTZ * evaluate_integral(nframes / 4, nu, dos[DOS_CP], nullptr, int{ nframes / 4 }, &stddev);
+    cP = gmx::c_boltz
+         * evaluate_integral(nframes / 4, nu, dos[DOS_CP], nullptr, int{ nframes / 4 }, &stddev);
     fprintf(fplog, "Heat capacity %g J/mol K\n", 1000 * cP / Nmol);
     fprintf(fplog, "\nArrivederci!\n");
     gmx_fio_fclose(fplog);

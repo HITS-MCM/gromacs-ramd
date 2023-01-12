@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2014,2015,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -52,10 +50,10 @@
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/domdec/domdec_network.h"
 #include "gromacs/domdec/domdec_struct.h"
+#include "gromacs/domdec/nsgrid.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/vec.h"
-#include "gromacs/mdlib/nsgrid.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/pbcutil/pbc.h"
@@ -124,16 +122,12 @@ static void calc_pos_av_stddev(gmx::ArrayRef<const gmx::RVec> x, rvec av, rvec s
 /*! \brief Determines if dimensions require triclinic treatment and stores this info in ddbox */
 static void set_tric_dir(const ivec* dd_nc, gmx_ddbox_t* ddbox, const matrix box)
 {
-    int   npbcdim, d, i, j;
-    rvec *v, *normal;
-    real  dep, inv_skew_fac2;
-
-    npbcdim = ddbox->npbcdim;
-    normal  = ddbox->normal;
-    for (d = 0; d < DIM; d++)
+    int   npbcdim = ddbox->npbcdim;
+    rvec* normal  = ddbox->normal;
+    for (int d = 0; d < DIM; d++)
     {
         ddbox->tric_dir[d] = 0;
-        for (j = d + 1; j < npbcdim; j++)
+        for (int j = d + 1; j < npbcdim; j++)
         {
             if (box[j][d] != 0)
             {
@@ -144,8 +138,13 @@ static void set_tric_dir(const ivec* dd_nc, gmx_ddbox_t* ddbox, const matrix box
                               "Domain decomposition has not been implemented for box vectors that "
                               "have non-zero components in directions that do not use domain "
                               "decomposition: ncells = %d %d %d, box vector[%d] = %f %f %f",
-                              (*dd_nc)[XX], (*dd_nc)[YY], (*dd_nc)[ZZ], j + 1, box[j][XX],
-                              box[j][YY], box[j][ZZ]);
+                              (*dd_nc)[XX],
+                              (*dd_nc)[YY],
+                              (*dd_nc)[ZZ],
+                              j + 1,
+                              box[j][XX],
+                              box[j][YY],
+                              box[j][ZZ]);
                 }
             }
         }
@@ -161,13 +160,13 @@ static void set_tric_dir(const ivec* dd_nc, gmx_ddbox_t* ddbox, const matrix box
          */
         if (ddbox->tric_dir[d])
         {
-            inv_skew_fac2 = 1;
-            v             = ddbox->v[d];
+            real  inv_skew_fac2 = 1;
+            rvec* v             = ddbox->v[d];
             if (d == XX || d == YY)
             {
                 /* Normalize such that the "diagonal" is 1 */
                 svmul(1 / box[d + 1][d + 1], box[d + 1], v[d + 1]);
-                for (i = 0; i < d; i++)
+                for (int i = 0; i < d; i++)
                 {
                     v[d + 1][i] = 0;
                 }
@@ -177,8 +176,8 @@ static void set_tric_dir(const ivec* dd_nc, gmx_ddbox_t* ddbox, const matrix box
                     /* Normalize such that the "diagonal" is 1 */
                     svmul(1 / box[d + 2][d + 2], box[d + 2], v[d + 2]);
                     /* Set v[d+2][d+1] to zero by shifting along v[d+1] */
-                    dep = v[d + 2][d + 1] / v[d + 1][d + 1];
-                    for (i = 0; i < DIM; i++)
+                    const real dep = v[d + 2][d + 1] / v[d + 1][d + 1];
+                    for (int i = 0; i < DIM; i++)
                     {
                         v[d + 2][i] -= dep * v[d + 1][i];
                     }
@@ -196,7 +195,7 @@ static void set_tric_dir(const ivec* dd_nc, gmx_ddbox_t* ddbox, const matrix box
                 if (debug)
                 {
                     fprintf(debug, "box[%d]  %.3f %.3f %.3f\n", d, box[d][XX], box[d][YY], box[d][ZZ]);
-                    for (i = d + 1; i < DIM; i++)
+                    for (int i = d + 1; i < DIM; i++)
                     {
                         fprintf(debug, "  v[%d]  %.3f %.3f %.3f\n", i, v[i][XX], v[i][YY], v[i][ZZ]);
                     }
@@ -204,21 +203,20 @@ static void set_tric_dir(const ivec* dd_nc, gmx_ddbox_t* ddbox, const matrix box
             }
             ddbox->skew_fac[d] = 1.0 / std::sqrt(inv_skew_fac2);
             /* Set the normal vector length to skew_fac */
-            dep = ddbox->skew_fac[d] / norm(normal[d]);
+            const real dep = ddbox->skew_fac[d] / norm(normal[d]);
             svmul(dep, normal[d], normal[d]);
 
             if (debug)
             {
                 fprintf(debug, "skew_fac[%d] = %f\n", d, ddbox->skew_fac[d]);
-                fprintf(debug, "normal[%d]  %.3f %.3f %.3f\n", d, normal[d][XX], normal[d][YY],
-                        normal[d][ZZ]);
+                fprintf(debug, "normal[%d]  %.3f %.3f %.3f\n", d, normal[d][XX], normal[d][YY], normal[d][ZZ]);
             }
         }
         else
         {
             ddbox->skew_fac[d] = 1;
 
-            for (i = 0; i < DIM; i++)
+            for (int i = 0; i < DIM; i++)
             {
                 clear_rvec(ddbox->v[d][i]);
                 ddbox->v[d][i][i] = 1;
@@ -240,13 +238,11 @@ static void low_set_ddbox(int                            numPbcDimensions,
                           gmx_ddbox_t*                   ddbox)
 {
     rvec av, stddev;
-    real b0, b1;
-    int  d;
 
     ddbox->npbcdim     = numPbcDimensions;
     ddbox->nboundeddim = numBoundedDimensions;
 
-    for (d = 0; d < numBoundedDimensions; d++)
+    for (int d = 0; d < numBoundedDimensions; d++)
     {
         ddbox->box0[d]     = 0;
         ddbox->box_size[d] = box[d][d];
@@ -256,14 +252,14 @@ static void low_set_ddbox(int                            numPbcDimensions,
     {
         calc_pos_av_stddev(x, av, stddev, mpiCommunicator);
 
-        /* GRID_STDDEV_FAC * stddev
+        /* c_gridStdDevFactor * stddev
          * gives a uniform load for a rectangular block of cg's.
          * For a sphere it is not a bad approximation for 4x1x1 up to 4x2x2.
          */
-        for (d = ddbox->nboundeddim; d < DIM; d++)
+        for (int d = ddbox->nboundeddim; d < DIM; d++)
         {
-            b0 = av[d] - GRID_STDDEV_FAC * stddev[d];
-            b1 = av[d] + GRID_STDDEV_FAC * stddev[d];
+            const real b0 = av[d] - c_gridStdDevFactor * stddev[d];
+            const real b1 = av[d] + c_gridStdDevFactor * stddev[d];
             if (debug)
             {
                 fprintf(debug, "Setting global DD grid boundaries to %f - %f\n", b0, b1);
@@ -289,9 +285,14 @@ void set_ddbox(const gmx_domdec_t&            dd,
         gmx::ArrayRef<const gmx::RVec> xRef = constArrayRefFromArray(
                 x.data(), masterRankHasTheSystemState ? x.size() : dd.comm->atomRanges.numHomeAtoms());
 
-        low_set_ddbox(dd.unitCellInfo.npbcdim, dd.unitCellInfo.numBoundedDimensions, &dd.numCells,
-                      box, calculateUnboundedSize, xRef,
-                      needToReduceCoordinateData ? &dd.mpi_comm_all : nullptr, ddbox);
+        low_set_ddbox(dd.unitCellInfo.npbcdim,
+                      dd.unitCellInfo.numBoundedDimensions,
+                      &dd.numCells,
+                      box,
+                      calculateUnboundedSize,
+                      xRef,
+                      needToReduceCoordinateData ? &dd.mpi_comm_all : nullptr,
+                      ddbox);
     }
 
     if (masterRankHasTheSystemState)
@@ -310,9 +311,22 @@ void set_ddbox_cr(DDRole                         ddRole,
 {
     if (ddRole == DDRole::Master)
     {
-        low_set_ddbox(numPbcDimensions(ir.pbcType), inputrec2nboundeddim(&ir), dd_nc, box, true, x,
-                      nullptr, ddbox);
+        low_set_ddbox(
+                numPbcDimensions(ir.pbcType), inputrec2nboundeddim(&ir), dd_nc, box, true, x, nullptr, ddbox);
     }
 
     gmx_bcast(sizeof(gmx_ddbox_t), ddbox, communicator);
+}
+
+gmx_ddbox_t get_ddbox(const ivec&                    numDomains,
+                      const t_inputrec&              ir,
+                      const matrix                   box,
+                      gmx::ArrayRef<const gmx::RVec> x)
+{
+    gmx_ddbox_t ddbox;
+
+    low_set_ddbox(
+            numPbcDimensions(ir.pbcType), inputrec2nboundeddim(&ir), &numDomains, box, true, x, nullptr, &ddbox);
+
+    return ddbox;
 }

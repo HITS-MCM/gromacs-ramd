@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,32 +26,33 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
  * Implements test of mtop routines
  *
- * \author Roland Schulz <roland.schulz@intel.com>
+ * \author Mark Abraham <mark.j.abraham@gmail.com>
  * \ingroup module_topology
  */
 #include "gmxpre.h"
 
+#include "gromacs/topology/mtop_util.h"
+
 #include <gtest/gtest.h>
 
-#include "gromacs/topology/mtop_util.h"
-#include "gromacs/utility/basedefinitions.h"
+#include "gromacs/topology/ifunc.h"
 
 namespace gmx
 {
 namespace
 {
 
-/*! \brief Initializes a basic topology with 9 atoms with settle*/
-void createBasicTop(gmx_mtop_t* mtop)
+/*! \brief Adds 2 water molecules with settles */
+void addTwoWaterMolecules(gmx_mtop_t* mtop)
 {
     gmx_moltype_t moltype;
     moltype.atoms.nr             = NRAL(F_SETTLE);
@@ -62,13 +62,14 @@ void createBasicTop(gmx_mtop_t* mtop)
     iatoms.push_back(0);
     iatoms.push_back(1);
     iatoms.push_back(2);
+    int moleculeTypeIndex = mtop->moltype.size();
     mtop->moltype.push_back(moltype);
 
-    mtop->molblock.resize(1);
-    mtop->molblock[0].type = 0;
-    mtop->molblock[0].nmol = 3;
-    mtop->natoms           = moltype.atoms.nr * mtop->molblock[0].nmol;
-    mtop->finalize();
+    const int numWaterMolecules = 2;
+    mtop->molblock.emplace_back(gmx_molblock_t{});
+    mtop->molblock.back().type = moleculeTypeIndex;
+    mtop->molblock.back().nmol = numWaterMolecules;
+    mtop->natoms               = moltype.atoms.nr * mtop->molblock.back().nmol;
 }
 
 /*! \brief
@@ -99,30 +100,49 @@ std::vector<gmx::Range<int>> createTwoResidueTopology(gmx_mtop_t* mtop)
     mtop->molblock[0].type = 0;
     mtop->molblock[0].nmol = 1;
     mtop->natoms           = moltype.atoms.nr * mtop->molblock[0].nmol;
-    mtop->finalize();
     std::vector<gmx::Range<int>> residueRange;
     residueRange.emplace_back(0, residueOneSize);
     residueRange.emplace_back(residueOneSize, residueOneSize + residueTwoSize);
     return residueRange;
 }
 
+/*! \brief Adds intermolecular bonds, assuming atoms 0 to 5 exist */
+void addIntermolecularInteractionBonds(gmx_mtop_t* mtop)
+{
+    mtop->bIntermolecularInteractions = true;
+    mtop->intermolecular_ilist        = std::make_unique<InteractionLists>();
+    std::vector<int>& iatoms          = (*mtop->intermolecular_ilist)[F_BONDS].iatoms;
+    const int         bondType        = 0;
+    iatoms.push_back(bondType);
+    iatoms.push_back(0);
+    iatoms.push_back(1);
+    iatoms.push_back(bondType);
+    iatoms.push_back(2);
+    iatoms.push_back(3);
+    iatoms.push_back(bondType);
+    iatoms.push_back(4);
+    iatoms.push_back(5);
+}
+
 TEST(MtopTest, RangeBasedLoop)
 {
     gmx_mtop_t mtop;
-    createBasicTop(&mtop);
+    addTwoWaterMolecules(&mtop);
+    mtop.finalize();
     int count = 0;
     for (const AtomProxy atomP : AtomRange(mtop))
     {
         EXPECT_EQ(atomP.globalAtomNumber(), count);
         ++count;
     }
-    EXPECT_EQ(count, 9);
+    EXPECT_EQ(count, 6);
 }
 
 TEST(MtopTest, Operators)
 {
     gmx_mtop_t mtop;
-    createBasicTop(&mtop);
+    addTwoWaterMolecules(&mtop);
+    mtop.finalize();
     AtomIterator it(mtop);
     AtomIterator otherIt(mtop);
     EXPECT_EQ((*it).globalAtomNumber(), 0);
@@ -141,6 +161,7 @@ TEST(MtopTest, CanFindResidueStartAndEndAtoms)
 {
     gmx_mtop_t mtop;
     auto       expectedResidueRange = createTwoResidueTopology(&mtop);
+    mtop.finalize();
 
     auto atomRanges = atomRangeOfEachResidue(mtop.moltype[0]);
     ASSERT_EQ(atomRanges.size(), expectedResidueRange.size());
@@ -161,6 +182,126 @@ TEST(MtopTest, CanFindResidueStartAndEndAtoms)
         }
         rangeIndex++;
     }
+}
+
+TEST(MtopTest, AtomHasPerturbedChargeIn14Interaction)
+{
+    gmx_moltype_t molt;
+    molt.atoms.nr   = 0;
+    molt.atoms.atom = nullptr;
+    EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt)) << "empty moltype has none";
+
+    {
+        SCOPED_TRACE("Use a moltype that has no perturbed charges at all");
+        const int numAtoms = 4;
+        init_t_atoms(&molt.atoms, numAtoms, false);
+        for (int i = 0; i != numAtoms; ++i)
+        {
+            molt.atoms.atom[i].q  = 1.0;
+            molt.atoms.atom[i].qB = 1.0;
+        }
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
+    }
+
+    {
+        SCOPED_TRACE("Use a moltype that has a perturbed charge, but no interactions");
+        molt.atoms.atom[1].q  = 1.0;
+        molt.atoms.atom[1].qB = -1.0;
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
+    }
+
+    {
+        SCOPED_TRACE("Use a moltype that has a perturbed charge but no 1-4 interactions");
+        std::array<int, 2> bondAtoms = { 0, 1 };
+        molt.ilist[F_BONDS].push_back(0, bondAtoms);
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
+    }
+
+    {
+        SCOPED_TRACE(
+                "Use a moltype that has a perturbed charge, but not on an atom with a 1-4 "
+                "interaction");
+        std::array<int, 2> pairAtoms = { 2, 3 };
+        molt.ilist[F_LJ14].push_back(0, pairAtoms);
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
+    }
+
+    {
+        SCOPED_TRACE("Use a moltype that has a perturbed charge on an atom with a 1-4 interaction");
+        std::array<int, 2> perturbedPairAtoms = { 1, 2 };
+        molt.ilist[F_LJ14].push_back(0, perturbedPairAtoms);
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
+        EXPECT_TRUE(atomHasPerturbedChargeIn14Interaction(1, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
+        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
+    }
+}
+
+TEST(IListRangeTest, RangeBasedLoopWorks)
+{
+    gmx_mtop_t mtop;
+    addTwoWaterMolecules(&mtop);
+    mtop.finalize();
+
+    int count = 0;
+    for (const IListProxy ilistP : IListRange(mtop))
+    {
+        EXPECT_EQ(ilistP.nmol(), 2);
+        EXPECT_EQ(ilistP.list()[F_BONDS].size(), 0);
+        EXPECT_EQ(ilistP.list()[F_SETTLE].size(), 1 * (NRAL(F_SETTLE) + 1));
+        count++;
+    }
+    EXPECT_EQ(count, 1);
+
+    EXPECT_EQ(gmx_mtop_ftype_count(mtop, F_BONDS), 0);
+    EXPECT_EQ(gmx_mtop_ftype_count(mtop, F_SETTLE), 2);
+    EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_BOND), 0);
+    EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_CONSTRAINT), 2);
+}
+
+TEST(IListRangeTest, RangeBasedLoopWithIntermolecularInteraction)
+{
+    gmx_mtop_t mtop;
+    addTwoWaterMolecules(&mtop);
+    addIntermolecularInteractionBonds(&mtop);
+    mtop.finalize();
+
+    int count = 0;
+    for (const IListProxy ilistP : IListRange(mtop))
+    {
+        if (count == 0)
+        {
+            EXPECT_EQ(ilistP.nmol(), 2);
+            EXPECT_EQ(ilistP.list()[F_BONDS].size(), 0);
+            EXPECT_EQ(ilistP.list()[F_SETTLE].size(), 1 * (NRAL(F_SETTLE) + 1));
+        }
+        else
+        {
+            EXPECT_EQ(ilistP.nmol(), 1);
+            EXPECT_EQ(ilistP.list()[F_BONDS].size(), 3 * (NRAL(F_BONDS) + 1));
+            EXPECT_EQ(ilistP.list()[F_SETTLE].size(), 0);
+        }
+        count++;
+    }
+    EXPECT_EQ(count, 2);
+
+    EXPECT_EQ(gmx_mtop_ftype_count(mtop, F_BONDS), 3);
+    EXPECT_EQ(gmx_mtop_ftype_count(mtop, F_SETTLE), 2);
+    EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_BOND), 3);
+    EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_CONSTRAINT), 2);
+    EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_BOND | IF_CONSTRAINT), 0);
 }
 
 } // namespace

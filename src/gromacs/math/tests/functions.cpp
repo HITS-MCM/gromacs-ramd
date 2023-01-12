@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2015,2016,2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2015- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -354,6 +353,39 @@ TEST(FunctionTest, ErfAndErfInvAreInversesDouble)
         double r = double(2 * i - npoints + 1) / npoints;
         EXPECT_DOUBLE_EQ_TOL(r, std::erf(gmx::erfinv(r)), gmx::test::ulpTolerance(10));
     }
+}
+
+template<typename T>
+class FunctionTestIntegerTypes : public ::testing::Test
+{
+};
+
+typedef ::testing::Types<char, unsigned char, int, unsigned int, long, unsigned long> IntegerTypes;
+TYPED_TEST_SUITE(FunctionTestIntegerTypes, IntegerTypes);
+
+TYPED_TEST(FunctionTestIntegerTypes, IsPowerOfTwo)
+{
+    if (std::is_signed_v<TypeParam>)
+    {
+        EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(std::numeric_limits<TypeParam>::min()));
+        EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(-16));
+        EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(-3));
+        EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(-2));
+        EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(-1));
+    }
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(0));
+    EXPECT_EQ(true, gmx::isPowerOfTwo<TypeParam>(1));
+    EXPECT_EQ(true, gmx::isPowerOfTwo<TypeParam>(2));
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(3));
+    EXPECT_EQ(true, gmx::isPowerOfTwo<TypeParam>(4));
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(5));
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(6));
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(24));
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(63));
+    EXPECT_EQ(true, gmx::isPowerOfTwo<TypeParam>(64));
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(66));
+    // Max for any type is always 2^x - 1
+    EXPECT_EQ(false, gmx::isPowerOfTwo<TypeParam>(std::numeric_limits<TypeParam>::max()));
 }
 
 } // namespace

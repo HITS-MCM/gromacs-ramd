@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -44,6 +40,7 @@
 #include <cstring>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,11 +52,13 @@
 #include "gromacs/topology/atoms.h"
 #include "gromacs/topology/symtab.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/logger.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strdb.h"
+#include "gromacs/utility/stringtoenumvalueconverter.h"
 
 #include "hackblock.h"
 
@@ -112,14 +111,18 @@ static void print_resatoms(FILE* out, const PreprocessingAtomTypes& atype, const
 
     for (int j = 0; (j < rtpDBEntry.natom()); j++)
     {
-        int         tp   = rtpDBEntry.atom[j].type;
-        const char* tpnm = atype.atomNameFromAtomType(tp);
-        if (tpnm == nullptr)
+        int  tp   = rtpDBEntry.atom[j].type;
+        auto tpnm = atype.atomNameFromAtomType(tp);
+        if (!tpnm.has_value())
         {
             gmx_fatal(FARGS, "Incorrect atomtype (%d)", tp);
         }
-        fprintf(out, "%6s  %6s  %8.3f  %6d\n", *(rtpDBEntry.atomname[j]), tpnm,
-                rtpDBEntry.atom[j].q, rtpDBEntry.cgnr[j]);
+        fprintf(out,
+                "%6s  %6s  %8.3f  %6d\n",
+                *(rtpDBEntry.atomname[j]),
+                *tpnm,
+                rtpDBEntry.atom[j].q,
+                rtpDBEntry.cgnr[j]);
     }
 }
 
@@ -143,22 +146,23 @@ static bool read_atoms(FILE* in, char* line, PreprocessResidue* r0, t_symtab* ta
         r0->atom.emplace_back();
         r0->atom.back().q = q;
         r0->cgnr.push_back(cg);
-        int j = atype->atomTypeFromName(buf1);
-        if (j == NOTSET)
+        auto j = atype->atomTypeFromName(buf1);
+        if (!j.has_value())
         {
             gmx_fatal(FARGS,
                       "Atom type %s (residue %s) not found in atomtype "
                       "database",
-                      buf1, r0->resname.c_str());
+                      buf1,
+                      r0->resname.c_str());
         }
-        r0->atom.back().type = j;
-        r0->atom.back().m    = atype->atomMassFromAtomType(j);
+        r0->atom.back().type = *j;
+        r0->atom.back().m    = *atype->atomMassFromAtomType(*j);
     }
 
     return TRUE;
 }
 
-static bool read_bondeds(int bt, FILE* in, char* line, PreprocessResidue* rtpDBEntry)
+static bool read_bondeds(BondedTypes bt, FILE* in, char* line, PreprocessResidue* rtpDBEntry)
 {
     char str[STRLEN];
 
@@ -168,7 +172,7 @@ static bool read_bondeds(int bt, FILE* in, char* line, PreprocessResidue* rtpDBE
         int ni;
         rtpDBEntry->rb[bt].b.emplace_back();
         BondedInteraction* newBond = &rtpDBEntry->rb[bt].b.back();
-        for (int j = 0; j < btsNiatoms[bt]; j++)
+        for (int j = 0; j < enumValueToNumIAtoms(bt); j++)
         {
             if (sscanf(line + n, "%s%n", str, &ni) == 1)
             {
@@ -191,15 +195,15 @@ static bool read_bondeds(int bt, FILE* in, char* line, PreprocessResidue* rtpDBE
     return TRUE;
 }
 
-static void print_resbondeds(FILE* out, int bt, const PreprocessResidue& rtpDBEntry)
+static void print_resbondeds(FILE* out, BondedTypes bt, const PreprocessResidue& rtpDBEntry)
 {
     if (!rtpDBEntry.rb[bt].b.empty())
     {
-        fprintf(out, " [ %s ]\n", btsNames[bt]);
+        fprintf(out, " [ %s ]\n", enumValueToString(bt));
 
         for (const auto& b : rtpDBEntry.rb[bt].b)
         {
-            for (int j = 0; j < btsNiatoms[bt]; j++)
+            for (int j = 0; j < enumValueToNumIAtoms(bt); j++)
             {
                 fprintf(out, "%6s ", b.a[j].c_str());
             }
@@ -229,30 +233,27 @@ static void check_rtp(gmx::ArrayRef<const PreprocessResidue> rtpDBEntry,
     }
 }
 
-static int get_bt(char* header)
+static std::optional<BondedTypes> get_bt(char* header)
 {
-    int i;
-
-    for (i = 0; i < ebtsNR; i++)
-    {
-        if (gmx_strcasecmp(btsNames[i], header) == 0)
-        {
-            return i;
-        }
-    }
-    return NOTSET;
+    gmx::StringToEnumValueConverter<BondedTypes, enumValueToString> converter;
+    return converter.valueFrom(header);
 }
 
-/* print all the ebtsNR type numbers */
+/* print all the BondedTypes type numbers */
 static void print_resall_header(FILE* out, gmx::ArrayRef<const PreprocessResidue> rtpDBEntry)
 {
     fprintf(out, "[ bondedtypes ]\n");
     fprintf(out,
             "; bonds  angles  dihedrals  impropers all_dihedrals nr_exclusions  HH14  "
             "remove_dih\n");
-    fprintf(out, " %5d  %6d  %9d  %9d  %14d  %14d %14d %14d\n\n", rtpDBEntry[0].rb[0].type,
-            rtpDBEntry[0].rb[1].type, rtpDBEntry[0].rb[2].type, rtpDBEntry[0].rb[3].type,
-            static_cast<int>(rtpDBEntry[0].bKeepAllGeneratedDihedrals), rtpDBEntry[0].nrexcl,
+    fprintf(out,
+            " %5d  %6d  %9d  %9d  %14d  %14d %14d %14d\n\n",
+            rtpDBEntry[0].rb[0].type,
+            rtpDBEntry[0].rb[1].type,
+            rtpDBEntry[0].rb[2].type,
+            rtpDBEntry[0].rb[3].type,
+            static_cast<int>(rtpDBEntry[0].bKeepAllGeneratedDihedrals),
+            rtpDBEntry[0].nrexcl,
             static_cast<int>(rtpDBEntry[0].bGenerateHH14Interactions),
             static_cast<int>(rtpDBEntry[0].bRemoveDihedralIfWithImproper));
 }
@@ -268,12 +269,15 @@ static void print_resall_log(const gmx::MDLogger& logger, gmx::ArrayRef<const Pr
                     "remove_dih");
     GMX_LOG(logger.info)
             .asParagraph()
-            .appendTextFormatted(
-                    " %5d  %6d  %9d  %9d  %14d  %14d %14d %14d", rtpDBEntry[0].rb[0].type,
-                    rtpDBEntry[0].rb[1].type, rtpDBEntry[0].rb[2].type, rtpDBEntry[0].rb[3].type,
-                    static_cast<int>(rtpDBEntry[0].bKeepAllGeneratedDihedrals),
-                    rtpDBEntry[0].nrexcl, static_cast<int>(rtpDBEntry[0].bGenerateHH14Interactions),
-                    static_cast<int>(rtpDBEntry[0].bRemoveDihedralIfWithImproper));
+            .appendTextFormatted(" %5d  %6d  %9d  %9d  %14d  %14d %14d %14d",
+                                 rtpDBEntry[0].rb[0].type,
+                                 rtpDBEntry[0].rb[1].type,
+                                 rtpDBEntry[0].rb[2].type,
+                                 rtpDBEntry[0].rb[3].type,
+                                 static_cast<int>(rtpDBEntry[0].bKeepAllGeneratedDihedrals),
+                                 rtpDBEntry[0].nrexcl,
+                                 static_cast<int>(rtpDBEntry[0].bGenerateHH14Interactions),
+                                 static_cast<int>(rtpDBEntry[0].bRemoveDihedralIfWithImproper));
 }
 
 
@@ -291,7 +295,7 @@ void print_resall(FILE* out, gmx::ArrayRef<const PreprocessResidue> rtpDBEntry, 
         if (r.natom() > 0)
         {
             print_resatoms(out, atype, r);
-            for (int bt = 0; bt < ebtsNR; bt++)
+            for (auto bt : gmx::EnumerationWrapper<BondedTypes>{})
             {
                 print_resbondeds(out, bt, r);
             }
@@ -308,7 +312,7 @@ void readResidueDatabase(const std::string&              rrdb,
 {
     FILE* in;
     char  filebase[STRLEN], line[STRLEN], header[STRLEN];
-    int   bt, nparam;
+    int   nparam;
     int   dum1, dum2, dum3;
     bool  bNextResidue, bError;
 
@@ -320,12 +324,12 @@ void readResidueDatabase(const std::string&              rrdb,
 
     /* these bonded parameters will overwritten be when  *
      * there is a [ bondedtypes ] entry in the .rtp file */
-    header_settings.rb[ebtsBONDS].type  = 1; /* normal bonds     */
-    header_settings.rb[ebtsANGLES].type = 1; /* normal angles    */
-    header_settings.rb[ebtsPDIHS].type  = 1; /* normal dihedrals */
-    header_settings.rb[ebtsIDIHS].type  = 2; /* normal impropers */
-    header_settings.rb[ebtsEXCLS].type  = 1; /* normal exclusions */
-    header_settings.rb[ebtsCMAP].type   = 1; /* normal cmap torsions */
+    header_settings.rb[BondedTypes::Bonds].type             = 1; /* normal bonds     */
+    header_settings.rb[BondedTypes::Angles].type            = 1; /* normal angles    */
+    header_settings.rb[BondedTypes::ProperDihedrals].type   = 1; /* normal dihedrals */
+    header_settings.rb[BondedTypes::ImproperDihedrals].type = 2; /* normal impropers */
+    header_settings.rb[BondedTypes::Exclusions].type        = 1; /* normal exclusions */
+    header_settings.rb[BondedTypes::Cmap].type              = 1; /* normal cmap torsions */
 
     header_settings.bKeepAllGeneratedDihedrals    = FALSE;
     header_settings.nrexcl                        = 3;
@@ -357,14 +361,22 @@ void readResidueDatabase(const std::string&              rrdb,
     if (gmx::equalCaseInsensitive("bondedtypes", header, 5))
     {
         get_a_line(in, line, STRLEN);
-        if ((nparam = sscanf(line, "%d %d %d %d %d %d %d %d", &header_settings.rb[ebtsBONDS].type,
-                             &header_settings.rb[ebtsANGLES].type,
-                             &header_settings.rb[ebtsPDIHS].type, &header_settings.rb[ebtsIDIHS].type,
-                             &dum1, &header_settings.nrexcl, &dum2, &dum3))
+        if ((nparam = sscanf(line,
+                             "%d %d %d %d %d %d %d %d",
+                             &header_settings.rb[BondedTypes::Bonds].type,
+                             &header_settings.rb[BondedTypes::Angles].type,
+                             &header_settings.rb[BondedTypes::ProperDihedrals].type,
+                             &header_settings.rb[BondedTypes::ImproperDihedrals].type,
+                             &dum1,
+                             &header_settings.nrexcl,
+                             &dum2,
+                             &dum3))
             < 4)
         {
-            gmx_fatal(FARGS, "need 4 to 8 parameters in the header of .rtp file %s at line:\n%s\n",
-                      rrdb.c_str(), line);
+            gmx_fatal(FARGS,
+                      "need 4 to 8 parameters in the header of .rtp file %s at line:\n%s\n",
+                      rrdb.c_str(),
+                      line);
         }
         header_settings.bKeepAllGeneratedDihedrals    = (dum1 != 0);
         header_settings.bGenerateHH14Interactions     = (dum2 != 0);
@@ -435,11 +447,11 @@ void readResidueDatabase(const std::string&              rrdb,
             }
             else
             {
-                bt = get_bt(header);
-                if (bt != NOTSET)
+                auto bt = get_bt(header);
+                if (bt.has_value())
                 {
                     /* header is an bonded directive */
-                    bError = !read_bondeds(bt, in, line, res);
+                    bError = !read_bondeds(*bt, in, line, res);
                 }
                 else if (gmx::equalCaseInsensitive("atoms", header, 5))
                 {
@@ -463,17 +475,16 @@ void readResidueDatabase(const std::string&              rrdb,
             gmx_fatal(FARGS, "No atoms found in .rtp file in residue %s\n", res->resname.c_str());
         }
 
-        auto found = std::find_if(rtpDBEntry->begin(), rtpDBEntry->end() - 1,
-                                  [&res](const PreprocessResidue& entry) {
-                                      return gmx::equalCaseInsensitive(entry.resname, res->resname);
-                                  });
+        auto found = std::find_if(
+                rtpDBEntry->begin(), rtpDBEntry->end() - 1, [&res](const PreprocessResidue& entry) {
+                    return gmx::equalCaseInsensitive(entry.resname, res->resname);
+                });
 
         if (found != rtpDBEntry->end() - 1)
         {
             if (found >= oldArrayEnd)
             {
-                gmx_fatal(FARGS, "Found a second entry for '%s' in '%s'", res->resname.c_str(),
-                          rrdb.c_str());
+                gmx_fatal(FARGS, "Found a second entry for '%s' in '%s'", res->resname.c_str(), rrdb.c_str());
             }
             if (bAllowOverrideRTP)
             {
@@ -482,7 +493,9 @@ void readResidueDatabase(const std::string&              rrdb,
                         .appendTextFormatted(
                                 "Found another rtp entry for '%s' in '%s',"
                                 " ignoring this entry and keeping the one from '%s.rtp'",
-                                res->resname.c_str(), rrdb.c_str(), found->filebase.c_str());
+                                res->resname.c_str(),
+                                rrdb.c_str(),
+                                found->filebase.c_str());
                 /* We should free all the data for this entry.
                  * The current code gives a lot of dangling pointers.
                  */
@@ -493,7 +506,9 @@ void readResidueDatabase(const std::string&              rrdb,
                 gmx_fatal(FARGS,
                           "Found rtp entries for '%s' in both '%s' and '%s'. If you want the first "
                           "definition to override the second one, set the -rtpo option of pdb2gmx.",
-                          res->resname.c_str(), found->filebase.c_str(), rrdb.c_str());
+                          res->resname.c_str(),
+                          found->filebase.c_str(),
+                          rrdb.c_str());
             }
         }
     }
@@ -501,7 +516,10 @@ void readResidueDatabase(const std::string&              rrdb,
 
     std::sort(rtpDBEntry->begin(), rtpDBEntry->end(), [](const PreprocessResidue& a, const PreprocessResidue& b) {
         return std::lexicographical_compare(
-                a.resname.begin(), a.resname.end(), b.resname.begin(), b.resname.end(),
+                a.resname.begin(),
+                a.resname.end(),
+                b.resname.begin(),
+                b.resname.end(),
                 [](const char& c1, const char& c2) { return std::toupper(c1) < std::toupper(c2); });
     });
 
@@ -589,8 +607,10 @@ std::string searchResidueDatabase(const std::string&                     key,
     }
     if (nbest > 1)
     {
-        gmx_fatal(FARGS, "Residue '%s' not found in residue topology database, looks a bit like %s",
-                  key.c_str(), bestbuf.c_str());
+        gmx_fatal(FARGS,
+                  "Residue '%s' not found in residue topology database, looks a bit like %s",
+                  key.c_str(),
+                  bestbuf.c_str());
     }
     else if (besti == -1)
     {
@@ -603,7 +623,8 @@ std::string searchResidueDatabase(const std::string&                     key,
                 .appendTextFormatted(
                         "'%s' not found in residue topology database, "
                         "trying to use '%s'",
-                        key.c_str(), rtpDBEntry[besti].resname.c_str());
+                        key.c_str(),
+                        rtpDBEntry[besti].resname.c_str());
     }
 
     return rtpDBEntry[besti].resname;
@@ -612,10 +633,10 @@ std::string searchResidueDatabase(const std::string&                     key,
 gmx::ArrayRef<const PreprocessResidue>::const_iterator
 getDatabaseEntry(const std::string& rtpname, gmx::ArrayRef<const PreprocessResidue> rtpDBEntry)
 {
-    auto found = std::find_if(rtpDBEntry.begin(), rtpDBEntry.end(),
-                              [&rtpname](const PreprocessResidue& entry) {
-                                  return gmx::equalCaseInsensitive(rtpname, entry.resname);
-                              });
+    auto found = std::find_if(
+            rtpDBEntry.begin(), rtpDBEntry.end(), [&rtpname](const PreprocessResidue& entry) {
+                return gmx::equalCaseInsensitive(rtpname, entry.resname);
+            });
     if (found == rtpDBEntry.end())
     {
         /* This should never happen, since searchResidueDatabase should have been called

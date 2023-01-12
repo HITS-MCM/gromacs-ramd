@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \defgroup module_taskassignment Assigning simulation tasks to hardware (taskassignment)
  * \ingroup group_mdrun
@@ -52,6 +51,7 @@
 
 #include <vector>
 
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/gmxmpi.h"
 
@@ -67,6 +67,7 @@ namespace gmx
 enum class TaskTarget;
 class MDLogger;
 class PhysicalNodeCommunicator;
+class SimulationWorkload;
 
 /*! \brief Types of compute tasks that can be run on a GPU.
  *
@@ -140,7 +141,7 @@ public:
      * the ranks of that node. It throws InconsistentInputError
      * when a/the useful GPU task assignment is not possible.
      *
-     * \param[in]  gpuIdsToUse            The compatible GPUs that the user permitted us to use.
+     * \param[in]  availableDevices       The compatible devices that the user permitted us to use.
      * \param[in]  userGpuTaskAssignment  The user-specified assignment of GPU tasks to device IDs.
      * \param[in]  hardwareInfo           The detected hardware
      * \param[in]  gromacsWorldComm       MPI communicator for all ranks in the current GROMACS run
@@ -159,8 +160,8 @@ public:
      * \throws   std::bad_alloc          If out of memory.
      *           InconsistentInputError  If user and/or detected inputs are inconsistent.
      */
-    static GpuTaskAssignments build(const std::vector<int>&         gpuIdsToUse,
-                                    const std::vector<int>&         userGpuTaskAssignment,
+    static GpuTaskAssignments build(ArrayRef<const int>             availableDevices,
+                                    ArrayRef<const int>             userGpuTaskAssignment,
                                     const gmx_hw_info_t&            hardwareInfo,
                                     MPI_Comm                        gromacsWorldComm,
                                     const PhysicalNodeCommunicator& physicalNodeComm,
@@ -210,6 +211,9 @@ private:
     //! Number of ranks on this physical node.
     size_t numRanksOnThisNode_ = 0;
 
+    //! Vector of device IDs assigned to this node
+    std::vector<int> deviceIdsAssigned_;
+
 public:
     /*! \brief Log a report on how GPUs are being used on
      * the ranks of the physical node of rank 0 of the simulation.
@@ -219,26 +223,25 @@ public:
      *
      * \param[in]  mdlog           Logging object.
      * \param[in]  printHostName   Print the hostname in the usage information.
-     * \param[in]  useGpuForBonded Whether GPU PP tasks will do bonded work on the GPU.
      * \param[in]  pmeRunMode      Describes the execution of PME tasks.
-     * \param[in]  useGpuForUpdate Whether the update is offloaded on the GPU.
+     * \param[in]  simulationWork  Simulation workload descriptor
      *
      * \throws     std::bad_alloc if out of memory
      */
-    void reportGpuUsage(const MDLogger& mdlog,
-                        bool            printHostName,
-                        bool            useGpuForBonded,
-                        PmeRunMode      pmeRunMode,
-                        bool            useGpuForUpdate);
+    void reportGpuUsage(const MDLogger&           mdlog,
+                        bool                      printHostName,
+                        PmeRunMode                pmeRunMode,
+                        const SimulationWorkload& simulationWork);
 
     /*! \brief Logs to \c mdlog information that may help a user
      * learn how to let mdrun make a task assignment that runs
      * faster.
      *
-     * \param[in]  mdlog                        Logging object.
-     * \param[in]  numCompatibleGpusOnThisNode  The number of compatible GPUs on this node.
+     * \param[in]  mdlog                         Logging object.
+     * \param[in]  numAvailableDevicesOnThisNode The number of compatible devices on this node
+     *                                           that the user permitted us to use.
      * */
-    void logPerformanceHints(const MDLogger& mdlog, size_t numCompatibleGpusOnThisNode);
+    void logPerformanceHints(const MDLogger& mdlog, size_t numAvailableDevicesOnThisNode);
     /*! \brief Return handle to the initialized GPU to use in the this rank.
      *
      * \param[out] deviceId Index of the assigned device.
@@ -251,6 +254,8 @@ public:
     bool thisRankHasPmeGpuTask() const;
     //! Return whether this rank has any task running on a GPU
     bool thisRankHasAnyGpuTask() const;
+    //! Get the list of unique devices that have been assigned tasks on this physical node
+    std::vector<int> deviceIdsAssigned() { return deviceIdsAssigned_; }
 };
 
 } // namespace gmx

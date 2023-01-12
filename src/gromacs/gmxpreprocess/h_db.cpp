@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /* This file is completely threadsafe - keep it that way! */
 #include "gmxpre.h"
@@ -98,8 +94,11 @@ void read_ab(char* line, const char* fn, MoleculePatch* hack)
     hack->tp = tp;
     if ((tp < 1) || (tp >= maxcontrol))
     {
-        gmx_fatal(FARGS, "Error in hdb file %s:\nH-type should be in 1-%d. Offending line:\n%s", fn,
-                  maxcontrol - 1, line);
+        gmx_fatal(FARGS,
+                  "Error in hdb file %s:\nH-type should be in 1-%d. Offending line:\n%s",
+                  fn,
+                  maxcontrol - 1,
+                  line);
     }
 
     hack->nctl = ns - 3;
@@ -108,9 +107,13 @@ void read_ab(char* line, const char* fn, MoleculePatch* hack)
         gmx_fatal(FARGS,
                   "Error in hdb file %s:\nWrong number of control atoms (%d instead of %d) on "
                   "line:\n%s\n",
-                  fn, hack->nctl, ncontrol[hack->tp], line);
+                  fn,
+                  hack->nctl,
+                  ncontrol[hack->tp],
+                  line);
     }
-    for (int i = 0; (i < hack->nctl); i++)
+    // (i < 4) is redundant, but it silences GCC-11 warning
+    for (int i = 0; (i < hack->nctl) && (i < 4); i++)
     {
         hack->a[i] = a[i];
     }
@@ -167,7 +170,10 @@ static void read_h_db_file(const char* hfn, std::vector<MoleculePatchDatabase>* 
                     gmx_fatal(FARGS,
                               "Expected %d lines of hydrogens, found only %d "
                               "while reading Hydrogen Database %s residue %s",
-                              nab, i - 1, block->name.c_str(), hfn);
+                              nab,
+                              i - 1,
+                              block->name.c_str(),
+                              hfn);
                 }
                 if (nullptr == fgets(buf, STRLEN, in))
                 {
@@ -183,13 +189,16 @@ static void read_h_db_file(const char* hfn, std::vector<MoleculePatchDatabase>* 
     if (!globalPatches->empty())
     {
         /* Sort the list for searching later */
-        std::sort(globalPatches->begin(), globalPatches->end(),
+        std::sort(globalPatches->begin(),
+                  globalPatches->end(),
                   [](const MoleculePatchDatabase& a1, const MoleculePatchDatabase& a2) {
-                      return std::lexicographical_compare(
-                              a1.name.begin(), a1.name.end(), a2.name.begin(), a2.name.end(),
-                              [](const char& c1, const char& c2) {
-                                  return std::toupper(c1) < std::toupper(c2);
-                              });
+                      return std::lexicographical_compare(a1.name.begin(),
+                                                          a1.name.end(),
+                                                          a2.name.begin(),
+                                                          a2.name.end(),
+                                                          [](const char& c1, const char& c2) {
+                                                              return std::toupper(c1) < std::toupper(c2);
+                                                          });
                   });
     }
 }
@@ -212,7 +221,7 @@ int read_h_db(const char* ffdir, std::vector<MoleculePatchDatabase>* globalPatch
 gmx::ArrayRef<const MoleculePatchDatabase>::iterator
 search_h_db(gmx::ArrayRef<const MoleculePatchDatabase> globalPatches, const char* key)
 {
-    return std::find_if(
-            globalPatches.begin(), globalPatches.end(),
-            [&key](const MoleculePatchDatabase& a) { return gmx::equalCaseInsensitive(key, a.name); });
+    return std::find_if(globalPatches.begin(), globalPatches.end(), [&key](const MoleculePatchDatabase& a) {
+        return gmx::equalCaseInsensitive(key, a.name);
+    });
 }

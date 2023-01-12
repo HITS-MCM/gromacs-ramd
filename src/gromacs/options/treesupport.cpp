@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2017,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -67,8 +66,7 @@ class TreeAssignHelper
 {
 public:
     TreeAssignHelper(Options* options, IKeyValueTreeErrorHandler* errorHandler) :
-        assigner_(options),
-        errorHandler_(errorHandler)
+        assigner_(options), errorHandler_(errorHandler)
     {
         if (errorHandler_ == nullptr)
         {
@@ -151,8 +149,7 @@ class TreeCheckHelper : private OptionsVisitor
 {
 public:
     TreeCheckHelper(const KeyValueTreeObject& root) :
-        currentObject_(&root),
-        currentKnownNames_(nullptr)
+        currentObject_(&root), currentKnownNames_(nullptr)
     {
     }
 
@@ -183,8 +180,8 @@ private:
         if (currentObject_->keyExists(name))
         {
             currentKnownNames_->insert(name);
-            auto parentObject     = currentObject_;
-            auto parentKnownNames = currentKnownNames_;
+            const auto* parentObject     = currentObject_;
+            auto*       parentKnownNames = currentKnownNames_;
             // TODO: Consider what to do with mismatching types.
             currentObject_ = &(*currentObject_)[name].asObject();
             currentPath_.append(name);
@@ -214,8 +211,7 @@ class TreeAdjustHelper : private OptionsVisitor
 {
 public:
     TreeAdjustHelper(const KeyValueTreeObject& root, KeyValueTreeBuilder* builder) :
-        currentSourceObject_(&root),
-        currentObjectBuilder_(builder->rootObject())
+        currentSourceObject_(&root), currentObjectBuilder_(builder->rootObject())
     {
     }
 
@@ -231,7 +227,7 @@ private:
     {
         const std::string& name          = section.name();
         auto               parentBuilder = currentObjectBuilder_;
-        auto               parentObject  = currentSourceObject_;
+        const auto*        parentObject  = currentSourceObject_;
         currentObjectBuilder_            = currentObjectBuilder_.addObject(name);
         currentSourceObject_ = (currentSourceObject_ != nullptr && currentSourceObject_->keyExists(name)
                                         ? &(*currentSourceObject_)[name].asObject()
@@ -316,8 +312,9 @@ void checkForUnknownOptionsInKeyValueTree(const KeyValueTreeObject& tree, const 
     helper.processOptionSection(options.rootSection());
     if (helper.hasUnknownPaths())
     {
-        std::string paths(formatAndJoin(helper.unknownPaths(), "\n  ",
-                                        [](const KeyValueTreePath& path) { return path.toString(); }));
+        std::string paths(formatAndJoin(helper.unknownPaths(), "\n  ", [](const KeyValueTreePath& path) {
+            return path.toString();
+        }));
         std::string message("Unknown input values:\n  " + paths);
         GMX_THROW(InvalidInputError(message));
     }

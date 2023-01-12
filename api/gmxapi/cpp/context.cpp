@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2018,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2018- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \file
  * \brief Implementation details of gmxapi::Context
@@ -47,6 +46,7 @@
 
 #include <cstring>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -286,17 +286,39 @@ std::shared_ptr<Session> ContextImpl::launch(const Workflow& work)
          */
 
         // Set input TPR name
+        if (std::any_of(mdArgs_.cbegin(), mdArgs_.cend(), [](const std::string& arg) {
+                return arg == "-s";
+            }))
+        {
+            throw UsageError("gmxapi must control the simulation input, but caller provided '-s'.");
+        }
         mdArgs_.emplace_back("-s");
         mdArgs_.emplace_back(filename);
 
-        // Set checkpoint file name
-        mdArgs_.emplace_back("-cpi");
-        mdArgs_.emplace_back("state.cpt");
-        /* Note: we normalize the checkpoint file name, but not its full path.
-         * Through version 0.0.8, gmxapi clients change working directory
-         * for each session, so relative path(s) below are appropriate.
-         * A future gmxapi version should avoid changing directories once the
-         * process starts and instead manage files (paths) in an absolute and
+        // Set checkpoint file name(s) (if not already set by user).
+        if (std::none_of(mdArgs_.cbegin(), mdArgs_.cend(), [](const std::string& arg) {
+                return arg == "-cpi";
+            }))
+        {
+            mdArgs_.emplace_back("-cpi");
+            mdArgs_.emplace_back("state.cpt");
+        }
+        if (std::none_of(mdArgs_.cbegin(), mdArgs_.cend(), [](const std::string& arg) {
+                return arg == "-cpo";
+            }))
+        {
+            mdArgs_.emplace_back("-cpo");
+            mdArgs_.emplace_back("state.cpt");
+        }
+        if (std::none_of(mdArgs_.cbegin(), mdArgs_.cend(), [](const std::string& arg) {
+                return arg == "-o";
+            }))
+        {
+            mdArgs_.emplace_back("-o");
+            mdArgs_.emplace_back("traj.trr");
+        }
+        /* Note: we normalize the file names, but not the full paths.
+         * A future gmxapi version should manage files (paths) in an absolute and
          * immutable way, with abstraction provided through the Context chain-of-responsibility.
          * TODO: API abstractions for initializing simulations that may be new or partially
          * complete. Reference gmxapi milestone 13 at https://gitlab.com/gromacs/gromacs/-/issues/2585
@@ -347,13 +369,16 @@ std::shared_ptr<Session> ContextImpl::launch(const Workflow& work)
         SimulationContext simulationContext(communicator, multiSimDirectoryNames);
 
 
-        StartingBehavior startingBehavior        = StartingBehavior::NewSimulation;
-        LogFilePtr       logFileGuard            = nullptr;
-        gmx_multisim_t*  ms                      = simulationContext.multiSimulation_.get();
-        std::tie(startingBehavior, logFileGuard) = handleRestart(
-                findIsSimulationMasterRank(ms, simulationContext.simulationCommunicator_),
-                simulationContext.simulationCommunicator_, ms, options.mdrunOptions.appendingBehavior,
-                ssize(options.filenames), options.filenames.data());
+        StartingBehavior startingBehavior = StartingBehavior::NewSimulation;
+        LogFilePtr       logFileGuard     = nullptr;
+        gmx_multisim_t*  ms               = simulationContext.multiSimulation_.get();
+        std::tie(startingBehavior, logFileGuard) =
+                handleRestart(findIsSimulationMasterRank(ms, simulationContext.simulationCommunicator_),
+                              simulationContext.simulationCommunicator_,
+                              ms,
+                              options.mdrunOptions.appendingBehavior,
+                              ssize(options.filenames),
+                              options.filenames.data());
 
         auto builder = MdrunnerBuilder(std::move(mdModules),
                                        compat::not_null<SimulationContext*>(&simulationContext));
@@ -384,8 +409,8 @@ std::shared_ptr<Session> ContextImpl::launch(const Workflow& work)
         builder.addLogFile(logFileGuard.get());
 
         // Note, creation is not mature enough to be exposed in the external API yet.
-        launchedSession = createSession(shared_from_this(), std::move(builder),
-                                        std::move(simulationContext), std::move(logFileGuard));
+        launchedSession = createSession(
+                shared_from_this(), std::move(builder), std::move(simulationContext), std::move(logFileGuard));
 
         // Clean up argv once builder is no longer in use
         // TODO: Remove long-lived references to argv so this is no longer necessary.

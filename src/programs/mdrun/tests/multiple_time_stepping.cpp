@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -87,8 +86,8 @@ TEST_P(MtsComparisonTest, WithinTolerances)
     auto mtsScheme      = std::get<1>(params);
 
     // Note that there should be no relevant limitation on MPI ranks and OpenMP threads
-    SCOPED_TRACE(formatString("Comparing for '%s' no MTS with MTS scheme '%s'",
-                              simulationName.c_str(), mtsScheme.c_str()));
+    SCOPED_TRACE(formatString(
+            "Comparing for '%s' no MTS with MTS scheme '%s'", simulationName.c_str(), mtsScheme.c_str()));
 
     const bool isPullTest = (mtsScheme.find("pull") != std::string::npos);
 
@@ -104,7 +103,8 @@ TEST_P(MtsComparisonTest, WithinTolerances)
             "rcoulomb     = 0.9\n"
             "rvdw         = 0.9\n"
             "constraints  = h-bonds\n",
-            numSteps, isPullTest ? "reaction-field" : "PME");
+            numSteps,
+            isPullTest ? "reaction-field" : "PME");
 
     if (isPullTest)
     {
@@ -125,26 +125,31 @@ TEST_P(MtsComparisonTest, WithinTolerances)
     const int nstfout       = 2 * numSteps;
     auto      refMdpOptions = sharedMdpOptions
                          + gmx::formatString(
-                                   "mts       = no\n"
-                                   "nstcalcenergy = %d\n"
-                                   "nstenergy = %d\n"
-                                   "nstxout   = 0\n"
-                                   "nstvout   = 0\n"
-                                   "nstfout   = %d\n",
-                                   numSteps, numSteps, nstfout);
+                                 "mts       = no\n"
+                                 "nstcalcenergy = %d\n"
+                                 "nstenergy = %d\n"
+                                 "nstxout   = 0\n"
+                                 "nstvout   = 0\n"
+                                 "nstfout   = %d\n",
+                                 numSteps,
+                                 numSteps,
+                                 nstfout);
 
     auto mtsMdpOptions = sharedMdpOptions
                          + gmx::formatString(
-                                   "mts        = yes\n"
-                                   "mts-levels = 2\n"
-                                   "mts-level2-forces = %s\n"
-                                   "mts-level2-factor = 2\n"
-                                   "nstcalcenergy = %d\n"
-                                   "nstenergy  = %d\n"
-                                   "nstxout    = 0\n"
-                                   "nstvout    = 0\n"
-                                   "nstfout    = %d\n",
-                                   mtsScheme.c_str(), numSteps, numSteps, nstfout);
+                                 "mts        = yes\n"
+                                 "mts-levels = 2\n"
+                                 "mts-level2-forces = %s\n"
+                                 "mts-level2-factor = 2\n"
+                                 "nstcalcenergy = %d\n"
+                                 "nstenergy  = %d\n"
+                                 "nstxout    = 0\n"
+                                 "nstvout    = 0\n"
+                                 "nstfout    = %d\n",
+                                 mtsScheme.c_str(),
+                                 numSteps,
+                                 numSteps,
+                                 nstfout);
 
     // At step 0 the energy and virial should only differ due to rounding errors
     EnergyTermsToCompare energyTermsToCompareStep0 = energyTermsToCompare(0.001, 0.01);
@@ -159,6 +164,9 @@ TEST_P(MtsComparisonTest, WithinTolerances)
                                                           ComparisonConditions::NoComparison,
                                                           ComparisonConditions::MustCompare };
     TrajectoryTolerances trajectoryTolerances = TrajectoryComparison::s_defaultTrajectoryTolerances;
+    // Tolerances for force comparison needs to be somewhat higher than the current default
+    // when comparing between forces CPU and GPU, due to summation order differences
+    trajectoryTolerances.forces = relativeToleranceAsFloatingPoint(1000.0, GMX_DOUBLE ? 1.0e-7 : 1.0e-4);
 
     // Build the functor that will compare reference and test
     // trajectory frames in the chosen way.
@@ -190,25 +198,27 @@ TEST_P(MtsComparisonTest, WithinTolerances)
     runMdrun(&runner_);
 
     // Compare simulation results at step 0, which should be indentical
-    compareEnergies(simulator1EdrFileName, simulator2EdrFileName, energyTermsToCompareStep0,
-                    MaxNumFrames(1));
+    compareEnergies(
+            simulator1EdrFileName, simulator2EdrFileName, energyTermsToCompareStep0, MaxNumFrames(1));
     compareTrajectories(simulator1TrajectoryFileName, simulator2TrajectoryFileName, trajectoryComparison);
 
     // Compare energies at the last step (and step 0 again) with lower tolerance
-    compareEnergies(simulator1EdrFileName, simulator2EdrFileName, energyTermsToCompareAllSteps,
+    compareEnergies(simulator1EdrFileName,
+                    simulator2EdrFileName,
+                    energyTermsToCompareAllSteps,
                     MaxNumFrames::compareAllFrames());
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
         MultipleTimeSteppingIsNearSingleTimeStepping,
         MtsComparisonTest,
         ::testing::Combine(::testing::Values("ala"),
                            ::testing::Values("longrange-nonbonded",
                                              "longrange-nonbonded nonbonded pair dihedral")));
 
-INSTANTIATE_TEST_CASE_P(MultipleTimeSteppingIsNearSingleTimeSteppingPull,
-                        MtsComparisonTest,
-                        ::testing::Combine(::testing::Values("spc2"), ::testing::Values("pull")));
+INSTANTIATE_TEST_SUITE_P(MultipleTimeSteppingIsNearSingleTimeSteppingPull,
+                         MtsComparisonTest,
+                         ::testing::Combine(::testing::Values("spc2"), ::testing::Values("pull")));
 
 } // namespace
 } // namespace test

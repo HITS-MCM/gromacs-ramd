@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2013,2014,2015,2016,2017 The GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2013- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_MDLIB_MDOUTF_H
 #define GMX_MDLIB_MDOUTF_H
@@ -57,7 +55,7 @@ namespace gmx
 {
 enum class StartingBehavior;
 class IMDOutputProvider;
-struct MdModulesNotifier;
+struct MDModulesNotifiers;
 struct MdrunOptions;
 class WriteCheckpointDataHolder;
 } // namespace gmx
@@ -69,20 +67,20 @@ typedef struct gmx_mdoutf* gmx_mdoutf_t;
  * Returns a pointer to a data structure with all output file pointers
  * and names required by mdrun.
  */
-gmx_mdoutf_t init_mdoutf(FILE*                         fplog,
-                         int                           nfile,
-                         const t_filenm                fnm[],
-                         const gmx::MdrunOptions&      mdrunOptions,
-                         const t_commrec*              cr,
-                         gmx::IMDOutputProvider*       outputProvider,
-                         const gmx::MdModulesNotifier& mdModulesNotifier,
-                         const t_inputrec*             ir,
-                         const gmx_mtop_t*             mtop,
-                         const gmx_output_env_t*       oenv,
-                         gmx_wallcycle_t               wcycle,
-                         gmx::StartingBehavior         startingBehavior,
-                         bool                          simulationsShareState,
-                         const gmx_multisim_t*         ms);
+gmx_mdoutf_t init_mdoutf(FILE*                          fplog,
+                         int                            nfile,
+                         const t_filenm                 fnm[],
+                         const gmx::MdrunOptions&       mdrunOptions,
+                         const t_commrec*               cr,
+                         gmx::IMDOutputProvider*        outputProvider,
+                         const gmx::MDModulesNotifiers& mdModulesNotifiers,
+                         const t_inputrec*              ir,
+                         const gmx_mtop_t&              mtop,
+                         const gmx_output_env_t*        oenv,
+                         gmx_wallcycle*                 wcycle,
+                         gmx::StartingBehavior          startingBehavior,
+                         bool                           simulationsShareState,
+                         const gmx_multisim_t*          ms);
 
 /*! \brief Getter for file pointer */
 ener_file_t mdoutf_get_fp_ene(gmx_mdoutf_t of);
@@ -91,7 +89,7 @@ ener_file_t mdoutf_get_fp_ene(gmx_mdoutf_t of);
 FILE* mdoutf_get_fp_dhdl(gmx_mdoutf_t of);
 
 /*! \brief Getter for wallcycle timer */
-gmx_wallcycle_t mdoutf_get_wcycle(gmx_mdoutf_t of);
+gmx_wallcycle* mdoutf_get_wcycle(gmx_mdoutf_t of);
 
 /*! \brief Close TNG files if they are open.
  *

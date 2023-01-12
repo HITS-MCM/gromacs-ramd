@@ -20,11 +20,13 @@
 #
 
 ARG REF=latest
+ARG MPIFLAVOR=mpich
 
-FROM gmxapi/gromacs-dependencies-mpich as python-base
+FROM gmxapi/gromacs-dependencies-$MPIFLAVOR as python-base
 
 RUN apt-get update && \
-    apt-get -yq --no-install-suggests --no-install-recommends install \
+    DEBIAN_FRONTEND=noninteractive apt-get -yq --no-install-suggests --no-install-recommends \
+    install \
         python3 \
         python3-dev \
         python3-venv && \
@@ -40,18 +42,15 @@ USER testing
 ENV VENV /home/testing/venv
 RUN python3 -m venv $VENV
 RUN . $VENV/bin/activate && \
-    pip install --no-cache-dir --upgrade pip setuptools
+    pip install --no-cache-dir --upgrade pip setuptools wheel
 
 ADD --chown=testing:testing requirements-*.txt /home/testing/gmxapi/
-
-RUN . $VENV/bin/activate && \
-    pip install --no-cache-dir -r /home/testing/gmxapi/requirements-test.txt
 
 #
 # Use gromacs installation from gmxapi/gromacs image
 #
 
-FROM gmxapi/gromacs-mpich:$REF as gromacs
+FROM gmxapi/gromacs-$MPIFLAVOR:$REF as gromacs
 # This intermediate is necessary because the COPY command does not support syntax like the following:
 #COPY --from=gmxapi/gromacs:$REF /usr/local/gromacs /usr/local/gromacs
 
@@ -59,39 +58,42 @@ FROM python-base
 
 COPY --from=gromacs /usr/local/gromacs /usr/local/gromacs
 
+RUN $VENV/bin/python -m pip install --upgrade pip setuptools wheel
+RUN $VENV/bin/python -m pip install --no-cache-dir --no-build-isolation -r /home/testing/gmxapi/requirements-test.txt
+
 ADD --chown=testing:testing src /home/testing/gmxapi/src
 ADD --chown=testing:testing src/gmxapi /home/testing/gmxapi/src/gmxapi
 
-# We use "--no-cache-dir" to reduce Docker image size. The other pip flags are
-# to eliminate network access and speed up the build, since we already know we
-# have installed the dependencies.
+# We use "--no-cache-dir" to reduce Docker image size.
 RUN . $VENV/bin/activate && \
     (cd $HOME/gmxapi/src && \
-     GMXTOOLCHAINDIR=/usr/local/gromacs/share/cmake/gromacs \
-      pip install --no-cache-dir --no-deps --no-index --no-build-isolation . \
+     CMAKE_ARGS="-Dgmxapi_ROOT=/usr/local/gromacs -C /usr/local/gromacs/share/cmake/gromacs/gromacs-hints.cmake" \
+      pip install --no-cache-dir --verbose . \
     )
-
-ADD --chown=testing:testing src/test /home/testing/gmxapi/test
-ADD scripts /docker_entry_points
-ADD --chown=testing:testing test /home/testing/test
 
 ADD --chown=testing:testing sample_restraint /home/testing/sample_restraint
 
-# TODO: (#3027) Get googletest sources locally.
+# To test behavior as in GitLab CI, copy the googletest sources, export CI=1 to the cmake
+# configure command, and remove the option to download googletest.
+#COPY --from=gromacs /gromacs-source/src/external/googletest /home/testing/sample_restraint/external/googletest
+RUN cmake --version
 RUN . $VENV/bin/activate && \
     . /usr/local/gromacs/bin/GMXRC && \
     (cd $HOME/sample_restraint && \
      mkdir build && \
      cd build && \
      cmake .. \
+             -DPYTHON_EXECUTABLE=$VENV/bin/python \
              -DDOWNLOAD_GOOGLETEST=ON \
              -DGMXAPI_EXTENSION_DOWNLOAD_PYBIND=ON && \
      make -j4 && \
+     make tests && \
      make test && \
      make install \
     )
 
-# TODO: this can be in the root user section above once it is stable
+ADD --chown=testing:testing src/test /home/testing/gmxapi/test
+ADD scripts /docker_entry_points
 COPY docker/entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]

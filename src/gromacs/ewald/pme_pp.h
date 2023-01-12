@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -46,7 +45,6 @@
 #define GMX_EWALD_PME_PP_H
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
 
 struct gmx_wallcycle;
 struct interaction_const_t;
@@ -59,36 +57,39 @@ namespace gmx
 {
 class ForceWithVirial;
 class PmePpCommGpu;
+template<typename>
+class ArrayRef;
 } // namespace gmx
 
 /*! \brief Send the charges and maxshift to out PME-only node. */
 void gmx_pme_send_parameters(const t_commrec*           cr,
-                             const interaction_const_t* ic,
-                             gmx_bool                   bFreeEnergy_q,
-                             gmx_bool                   bFreeEnergy_lj,
-                             real*                      chargeA,
-                             real*                      chargeB,
-                             real*                      sqrt_c6A,
-                             real*                      sqrt_c6B,
-                             real*                      sigmaA,
-                             real*                      sigmaB,
+                             const interaction_const_t& interactionConst,
+                             bool                       bFreeEnergy_q,
+                             bool                       bFreeEnergy_lj,
+                             gmx::ArrayRef<const real>  chargeA,
+                             gmx::ArrayRef<const real>  chargeB,
+                             gmx::ArrayRef<const real>  sqrt_c6A,
+                             gmx::ArrayRef<const real>  sqrt_c6B,
+                             gmx::ArrayRef<const real>  sigmaA,
+                             gmx::ArrayRef<const real>  sigmaB,
                              int                        maxshift_x,
                              int                        maxshift_y);
 
 /*! \brief Send the coordinates to our PME-only node and request a PME calculation */
-void gmx_pme_send_coordinates(t_forcerec*           fr,
-                              const t_commrec*      cr,
-                              const matrix          box,
-                              const rvec*           x,
-                              real                  lambda_q,
-                              real                  lambda_lj,
-                              bool                  computeEnergyAndVirial,
-                              int64_t               step,
-                              bool                  useGpuPmePpComms,
-                              bool                  reinitGpuPmePpComms,
-                              bool                  sendCoordinatesFromGpu,
-                              GpuEventSynchronizer* coordinatesReadyOnDeviceEvent,
-                              gmx_wallcycle*        wcycle);
+void gmx_pme_send_coordinates(t_forcerec*                    fr,
+                              const t_commrec*               cr,
+                              const matrix                   box,
+                              gmx::ArrayRef<const gmx::RVec> x,
+                              real                           lambda_q,
+                              real                           lambda_lj,
+                              bool                           computeEnergyAndVirial,
+                              int64_t                        step,
+                              bool                           useGpuPmePpComms,
+                              bool                           reinitGpuPmePpComms,
+                              bool                           sendCoordinatesFromGpu,
+                              bool                           receiveForcesToGpu,
+                              GpuEventSynchronizer*          coordinatesReadyOnDeviceEvent,
+                              gmx_wallcycle*                 wcycle);
 
 /*! \brief Tell our PME-only node to finish */
 void gmx_pme_send_finish(const t_commrec* cr);

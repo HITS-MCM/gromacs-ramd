@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2019- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -55,11 +54,15 @@ namespace gmx
 SimulationWorkload createSimulationWorkload(const t_inputrec& inputrec,
                                             const bool        disableNonbondedCalculation,
                                             const DevelopmentFeatureFlags& devFlags,
-                                            bool                           useGpuForNonbonded,
-                                            PmeRunMode                     pmeRunMode,
-                                            bool                           useGpuForBonded,
-                                            bool                           useGpuForUpdate,
-                                            bool                           useGpuDirectHalo)
+                                            bool       havePpDomainDecomposition,
+                                            bool       haveSeparatePmeRank,
+                                            bool       useGpuForNonbonded,
+                                            PmeRunMode pmeRunMode,
+                                            bool       useGpuForBonded,
+                                            bool       useGpuForUpdate,
+                                            bool       useGpuDirectHalo,
+                                            bool       canUseDirectGpuComm,
+                                            bool       useGpuPmeDecomposition)
 {
     SimulationWorkload simulationWorkload;
     simulationWorkload.computeNonbonded = !disableNonbondedCalculation;
@@ -71,17 +74,40 @@ SimulationWorkload createSimulationWorkload(const t_inputrec& inputrec,
     simulationWorkload.useGpuNonbonded = useGpuForNonbonded;
     simulationWorkload.useCpuPme       = (pmeRunMode == PmeRunMode::CPU);
     simulationWorkload.useGpuPme = (pmeRunMode == PmeRunMode::GPU || pmeRunMode == PmeRunMode::Mixed);
-    simulationWorkload.useGpuPmeFft    = (pmeRunMode == PmeRunMode::Mixed);
-    simulationWorkload.useGpuBonded    = useGpuForBonded;
-    simulationWorkload.useGpuUpdate    = useGpuForUpdate;
-    simulationWorkload.useGpuBufferOps = (devFlags.enableGpuBufferOps || useGpuForUpdate)
-                                         && !simulationWorkload.computeNonbondedAtMtsLevel1;
-    simulationWorkload.useGpuHaloExchange = useGpuDirectHalo;
+    simulationWorkload.useGpuPmeFft              = (pmeRunMode == PmeRunMode::GPU);
+    simulationWorkload.useGpuBonded              = useGpuForBonded;
+    simulationWorkload.useGpuUpdate              = useGpuForUpdate;
+    simulationWorkload.havePpDomainDecomposition = havePpDomainDecomposition;
+    simulationWorkload.useCpuHaloExchange        = havePpDomainDecomposition && !useGpuDirectHalo;
+    simulationWorkload.useGpuHaloExchange        = useGpuDirectHalo;
+    if (pmeRunMode == PmeRunMode::None)
+    {
+        GMX_RELEASE_ASSERT(!haveSeparatePmeRank, "Can not have separate PME rank(s) without PME.");
+    }
+    simulationWorkload.haveSeparatePmeRank = haveSeparatePmeRank;
     simulationWorkload.useGpuPmePpCommunication =
-            devFlags.enableGpuPmePPComm && (pmeRunMode == PmeRunMode::GPU);
+            haveSeparatePmeRank && canUseDirectGpuComm
+            && (pmeRunMode == PmeRunMode::GPU || pmeRunMode == PmeRunMode::Mixed);
+    simulationWorkload.useCpuPmePpCommunication =
+            haveSeparatePmeRank && !simulationWorkload.useGpuPmePpCommunication;
+    GMX_RELEASE_ASSERT(!(simulationWorkload.useGpuPmePpCommunication
+                         && simulationWorkload.useCpuPmePpCommunication),
+                       "Cannot do PME-PP communication on both CPU and GPU");
     simulationWorkload.useGpuDirectCommunication =
-            devFlags.enableGpuHaloExchange || devFlags.enableGpuPmePPComm;
+            simulationWorkload.useGpuHaloExchange || simulationWorkload.useGpuPmePpCommunication;
+    simulationWorkload.useGpuPmeDecomposition       = useGpuPmeDecomposition;
     simulationWorkload.haveEwaldSurfaceContribution = haveEwaldSurfaceContribution(inputrec);
+    simulationWorkload.useMts                       = inputrec.useMts;
+    const bool featuresRequireGpuBufferOps = useGpuForUpdate || simulationWorkload.useGpuDirectCommunication;
+    simulationWorkload.useGpuXBufferOps =
+            (devFlags.enableGpuBufferOps || featuresRequireGpuBufferOps) && !inputrec.useMts;
+    simulationWorkload.useGpuFBufferOps =
+            (devFlags.enableGpuBufferOps || featuresRequireGpuBufferOps) && !inputrec.useMts;
+    if (simulationWorkload.useGpuXBufferOps || simulationWorkload.useGpuFBufferOps)
+    {
+        GMX_ASSERT(simulationWorkload.useGpuNonbonded,
+                   "Can only offload X/F buffer ops if nonbonded computation is also offloaded");
+    }
 
     return simulationWorkload;
 }

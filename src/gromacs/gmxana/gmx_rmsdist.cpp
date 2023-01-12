@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -150,7 +146,7 @@ static void calc_nmr(int nind, int nframes, real** dtot1_3, real** dtot1_6, real
     }
 }
 
-static char Hnum[] = "123";
+static const char Hnum[] = "123";
 
 typedef struct
 {
@@ -326,8 +322,14 @@ static int analyze_noe_equivalent(const char*    eq_fn,
                     j      = i + 1;
                     rnri   = atoms->atom[index[i]].resind;
                     rnrj   = atoms->atom[index[j]].resind;
-                    bEquiv = is_equiv(neq, equiv, &nnm[i], rnri, *atoms->resinfo[rnri].name,
-                                      *atoms->atomname[index[i]], rnrj, *atoms->resinfo[rnrj].name,
+                    bEquiv = is_equiv(neq,
+                                      equiv,
+                                      &nnm[i],
+                                      rnri,
+                                      *atoms->resinfo[rnri].name,
+                                      *atoms->atomname[index[i]],
+                                      rnrj,
+                                      *atoms->resinfo[rnrj].name,
                                       *atoms->atomname[index[j]]);
                     if (nnm[i] && bEquiv)
                     {
@@ -398,8 +400,12 @@ static int analyze_noe_equivalent(const char*    eq_fn,
         for (i = 0; i < isize; i++)
         {
             rnri = atoms->atom[index[i]].resind;
-            fprintf(debug, "%s %s %d -> %s\n", *atoms->atomname[index[i]],
-                    *atoms->resinfo[rnri].name, rnri, nnm[i] ? nnm[i] : "");
+            fprintf(debug,
+                    "%s %s %d -> %s\n",
+                    *atoms->atomname[index[i]],
+                    *atoms->resinfo[rnri].name,
+                    rnri,
+                    nnm[i] ? nnm[i] : "");
         }
     }
 
@@ -427,8 +433,15 @@ static int analyze_noe_equivalent(const char*    eq_fn,
             /* dump group definitions */
             if (debug)
             {
-                fprintf(debug, "%d %d %d %d %s %s %d\n", i, gi, noe_gr[gi].ianr, noe_gr[gi].anr,
-                        noe_gr[gi].aname, noe_gr[gi].rname, noe_gr[gi].rnr);
+                fprintf(debug,
+                        "%d %d %d %d %s %s %d\n",
+                        i,
+                        gi,
+                        noe_gr[gi].ianr,
+                        noe_gr[gi].anr,
+                        noe_gr[gi].aname,
+                        noe_gr[gi].rname,
+                        noe_gr[gi].rnr);
             }
         }
     }
@@ -508,9 +521,24 @@ static void write_noe(FILE* fp, int gnr, t_noe** noe, t_noe_gr* noe_gr, real rma
     t_noe_gr gri, grj;
 
     min3 = min6 = 1e6;
-    fprintf(fp, ";%4s %3s %4s %4s%3s %4s %4s %4s %4s%3s %5s %5s %8s %2s %2s %s\n", "ianr", "anr",
-            "anm", "rnm", "rnr", "ianr", "anr", "anm", "rnm", "rnr", "1/r^3", "1/r^6", "intnsty",
-            "Dr", "Da", "scale");
+    fprintf(fp,
+            ";%4s %3s %4s %4s%3s %4s %4s %4s %4s%3s %5s %5s %8s %2s %2s %s\n",
+            "ianr",
+            "anr",
+            "anm",
+            "rnm",
+            "rnr",
+            "ianr",
+            "anr",
+            "anm",
+            "rnm",
+            "rnr",
+            "1/r^3",
+            "1/r^6",
+            "intnsty",
+            "Dr",
+            "Da",
+            "scale");
     for (i = 0; i < gnr; i++)
     {
         gri = noe_gr[i];
@@ -547,10 +575,24 @@ static void write_noe(FILE* fp, int gnr, t_noe** noe, t_noe_gr* noe_gr, real rma
                 {
                     std::strcpy(b6, "-");
                 }
-                fprintf(fp, "%4d %4d %4s %4s%3d %4d %4d %4s %4s%3d %5s %5s %8d %2d %2s %s\n",
-                        gri.ianr + 1, gri.anr + 1, gri.aname, gri.rname, gri.rnr + 1, grj.ianr + 1,
-                        grj.anr + 1, grj.aname, grj.rname, grj.rnr + 1, b3, b6,
-                        gmx::roundToInt(noe[i][j].i_6), grj.rnr - gri.rnr, buf, noe2scale(r3, r6, rmax));
+                fprintf(fp,
+                        "%4d %4d %4s %4s%3d %4d %4d %4s %4s%3d %5s %5s %8d %2d %2s %s\n",
+                        gri.ianr + 1,
+                        gri.anr + 1,
+                        gri.aname,
+                        gri.rname,
+                        gri.rnr + 1,
+                        grj.ianr + 1,
+                        grj.anr + 1,
+                        grj.aname,
+                        grj.rname,
+                        grj.rnr + 1,
+                        b3,
+                        b6,
+                        gmx::roundToInt(noe[i][j].i_6),
+                        grj.rnr - gri.rnr,
+                        buf,
+                        noe2scale(r3, r6, rmax));
             }
         }
     }
@@ -562,7 +604,9 @@ static void write_noe(FILE* fp, int gnr, t_noe** noe, t_noe_gr* noe_gr, real rma
             fprintf(stdout,
                     "NOTE: no 1/r^%d averaged distances found below %g, "
                     "smallest was %g\n",
-                    i, rmax, MINI);
+                    i,
+                    rmax,
+                    MINI);
         }
         else
         {
@@ -714,8 +758,8 @@ int gmx_rmsdist(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa,
-                           asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(
+                &argc, argv, PCA_CAN_VIEW | PCA_CAN_TIME, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
     {
         return 0;
     }
@@ -834,8 +878,8 @@ int gmx_rmsdist(int argc, char* argv[])
         /* make list of noe atom groups */
         snew(noe_index, isize + 1);
         snew(noe_gr, isize);
-        gnr = analyze_noe_equivalent(opt2fn_null("-equiv", NFILE, fnm), atoms, isize, index, bSumH,
-                                     noe_index, noe_gr);
+        gnr = analyze_noe_equivalent(
+                opt2fn_null("-equiv", NFILE, fnm), atoms, isize, index, bSumH, noe_index, noe_gr);
         fprintf(stdout, "Found %d non-equivalent atom-groups in %d atoms\n", gnr, isize);
         /* make half matrix of of noe-group distances from atom distances */
         snew(noe, gnr);
@@ -855,34 +899,101 @@ int gmx_rmsdist(int argc, char* argv[])
 
     if (bRMS)
     {
-        write_xpm(opt2FILE("-rms", NFILE, fnm, "w"), 0, "RMS of distance", "RMS (nm)", "Atom Index",
-                  "Atom Index", isize, isize, resnr, resnr, rms, 0.0, rmsmax, rlo, rhi, &nlevels);
+        write_xpm(opt2FILE("-rms", NFILE, fnm, "w"),
+                  0,
+                  "RMS of distance",
+                  "RMS (nm)",
+                  "Atom Index",
+                  "Atom Index",
+                  isize,
+                  isize,
+                  resnr,
+                  resnr,
+                  rms,
+                  0.0,
+                  rmsmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
     }
 
     if (bScale)
     {
-        write_xpm(opt2FILE("-scl", NFILE, fnm, "w"), 0, "Relative RMS", "RMS", "Atom Index",
-                  "Atom Index", isize, isize, resnr, resnr, rmsc, 0.0, rmscmax, rlo, rhi, &nlevels);
+        write_xpm(opt2FILE("-scl", NFILE, fnm, "w"),
+                  0,
+                  "Relative RMS",
+                  "RMS",
+                  "Atom Index",
+                  "Atom Index",
+                  isize,
+                  isize,
+                  resnr,
+                  resnr,
+                  rmsc,
+                  0.0,
+                  rmscmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
     }
 
     if (bMean)
     {
-        write_xpm(opt2FILE("-mean", NFILE, fnm, "w"), 0, "Mean Distance", "Distance (nm)",
-                  "Atom Index", "Atom Index", isize, isize, resnr, resnr, mean, 0.0, meanmax, rlo,
-                  rhi, &nlevels);
+        write_xpm(opt2FILE("-mean", NFILE, fnm, "w"),
+                  0,
+                  "Mean Distance",
+                  "Distance (nm)",
+                  "Atom Index",
+                  "Atom Index",
+                  isize,
+                  isize,
+                  resnr,
+                  resnr,
+                  mean,
+                  0.0,
+                  meanmax,
+                  rlo,
+                  rhi,
+                  &nlevels);
     }
 
     if (bNMR3)
     {
-        write_xpm(opt2FILE("-nmr3", NFILE, fnm, "w"), 0, "1/r^3 averaged distances",
-                  "Distance (nm)", "Atom Index", "Atom Index", isize, isize, resnr, resnr, dtot1_3,
-                  0.0, max1_3, rlo, rhi, &nlevels);
+        write_xpm(opt2FILE("-nmr3", NFILE, fnm, "w"),
+                  0,
+                  "1/r^3 averaged distances",
+                  "Distance (nm)",
+                  "Atom Index",
+                  "Atom Index",
+                  isize,
+                  isize,
+                  resnr,
+                  resnr,
+                  dtot1_3,
+                  0.0,
+                  max1_3,
+                  rlo,
+                  rhi,
+                  &nlevels);
     }
     if (bNMR6)
     {
-        write_xpm(opt2FILE("-nmr6", NFILE, fnm, "w"), 0, "1/r^6 averaged distances",
-                  "Distance (nm)", "Atom Index", "Atom Index", isize, isize, resnr, resnr, dtot1_6,
-                  0.0, max1_6, rlo, rhi, &nlevels);
+        write_xpm(opt2FILE("-nmr6", NFILE, fnm, "w"),
+                  0,
+                  "1/r^6 averaged distances",
+                  "Distance (nm)",
+                  "Atom Index",
+                  "Atom Index",
+                  isize,
+                  isize,
+                  resnr,
+                  resnr,
+                  dtot1_6,
+                  0.0,
+                  max1_6,
+                  rlo,
+                  rhi,
+                  &nlevels);
     }
 
     if (bNOE)

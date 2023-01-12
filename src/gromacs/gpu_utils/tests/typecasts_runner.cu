@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -48,6 +47,7 @@
 #include "gromacs/gpu_utils/devicebuffer.h"
 #include "gromacs/gpu_utils/typecasts.cuh"
 #include "gromacs/hardware/device_information.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/stringutil.h"
 
@@ -65,7 +65,7 @@ namespace test
  * \param[in]  float3Output  Output data in float3 format.
  * \param[in]  numElements   Size of the data buffers.
  */
-void inline saveFloat3InRVecFormat(std::vector<gmx::RVec>& rVecOutput, const float3* float3Output, int numElements)
+void inline saveFloat3InRVecFormat(ArrayRef<gmx::RVec> rVecOutput, const float3* float3Output, int numElements)
 {
     for (int i = 0; i < numElements; i++)
     {
@@ -75,7 +75,7 @@ void inline saveFloat3InRVecFormat(std::vector<gmx::RVec>& rVecOutput, const flo
     }
 }
 
-void convertRVecToFloat3OnHost(std::vector<gmx::RVec>& rVecOutput, const std::vector<gmx::RVec>& rVecInput)
+void convertRVecToFloat3OnHost(ArrayRef<gmx::RVec> rVecOutput, ArrayRef<const gmx::RVec> rVecInput)
 {
     const int numElements = rVecInput.size();
 
@@ -105,9 +105,9 @@ static __global__ void convertRVecToFloat3OnDevice_kernel(DeviceBuffer<float3> g
     }
 }
 
-void convertRVecToFloat3OnDevice(std::vector<gmx::RVec>&       h_rVecOutput,
-                                 const std::vector<gmx::RVec>& h_rVecInput,
-                                 const TestDevice*             testDevice)
+void convertRVecToFloat3OnDevice(ArrayRef<gmx::RVec>       h_rVecOutput,
+                                 ArrayRef<const gmx::RVec> h_rVecInput,
+                                 const TestDevice*         testDevice)
 {
     const DeviceContext& deviceContext = testDevice->deviceContext();
     const DeviceStream&  deviceStream  = testDevice->deviceStream();
@@ -118,8 +118,8 @@ void convertRVecToFloat3OnDevice(std::vector<gmx::RVec>&       h_rVecOutput,
 
     DeviceBuffer<RVec> d_rVecInput;
     allocateDeviceBuffer(&d_rVecInput, numElements, deviceContext);
-    copyToDeviceBuffer(&d_rVecInput, h_rVecInput.data(), 0, numElements, deviceStream,
-                       GpuApiCallBehavior::Sync, nullptr);
+    copyToDeviceBuffer(
+            &d_rVecInput, h_rVecInput.data(), 0, numElements, deviceStream, GpuApiCallBehavior::Sync, nullptr);
 
     DeviceBuffer<float3> d_float3Output;
     allocateDeviceBuffer(&d_float3Output, numElements * DIM, deviceContext);
@@ -134,13 +134,17 @@ void convertRVecToFloat3OnDevice(std::vector<gmx::RVec>&       h_rVecOutput,
     kernelLaunchConfig.sharedMemorySize = 0;
 
     auto       kernelPtr  = convertRVecToFloat3OnDevice_kernel;
-    const auto kernelArgs = prepareGpuKernelArguments(kernelPtr, kernelLaunchConfig,
-                                                      &d_float3Output, &d_rVecInput, &numElements);
-    launchGpuKernel(kernelPtr, kernelLaunchConfig, deviceStream, nullptr,
-                    "convertRVecToFloat3OnDevice_kernel", kernelArgs);
+    const auto kernelArgs = prepareGpuKernelArguments(
+            kernelPtr, kernelLaunchConfig, &d_float3Output, &d_rVecInput, &numElements);
+    launchGpuKernel(kernelPtr,
+                    kernelLaunchConfig,
+                    deviceStream,
+                    nullptr,
+                    "convertRVecToFloat3OnDevice_kernel",
+                    kernelArgs);
 
-    copyFromDeviceBuffer(h_float3Output.data(), &d_float3Output, 0, numElements, deviceStream,
-                         GpuApiCallBehavior::Sync, nullptr);
+    copyFromDeviceBuffer(
+            h_float3Output.data(), &d_float3Output, 0, numElements, deviceStream, GpuApiCallBehavior::Sync, nullptr);
 
     saveFloat3InRVecFormat(h_rVecOutput, h_float3Output.data(), numElements);
 

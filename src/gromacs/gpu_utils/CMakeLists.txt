@@ -1,10 +1,9 @@
 #
 # This file is part of the GROMACS molecular simulation package.
 #
-# Copyright (c) 2015,2016,2017,2018,2019,2020, by the GROMACS development team, led by
-# Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
-# and including many others, as listed in the AUTHORS file in the
-# top-level source directory and at http://www.gromacs.org.
+# Copyright 2015- The GROMACS Authors
+# and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+# Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
 #
 # GROMACS is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public
 # License along with GROMACS; if not, see
-# http://www.gnu.org/licenses, or write to the Free Software Foundation,
+# https://www.gnu.org/licenses, or write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
 #
 # If you want to redistribute modifications to GROMACS, please
@@ -27,14 +26,16 @@
 # consider code for inclusion in the official distribution, but
 # derived work must not be called official GROMACS. Details are found
 # in the README & COPYING files - if they are missing, get the
-# official version at http://www.gromacs.org.
+# official version at https://www.gromacs.org.
 #
 # To help us fund GROMACS development, we humbly ask that you cite
-# the research papers on the package. Check out http://www.gromacs.org.
+# the research papers on the package. Check out https://www.gromacs.org.
 
 # Note, source files should be listed in alphabetical order, to reduce
 # the incidence of textual clashes when adding/moving files that
 # otherwise make the end of the list a hotspot.
+
+add_library(gpu_utils INTERFACE)
 
 gmx_add_libgromacs_sources(
         clfftinitializer.cpp
@@ -46,6 +47,7 @@ if(GMX_GPU_OPENCL)
     gmx_add_libgromacs_sources(
         device_context_ocl.cpp
         device_stream_ocl.cpp
+        pmalloc_ocl.cpp
         ocl_compiler.cpp
         ocl_caching.cpp
         oclutils.cpp
@@ -56,16 +58,17 @@ elseif(GMX_GPU_CUDA)
         device_stream.cu
         gpu_utils.cu
         pinning.cu
-        pmalloc_cuda.cu
+        pmalloc.cu
         )
     _gmx_add_files_to_property(CUDA_SOURCES
         device_stream_manager.cpp
-	)
+        )
 elseif(GMX_GPU_SYCL)
     gmx_add_libgromacs_sources(
         devicebuffer_sycl.cpp
         device_context_sycl.cpp
         device_stream_sycl.cpp
+        pmalloc_sycl.cpp
         )
     _gmx_add_files_to_property(SYCL_SOURCES
         devicebuffer_sycl.cpp
@@ -73,6 +76,7 @@ elseif(GMX_GPU_SYCL)
         device_context_sycl.cpp
         device_stream_manager.cpp
         device_stream_sycl.cpp
+        pmalloc_sycl.cpp
         )
 else()
     gmx_add_libgromacs_sources(
@@ -80,6 +84,38 @@ else()
         device_stream.cpp
     )
 endif()
+
+# Source files have the following private module dependencies.
+target_link_libraries(gpu_utils PRIVATE
+#                      gmxlib
+#                      math
+#                      mdtypes
+#                      tng_io
+                      )
+
+# Public interface for modules, including dependencies and interfaces
+#target_include_directories(gpu_utils PUBLIC
+target_include_directories(gpu_utils INTERFACE
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+#target_link_libraries(gpu_utils PUBLIC
+target_link_libraries(gpu_utils INTERFACE
+                      legacy_api
+                      )
+
+# TODO: when gpu_utils is an OBJECT target
+#target_link_libraries(gpu_utils PUBLIC legacy_api)
+#target_link_libraries(gpu_utils PRIVATE common)
+
+# Module dependencies
+# gpu_utils interfaces convey transitive dependence on these modules.
+#target_link_libraries(gpu_utils PUBLIC
+target_link_libraries(gpu_utils INTERFACE
+#                      utility
+                      )
+# Source files have the following private module dependencies.
+#target_link_libraries(gpu_utils PRIVATE tng_io)
+# TODO: Explicitly link specific modules.
+#target_link_libraries(gpu_utils PRIVATE legacy_modules)
 
 if (BUILD_TESTING)
     add_subdirectory(tests)

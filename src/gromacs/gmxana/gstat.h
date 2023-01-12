@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2018 by the GROMACS development team.
- * Copyright (c) 2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,19 +26,20 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #ifndef GMX_GMXANA_GSTAT_H
 #define GMX_GMXANA_GSTAT_H
+
+#include <string>
 
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/topology/index.h"
 
 struct gmx_output_env_t;
-class ResidueType;
 
 /* must correspond with 'leg' g_chi.c:727 */
 enum
@@ -75,19 +72,18 @@ typedef struct
     int minCalpha, minC, H, N, C, O, Cn[MAXCHI + 3];
 } t_dihatms; /* Cn[0]=N, Cn[1]=Ca, Cn[2]=Cb etc. */
 
-typedef struct
+struct t_dlist
 {
-    char      name[12];
-    int       resnr;
-    int       index;     /* Index for amino acids (histograms) */
-    int       j0[edMax]; /* Index in dih array (phi angle is first...) */
-    t_dihatms atm;
-    int       b[edMax];
-    int       ntr[edMax];
-    real      S2[edMax];
-    real      rot_occ[edMax][NROT];
-
-} t_dlist;
+    char        name[12];
+    int         resnr;
+    std::string residueName;
+    int         j0[edMax]; /* Index in dih array (phi angle is first...) */
+    t_dihatms   atm;
+    int         b[edMax];
+    int         ntr[edMax];
+    real        S2[edMax];
+    real        rot_occ[edMax][NROT];
+};
 
 typedef struct
 {
@@ -160,8 +156,7 @@ void low_ana_dih_trans(gmx_bool                bTrans,
                        const char*             fn_histo,
                        int                     maxchi,
                        real**                  dih,
-                       int                     nlist,
-                       t_dlist                 dlist[],
+                       gmx::ArrayRef<t_dlist>  dlist,
                        int                     nframes,
                        int                     nangles,
                        const char*             grpname,
@@ -232,11 +227,10 @@ void make_histo(FILE* log, int ndata, real data[], int npoints, int histo[], rea
  *           if both are 0, these values are computed by the routine itself
  */
 
-void normalize_histo(int npoints, const int histo[], real dx, real normhisto[]);
+void normalize_histo(gmx::ArrayRef<const int> histo, real dx, gmx::ArrayRef<real> normhisto);
 /*
  * Normalize a histogram so that the integral over the histo is 1
  *
- * npoints    number of points in the histo array
  * histo      input histogram
  * dx         distance between points on the X-axis
  * normhisto  normalized output histogram
@@ -244,52 +238,54 @@ void normalize_histo(int npoints, const int histo[], real dx, real normhisto[]);
 
 /* Routines from pp2shift (anadih.c etc.) */
 
-void do_pp2shifts(FILE* fp, int nframes, int nlist, t_dlist dlist[], real** dih);
+void do_pp2shifts(FILE* fp, int nframes, gmx::ArrayRef<const t_dlist> dlist, real** dih);
 
-gmx_bool has_dihedral(int Dih, t_dlist* dl);
+gmx_bool has_dihedral(int Dih, const t_dlist& dlist);
 
-t_dlist* mk_dlist(FILE*          log,
-                  const t_atoms* atoms,
-                  int*           nlist,
-                  gmx_bool       bPhi,
-                  gmx_bool       bPsi,
-                  gmx_bool       bChi,
-                  gmx_bool       bHChi,
-                  int            maxchi,
-                  int            r0,
-                  ResidueType*   rt);
+/*! \brief Describe the dihedrals in the residues of the \c atoms
+ * structure
+ *
+ * Return a vector with a t_dlist entry for each residue in \c
+ * atoms. The entry for a residue contains its name, its index within
+ * the residues, and a mapping from chemical peptide atom names to
+ * atom indices based on the atom names. Many fields of t_dlist are
+ * not yet filled. */
+std::vector<t_dlist> mk_dlist(FILE*          log,
+                              const t_atoms* atoms,
+                              gmx_bool       bPhi,
+                              gmx_bool       bPsi,
+                              gmx_bool       bChi,
+                              gmx_bool       bHChi,
+                              int            maxchi,
+                              int            r0);
 
-void pr_dlist(FILE*    fp,
-              int      nl,
-              t_dlist  dl[],
-              real     dt,
-              int      printtype,
-              gmx_bool bPhi,
-              gmx_bool bPsi,
-              gmx_bool bChi,
-              gmx_bool bOmega,
-              int      maxchi);
+void pr_dlist(FILE*                        fp,
+              gmx::ArrayRef<const t_dlist> dlist,
+              real                         dt,
+              int                          printtype,
+              gmx_bool                     bPhi,
+              gmx_bool                     bPsi,
+              gmx_bool                     bChi,
+              gmx_bool                     bOmega,
+              int                          maxchi);
 
-int pr_trans(FILE* fp, int nl, t_dlist dl[], real dt, int Xi);
+void mk_chi_lookup(int** lookup, int maxchi, gmx::ArrayRef<const t_dlist> dlist);
 
-void mk_chi_lookup(int** lookup, int maxchi, int nlist, t_dlist dlist[]);
+void mk_multiplicity_lookup(int* multiplicity, int maxchi, gmx::ArrayRef<const t_dlist> dlist, int nangle);
 
-void mk_multiplicity_lookup(int* multiplicity, int maxchi, int nlist, t_dlist dlist[], int nangle);
-
-void get_chi_product_traj(real**                  dih,
-                          int                     nframes,
-                          int                     nlist,
-                          int                     maxchi,
-                          t_dlist                 dlist[],
-                          real                    time[],
-                          int**                   lookup,
-                          int*                    multiplicity,
-                          gmx_bool                bRb,
-                          gmx_bool                bNormalize,
-                          real                    core_frac,
-                          gmx_bool                bAll,
-                          const char*             fnall,
-                          const gmx_output_env_t* oenv);
+void get_chi_product_traj(real**                       dih,
+                          int                          nframes,
+                          int                          maxchi,
+                          gmx::ArrayRef<const t_dlist> dlist,
+                          real                         time[],
+                          int**                        lookup,
+                          int*                         multiplicity,
+                          gmx_bool                     bRb,
+                          gmx_bool                     bNormalize,
+                          real                         core_frac,
+                          gmx_bool                     bAll,
+                          const char*                  fnall,
+                          const gmx_output_env_t*      oenv);
 
 void print_one(const gmx_output_env_t* oenv,
                const char*             base,

@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2017- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief Defines routine for reporting GPU usage.
@@ -47,6 +46,7 @@
 
 #include "gromacs/ewald/pme.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
+#include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/taskassignment/taskassignment.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/cstringutil.h"
@@ -86,9 +86,8 @@ void reportGpuUsage(const MDLogger&                   mdlog,
                     size_t                            numGpuTasksOnThisNode,
                     size_t                            numRanks,
                     bool                              printHostName,
-                    bool                              useGpuForBonded,
                     PmeRunMode                        pmeRunMode,
-                    bool                              useGpuForUpdate)
+                    const SimulationWorkload&         simulationWork)
 {
     size_t numGpusInUse = countUniqueGpuIdsUsed(gpuTaskAssignmentOnRanksOfThisNode);
     if (numGpusInUse == 0)
@@ -131,15 +130,19 @@ void reportGpuUsage(const MDLogger&                   mdlog,
         output += gmx::formatString(
                 "%zu GPU%s selected for this run.\n"
                 "Mapping of GPU IDs to the %zu GPU task%s in the %zu rank%s on this node:\n  %s\n",
-                numGpusInUse, bPluralGpus ? "s" : "", numGpuTasksOnThisNode,
-                (numGpuTasksOnThisNode > 1) ? "s" : "", numRanks, (numRanks > 1) ? "s" : "",
+                numGpusInUse,
+                bPluralGpus ? "s" : "",
+                numGpuTasksOnThisNode,
+                (numGpuTasksOnThisNode > 1) ? "s" : "",
+                numRanks,
+                (numRanks > 1) ? "s" : "",
                 gpuIdsString.c_str());
         // Because there is a GPU in use, there must be a PP task on a GPU.
         output += gmx::formatString(
                 "PP tasks will do (non-perturbed) short-ranged%s interactions on the GPU\n",
-                useGpuForBonded ? " and most bonded" : "");
+                simulationWork.useGpuBonded ? " and most bonded" : "");
         output += gmx::formatString("PP task will update and constrain coordinates on the %s\n",
-                                    useGpuForUpdate ? "GPU" : "CPU");
+                                    simulationWork.useGpuUpdate ? "GPU" : "CPU");
         if (pmeRunMode == PmeRunMode::Mixed)
         {
             output += gmx::formatString("PME tasks will do only spread and gather on the GPU\n");
@@ -147,6 +150,11 @@ void reportGpuUsage(const MDLogger&                   mdlog,
         else if (pmeRunMode == PmeRunMode::GPU)
         {
             output += gmx::formatString("PME tasks will do all aspects on the GPU\n");
+        }
+        if (simulationWork.useGpuDirectCommunication)
+        {
+            output +=
+                    gmx::formatString("GPU direct communication will be used between MPI ranks.\n");
         }
     }
 

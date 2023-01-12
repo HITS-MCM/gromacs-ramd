@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -43,9 +42,10 @@
  */
 #include <gtest/gtest.h>
 
-#include "nblib/gmxsetup.h"
+#include "nblib/gmxcalculatorcpu.h"
 #include "nblib/kerneloptions.h"
 #include "nblib/simulationstate.h"
+#include "nblib/tests/testhelpers.h"
 #include "nblib/tests/testsystems.h"
 #include "gromacs/utility/arrayref.h"
 
@@ -57,26 +57,76 @@ namespace
 {
 TEST(NBlibTest, GmxForceCalculatorCanCompute)
 {
-    ArgonSimulationStateBuilder argonSystemBuilder;
+    ArgonSimulationStateBuilder argonSystemBuilder(fftypes::GROMOS43A1);
     SimulationState             simState = argonSystemBuilder.setupSimulationState();
     NBKernelOptions             options  = NBKernelOptions();
     options.nbnxmSimd                    = SimdKernels::SimdNo;
-    std::unique_ptr<GmxForceCalculator> gmxForceCalculator =
-            nblib::GmxSetupDirector::setupGmxForceCalculator(simState, options);
-    EXPECT_NO_THROW(gmxForceCalculator->compute(simState.coordinates(), simState.forces()));
+
+    std::unique_ptr<GmxNBForceCalculatorCpu> gmxForceCalculator =
+            setupGmxForceCalculatorCpu(simState.topology(), options);
+    gmxForceCalculator->updatePairlist(simState.coordinates(), simState.box());
+
+    EXPECT_NO_THROW(gmxForceCalculator->compute(simState.coordinates(), simState.box(), simState.forces()));
 }
 
-TEST(NBlibTest, CanSetupStepWorkload)
+TEST(NBlibTest, ArgonVirialsAreCorrect)
 {
-    NBKernelOptions options;
-    EXPECT_NO_THROW(NbvSetupUtil{}.setupStepWorkload(options));
+    ArgonSimulationStateBuilder argonSystemBuilder(fftypes::OPLSA);
+    SimulationState             simState = argonSystemBuilder.setupSimulationState();
+    NBKernelOptions             options  = NBKernelOptions();
+    options.nbnxmSimd                    = SimdKernels::SimdNo;
+    std::unique_ptr<GmxNBForceCalculatorCpu> gmxForceCalculator =
+            setupGmxForceCalculatorCpu(simState.topology(), options);
+    gmxForceCalculator->updatePairlist(simState.coordinates(), simState.box());
+
+    std::vector<real> virialArray(9, 0.0);
+
+    gmxForceCalculator->compute(simState.coordinates(), simState.box(), simState.forces(), virialArray);
+
+    RefDataChecker virialsOutputTest(1e-7);
+    virialsOutputTest.testArrays<real>(virialArray, "Virials");
 }
 
-TEST(NBlibTest, GmxForceCalculatorCanSetupInteractionConst)
+TEST(NBlibTest, ArgonEnergiesAreCorrect)
 {
-    NBKernelOptions options;
-    EXPECT_NO_THROW(NbvSetupUtil{}.setupInteractionConst(options));
+    ArgonSimulationStateBuilder argonSystemBuilder(fftypes::OPLSA);
+    SimulationState             simState = argonSystemBuilder.setupSimulationState();
+    NBKernelOptions             options  = NBKernelOptions();
+    options.nbnxmSimd                    = SimdKernels::SimdNo;
+    std::unique_ptr<GmxNBForceCalculatorCpu> gmxForceCalculator =
+            setupGmxForceCalculatorCpu(simState.topology(), options);
+    gmxForceCalculator->updatePairlist(simState.coordinates(), simState.box());
+
+    // number of energy kinds is 5: COULSR, LJSR, BHAMSR, COUL14, LJ14,
+    std::vector<real> energies(5, 0.0);
+
+    gmxForceCalculator->compute(
+            simState.coordinates(), simState.box(), simState.forces(), gmx::ArrayRef<real>{}, energies);
+
+    RefDataChecker energiesOutputTest(5e-5);
+    energiesOutputTest.testArrays<real>(energies, "Argon energies");
 }
+
+TEST(NBlibTest, SpcMethanolEnergiesAreCorrect)
+{
+    SpcMethanolSimulationStateBuilder spcMethanolSystemBuilder;
+    SimulationState                   simState = spcMethanolSystemBuilder.setupSimulationState();
+    NBKernelOptions                   options  = NBKernelOptions();
+    options.nbnxmSimd                          = SimdKernels::SimdNo;
+    std::unique_ptr<GmxNBForceCalculatorCpu> gmxForceCalculator =
+            setupGmxForceCalculatorCpu(simState.topology(), options);
+    gmxForceCalculator->updatePairlist(simState.coordinates(), simState.box());
+
+    // number of energy kinds is 5: COULSR, LJSR, BHAMSR, COUL14, LJ14,
+    std::vector<real> energies(5, 0.0);
+
+    gmxForceCalculator->compute(
+            simState.coordinates(), simState.box(), simState.forces(), gmx::ArrayRef<real>{}, energies);
+
+    RefDataChecker energiesOutputTest(5e-5);
+    energiesOutputTest.testArrays<real>(energies, "SPC-methanol energies");
+}
+
 } // namespace
 } // namespace test
 } // namespace nblib

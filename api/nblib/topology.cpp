@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2020,2021, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2020- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -86,7 +85,8 @@ ExclusionLists<int> TopologyBuilder::createExclusionsLists() const
         {
             auto offsetExclusions = offsetGmxBlock(exclusionBlockPerMolecule, particleNumberOffset);
 
-            std::copy(std::begin(offsetExclusions), std::end(offsetExclusions),
+            std::copy(std::begin(offsetExclusions),
+                      std::end(offsetExclusions),
                       std::back_inserter(exclusionBlockGlobal));
 
             particleNumberOffset += molecule.numParticlesInMolecule();
@@ -134,8 +134,10 @@ ListedInteractionData TopologyBuilder::createInteractionData(const ParticleSeque
 
         // combine stage 1 + 2 expansion arrays
         std::vector<size_t> expansionArray(expansionArrayStage1.size());
-        std::transform(begin(expansionArrayStage1), end(expansionArrayStage1), begin(expansionArray),
-                       [& S2 = expansionArrayStage2](size_t S1Element) { return S2[S1Element]; });
+        std::transform(begin(expansionArrayStage1),
+                       end(expansionArrayStage1),
+                       begin(expansionArray),
+                       [&S2 = expansionArrayStage2](size_t S1Element) { return S2[S1Element]; });
 
         // add data about InteractionType instances
         interactionDataElement.parameters = std::move(uniqueInteractionInstances);
@@ -144,7 +146,9 @@ ListedInteractionData TopologyBuilder::createInteractionData(const ParticleSeque
         // coordinateIndices contains the particle sequence IDs of all interaction coordinates of type <BondType>
         auto coordinateIndices = detail::sequenceIDs<InteractionType>(this->molecules_, particleSequencer);
         // zip coordinateIndices(i,j,...) + expansionArray(k) -> interactionDataElement.indices(i,j,...,k)
-        std::transform(begin(coordinateIndices), end(coordinateIndices), begin(expansionArray),
+        std::transform(begin(coordinateIndices),
+                       end(coordinateIndices),
+                       begin(expansionArray),
                        begin(interactionDataElement.indices),
                        [](auto coordinateIndex, auto interactionIndex) {
                            std::array<int, coordinateIndex.size() + 1> ret{ 0 };
@@ -236,7 +240,8 @@ Topology TopologyBuilder::buildTopology()
             {
                 std::string message =
                         formatString("Missing nonbonded interaction parameters for pair {} {}",
-                                     particleType1.first, particleType2.first);
+                                     particleType1.first,
+                                     particleType2.first);
                 throw InputException(message);
             }
         }

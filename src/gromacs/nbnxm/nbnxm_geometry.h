@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2016 by the GROMACS development team.
- * Copyright (c) 2017,2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  *
@@ -58,19 +56,12 @@
  */
 static inline int get_2log(int n)
 {
-    int log2;
-
-    log2 = 0;
-    while ((1 << log2) < n)
-    {
-        log2++;
-    }
-    if ((1 << log2) != n)
+    if (!gmx::isPowerOfTwo(n))
     {
         gmx_fatal(FARGS, "nbnxn na_c (%d) is not a power of 2", n);
     }
 
-    return log2;
+    return gmx::log2I(n);
 }
 
 namespace Nbnxm
@@ -78,19 +69,22 @@ namespace Nbnxm
 
 /*! \brief The nbnxn i-cluster size in atoms for each nbnxn kernel type */
 static constexpr gmx::EnumerationArray<KernelType, int> IClusterSizePerKernelType = {
-    { 0, c_nbnxnCpuIClusterSize, c_nbnxnCpuIClusterSize, c_nbnxnCpuIClusterSize,
-      c_nbnxnGpuClusterSize, c_nbnxnGpuClusterSize }
+    { 0, c_nbnxnCpuIClusterSize, c_nbnxnCpuIClusterSize, c_nbnxnCpuIClusterSize, c_nbnxnGpuClusterSize, c_nbnxnGpuClusterSize }
 };
 
 /*! \brief The nbnxn j-cluster size in atoms for each nbnxn kernel type */
 static constexpr gmx::EnumerationArray<KernelType, int> JClusterSizePerKernelType = {
-    { 0, c_nbnxnCpuIClusterSize,
+    { 0,
+      c_nbnxnCpuIClusterSize,
 #if GMX_SIMD
-      GMX_SIMD_REAL_WIDTH, GMX_SIMD_REAL_WIDTH / 2,
+      GMX_SIMD_REAL_WIDTH,
+      GMX_SIMD_REAL_WIDTH / 2,
 #else
-      0, 0,
+      0,
+      0,
 #endif
-      c_nbnxnGpuClusterSize, c_nbnxnGpuClusterSize / 2 }
+      c_nbnxnGpuClusterSize,
+      c_nbnxnGpuClusterSize / 2 }
 };
 
 /*! \brief Returns whether the pair-list corresponding to nb_kernel_type is simple */

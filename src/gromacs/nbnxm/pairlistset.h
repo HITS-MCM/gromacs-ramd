@@ -1,11 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2012,2013,2014,2015,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2012- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -28,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 
 /*! \internal \file
@@ -83,12 +81,13 @@ class PairlistSet
 {
 public:
     //! Constructor: initializes the pairlist set as empty
-    PairlistSet(gmx::InteractionLocality locality, const PairlistParams& listParams);
+    PairlistSet(const PairlistParams& listParams);
 
     ~PairlistSet();
 
     //! Constructs the pairlists in the set using the coordinates in \p nbat
-    void constructPairlists(const Nbnxm::GridSet&         gridSet,
+    void constructPairlists(gmx::InteractionLocality      locality,
+                            const Nbnxm::GridSet&         gridSet,
                             gmx::ArrayRef<PairsearchWork> searchWork,
                             nbnxn_atomdata_t*             nbat,
                             const gmx::ListOfLists<int>&  exclusions,
@@ -97,10 +96,7 @@ public:
                             SearchCycleCounting*          searchCycleCounting);
 
     //! Dispatch the kernel for dynamic pairlist pruning
-    void dispatchPruneKernel(const nbnxn_atomdata_t* nbat, const rvec* shift_vec);
-
-    //! Returns the locality
-    gmx::InteractionLocality locality() const { return locality_; }
+    void dispatchPruneKernel(const nbnxn_atomdata_t* nbat, gmx::ArrayRef<const gmx::RVec> shift_vec);
 
     //! Returns the lists of CPU pairlists
     gmx::ArrayRef<const NbnxnPairlistCpu> cpuLists() const { return cpuLists_; }
@@ -122,8 +118,6 @@ public:
     gmx::ArrayRef<const std::unique_ptr<t_nblist>> fepLists() const { return fepLists_; }
 
 private:
-    //! The locality of the pairlist set
-    gmx::InteractionLocality locality_;
     //! List of pairlists in CPU layout
     std::vector<NbnxnPairlistCpu> cpuLists_;
     //! List of working list for rebalancing CPU lists

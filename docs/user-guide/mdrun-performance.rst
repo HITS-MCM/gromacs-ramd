@@ -223,8 +223,8 @@ configuring with ``GMX_SIMD_ARM_SVE_LENGTH=<len>``.
 The supported vector lengths are 128, 256, 512 and 1024. Since the SIMD short-range non-bonded kernels
 only support up to 16 floating point numbers per SIMD vector, 1024 bits vector length is only
 valid in double precision (e.g. ``-DGMX_DOUBLE=on``).
-Note that even if `mdrun` does check the SIMD vector length at runtime, running with a different
-vector length than the one used at CMake time is undefined behavior, and `mdrun` might crash before reaching
+Note that even if :ref:`mdrun <gmx mdrun>` does check the SIMD vector length at runtime, running with a different
+vector length than the one used at CMake time is undefined behavior, and :ref:`mdrun <gmx mdrun>` might crash before reaching
 the check (that would abort with a user-friendly error message).
 
 Process(-or) level parallelization via OpenMP
@@ -258,7 +258,7 @@ Compilation with thread-MPI is controlled by the ``GMX_THREAD_MPI`` CMake variab
 Thread-MPI is compatible with most :ref:`mdrun <gmx mdrun>` features and parallelization schemes,
 including OpenMP, GPUs; it is not compatible with MPI and multi-simulation runs.
 
-By default, the thread-MPI mdrun will use all available cores in the machine by starting
+By default, the thread-MPI :ref:`mdrun <gmx mdrun>` will use all available cores in the machine by starting
 an appropriate number of ranks or OpenMP threads to occupy all of them. The number of
 ranks can be controlled using the
 ``-nt`` and ``-ntmpi`` options. ``-nt`` represents the total number of threads
@@ -759,7 +759,7 @@ Running :ref:`mdrun <gmx mdrun>` on more than one node
 
 This requires configuring |Gromacs| to build with an external MPI
 library. By default, this :ref:`mdrun <gmx mdrun>` executable is run with
-:ref:`mdrun_mpi`. All of the considerations for running single-node
+``gmx_mpi mdrun``. All of the considerations for running single-node
 :ref:`mdrun <gmx mdrun>` still apply, except that ``-ntmpi`` and ``-nt`` cause a fatal
 error, and instead the number of ranks is controlled by the
 MPI environment.
@@ -830,7 +830,7 @@ to choose the number of MPI ranks.
 
     mpirun -np 16 gmx_mpi mdrun
 
-Starts :ref:`mdrun_mpi` with 16 ranks, which are mapped to
+Starts :ref:`gmx mdrun` with 16 ranks, which are mapped to
 the hardware by the MPI library, e.g. as specified
 in an MPI hostfile. The available cores will be
 automatically split among ranks using OpenMP threads,
@@ -841,7 +841,7 @@ such as ``OMP_NUM_THREADS``.
 
     mpirun -np 16 gmx_mpi mdrun -npme 5
 
-Starts :ref:`mdrun_mpi` with 16 ranks, as above, and
+Starts :ref:`gmx mdrun` with 16 ranks, as above, and
 require that 5 of them are dedicated to the PME
 component.
 
@@ -849,7 +849,7 @@ component.
 
     mpirun -np 11 gmx_mpi mdrun -ntomp 2 -npme 6 -ntomp_pme 1
 
-Starts :ref:`mdrun_mpi` with 11 ranks, as above, and
+Starts :ref:`gmx mdrun` with 11 ranks, as above, and
 require that six of them are dedicated to the PME
 component with one OpenMP thread each. The remaining
 five do the PP component, with two OpenMP threads
@@ -859,7 +859,7 @@ each.
 
     mpirun -np 4 gmx_mpi mdrun -ntomp 6 -nb gpu -gputasks 00
 
-Starts :ref:`mdrun_mpi` on a machine with two nodes, using
+Starts :ref:`gmx mdrun` on a machine with two nodes, using
 four total ranks, each rank with six OpenMP threads,
 and both ranks on a node sharing GPU with ID 0.
 
@@ -868,7 +868,7 @@ and both ranks on a node sharing GPU with ID 0.
     mpirun -np 8 gmx_mpi mdrun -ntomp 3 -gputasks 0000
 
 Using a same/similar hardware as above,
-starts :ref:`mdrun_mpi` on a machine with two nodes, using
+starts :ref:`gmx mdrun` on a machine with two nodes, using
 eight total ranks, each rank with three OpenMP threads,
 and all four ranks on a node sharing GPU with ID 0.
 This may or may not be faster than the previous setup
@@ -878,7 +878,7 @@ on the same hardware.
 
     mpirun -np 20 gmx_mpi mdrun -ntomp 4 -gputasks 00
 
-Starts :ref:`mdrun_mpi` with 20 ranks, and assigns the CPU cores evenly
+Starts :ref:`gmx mdrun` with 20 ranks, and assigns the CPU cores evenly
 across ranks each to one OpenMP thread. This setup is likely to be
 suitable when there are ten nodes, each with one GPU, and each node
 has two sockets each of four cores.
@@ -887,7 +887,7 @@ has two sockets each of four cores.
 
     mpirun -np 10 gmx_mpi mdrun -gpu_id 1
 
-Starts :ref:`mdrun_mpi` with 20 ranks, and assigns the CPU cores evenly
+Starts :ref:`gmx mdrun` with 20 ranks, and assigns the CPU cores evenly
 across ranks each to one OpenMP thread. This setup is likely to be
 suitable when there are ten nodes, each with two GPUs, but another
 job on each node is using GPU 0. The job scheduler should set the
@@ -898,7 +898,7 @@ performance of :ref:`mdrun <gmx mdrun>` will suffer greatly.
 
     mpirun -np 20 gmx_mpi mdrun -gpu_id 01
 
-Starts :ref:`mdrun_mpi` with 20 ranks. This setup is likely
+Starts :ref:`gmx mdrun` with 20 ranks. This setup is likely
 to be suitable when there are ten nodes, each with two
 GPUs, but there is no need to specify ``-gpu_id`` for the
 normal case where all the GPUs on the node are available
@@ -922,7 +922,7 @@ The Wallcycle module is used for runtime performance measurement of :ref:`gmx md
 At the end of the log file of each run, the "Real cycle and time accounting" section
 provides a table with runtime statistics for different parts of the :ref:`gmx mdrun` code
 in rows of the table.
-The table contains colums indicating the number of ranks and threads that
+The table contains columns indicating the number of ranks and threads that
 executed the respective part of the run, wall-time and cycle
 count aggregates (across all threads and ranks) averaged over the entire run.
 The last column also shows what precentage of the total runtime each row represents.
@@ -1061,7 +1061,7 @@ outlined further below.**
 
 Right now, we generally support short-range nonbonded offload with and
 without dynamic pruning on a wide range of GPU accelerators
-(both NVIDIA and AMD). This is compatible with the grand majority of
+(NVIDIA, AMD, and Intel). This is compatible with the grand majority of
 the features and parallelization modes and can be used to scale to large machines.
 
 Simultaneously offloading both short-range nonbonded and long-range
@@ -1130,8 +1130,8 @@ A typical case for the latter is free-energy calculations.
 
 .. _gmx-gpu-update:
 
-GPU accelerated calculation of constraints and coordinate update (CUDA only)
-............................................................................
+GPU accelerated calculation of constraints and coordinate update (CUDA and SYCL only)
+.....................................................................................
 
 .. TODO again, extend this and add some actual useful information concerning performance etc...
 
@@ -1249,10 +1249,8 @@ A few percent of runtime spent in this category is normal,
 but in fast-iterating and multi-GPU parallel runs 10% or larger overheads can be observed.
 In general, a user can do little to avoid such overheads, but there
 are a few cases where tweaks can give performance benefits.
-In single-rank runs timing of GPU tasks is by default enabled and,
+In OpenCL runs, timing of GPU tasks is by default enabled and,
 while in most cases its impact is small, in fast runs performance can be affected.
-The performance impact will be most significant on NVIDIA GPUs with CUDA,
-less on AMD and Intel with OpenCL.
 In these cases, when more than a few percent of "Launch GPU ops" time is observed,
 it is recommended to turn off timing by setting the ``GMX_DISABLE_GPU_TIMING``
 environment variable.
@@ -1298,7 +1296,6 @@ required as the open source nouveau driver (available in Mesa) does not
 provide the OpenCL support.
 For Intel integrated GPUs, the `Neo driver <https://github.com/intel/compute-runtime/releases>`_ is
 recommended.
-.. seealso:: :issue:`3268` add more Intel driver recommendations
 
 The minimum OpenCL version required is |REQUIRED_OPENCL_MIN_VERSION|. See
 also the :ref:`known limitations <opencl-known-limitations>`.
@@ -1337,7 +1334,7 @@ Limitations in the current OpenCL support of interest to |Gromacs| users:
 - On NVIDIA GPUs the OpenCL kernels achieve much lower performance
   than the equivalent CUDA kernels due to limitations of the NVIDIA OpenCL
   compiler.
-- On the NVIDIA Volta an Turing architectures the OpenCL code is known to produce
+- On the NVIDIA Volta and Turing architectures the OpenCL code is known to produce
   incorrect results with driver version up to 440.x (most likely due to compiler issues).
   Runs typically fail on these architectures.
 
@@ -1362,15 +1359,15 @@ of 2. So it can be useful go through the checklist.
 * Don't use double precision unless you're absolute sure you need it.
 * Compile the FFTW library (yourself) with the correct flags on x86 (in most
   cases, the correct flags are automatically configured).
-* On x86, use gcc or icc as the compiler (not pgi or the Cray compiler).
+* On x86, use gcc as the compiler (not icc, pgi or the Cray compiler).
 * On POWER, use gcc instead of IBM's xlc.
 * Use a new compiler version, especially for gcc (e.g. from version 5 to 6
   the performance of the compiled code improved a lot).
 * MPI library: OpenMPI usually has good performance and causes little trouble.
 * Make sure your compiler supports OpenMP (some versions of Clang don't).
-* If you have GPUs that support either CUDA or OpenCL, use them.
+* If you have GPUs that support either CUDA, OpenCL, or SYCL, use them.
 
-  * Configure with ``-DGMX_GPU=CUDA `` or ``-DGMX_GPU=OpenCL``.
+  * Configure with ``-DGMX_GPU=CUDA``, ``-DGMX_GPU=OpenCL``, or ``-DGMX_GPU=SYCL``.
   * For CUDA, use the newest CUDA available for your GPU to take advantage of the
     latest performance enhancements.
   * Use a recent GPU driver.

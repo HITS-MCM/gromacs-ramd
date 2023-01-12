@@ -1,13 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 1991-2000, University of Groningen, The Netherlands.
- * Copyright (c) 2001-2004, The GROMACS development team.
- * Copyright (c) 2013,2014,2015,2016,2017 by the GROMACS development team.
- * Copyright (c) 2018,2019,2020, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 1991- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -30,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 #include "gmxpre.h"
 
@@ -53,6 +49,7 @@
 #include "gromacs/gmxana/princ.h"
 #include "gromacs/math/do_fit.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/rmpbc.h"
@@ -131,9 +128,8 @@ int gmx_rms(int argc, char* argv[])
         "If you select the option (default) and ",
         "supply a valid [REF].tpr[ref] file masses will be taken from there, ",
         "otherwise the masses will be deduced from the [TT]atommass.dat[tt] file in",
-        "[TT]GMXLIB[tt]. This is fine for proteins, but not",
-        "necessarily for other molecules. A default mass of 12.011 amu (carbon)",
-        "is assigned to unknown atoms. You can check whether this happened by",
+        "[TT]GMXLIB[tt] (deprecated). This is fine for proteins, but not",
+        "necessarily for other molecules. You can check whether this happened by",
         "turning on the [TT]-debug[tt] flag and inspecting the log file.[PAR]",
 
         "With [TT]-f2[tt], the 'other structures' are taken from a second",
@@ -241,8 +237,18 @@ int gmx_rms(int argc, char* argv[])
     };
 #define NFILE asize(fnm)
 
-    if (!parse_common_args(&argc, argv, PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW, NFILE, fnm,
-                           asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
+    if (!parse_common_args(&argc,
+                           argv,
+                           PCA_CAN_TIME | PCA_TIME_UNIT | PCA_CAN_VIEW,
+                           NFILE,
+                           fnm,
+                           asize(pa),
+                           pa,
+                           asize(desc),
+                           desc,
+                           0,
+                           nullptr,
+                           &oenv))
     {
         return 0;
     }
@@ -327,7 +333,7 @@ int gmx_rms(int argc, char* argv[])
         }
     }
 
-    bTop = read_tps_conf(ftp2fn(efTPS, NFILE, fnm), &top, &pbcType, &xp, nullptr, box, TRUE);
+    bTop = read_tps_conf(ftp2fn(efTPS, NFILE, fnm), &top, &pbcType, &xp, nullptr, box, bMassWeighted);
     snew(w_rls, top.atoms.nr);
     snew(w_rms, top.atoms.nr);
 
@@ -362,14 +368,14 @@ int gmx_rms(int argc, char* argv[])
             if (bMassWeighted)
             {
                 w_rls[ind_fit[i]] = top.atoms.atom[ind_fit[i]].m;
+                bMass             = bMass || (top.atoms.atom[ind_fit[i]].m != 0);
             }
             else
             {
                 w_rls[ind_fit[i]] = 1;
             }
-            bMass = bMass || (top.atoms.atom[ind_fit[i]].m != 0);
         }
-        if (!bMass)
+        if (bMassWeighted && !bMass)
         {
             fprintf(stderr, "All masses in the fit group are 0, using masses of 1\n");
             for (i = 0; i < ifit; i++)
@@ -417,14 +423,14 @@ int gmx_rms(int argc, char* argv[])
             if (bMassWeighted)
             {
                 w_rms[ind_rms[j][i]] = top.atoms.atom[ind_rms[j][i]].m;
+                bMass                = bMass || (top.atoms.atom[ind_rms[j][i]].m != 0);
             }
             else
             {
                 w_rms[ind_rms[j][i]] = 1.0;
             }
-            bMass = bMass || (top.atoms.atom[ind_rms[j][i]].m != 0);
         }
-        if (!bMass)
+        if (bMassWeighted && !bMass)
         {
             fprintf(stderr, "All masses in group %d are 0, using masses of 1\n", j);
             for (i = 0; i < irms[j]; i++)
@@ -462,8 +468,7 @@ int gmx_rms(int argc, char* argv[])
     natoms_trx = read_first_x(oenv, &status, opt2fn("-f", NFILE, fnm), &t, &x, box);
     if (natoms_trx != top.atoms.nr)
     {
-        fprintf(stderr, "\nWARNING: topology has %d atoms, whereas trajectory has %d\n",
-                top.atoms.nr, natoms_trx);
+        fprintf(stderr, "\nWARNING: topology has %d atoms, whereas trajectory has %d\n", top.atoms.nr, natoms_trx);
     }
     natoms = std::min(top.atoms.nr, natoms_trx);
     if (bMat || bBond || bPrev)
@@ -701,7 +706,8 @@ int gmx_rms(int argc, char* argv[])
             gmx_fatal(FARGS,
                       "Second trajectory (%d atoms) does not match the first one"
                       " (%d atoms)",
-                      natoms_trx2, natoms_trx);
+                      natoms_trx2,
+                      natoms_trx);
         }
         frame2 = 0;
         do
@@ -859,8 +865,8 @@ int gmx_rms(int argc, char* argv[])
                 {
                     if (bFile2 || (i < j))
                     {
-                        rmsd_mat[i][j] = calc_similar_ind(ewhat != ewRMSD, irms[0], ind_rms_m,
-                                                          w_rms_m, mat_x[i], mat_x2_j);
+                        rmsd_mat[i][j] = calc_similar_ind(
+                                ewhat != ewRMSD, irms[0], ind_rms_m, w_rms_m, mat_x[i], mat_x2_j);
                         if (rmsd_mat[i][j] > rmsd_max)
                         {
                             rmsd_max = rmsd_mat[i][j];
@@ -972,9 +978,22 @@ int gmx_rms(int argc, char* argv[])
                 fprintf(stderr, "Min and Max value set to resp. %f and %f\n", rmsd_min, rmsd_max);
             }
             sprintf(buf, "%s %s matrix", gn_rms[0], whatname[ewhat]);
-            write_xpm(opt2FILE("-m", NFILE, fnm, "w"), 0, buf, whatlabel[ewhat],
-                      output_env_get_time_label(oenv), output_env_get_time_label(oenv), tel_mat,
-                      tel_mat2, axis, axis2, rmsd_mat, rmsd_min, rmsd_max, rlo, rhi, &nlevels);
+            write_xpm(opt2FILE("-m", NFILE, fnm, "w"),
+                      0,
+                      buf,
+                      whatlabel[ewhat],
+                      output_env_get_time_label(oenv),
+                      output_env_get_time_label(oenv),
+                      tel_mat,
+                      tel_mat2,
+                      axis,
+                      axis2,
+                      rmsd_mat,
+                      rmsd_min,
+                      rmsd_max,
+                      rlo,
+                      rhi,
+                      &nlevels);
             /* Print the distribution of RMSD values */
             if (opt2bSet("-dist", NFILE, fnm))
             {
@@ -1033,9 +1052,22 @@ int gmx_rms(int argc, char* argv[])
                 }
                 sprintf(buf, "%s %s vs. delta t", gn_rms[0], whatname[ewhat]);
                 fp = gmx_ffopen("delta.xpm", "w");
-                write_xpm(fp, 0, buf, "density", output_env_get_time_label(oenv), whatlabel[ewhat],
-                          delta_xsize, del_lev + 1, del_xaxis, del_yaxis, delta, 0.0, delta_max,
-                          rlo, rhi, &nlevels);
+                write_xpm(fp,
+                          0,
+                          buf,
+                          "density",
+                          output_env_get_time_label(oenv),
+                          whatlabel[ewhat],
+                          delta_xsize,
+                          del_lev + 1,
+                          del_xaxis,
+                          del_yaxis,
+                          delta,
+                          0.0,
+                          delta_max,
+                          rlo,
+                          rhi,
+                          &nlevels);
                 gmx_ffclose(fp);
             }
             if (opt2bSet("-bin", NFILE, fnm))
@@ -1068,7 +1100,8 @@ int gmx_rms(int argc, char* argv[])
                 fprintf(stderr,
                         "Bond angle Min and Max set to:\n"
                         "Min. angle: %f, Max. angle: %f\n",
-                        bond_min, bond_max);
+                        bond_min,
+                        bond_max);
             }
             rlo.r = 1;
             rlo.g = 1;
@@ -1077,9 +1110,22 @@ int gmx_rms(int argc, char* argv[])
             rhi.g = 0;
             rhi.b = 0;
             sprintf(buf, "%s av. bond angle deviation", gn_rms[0]);
-            write_xpm(opt2FILE("-bm", NFILE, fnm, "w"), 0, buf, "degrees",
-                      output_env_get_time_label(oenv), output_env_get_time_label(oenv), tel_mat,
-                      tel_mat2, axis, axis2, bond_mat, bond_min, bond_max, rlo, rhi, &nlevels);
+            write_xpm(opt2FILE("-bm", NFILE, fnm, "w"),
+                      0,
+                      buf,
+                      "degrees",
+                      output_env_get_time_label(oenv),
+                      output_env_get_time_label(oenv),
+                      tel_mat,
+                      tel_mat2,
+                      axis,
+                      axis2,
+                      bond_mat,
+                      bond_min,
+                      bond_max,
+                      rlo,
+                      rhi,
+                      &nlevels);
         }
     }
 
@@ -1092,15 +1138,22 @@ int gmx_rms(int argc, char* argv[])
     }
     else
     {
-        sprintf(buf, "%s with frame %g %s ago", whatxvgname[ewhat], time[prev * freq] - time[0],
+        sprintf(buf,
+                "%s with frame %g %s ago",
+                whatxvgname[ewhat],
+                time[prev * freq] - time[0],
                 output_env_get_time_label(oenv).c_str());
     }
-    fp = xvgropen(opt2fn("-o", NFILE, fnm), buf, output_env_get_xvgr_tlabel(oenv),
-                  whatxvglabel[ewhat], oenv);
+    fp = xvgropen(opt2fn("-o", NFILE, fnm), buf, output_env_get_xvgr_tlabel(oenv), whatxvglabel[ewhat], oenv);
     if (output_env_get_print_xvgr_codes(oenv))
     {
-        fprintf(fp, "@ subtitle \"%s%s after %s%s%s\"\n", (nrms == 1) ? "" : "of ", gn_rms[0],
-                fitgraphlabel[efit], bFit ? " to " : "", bFit ? gn_fit : "");
+        fprintf(fp,
+                "@ subtitle \"%s%s after %s%s%s\"\n",
+                (nrms == 1) ? "" : "of ",
+                gn_rms[0],
+                fitgraphlabel[efit],
+                bFit ? " to " : "",
+                bFit ? gn_fit : "");
     }
     if (nrms != 1)
     {
@@ -1135,8 +1188,7 @@ int gmx_rms(int argc, char* argv[])
         {
             if (output_env_get_print_xvgr_codes(oenv))
             {
-                fprintf(fp, "@ subtitle \"of %s after lsq fit to mirror of %s\"\n", gn_rms[0],
-                        bFit ? gn_fit : "");
+                fprintf(fp, "@ subtitle \"of %s after lsq fit to mirror of %s\"\n", gn_rms[0], bFit ? gn_fit : "");
             }
         }
         else

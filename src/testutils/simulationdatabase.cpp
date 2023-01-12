@@ -1,10 +1,9 @@
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2016,2018,2019, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2016- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -18,7 +17,7 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -27,10 +26,10 @@
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
  * \brief
@@ -41,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "simulationdatabase.h"
+#include "testutils/simulationdatabase.h"
 
 #include <algorithm>
 #include <map>
@@ -80,20 +79,44 @@ const MdpFileValues mdpFileValueDatabase_g{
       { { { "ref-t", "80" } },
         { // TODO This test case is not currently used, so we
           // have not tested which rank counts work.
-          1, 2, 3, 4, 5, 6, 7, 8, 9 } } },
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9 } } },
     // Simple system with 2 nearby water molecules
     { "spc2",
       { {},
         { // TODO This test case is not currently used, so we
           // have not tested which rank counts work.
-          1, 2, 3, 4, 5, 6, 7, 8, 9 } } },
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9 } } },
     // Simple system with 216 water molecules, condensed phase
     { "spc216",
       { {},
         {
                 // TODO This test case is not currently used, so we
                 // have not tested which rank counts work.
-                1, 2, 3, 4, 5, 6, 7, 8, 9 // TODO tpi test
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9 // TODO tpi test
         } } },
     // Capped alanine peptide in vacuo with virtual sites
     { "alanine_vsite_vacuo",
@@ -104,7 +127,17 @@ const MdpFileValues mdpFileValueDatabase_g{
       { { { "constraints", "all-bonds" }, { "compressibility", "5e-10" }, { "tau-p", "1000" } },
         { // TODO This test case is not currently used, so we
           // have not tested which rank counts work.
-          1, 2, 3, 4, 5, 6, 7, 8, 9 } } },
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9 } } },
+    // Capped alanine peptide in vacuo (no virtual sites)
+    { "alanine_vacuo", { { { "constraints", "h-bonds" } }, { 1, 2, 3, 4, 5, 6, 7, 8, 9 } } },
     // Zwitterionic glycine in vacuo
     { "glycine_vacuo", { { { "constraints", "h-bonds" } }, { 1, 2, 3, 4, 5, 6, 7, 8, 9 } } },
     // Zwitterionic glycine in vacuo, without constraints
@@ -130,21 +163,81 @@ const MdpFileValues mdpFileValueDatabase_g{
           { "compressibility", "5e-10" },
           { "tau-p", "1000" },
           { "constraints", "h-bonds" },
-          { "other",
-            R"(free-energy         = yes
-                                  sc-alpha            = 0.5
-                                  sc-r-power          = 6
-                                  mass-lambdas        = 0.0 0.5 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0
-                                  bonded-lambdas      = 0.0 0.0 0.0 0.5 1.0 1.0 1.0 1.0 1.0 1.0 1.0
-                                  restraint-lambdas   = 0.0 0.0 0.0 0.0 0.0 0.5 1.0 1.0 1.0 1.0 1.0
-                                  vdw-lambdas         = 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.5 1.0 1.0 1.0
-                                  coul-lambdas        = 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.5 1.0
-                                  ;couple-moltype      = nonanol
-                                  ;couple-lambda0      = none
-                                  ;couple-lambda1      = vdw-q
-                                  ;couple-intramol     = yes)" } },
-        { 1, 2, 3, 4, 5, 6, 8, 9 } } }
+          { "free-energy", "yes" },
+          { "sc-alpha", "0.5" },
+          { "sc-r-power", "6" },
+          { "mass-lambdas", "0.0 0.5 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0" },
+          { "bonded-lambdas", "0.0 0.0 0.0 0.5 1.0 1.0 1.0 1.0 1.0 1.0 1.0" },
+          { "restraint-lambdas", "0.0 0.0 0.0 0.0 0.0 0.5 1.0 1.0 1.0 1.0 1.0" },
+          { "vdw-lambdas", "0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.5 1.0 1.0 1.0" },
+          { "coul-lambdas", "0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.5 1.0" },
+          { ";couple-moltype", "nonanol" },
+          { ";couple-lambda0", "none" },
+          { ";couple-lambda1", "vdw-q" },
+          { ";couple-intramol", "yes" } },
+        { 1, 2, 3, 4, 5, 6, 8, 9 } } },
+    // Artificial test system including all virtual site types
+    { "vsite_test", { {}, { 1, 2, 3, 4, 5, 6, 7, 8, 9 } } },
 };
+
+//! Helper typedef for mdp database
+using MdpDatabase = std::map<MdpParameterDatabase, MdpFieldValues>;
+//! Database of additional mdp options used for specific algorithms
+const MdpDatabase c_additionalMdpOptions{ { MdpParameterDatabase::Default, {} },
+                                          { MdpParameterDatabase::Pull,
+                                            { { "coulombtype", "reaction-field" },
+                                              { "pull", "yes" },
+                                              // Prev step reference is checkpointed - rest of pull is not cpt-dependent
+                                              { "pull-pbc-ref-prev-step-com", "yes" },
+                                              { "pull-ngroups", "2" },
+                                              { "pull-group1-name", "FirstWaterMolecule" },
+                                              { "pull-group2-name", "SecondWaterMolecule" },
+                                              { "pull-ncoords", "1" },
+                                              { "pull-coord1-type", "umbrella" },
+                                              { "pull-coord1-geometry", "distance" },
+                                              { "pull-coord1-groups", "1 2" },
+                                              { "pull-coord1-init", "1" },
+                                              { "pull-coord1-k", "10000" } } },
+                                          { MdpParameterDatabase::Awh,
+                                            { { "pull", "yes" },
+                                              { "pull-ngroups", "5" },
+                                              { "pull-ncoords", "2" },
+                                              { "pull-group1-name", "C_&_r_1" },
+                                              { "pull-group2-name", "N_&_r_2" },
+                                              { "pull-group3-name", "CA" },
+                                              { "pull-group4-name", "C_&_r_2" },
+                                              { "pull-group5-name", "N_&_r_3" },
+                                              { "pull-coord1-geometry", "dihedral" },
+                                              { "pull-coord1-groups", "1 2 2 3 3 4" },
+                                              { "pull-coord1-k", "4000" },
+                                              { "pull-coord1-kB", "1000" },
+                                              { "pull-coord2-geometry", "dihedral" },
+                                              { "pull-coord2-groups", "2 3 3 4 4 5" },
+                                              { "pull-coord2-k", "4000" },
+                                              { "pull-coord2-kB", "1000" },
+                                              { "pull-coord1-type", "external-potential" },
+                                              { "pull-coord1-potential-provider", "awh" },
+                                              { "pull-coord2-type", "external-potential" },
+                                              { "pull-coord2-potential-provider", "awh" },
+                                              { "awh", "yes" },
+                                              { "awh-potential", "convolved" },
+                                              { "awh-nstout", "4" },
+                                              { "awh-nstsample", "4" },
+                                              { "awh-nsamples-update", "1" },
+                                              { "awh-share-multisim", "no" },
+                                              { "awh-nbias", "2" },
+                                              { "awh1-ndim", "1" },
+                                              { "awh1-dim1-coord-index", "2" },
+                                              { "awh1-dim1-start", "150" },
+                                              { "awh1-dim1-end", "180" },
+                                              { "awh1-dim1-force-constant", "4000" },
+                                              { "awh1-dim1-diffusion", "0.1" },
+                                              { "awh2-ndim", "1" },
+                                              { "awh2-dim1-coord-index", "1" },
+                                              { "awh2-dim1-start", "178" },
+                                              { "awh2-dim1-end", "-178" },
+                                              { "awh2-dim1-force-constant", "4000" },
+                                              { "awh2-dim1-diffusion", "0.1" } } } };
 
 /*! \brief Prepare default .mdp values
  *
@@ -158,8 +251,6 @@ const MdpFileValues mdpFileValueDatabase_g{
  *
  * \throws  std::bad_alloc     if out of memory
  *          std::out_of_range  if \c simulationName is not in the database
- *
- * Note: Any mdp options that are not added here cannot be used
  */
 MdpFieldValues prepareDefaultMdpFieldValues(const std::string& simulationName)
 {
@@ -181,12 +272,23 @@ MdpFieldValues prepareDefaultMdpFieldValues(const std::string& simulationName)
     mdpFieldValues.insert(MdpField("nstpcouple", "4"));
     mdpFieldValues.insert(MdpField("compressibility", "5e-5"));
     mdpFieldValues.insert(MdpField("constraints", "none"));
-    mdpFieldValues.insert(MdpField("other", ""));
     mdpFieldValues.insert(MdpField("coulombtype", "Cut-off"));
     mdpFieldValues.insert(MdpField("rcoulomb", "0.7"));
     mdpFieldValues.insert(MdpField("vdwtype", "Cut-off"));
     mdpFieldValues.insert(MdpField("rvdw", "0.7"));
     mdpFieldValues.insert(MdpField("nstcalcenergy", "100"));
+    mdpFieldValues.insert(MdpField("rlist", "-1"));
+    mdpFieldValues.insert(MdpField("bd-fric", "1000"));
+    mdpFieldValues.insert(MdpField("verlet-buffer-tolerance", "0.000001"));
+    mdpFieldValues.insert(MdpField("nstlist", "8"));
+    mdpFieldValues.insert(MdpField("ld-seed", "234262"));
+    mdpFieldValues.insert(MdpField("tau-t", "1"));
+    mdpFieldValues.insert(MdpField("tc-grps", "System"));
+    mdpFieldValues.insert(MdpField("pcoupltype", "isotropic"));
+    mdpFieldValues.insert(MdpField("ref-p", "1"));
+    mdpFieldValues.insert(MdpField("constraint-algorithm", "lincs"));
+    mdpFieldValues.insert(MdpField("lincs-order", "2"));
+    mdpFieldValues.insert(MdpField("lincs-iter", "5"));
 
     return mdpFieldValues;
 }
@@ -203,14 +305,15 @@ bool isNumberOfPpRanksSupported(const std::string& simulationName, int possibleN
 std::string reportNumbersOfPpRanksSupported(const std::string& simulationName)
 {
     const auto& possibleNumbers = mdpFileValueDatabase_g.at(simulationName).validPpRankCounts;
-    return formatAndJoin(std::begin(possibleNumbers), std::end(possibleNumbers), ",",
-                         StringFormatter("%d"));
+    return formatAndJoin(
+            std::begin(possibleNumbers), std::end(possibleNumbers), ",", StringFormatter("%d"));
 }
 
-MdpFieldValues prepareMdpFieldValues(const std::string& simulationName,
-                                     const std::string& integrator,
-                                     const std::string& tcoupl,
-                                     const std::string& pcoupl)
+MdpFieldValues prepareMdpFieldValues(const std::string&   simulationName,
+                                     const std::string&   integrator,
+                                     const std::string&   tcoupl,
+                                     const std::string&   pcoupl,
+                                     MdpParameterDatabase additionalMdpParameters)
 {
     using MdpField = MdpFieldValues::value_type;
 
@@ -218,15 +321,24 @@ MdpFieldValues prepareMdpFieldValues(const std::string& simulationName,
     mdpFieldValues.insert(MdpField("integrator", integrator));
     mdpFieldValues.insert(MdpField("tcoupl", tcoupl));
     mdpFieldValues.insert(MdpField("pcoupl", pcoupl));
+    for (const auto& mdpField : c_additionalMdpOptions.at(additionalMdpParameters))
+    {
+        // Here, we are overwriting default values - we assume the additional
+        // parameters take precedence over the default parameters
+        mdpFieldValues[mdpField.first] = mdpField.second;
+    }
+
     return mdpFieldValues;
 }
 
-MdpFieldValues prepareMdpFieldValues(const char* simulationName,
-                                     const char* integrator,
-                                     const char* tcoupl,
-                                     const char* pcoupl)
+MdpFieldValues prepareMdpFieldValues(const char*          simulationName,
+                                     const char*          integrator,
+                                     const char*          tcoupl,
+                                     const char*          pcoupl,
+                                     MdpParameterDatabase additionalMdpParameters)
 {
-    return prepareMdpFieldValues(std::string(simulationName), integrator, tcoupl, pcoupl);
+    return prepareMdpFieldValues(
+            std::string(simulationName), integrator, tcoupl, pcoupl, additionalMdpParameters);
 }
 std::string prepareMdpFileContents(const MdpFieldValues& mdpFieldValues)
 {
@@ -248,58 +360,13 @@ std::string prepareMdpFileContents(const MdpFieldValues& mdpFieldValues)
      * currently have a good way to compare forces at steps where
      * energies were not computed with those from rerun on the same
      * coordinates.
-     *
-     * Note: Any mdp options that are not printed here cannot be used
      */
-    return formatString(
-            R"(coulombtype             = %s
-                           rcoulomb                = %s
-                           vdwtype                 = %s
-                           rvdw                    = %s
-                           rlist                   = -1
-                           bd-fric                 = 1000
-                           verlet-buffer-tolerance = 0.000001
-                           nsteps                  = %s
-                           nstenergy               = %s
-                           nstxout                 = %s
-                           nstvout                 = %s
-                           nstfout                 = %s
-                           nstxout-compressed      = %s
-                           nstdhdl                 = %s
-                           nstlist                 = 8
-                           integrator              = %s
-                           ld-seed                 = 234262
-                           tcoupl                  = %s
-                           nsttcouple              = %s
-                           ref-t                   = %s
-                           tau-t                   = 1
-                           tc-grps                 = System
-                           pcoupl                  = %s
-                           nstpcouple              = %s
-                           pcoupltype              = isotropic
-                           ref-p                   = 1
-                           tau-p                   = %s
-                           compressibility         = %s
-                           constraints             = %s
-                           constraint-algorithm    = lincs
-                           lincs-order             = 2
-                           lincs-iter              = 5
-                           nstcalcenergy           = %s
-                           comm-mode               = %s
-                           nstcomm                 = %s
-                           %s)",
-            mdpFieldValues.at("coulombtype").c_str(), mdpFieldValues.at("rcoulomb").c_str(),
-            mdpFieldValues.at("vdwtype").c_str(), mdpFieldValues.at("rvdw").c_str(),
-            mdpFieldValues.at("nsteps").c_str(), mdpFieldValues.at("nstenergy").c_str(),
-            mdpFieldValues.at("nstxout").c_str(), mdpFieldValues.at("nstvout").c_str(),
-            mdpFieldValues.at("nstfout").c_str(), mdpFieldValues.at("nstxout-compressed").c_str(),
-            mdpFieldValues.at("nstdhdl").c_str(), mdpFieldValues.at("integrator").c_str(),
-            mdpFieldValues.at("tcoupl").c_str(), mdpFieldValues.at("nsttcouple").c_str(),
-            mdpFieldValues.at("ref-t").c_str(), mdpFieldValues.at("pcoupl").c_str(),
-            mdpFieldValues.at("nstpcouple").c_str(), mdpFieldValues.at("tau-p").c_str(),
-            mdpFieldValues.at("compressibility").c_str(), mdpFieldValues.at("constraints").c_str(),
-            mdpFieldValues.at("nstcalcenergy").c_str(), mdpFieldValues.at("comm-mode").c_str(),
-            mdpFieldValues.at("nstcomm").c_str(), mdpFieldValues.at("other").c_str());
+    std::string optionString;
+    for (auto const& [key, value] : mdpFieldValues)
+    {
+        optionString += formatString("%-24s = %s\n", key.c_str(), value.c_str());
+    }
+    return optionString;
 }
 
 } // namespace test
