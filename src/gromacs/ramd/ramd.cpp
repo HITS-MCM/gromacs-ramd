@@ -168,15 +168,10 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 fprintf(out, "\t%g", curr_dist);
             }
 
-            /// Do not set a new direction, if the ligand has exited the binding site
-            if (ligand_exited[g]) continue;
-
             if (curr_dist >= params.group[g].max_dist)
             {
                 ligand_exited[g] = 1;
-                if (params.connected_ligands) {
-
-                } else {
+                if (!params.connected_ligands) {
                     direction[g] = DVec(0.0, 0.0, 0.0);
                 }
                 if (MASTER(cr))
@@ -184,6 +179,8 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                     fprintf(this->log, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
                             g, *pstep);
                 }
+            } else if (ligand_exited[g] == 1) {
+                ligand_exited[g] = 0;
             }
 
             // difference of the COM ligand-receptor distance between current and the last evaluation step
