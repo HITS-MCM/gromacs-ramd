@@ -2456,8 +2456,8 @@ void get_ir(const char*     mdparin,
     ir->bRAMD = getEnum<Boolean>(&inp, "ramd", wi) != Boolean::No;
     if (ir->bRAMD)
     {
-        snew(ir->ramdParams, 1);
-        read_ramdparams(&inp, ir->ramdParams, wi);
+        ir->ramdParams = std::make_unique<gmx::RAMDParams>();
+        read_ramdparams(&inp, ir->ramdParams.get(), wi);
     }
 
     /* COM pulling */

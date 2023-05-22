@@ -1480,7 +1480,7 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
             {
                 if (serializer->reading())
                 {
-                    snew(ir->ramdParams, 1);
+                    ir->ramdParams = std::make_unique<gmx::RAMDParams>();
                 }
                 serializer->doInt64(&ir->ramdParams->seed);
                 serializer->doInt(&ir->ramdParams->ngroup);

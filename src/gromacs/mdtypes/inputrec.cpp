@@ -651,18 +651,18 @@ static void pr_ramd_group(FILE* fp, int indent, int g, const gmx::RAMDGroup grp)
     PR("r_min_dist", grp.r_min_dist);
 }
 
-static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams* ramdparams)
+static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams ramd)
 {
-    PI("ramd-seed", ramdparams->seed);
-    PI("ramd-ngroups", ramdparams->ngroup);
-    for (int g = 0; g < ramdparams->ngroup; g++)
+    PI("ramd-seed", ramd.seed);
+    PI("ramd-ngroups", ramd.ngroup);
+    for (int g = 0; g < ramd.ngroup; g++)
     {
-        pr_ramd_group(fp, indent, g, ramdparams->group[g]);
+        pr_ramd_group(fp, indent, g, ramd.group[g]);
     }
-    PI("ramd-eval-freq", ramdparams->eval_freq);
-    PI("ramd-force-out-freq", ramdparams->force_out_freq);
-    PS("ramd-old-angle-dist", EBOOL(ramdparams->old_angle_dist));
-    PS("ramd-connected-ligands", EBOOL(ramdparams->connected_ligands));
+    PI("ramd-eval-freq", ramd.eval_freq);
+    PI("ramd-force-out-freq", ramd.force_out_freq);
+    PS("ramd-old-angle-dist", EBOOL(ramd.old_angle_dist));
+    PS("ramd-connected-ligands", EBOOL(ramd.connected_ligands));
 }
 
 static void pr_awh_bias_dim(FILE* fp, int indent, const gmx::AwhDimParams& awhDimParams, const char* prefix)
@@ -1022,7 +1022,7 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
         PS("ramd", EBOOL(ir->bRAMD));
         if (ir->bRAMD)
         {
-            pr_ramd(fp, indent, ir->ramdParams);
+            pr_ramd(fp, indent, *ir->ramdParams);
         }
 
         /* AWH BIASING */

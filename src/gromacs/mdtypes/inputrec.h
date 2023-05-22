@@ -525,9 +525,9 @@ struct t_inputrec // NOLINT (clang-analyzer-optin.performance.Padding)
 
     /* RAMD */
     //! Do we do RAMD?
-    bool bRAMD;
+    bool bRAMD = false;
     //! RAMD parameters
-    gmx::RAMDParams* ramdParams;
+    std::unique_ptr<gmx::RAMDParams> ramdParams;
 
     /* AWH bias data */
     //! Whether to use AWH biasing for PMF calculations
