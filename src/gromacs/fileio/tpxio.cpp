@@ -130,7 +130,6 @@ enum tpxv
     tpxv_GenericInternalParameters, /**< Added internal parameters for mdrun modules*/
     tpxv_VSite2FD,                  /**< Added 2FD type virtual site */
     tpxv_AddSizeField, /**< Added field with information about the size of the serialized tpr file in bytes, excluding the header */
-    tpxv_RAMD,                                    /**< Add RAMD information */
     tpxv_StoreNonBondedInteractionExclusionGroup, /**< Store the non bonded interaction exclusion group in the topology */
     tpxv_VSite1,                                  /**< Added 1 type virtual site */
     tpxv_MTS,                                     /**< Added multiple time stepping */
@@ -139,6 +138,7 @@ enum tpxv
     tpxv_SoftcoreGapsys,              /**< Added gapsys softcore function */
     tpxv_ReaddedConstantAcceleration, /**< Re-added support for constant acceleration NEMD. */
     tpxv_RemoveTholeRfac,             /**< Remove unused rfac parameter from thole listed force */
+    tpxv_RAMD,                        /**< Add RAMD information */
     tpxv_Count                        /**< the total number of tpxv versions */
 };
 
