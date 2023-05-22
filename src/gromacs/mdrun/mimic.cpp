@@ -609,7 +609,8 @@ void gmx::LegacySimulator::do_mimic()
                                      doRerun,
                                      isLastStep,
                                      mdrunOptions.writeConfout,
-                                     bSumEkinhOld,
+                                     bSumEkinhOld ? EkindataState::UsedNeedToReduce
+                                                  : EkindataState::UsedDoNotNeedToReduce,
                                      bRAMDTraj);
         }
 

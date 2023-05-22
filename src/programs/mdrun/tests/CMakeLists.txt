@@ -45,6 +45,7 @@ gmx_add_unit_test_library(mdrun_test_infrastructure
     )
 target_include_directories(mdrun_test_infrastructure SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/src/external)
 target_link_libraries(mdrun_test_infrastructure PUBLIC legacy_api utility)
+target_compile_definitions(mdrun_test_infrastructure PRIVATE TMPI_USE_VISIBILITY)
 
 # To avoid running into test timeouts, some end-to-end tests of mdrun
 # functionality are split off. This can be rearranged in future as we
@@ -62,7 +63,7 @@ gmx_add_gtest_executable(${exename}
         $<TARGET_OBJECTS:mdrun_objlib>
     )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 set(testname "MdrunModulesTests")
 set(exename "mdrun-modules-test")
@@ -77,7 +78,7 @@ gmx_add_gtest_executable(${exename}
         $<TARGET_OBJECTS:mdrun_objlib>
     )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 set(testname "MdrunIOTests")
 set(exename "mdrun-io-test")
@@ -157,7 +158,7 @@ gmx_add_gtest_executable(${exename}
         $<TARGET_OBJECTS:mdrun_objlib>
         )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 # Tests that only make sense to run with multiple ranks and/or real
 # MPI are implemented here.
@@ -174,7 +175,7 @@ gmx_add_gtest_executable(${exename} MPI
         $<TARGET_OBJECTS:mdrun_objlib>
         )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 2 OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 2 OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 # Multi sim only makes sense with real MPI, and ideally at least 4 ranks,
 # to allow for multiple simulations (>= 2 sims) each using DD (>= 2 ranks per sim)
@@ -190,7 +191,7 @@ gmx_add_gtest_executable(${exename} MPI
         $<TARGET_OBJECTS:mdrun_objlib>
         )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 4 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 4 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 set(testname "MdrunMultiSimReplexTests")
 set(exename "mdrun-multisim-replex-test")
@@ -198,13 +199,13 @@ set(exename "mdrun-multisim-replex-test")
 gmx_add_gtest_executable(${exename} MPI
     CPP_SOURCE_FILES
         # files with code for tests
-	multisimtest.cpp
+        multisimtest.cpp
         replicaexchange.cpp
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
         )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 4 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 4 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 set(testname "MdrunMultiSimReplexEquivalenceTests")
 set(exename "mdrun-multisim-replex-equivalence-test")
@@ -212,7 +213,7 @@ set(exename "mdrun-multisim-replex-equivalence-test")
 gmx_add_gtest_executable(${exename} MPI
     CPP_SOURCE_FILES
         # files with code for tests
-	multisimtest.cpp
+        multisimtest.cpp
         replicaexchange_equivalence.cpp
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
@@ -244,7 +245,7 @@ gmx_add_gtest_executable(${exename} MPI
     CPP_SOURCE_FILES
         # files with code for tests
         periodicactions.cpp
-	periodicactions_basic.cpp
+        periodicactions_basic.cpp
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
         )
@@ -252,9 +253,9 @@ target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
 
 if (CMAKE_BUILD_TYPE MATCHES "Rel" AND GMX_OPENMP)
     set(testname "MdrunMpiCoordinationBasicTestsOneRank")
-    gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 1 SLOW_TEST IGNORE_LEAKS)
+    gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 1 SLOW_TEST IGNORE_LEAKS QUICK_GPU_TEST)
     set(testname "MdrunMpiCoordinationBasicTestsTwoRanks")
-    gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 2 SLOW_TEST IGNORE_LEAKS)
+    gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 2 SLOW_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 endif()
 
 set(exename "mdrun-mpi-coordination-coupling-test")
@@ -262,7 +263,7 @@ gmx_add_gtest_executable(${exename} MPI
     CPP_SOURCE_FILES
         # files with code for tests
         periodicactions.cpp
-	periodicactions_coupling.cpp
+        periodicactions_coupling.cpp
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
         )
@@ -280,7 +281,7 @@ gmx_add_gtest_executable(${exename} MPI
     CPP_SOURCE_FILES
         # files with code for tests
         periodicactions.cpp
-	periodicactions_constraints.cpp
+        periodicactions_constraints.cpp
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
         )
@@ -311,6 +312,7 @@ target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
 # End-to-end test for pull functionality
 target_link_libraries(${exename} PRIVATE legacy_modules)
 gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS)
+
 set(testname "MdrunPullTests")
 set(exename "mdrun-pull-test")
 
@@ -323,7 +325,7 @@ gmx_add_gtest_executable(${exename}
 )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
 target_link_libraries(${exename} PRIVATE legacy_modules)
-gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
 
 # End-to-end tests comparing different simulator code paths
 set(testname "MdrunSimulatorComparison")
@@ -351,4 +353,4 @@ gmx_add_gtest_executable(${exename} MPI
         $<TARGET_OBJECTS:mdrun_objlib>
         )
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
-gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 2 INTEGRATION_TEST IGNORE_LEAKS)
+gmx_register_gtest_test(${testname} ${exename} MPI_RANKS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)

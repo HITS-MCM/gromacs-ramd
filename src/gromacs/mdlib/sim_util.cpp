@@ -123,6 +123,7 @@
 #include "gromacs/utility/logger.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strconvert.h"
+#include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/sysinfo.h"
 
 #include "gpuforcereduction.h"
@@ -554,8 +555,7 @@ static void checkPotentialEnergyValidity(int64_t step, const gmx_enerdata_t& ene
     if (energyIsNotFinite
         || (averageKineticEnergy > 0 && enerd.term[F_EPOT] > c_thresholdFactor * averageKineticEnergy))
     {
-        gmx_fatal(
-                FARGS,
+        GMX_THROW(gmx::InternalError(gmx::formatString(
                 "Step %" PRId64
                 ": The total potential energy is %g, which is %s. The LJ and electrostatic "
                 "contributions to the energy are %g and %g, respectively. A %s potential energy "
@@ -568,7 +568,7 @@ static void checkPotentialEnergyValidity(int64_t step, const gmx_enerdata_t& ene
                 enerd.term[F_LJ],
                 enerd.term[F_COUL_SR],
                 energyIsNotFinite ? "non-finite" : "very high",
-                energyIsNotFinite ? " or Nan" : "");
+                energyIsNotFinite ? " or Nan" : "")));
     }
 }
 
@@ -1930,6 +1930,15 @@ void do_force(FILE*                               fplog,
         do_nb_verlet(fr, ic, enerd, stepWork, InteractionLocality::Local, enbvClearFYes, step, nrnb, wcycle);
     }
 
+    // TODO Force flags should include haveFreeEnergyWork for this domain
+    if (stepWork.useGpuXHalo && (domainWork.haveCpuBondedWork || domainWork.haveFreeEnergyWork))
+    {
+        wallcycle_stop(wcycle, WallCycleCounter::Force);
+        /* Wait for non-local coordinate data to be copied from device */
+        stateGpu->waitCoordinatesReadyOnHost(AtomLocality::NonLocal);
+        wallcycle_start_nocount(wcycle, WallCycleCounter::Force);
+    }
+
     if (fr->efep != FreeEnergyPerturbationType::No && stepWork.computeNonbondedForces)
     {
         /* Calculate the local and non-local free energy interactions here.
@@ -1941,6 +1950,7 @@ void do_force(FILE*                               fplog,
                 fr->use_simd_kernels,
                 fr->ntype,
                 fr->rlist,
+                max_cutoff2(inputrec.pbcType, box),
                 *fr->ic,
                 fr->shift_vec,
                 fr->nbfp,
@@ -1987,15 +1997,6 @@ void do_force(FILE*                               fplog,
             nbnxn_atomdata_add_nbat_fshift_to_fshift(
                     *nbv->nbat, forceOutNonbonded->forceWithShiftForces().shiftForces());
         }
-    }
-
-    // TODO Force flags should include haveFreeEnergyWork for this domain
-    if (stepWork.useGpuXHalo && (domainWork.haveCpuBondedWork || domainWork.haveFreeEnergyWork))
-    {
-        wallcycle_stop(wcycle, WallCycleCounter::Force);
-        /* Wait for non-local coordinate data to be copied from device */
-        stateGpu->waitCoordinatesReadyOnHost(AtomLocality::NonLocal);
-        wallcycle_start_nocount(wcycle, WallCycleCounter::Force);
     }
 
     // Compute wall interactions, when present.
@@ -2107,12 +2108,13 @@ void do_force(FILE*                               fplog,
     }
 
     const bool needToReceivePmeResultsFromSeparateRank = (PAR(cr) && stepWork.computePmeOnSeparateRank);
+    const bool needToReceivePmeResults =
+            (stepWork.haveGpuPmeOnThisRank || needToReceivePmeResultsFromSeparateRank);
 
     /* When running free energy perturbations steered by AWH and doing PME calculations on the
      * GPU we must wait for the PME calculation (dhdl) results to finish before sampling the
      * FEP dimension with AWH. */
-    const bool needEarlyPmeResults = (awh != nullptr && awh->hasFepLambdaDimension()
-                                      && pme_run_mode(fr->pmedata) != PmeRunMode::None
+    const bool needEarlyPmeResults = (awh != nullptr && awh->hasFepLambdaDimension() && needToReceivePmeResults
                                       && stepWork.computeEnergy && stepWork.computeSlowForces);
     if (needEarlyPmeResults)
     {

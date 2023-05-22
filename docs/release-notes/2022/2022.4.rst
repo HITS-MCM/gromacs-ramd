@@ -1,0 +1,110 @@
+GROMACS 2022.4 release notes
+----------------------------
+
+This version was released on November 16th, 2022. These release notes
+document the changes that have taken place in GROMACS since the
+previous 2022.3 version, to fix known issues. It also incorporates all
+fixes made in version 2021.6 and earlier, which you can find described
+in the :ref:`release-notes`.
+
+.. Note to developers!
+   Please use """"""" to underline the individual entries for fixed issues in the subfolders,
+   otherwise the formatting on the webpage is messed up.
+   Also, please use the syntax :issue:`number` to reference issues on GitLab, without the
+   a space between the colon and number!
+
+Fixes where mdrun could behave incorrectly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Incorrect foreign energy differences for 1-4 interactions on a GPU
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When running free-energy calculations using a GPU without domain decomposition,
+the foreign energy differences for 1-4 interactions would be incorrect
+when the atoms involved had only charges perturbed and not the atom types.
+This issue did not affect free-energy calculations using ``couple-moltype``.
+This issue did not affect dV/dlambda. If you have used BAR or AWH for free-energy
+calculations with atoms with charge manually perturbed in the topoogy and
+non-perturbed atom type, we suggest to rerun those with the corrected code
+to check if your results were affected by this issue.
+
+:issue:`4616`
+
+The deform option caused parallel mdrun to exit
+"""""""""""""""""""""""""""""""""""""""""""""""
+
+With the deform mdp option mdrun would exit with an MPI error
+when invoked with more than one MPI rank.
+
+:issue:`4604`
+
+Pulling with average force output made mdrun exit at checkpoint writing
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When ``pull_fout_average`` was set to ``yes``, :ref:`gmx mdrun` would exit with
+an assertion failure when trying to write a checkpoint file.
+
+:issue:`4636`
+
+AMD RDNA devices are now properly marked as "unsupported" with OpenCL
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+AMD RDNA GPUs (Radeon RX 5000, 6000, and 7000 series) never worked
+correctly with OpenCL, usually with a simulation crashing quickly.
+We now properly mark those devices as incompatible.
+
+AMD GCN (e.g., RX Vega 64) and CDNA/CDNA2 (e.g., Instinct MI100)
+devices are supported.
+
+:issue:`4521`
+
+Fixes for ``gmx`` tools
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Programs reading a tpr file of a large system would exit with random errors
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The tpr file writing and reading code contained a bug that caused reading
+of systems with more than 100 million atoms to exit with random error
+messages.
+
+:issue:`4628`
+
+With flexible constraint grompp and mdrun exited with an assertion failure
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+:issue:`4605`
+
+Corrected gmx awh friction metric legend
+""""""""""""""""""""""""""""""""""""""""
+
+The output of friction metric with :ref:`gmx awh` -more is the sqrt of
+the metric while ``sqrt`` was missing from the legend. This has been
+added now. Note that the output of :ref:`gmx awh` -fric, correctly,
+does not involve sqrt.
+
+:issue:`4598`
+
+Fixes that affect portability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Miscellaneous
+^^^^^^^^^^^^^
+
+Fixed argument checking with nvcc
+"""""""""""""""""""""""""""""""""
+
+Incorrect configure-time checks of flags passed to nvcc resulted in
+several performance-related flags never being used. Simulations using
+Nvidia GPUs were correct but may not have achieved best possible
+performance.
+
+
+Added compilation support for new CUDA architectures
+""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The list of NVIDIA CUDA architectures for which code is directly
+generated for, with a default cmake configuration, and when support
+exists in the compiler in use, has been updated to include the latest
+Ada Lovelace and Hopper architectures.
+

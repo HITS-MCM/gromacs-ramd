@@ -53,7 +53,7 @@ endif()
 
 # The GROMACS convention is that these are the version number of the next
 # release that is going to be made from this branch.
-project(Gromacs VERSION 2022.0)
+project(Gromacs VERSION 2022.5)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -351,6 +351,10 @@ set(GMX_CURRENT_CONTRIBUTORS ${CMAKE_MATCH_1})
 set(GMX_PREVIOUS_CONTRIBUTORS ${CMAKE_MATCH_2})
 set(GMX_CURRENT_PROJECT_LEADERS ${CMAKE_MATCH_3})
 
+string(REGEX REPLACE "\n" ", " GMX_CURRENT_CONTRIBUTORS_STRING "${GMX_CURRENT_CONTRIBUTORS}")
+string(REGEX REPLACE "\n" ", " GMX_PREVIOUS_CONTRIBUTORS_STRING "${GMX_PREVIOUS_CONTRIBUTORS}")
+string(REGEX REPLACE "\n" ", " GMX_CURRENT_PROJECT_LEADERS_STRING "${GMX_CURRENT_PROJECT_LEADERS}")
+
 string(REGEX REPLACE "([^\n]+)" "    \"\\1\"," GMX_CURRENT_CONTRIBUTORS "${GMX_CURRENT_CONTRIBUTORS}")
 string(REGEX REPLACE "([^\n]+)" "    \"\\1\"," GMX_PREVIOUS_CONTRIBUTORS "${GMX_PREVIOUS_CONTRIBUTORS}")
 string(REGEX REPLACE "([^\n]+)" "    \"\\1\"," GMX_CURRENT_PROJECT_LEADERS "${GMX_CURRENT_PROJECT_LEADERS}")
@@ -530,10 +534,13 @@ option(GMX_EXTERNAL_TINYXML2 "Use external TinyXML-2 instead of compiling the ve
 mark_as_advanced(GMX_EXTERNAL_TINYXML2)
 if(GMX_EXTERNAL_TINYXML2)
     # Find an external TinyXML-2 library.
-    find_package(TinyXML-2 3.0.0)
+    find_package(TinyXML2 3.0.0)
     set(HAVE_TINYXML2 ${TinyXML2_FOUND})
     if(NOT HAVE_TINYXML2)
         message(FATAL_ERROR "External TinyXML-2 could not be found, please adjust your search paths")
+    endif()
+    if (TinyXML2_FOUND AND TinyXML2_VERSION VERSION_GREATER "6")
+        message(FATAL_ERROR "External TinyXML-2 is later than the highest supported version 6. Please adjust your search paths to include a supported version")
     endif()
 endif()
 

@@ -75,7 +75,7 @@ void do_md_trajectory_writing(FILE*                          fplog,
                               gmx_bool                       bRerunMD,
                               gmx_bool                       bLastStep,
                               gmx_bool                       bDoConfOut,
-                              gmx_bool                       bSumEkinhOld,
+                              const EkindataState            ekindataState,
                               gmx_bool                       bRAMDTraj)
 {
     int   mdof_flags;
@@ -124,17 +124,18 @@ void do_md_trajectory_writing(FILE*                          fplog,
         wallcycle_start(mdoutf_get_wcycle(outf), WallCycleCounter::Traj);
         if (bCPT)
         {
+            const bool checkpointEkindata = (ekindataState != EkindataState::NotUsed);
+            if (checkpointEkindata)
+            {
+                update_ekinstate(MASTER(cr) ? &state_global->ekinstate : nullptr,
+                                 ekind,
+                                 ekindataState == EkindataState::UsedNeedToReduce,
+                                 cr);
+            }
+
             if (MASTER(cr))
             {
-                if (bSumEkinhOld)
-                {
-                    state_global->ekinstate.bUpToDate = FALSE;
-                }
-                else
-                {
-                    update_ekinstate(&state_global->ekinstate, ekind);
-                    state_global->ekinstate.bUpToDate = TRUE;
-                }
+                state_global->ekinstate.bUpToDate = checkpointEkindata;
 
                 energyOutput.fillEnergyHistory(observablesHistory->energyHistory.get());
             }

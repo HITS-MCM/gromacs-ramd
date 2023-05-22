@@ -71,7 +71,6 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdlib/checkpointhandler.h"
-#include "gromacs/mdlib/compute_io.h"
 #include "gromacs/mdlib/constr.h"
 #include "gromacs/mdlib/ebin.h"
 #include "gromacs/mdlib/enerdata_utils.h"
@@ -129,6 +128,7 @@
 #include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/logger.h"
 #include "gromacs/utility/real.h"
@@ -320,14 +320,6 @@ void gmx::LegacySimulator::do_rerun()
                                  ir->nstcalcenergy,
                                  haveDDAtomOrdering(*cr),
                                  runScheduleWork->simulationWork.useGpuPme);
-
-    {
-        double io = compute_io(ir, top_global.natoms, *groups, energyOutput.numEnergyTerms(), 1);
-        if ((io > 2000) && MASTER(cr))
-        {
-            fprintf(stderr, "\nWARNING: This run will generate roughly %.0f Mb of data\n\n", io);
-        }
-    }
 
     if (haveDDAtomOrdering(*cr))
     {
@@ -664,35 +656,46 @@ void gmx::LegacySimulator::do_rerun()
              */
             Awh*       awh = nullptr;
             gmx_edsam* ed  = nullptr;
-            do_force(fplog,
-                     cr,
-                     ms,
-                     *ir,
-                     awh,
-                     enforcedRotation,
-                     imdSession,
-                     pull_work,
-                     step,
-                     nrnb,
-                     wcycle,
-                     top,
-                     state->box,
-                     state->x.arrayRefWithPadding(),
-                     &state->hist,
-                     &f.view(),
-                     force_vir,
-                     mdatoms,
-                     enerd,
-                     state->lambda,
-                     fr,
-                     runScheduleWork,
-                     vsite,
-                     mu_tot,
-                     t,
-                     ed,
-                     fr->longRangeNonbondeds.get(),
-                     GMX_FORCE_NS | force_flags,
-                     ddBalanceRegionHandler);
+            try
+            {
+                do_force(fplog,
+                         cr,
+                         ms,
+                         *ir,
+                         awh,
+                         enforcedRotation,
+                         imdSession,
+                         pull_work,
+                         step,
+                         nrnb,
+                         wcycle,
+                         top,
+                         state->box,
+                         state->x.arrayRefWithPadding(),
+                         &state->hist,
+                         &f.view(),
+                         force_vir,
+                         mdatoms,
+                         enerd,
+                         state->lambda,
+                         fr,
+                         runScheduleWork,
+                         vsite,
+                         mu_tot,
+                         t,
+                         ed,
+                         fr->longRangeNonbondeds.get(),
+                         GMX_FORCE_NS | force_flags,
+                         ddBalanceRegionHandler);
+            }
+            catch (const gmx::InternalError&)
+            {
+                GMX_LOG(mdlog.warning)
+                        .asParagraph()
+                        .appendText(
+                                "Continuing with next frame after catching invalid force in "
+                                "previous frame");
+            };
         }
 
         /* Now we have the energies and forces corresponding to the
@@ -701,7 +704,6 @@ void gmx::LegacySimulator::do_rerun()
         {
             const bool isCheckpointingStep = false;
             const bool doRerun             = true;
-            const bool bSumEkinhOld        = false;
             const bool bRAMDTraj           = false;
             do_md_trajectory_writing(fplog,
                                      cr,
@@ -724,7 +726,7 @@ void gmx::LegacySimulator::do_rerun()
                                      doRerun,
                                      isLastStep,
                                      mdrunOptions.writeConfout,
-                                     bSumEkinhOld,
+                                     EkindataState::NotUsed,
                                      bRAMDTraj);
         }
 

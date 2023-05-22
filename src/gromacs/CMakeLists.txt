@@ -66,6 +66,9 @@ endfunction ()
 option(GMX_USE_SIMD_KERNELS "Whether to compile NBNXM and other SIMD kernels" ON)
 mark_as_advanced(GMX_USE_SIMD_KERNELS)
 
+# pulling is using the muparser target as well, so detect it early
+gmx_manage_muparser()
+
 # Add these contents first because linking their tests can take a lot
 # of time, so we want lots of parallel work still available after
 # linking starts.
@@ -129,6 +132,7 @@ list(APPEND LIBGROMACS_SOURCES ${GMXLIB_SOURCES} ${MDLIB_SOURCES} ${PROPERTY_SOU
 tmpi_get_source_list(THREAD_MPI_SOURCES ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/src)
 add_library(thread_mpi OBJECT ${THREAD_MPI_SOURCES})
 target_compile_definitions(thread_mpi PRIVATE HAVE_CONFIG_H)
+target_compile_definitions(thread_mpi PRIVATE TMPI_EXPORTS TMPI_USE_VISIBILITY)
 if(CYGWIN)
     # Needs POSIX-isms for strdup, not just std-isms
     target_compile_definitions(thread_mpi PRIVATE _POSIX_C_SOURCE=200809L)
@@ -220,7 +224,10 @@ foreach(object_library ${libgromacs_object_library_dependencies})
     target_sources(libgromacs PRIVATE $<TARGET_OBJECTS:${object_library}>)
 endforeach()
 gmx_target_compile_options(libgromacs)
-target_compile_definitions(libgromacs PRIVATE HAVE_CONFIG_H)
+target_compile_definitions(libgromacs PRIVATE HAVE_CONFIG_H
+                                              TMPI_EXPORTS
+                                      PUBLIC TMPI_USE_VISIBILITY)
+
 target_include_directories(libgromacs SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
 
 if (GMX_GPU_OPENCL)
@@ -390,8 +397,7 @@ set_target_properties(libgromacs PROPERTIES
 
 gmx_manage_lmfit()
 target_link_libraries(libgromacs PRIVATE lmfit)
-gmx_manage_muparser()
-target_link_libraries(libgromacs PRIVATE muparser)
+target_link_libraries(libgromacs PRIVATE muparser::muparser)
 
 # Make sure we fix "everything" found by compilers that support that
 gmx_warn_on_everything(libgromacs)
@@ -455,10 +461,11 @@ if (BUILD_SHARED_LIBS)
     if(GMX_INSTALL_LEGACY_API)
         target_compile_features(libgromacs INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
     endif()
+    # only install pkg-config and cmake target files when library is installed
+    include(InstallLibInfo.cmake)
 endif()
 add_library(Gromacs::libgromacs ALIAS libgromacs)
 
-include(InstallLibInfo.cmake)
 
 # Technically, the user could want to do this for an OpenCL build
 # using the CUDA runtime, but currently there's no reason to want to
@@ -529,3 +536,6 @@ if(GMX_GPU_OPENCL)
         DESTINATION ${GMX_INSTALL_OCLDIR}/gromacs/ewald
         COMPONENT libraries)
 endif()
+
+include(GenerateExportHeader)
+generate_export_header(libgromacs EXPORT_FILE_NAME "${CMAKE_BINARY_DIR}/api/legacy/include/gromacs/libgromacs_export.h")

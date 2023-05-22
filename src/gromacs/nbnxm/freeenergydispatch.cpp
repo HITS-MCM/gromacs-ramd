@@ -135,21 +135,31 @@ void nonbonded_verlet_t::setupFepThreadedForceBuffer(const int numAtomsForce)
 namespace
 {
 
+//! Returns whether soft-core interactions are used
+bool haveSoftCore(const interaction_const_t::SoftCoreParameters& scParams)
+{
+    return (scParams.softcoreType == SoftcoreType::Beutler
+            && (scParams.alphaCoulomb != 0 || scParams.alphaVdw != 0))
+           || (scParams.softcoreType == SoftcoreType::Gapsys
+               && (scParams.gapsysScaleLinpointCoul != 0 || scParams.gapsysScaleLinpointVdW != 0));
+}
+
 void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   nbl_fep,
                               const gmx::ArrayRefWithPadding<const gmx::RVec>& coords,
                               bool                                             useSimd,
                               int                                              ntype,
                               real                                             rlist,
-                              const interaction_const_t&                       ic,
-                              gmx::ArrayRef<const gmx::RVec>                   shiftvec,
-                              gmx::ArrayRef<const real>                        nbfp,
-                              gmx::ArrayRef<const real>                        nbfp_grid,
-                              gmx::ArrayRef<const real>                        chargeA,
-                              gmx::ArrayRef<const real>                        chargeB,
-                              gmx::ArrayRef<const int>                         typeA,
-                              gmx::ArrayRef<const int>                         typeB,
-                              t_lambda*                                        fepvals,
-                              gmx::ArrayRef<const real>                        lambda,
+                              real                                 maxAllowedCutoffSquared,
+                              const interaction_const_t&           ic,
+                              gmx::ArrayRef<const gmx::RVec>       shiftvec,
+                              gmx::ArrayRef<const real>            nbfp,
+                              gmx::ArrayRef<const real>            nbfp_grid,
+                              gmx::ArrayRef<const real>            chargeA,
+                              gmx::ArrayRef<const real>            chargeB,
+                              gmx::ArrayRef<const int>             typeA,
+                              gmx::ArrayRef<const int>             typeB,
+                              t_lambda*                            fepvals,
+                              gmx::ArrayRef<const real>            lambda,
                               const bool                           clearForcesAndEnergies,
                               gmx::ThreadedForceBuffer<gmx::RVec>* threadedForceBuffer,
                               gmx::ThreadedForceBuffer<gmx::RVec>* threadedForeignEnergyBuffer,
@@ -203,6 +213,7 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                                       useSimd,
                                       ntype,
                                       rlist,
+                                      maxAllowedCutoffSquared,
                                       ic,
                                       shiftvec,
                                       nbfp,
@@ -226,7 +237,7 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
     /* If we do foreign lambda and we have soft-core interactions
      * we have to recalculate the (non-linear) energies contributions.
      */
-    if (fepvals->n_lambda > 0 && stepWork.computeDhdl && fepvals->sc_alpha != 0)
+    if (fepvals->n_lambda > 0 && stepWork.computeDhdl && haveSoftCore(*ic.softCoreParameters))
     {
         gmx::StepWorkload stepWorkForeignEnergies = stepWork;
         stepWorkForeignEnergies.computeForces     = false;
@@ -269,6 +280,7 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                                               useSimd,
                                               ntype,
                                               rlist,
+                                              maxAllowedCutoffSquared,
                                               ic,
                                               shiftvec,
                                               nbfp,
@@ -313,7 +325,8 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
                                                    const bool                 useSimd,
                                                    const int                  ntype,
                                                    const real                 rlist,
-                                                   const interaction_const_t& ic,
+                                                   const real maxAllowedCutoffSquared,
+                                                   const interaction_const_t&     ic,
                                                    gmx::ArrayRef<const gmx::RVec> shiftvec,
                                                    gmx::ArrayRef<const real>      nbfp,
                                                    gmx::ArrayRef<const real>      nbfp_grid,
@@ -351,6 +364,7 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
                                      useSimd,
                                      ntype,
                                      rlist,
+                                     maxAllowedCutoffSquared,
                                      ic,
                                      shiftvec,
                                      nbfp,
@@ -394,7 +408,7 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
 
     threadedForceBuffer_.reduce(forceWithShiftForces, nullptr, &enerd->grpp, dvdl_nb, stepWork, 0);
 
-    if (fepvals->sc_alpha != 0)
+    if (haveSoftCore(*ic.softCoreParameters))
     {
         enerd->dvdl_nonlin[FreeEnergyPerturbationCouplingType::Vdw] +=
                 dvdl_nb[FreeEnergyPerturbationCouplingType::Vdw];
@@ -417,7 +431,8 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernels(const gmx::ArrayRefWithPaddin
                                                    const bool                 useSimd,
                                                    const int                  ntype,
                                                    const real                 rlist,
-                                                   const interaction_const_t& ic,
+                                                   const real maxAllowedCutoffSquared,
+                                                   const interaction_const_t&     ic,
                                                    gmx::ArrayRef<const gmx::RVec> shiftvec,
                                                    gmx::ArrayRef<const real>      nbfp,
                                                    gmx::ArrayRef<const real>      nbfp_grid,
@@ -444,6 +459,7 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernels(const gmx::ArrayRefWithPaddin
                                                    useSimd,
                                                    ntype,
                                                    rlist,
+                                                   maxAllowedCutoffSquared,
                                                    ic,
                                                    shiftvec,
                                                    nbfp,

@@ -2081,10 +2081,17 @@ static DDSystemInfo getSystemInfo(const gmx::MDLogger&              mdlog,
      * In most cases this is a large overestimate, because it assumes
      * non-interaction atoms.
      * We set the chance to 1 in a trillion steps.
+     * Note that any atom in the system should not have a too large
+     * displacement. Thus we use ChanceTarget::System. This means that
+     * the minimum cell size increases (slowly) with the sytem size.
      */
     constexpr real c_chanceThatAtomMovesBeyondDomain = 1e-12;
-    const real     limitForAtomDisplacement          = minCellSizeForAtomDisplacement(
-            mtop, ir, systemInfo.updateGroupingsPerMoleculeType, c_chanceThatAtomMovesBeyondDomain);
+    const real     limitForAtomDisplacement =
+            minCellSizeForAtomDisplacement(mtop,
+                                           ir,
+                                           systemInfo.updateGroupingsPerMoleculeType,
+                                           c_chanceThatAtomMovesBeyondDomain,
+                                           ChanceTarget::System);
     GMX_LOG(mdlog.info).appendTextFormatted("Minimum cell size due to atom displacement: %.3f nm", limitForAtomDisplacement);
 
     systemInfo.cellsizeLimit = std::max(systemInfo.cellsizeLimit, limitForAtomDisplacement);
@@ -3223,7 +3230,14 @@ static gmx::IVec getNumCommunicationPulses(const ivec&                    numDom
     return numPulses;
 }
 
-static gmx_bool test_dd_cutoff(const t_commrec* cr, const matrix box, gmx::ArrayRef<const gmx::RVec> x, real cutoffRequested)
+/* Returns whether a cutoff distance of \p cutoffRequested satisfies
+ * all limitations of the domain decomposition and thus could be used
+ */
+static gmx_bool test_dd_cutoff(const t_commrec*               cr,
+                               const matrix                   box,
+                               gmx::ArrayRef<const gmx::RVec> x,
+                               real                           cutoffRequested,
+                               bool                           checkGpuDdLimitation)
 {
     gmx_ddbox_t ddbox;
     int         LocallyLimited = 0;
@@ -3259,6 +3273,14 @@ static gmx_bool test_dd_cutoff(const t_commrec* cr, const matrix box, gmx::Array
                 LocallyLimited = 1;
             }
         }
+
+        /* The GPU halo communication code currently does not allow multiple
+         * pulses along dimensions other than the first.
+         */
+        if (checkGpuDdLimitation && (!cr->dd->gpuHaloExchange[0].empty()) && d > 0 && np > 1)
+        {
+            return FALSE;
+        }
     }
 
     if (!isDlbDisabled(dd->comm))
@@ -3282,9 +3304,13 @@ static gmx_bool test_dd_cutoff(const t_commrec* cr, const matrix box, gmx::Array
     return TRUE;
 }
 
-bool change_dd_cutoff(t_commrec* cr, const matrix box, gmx::ArrayRef<const gmx::RVec> x, real cutoffRequested)
+bool change_dd_cutoff(t_commrec*                     cr,
+                      const matrix                   box,
+                      gmx::ArrayRef<const gmx::RVec> x,
+                      real                           cutoffRequested,
+                      bool                           checkGpuDdLimitation)
 {
-    bool bCutoffAllowed = test_dd_cutoff(cr, box, x, cutoffRequested);
+    bool bCutoffAllowed = test_dd_cutoff(cr, box, x, cutoffRequested, checkGpuDdLimitation);
 
     if (bCutoffAllowed)
     {

@@ -91,7 +91,7 @@ endif()
 # bypass this check.
 if((_cuda_nvcc_executable_or_flags_changed OR CUDA_HOST_COMPILER_CHANGED OR NOT GMX_NVCC_WORKS) AND NOT WIN32)
     message(STATUS "Check for working NVCC/C++ compiler combination with nvcc '${CUDA_NVCC_EXECUTABLE}'")
-    execute_process(COMMAND ${CUDA_NVCC_EXECUTABLE} -ccbin ${CUDA_HOST_COMPILER} -c ${CUDA_NVCC_FLAGS} ${CUDA_NVCC_FLAGS_${_build_type}} ${CMAKE_SOURCE_DIR}/cmake/TestCUDA.cu
+    execute_process(COMMAND ${CUDA_NVCC_EXECUTABLE} --compiler-bindir=${CUDA_HOST_COMPILER} -c ${CUDA_NVCC_FLAGS} ${CUDA_NVCC_FLAGS_${_build_type}} ${CMAKE_SOURCE_DIR}/cmake/TestCUDA.cu
         RESULT_VARIABLE _cuda_test_res
         OUTPUT_VARIABLE _cuda_test_out
         ERROR_VARIABLE  _cuda_test_err
@@ -103,8 +103,11 @@ if((_cuda_nvcc_executable_or_flags_changed OR CUDA_HOST_COMPILER_CHANGED OR NOT 
         message(STATUS "${CUDA_NVCC_EXECUTABLE} standard error:  '${_cuda_test_err}'")
         if(${_cuda_test_err} MATCHES "nsupported")
             message(FATAL_ERROR "NVCC/C++ compiler combination does not seem to be supported. CUDA frequently does not support the latest versions of the host compiler, so you might want to try an earlier C++ compiler version and make sure your CUDA compiler and driver are as recent as possible. Set the GMX_NVCC_WORKS CMake cache variable to bypass this check if you know what you are doing.")
+        elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 11.2 AND CUDA_VERSION VERSION_GREATER 11.4 AND CUDA_VERSION VERSION_LESS 11.7) # Issue #4574, #4641
+            # Above, we should be checking for VERSION_LESS 11.6.2, but CUDA_VERSION is only "major.minor"
+            message(FATAL_ERROR "CUDA versions 11.5-11.6.1 are known to be incompatible with some GCC 11.x. Use a different GCC or update your CUDA installation to at least CUDA 11.6.2")
         else()
-            message(FATAL_ERROR "CUDA compiler does not seem to be functional. Set the GMX_NVCC_WORKS CMake cache variable to bypass this check if you know what you are doing.")
+            message(FATAL_ERROR "CUDA compiler does not seem to be functional or is not compatible with the host compiler. Set the GMX_NVCC_WORKS CMake cache variable to bypass this check if you know what you are doing.")
         endif()
     elseif(NOT GMX_CUDA_TEST_COMPILER_QUIETLY)
         message(STATUS "Check for working NVCC/C++ compiler combination - works")
@@ -112,7 +115,7 @@ if((_cuda_nvcc_executable_or_flags_changed OR CUDA_HOST_COMPILER_CHANGED OR NOT 
     endif()
 endif() # GMX_CHECK_NVCC
 
-# Tests a single set of one or more flags to use with nvcc.
+# Tests a single flag to use with nvcc.
 #
 # If the flags are accepted, they are appended to the variable named
 # in the first argument. The cache variable named in the second
@@ -120,25 +123,38 @@ endif() # GMX_CHECK_NVCC
 # of cmake. The list of flags to check follows these two required
 # arguments.
 #
+# Note that a space-separated string of flags, or a flag-value pair
+# separated by spaces will not work. Use the single-argument forms
+# accepted by nvcc, like "--arg=value".
+#
 # As this code is not yet tested on Windows, it always accepts the
 # flags in that case.
 function(gmx_add_nvcc_flag_if_supported _output_variable_name_to_append_to _flags_cache_variable_name)
     # If the check has already been run, do not re-run it
     if (NOT ${_flags_cache_variable_name} AND NOT WIN32)
         message(STATUS "Checking if nvcc accepts flags ${ARGN}")
-        execute_process(
-            COMMAND ${CUDA_NVCC_EXECUTABLE} ${ARGN} "${CMAKE_SOURCE_DIR}/cmake/TestCUDA.cu"
-            RESULT_VARIABLE _cuda_success
-            OUTPUT_QUIET
-            ERROR_QUIET
-            )
-        # Convert the success value to a boolean and report status
-        if (_cuda_success EQUAL 0)
+        # See detailed comment about gcc 7 below
+        if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8)
             set(_cache_variable_value TRUE)
-            message(STATUS "Checking if nvcc accepts flags ${ARGN} - Success")
+            message(STATUS "Checking if nvcc accepts flags ${ARGN} - Assuming success when using gcc 7")
         else()
-            set(_cache_variable_value FALSE)
-            message(STATUS "Checking if nvcc accepts flags ${ARGN} - Failed")
+            if(NOT(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11))
+              set(CCBIN "--compiler-bindir=${CUDA_HOST_COMPILER}")
+            endif()
+            execute_process(
+                COMMAND ${CUDA_NVCC_EXECUTABLE} ${ARGN} ${CCBIN} "${CMAKE_SOURCE_DIR}/cmake/TestCUDA.cu"
+                RESULT_VARIABLE _cuda_success
+                OUTPUT_QUIET
+                ERROR_QUIET
+                )
+            # Convert the success value to a boolean and report status
+            if (_cuda_success EQUAL 0)
+                set(_cache_variable_value TRUE)
+                message(STATUS "Checking if nvcc accepts flags ${ARGN} - Success")
+            else()
+                set(_cache_variable_value FALSE)
+                message(STATUS "Checking if nvcc accepts flags ${ARGN} - Failed")
+            endif()
         endif()
         set(${_flags_cache_variable_name} ${_cache_variable_value} CACHE BOOL "Whether NVCC supports flag(s) ${ARGN}")
     endif()
@@ -149,6 +165,21 @@ function(gmx_add_nvcc_flag_if_supported _output_variable_name_to_append_to _flag
     endif()
 endfunction()
 
+# Versions of gcc 7 have differing behavior when executing
+#
+#  nvcc $args --compiler-bindir=gcc TestCUDA.cu
+#
+# and would need e.g. adding -lstdc++ to the command line so that
+# linking of a C++/CUDA object by the C-compiler flavor of gcc works.
+# This means we can't reliably test compiler flags in this case
+# without risking creating other problems. Instead we assume (above)
+# that all compiler flags will work, and issue this warning.
+# We also want to skip this warning during GROMACS CI testing.
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8
+    AND NOT DEFINED ENV{GITLAB_CI})
+    message(WARNING "You are using gcc version 7 with the CUDA compiler nvcc. GROMACS cannot reliably test compiler arguments for this combination, so if you later experience errors in building GROMACS, please use a more recent version of gcc.")
+endif()
+
 # If any of these manual override variables for target CUDA GPU architectures
 # or virtual architecture is set, parse the values and assemble the nvcc
 # command line for these. Otherwise use our defaults.
@@ -158,14 +189,14 @@ set(GMX_CUDA_NVCC_GENCODE_FLAGS)
 if (GMX_CUDA_TARGET_SM OR GMX_CUDA_TARGET_COMPUTE)
     set(_target_sm_list ${GMX_CUDA_TARGET_SM})
     foreach(_target ${_target_sm_list})
-        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_${_target} -gencode arch=compute_${_target},code=sm_${_target})
+        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_${_target} "--generate-code=arch=compute_${_target},code=sm_${_target}")
         if (NOT NVCC_HAS_GENCODE_COMPUTE_AND_SM_${_target} AND NOT WIN32)
             message(FATAL_ERROR "Your choice of ${_target} in GMX_CUDA_TARGET_SM was not accepted by nvcc, please choose a target that it accepts")
         endif()
     endforeach()
     set(_target_compute_list ${GMX_CUDA_TARGET_COMPUTE})
     foreach(_target ${_target_compute_list})
-        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_${_target} -gencode arch=compute_${_target},code=compute_${_target})
+        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_${_target} --generate-code=arch=compute_${_target},code=compute_${_target})
         if (NOT NVCC_HAS_GENCODE_COMPUTE_${_target} AND NOT WIN32)
             message(FATAL_ERROR "Your choice of ${_target} in GMX_CUDA_TARGET_COMPUTE was not accepted by nvcc, please choose a target that it accepts")
         endif()
@@ -176,16 +207,22 @@ else()
     #     => compile sm_35, sm_37, sm_50, sm_52, sm_60, sm_61, sm_70, sm_75, sm_80 SASS, and compute_35, compute_80 PTX
 
     # First add flags that trigger SASS (binary) code generation for physical arch
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_35 -gencode arch=compute_35,code=sm_35)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_37 -gencode arch=compute_37,code=sm_37)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_50 -gencode arch=compute_50,code=sm_50)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_52 -gencode arch=compute_52,code=sm_52)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_60 -gencode arch=compute_60,code=sm_60)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_61 -gencode arch=compute_61,code=sm_61)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_70 -gencode arch=compute_70,code=sm_70)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_75 -gencode arch=compute_75,code=sm_75)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_80 -gencode arch=compute_80,code=sm_80)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_86 -gencode arch=compute_86,code=sm_86)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_35 --generate-code=arch=compute_35,code=sm_35)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_37 --generate-code=arch=compute_37,code=sm_37)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_50 --generate-code=arch=compute_50,code=sm_50)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_52 --generate-code=arch=compute_52,code=sm_52)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_60 --generate-code=arch=compute_60,code=sm_60)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_61 --generate-code=arch=compute_61,code=sm_61)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_70 --generate-code=arch=compute_70,code=sm_70)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_75 --generate-code=arch=compute_75,code=sm_75)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_80 --generate-code=arch=compute_80,code=sm_80)
+    # Don't attempt to add newest architectures with old GNU compiler, to avoid issues in CI
+    # related to being unable to test which flags are supported
+    if (NOT (CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8))
+        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_86 --generate-code=arch=compute_86,code=sm_86)
+        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_89 --generate-code=arch=compute_89,code=sm_89)
+        gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_AND_SM_90 --generate-code=arch=compute_90,code=sm_90)
+    endif()
     # Requesting sm or compute 35, 37, or 50 triggers deprecation messages with
     # nvcc 11.0, which we need to suppress for use in CI
     gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_WARNING_NO_DEPRECATED_GPU_TARGETS -Wno-deprecated-gpu-targets)
@@ -194,8 +231,8 @@ else()
     # newest supported virtual arch that's useful to JIT to future architectures
     # as well as an older one suitable for JIT-ing to any rare intermediate arch
     # (like that of Jetson / Drive PX devices)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_53 -gencode arch=compute_53,code=sm_53)
-    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_80 -gencode arch=compute_80,code=sm_80)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_53 --generate-code=arch=compute_53,code=sm_53)
+    gmx_add_nvcc_flag_if_supported(GMX_CUDA_NVCC_GENCODE_FLAGS NVCC_HAS_GENCODE_COMPUTE_80 --generate-code=arch=compute_80,code=sm_80)
 endif()
 
 if (GMX_CUDA_TARGET_SM)

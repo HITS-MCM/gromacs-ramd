@@ -1184,12 +1184,6 @@ int Mdrunner::mdrunner()
         extendStateWithOriresHistory(mtop, *inputrec, globalState.get());
     }
 
-    auto deform = prepareBoxDeformation(globalState != nullptr ? globalState->box : box,
-                                        MASTER(cr) ? DDRole::Master : DDRole::Agent,
-                                        PAR(cr) ? NumRanks::Multiple : NumRanks::Single,
-                                        cr->mpi_comm_mygroup,
-                                        *inputrec);
-
 #if GMX_FAHCORE
     /* We have to remember the generation's first step before reading checkpoint.
        This way, we can report to the F@H core both the generation's first step
@@ -1408,7 +1402,7 @@ int Mdrunner::mdrunner()
         }
     }
 
-    // Produce the task assignment for this rank - done after DD is constructed
+    // Produce the task assignment for all ranks on this node - done after DD is constructed
     GpuTaskAssignments gpuTaskAssignments = GpuTaskAssignmentsBuilder::build(
             availableDevices,
             userGpuTaskAssignment,
@@ -1426,7 +1420,8 @@ int Mdrunner::mdrunner()
             // algorithm is active, but currently does not.
             EEL_PME(inputrec->coulombtype) && thisRankHasDuty(cr, DUTY_PME));
 
-    // Get the device handles for the modules, nullptr when no task is assigned.
+    // Get the device handle for the modules on this rank, nullptr
+    // when no task is assigned.
     int                deviceId   = -1;
     DeviceInformation* deviceInfo = gpuTaskAssignments.initDevice(&deviceId);
 
@@ -1685,8 +1680,9 @@ int Mdrunner::mdrunner()
                                   cr,
                                   &mdrunOptions.checkpointOptions.period);
 
-    const bool               thisRankHasPmeGpuTask = gpuTaskAssignments.thisRankHasPmeGpuTask();
-    std::unique_ptr<MDAtoms> mdAtoms;
+    const bool thisRankHasPmeGpuTask = gpuTaskAssignments.thisRankHasPmeGpuTask();
+    std::unique_ptr<BoxDeformation>      deform;
+    std::unique_ptr<MDAtoms>             mdAtoms;
     std::unique_ptr<VirtualSitesHandler> vsite;
 
     t_nrnb nrnb;
@@ -1719,6 +1715,12 @@ int Mdrunner::mdrunner()
             fr->fcdata->orires = std::make_unique<t_oriresdata>(
                     fplog, mtop, *inputrec, ms, globalState.get(), &atomSets);
         }
+
+        deform = prepareBoxDeformation(globalState != nullptr ? globalState->box : box,
+                                       MASTER(cr) ? DDRole::Master : DDRole::Agent,
+                                       PAR(cr) ? NumRanks::Multiple : NumRanks::Single,
+                                       cr->mpi_comm_mygroup,
+                                       *inputrec);
 
         // Save a handle to device stream manager to use elsewhere in the code
         // TODO: Forcerec is not a correct place to store it.
@@ -1904,25 +1906,36 @@ int Mdrunner::mdrunner()
                                  : nullptr;
 
                 const t_inputrec* ir = inputrec.get();
-                pmedata              = gmx_pme_init(
-                        cr,
-                        getNumPmeDomains(cr->dd),
-                        ir,
-                        box,
-                        minCellSizeForAtomDisplacement(
-                                mtop, *ir, updateGroups.updateGroupingPerMoleculeType(), ir->ewald_rtol),
-                        nChargePerturbed != 0,
-                        nTypePerturbed != 0,
-                        mdrunOptions.reproducible,
-                        ewaldcoeff_q,
-                        ewaldcoeff_lj,
-                        gmx_omp_nthreads_get(ModuleMultiThread::Pme),
-                        pmeRunMode,
-                        nullptr,
-                        deviceContext,
-                        pmeStream,
-                        pmeGpuProgram.get(),
-                        mdlog);
+                /* For each atom we allow a relative (cut-off) error of up to ewald_rtol.
+                 * Thus we can also tolerate an error of an order of magnitude less due to
+                 * atoms being slightly outside the halo extent. This will only cause a fraction
+                 * of the charge to be missing on the grid. So we pass ewald_rtol as the allowed
+                 * chance per atom (ChanceTarget::Atom) to be outside the halo extent.
+                 */
+                const real haloExtentForAtomDisplacement =
+                        updateGroups.maxUpdateGroupRadius()
+                        + minCellSizeForAtomDisplacement(mtop,
+                                                         *ir,
+                                                         updateGroups.updateGroupingPerMoleculeType(),
+                                                         ir->ewald_rtol,
+                                                         ChanceTarget::Atom);
+                pmedata = gmx_pme_init(cr,
+                                       getNumPmeDomains(cr->dd),
+                                       ir,
+                                       box,
+                                       haloExtentForAtomDisplacement,
+                                       nChargePerturbed != 0,
+                                       nTypePerturbed != 0,
+                                       mdrunOptions.reproducible,
+                                       ewaldcoeff_q,
+                                       ewaldcoeff_lj,
+                                       gmx_omp_nthreads_get(ModuleMultiThread::Pme),
+                                       pmeRunMode,
+                                       nullptr,
+                                       deviceContext,
+                                       pmeStream,
+                                       pmeGpuProgram.get(),
+                                       mdlog);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }

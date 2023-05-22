@@ -140,8 +140,8 @@ libraries and require no further configuration. If your vendor's
 compiler also manages the standard library library via compiler flags,
 these will be honored. For configuration of other compilers, read on.
 
-On Linux, the clang compilers use the libstdc++ which
-comes with gcc as the default C++ library. For |Gromacs|, we require
+On Linux, the clang compilers typically use for their C++ library
+the libstdc++ which comes with g++. For |Gromacs|, we require
 the compiler to support libstc++ version 7.1 or higher. To select a
 particular libstdc++ library, provide the path to g++ with
 ``-DGMX_GPLUSPLUS_PATH=/path/to/g++``.
@@ -203,6 +203,11 @@ to the NVIDIA OpenCL runtime).
 It is not possible to support both Intel and other vendors' GPUs with OpenCL.
 A 64-bit implementation of OpenCL is required and therefore OpenCL is only
 supported on 64-bit platforms.
+
+Please note that OpenCL backend does not support the following GPUs:
+
+* NVIDIA Volta (CC 7.0, e.g., Tesla V100 or GTX 1630) or newer,
+* AMD RDNA1/2/3 (Navi 1/2X,3X, e.g., RX 5500 or RX6900).
 
 Since |Gromacs| 2021, the support for SYCL_ is added.
 The current SYCL implementation can be compiled either with `Intel oneAPI DPC++`_
@@ -568,7 +573,8 @@ lead to performance loss, e.g. on Intel Skylake-X/SP and AMD Zen.
    processors support this, so this can also be considered a good
    baseline if you are content with slow simulations and prefer
    portability between reasonably modern processors.
-4. ``AVX_128_FMA`` AMD Bulldozer, Piledriver (and later Family 15h) processors have this.
+4. ``AVX_128_FMA`` AMD Bulldozer, Piledriver (and later Family 15h) processors
+   have this but it is NOT supported on any AMD processors since Zen1.
 5. ``AVX_256`` Intel processors since Sandy Bridge (2011). While this
    code will work on the  AMD Bulldozer and Piledriver processors, it is significantly less
    efficient than the ``AVX_128_FMA`` choice above - do not be fooled

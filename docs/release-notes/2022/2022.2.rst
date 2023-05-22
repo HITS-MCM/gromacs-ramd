@@ -1,0 +1,180 @@
+GROMACS 2022.2 release notes
+----------------------------
+
+This version was released on June 16th, 2022. These release notes
+document the changes that have taken place in GROMACS since the
+previous 2022.1 version, to fix known issues. It also incorporates all
+fixes made in version 2021.5 and earlier, which you can find described
+in the :ref:`release-notes`.
+
+.. Note to developers!
+   Please use """"""" to underline the individual entries for fixed issues in the subfolders,
+   otherwise the formatting on the webpage is messed up.
+   Also, please use the syntax :issue:`number` to reference issues on GitLab, without the
+   a space between the colon and number!
+
+Fixes where mdrun could behave incorrectly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Fix incorrect constraining in highly parallel runs
+""""""""""""""""""""""""""""""""""""""""""""""""""
+
+With domain decomposition, OpenMP and connected constraints (so not only
+bonds with hydrogens constrained), constraint correction could be applied
+when a domain would not have any constraints while it had constraints before.
+This is unlikely to have gone unnoticed in longer runs, as the chance is
+high that atoms would clash and the system would become unstable. But short
+runs might not crash and could therefore produce incorrect results. The correctness can
+be judged from the drift in the conserved energy quantity, which is reported
+at the end of the log file, and which will be one to two orders of magnitude
+larger than for a correct run.
+
+:issue:`4476`
+
+Fix missing CPU-GPU synchronization when doing free-energy calculations
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When GPU halo exchange with direct communication is enabled, CPU based 
+free-energy kernels were being run without waiting on non-local co-ordinates 
+to be available on host. This resulted in use of stale data on CPU side. 
+This issue can cause incorect output when GPU direct communication is enabled 
+using GMX_ENABLE_DIRECT_GPU_COMM environment variable and simulation contains 
+free-energy calculations.
+
+:issue:`4471`
+
+Fix missing PME mesh dV/dlambda with PME on GPU on a seperate PME rank
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When doing free-energy calculations with PME running on GPU on a separate
+PME rank, the dV/dlambda contribution for the PME mesh part was missing.
+The same contribution was missing from the foreign lambda energy differences.
+Note that the energies and forces were correct.
+
+:issue:`4474`
+
+Removed the (incorrect) output file size note/warning with mdrun -rerun
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+:issue:`4484`
+
+Wait for PME coordinate padding clearing to complete after reinitialization
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+As part of the irregular reinitialization of PME coordinate buffers,
+the padding area of the buffer on the GPU must be set to
+zero. Previously, a dependency was missing such that, with GPU direct
+communications enabled via the GMX_ENABLE_DIRECT_GPU_COMM, it was
+possible that the PME kernel could preceed before this initialization
+had completed, and this has now been fixed. The incorrect ordering is
+only expected to have occured in extreme benchmarking cases, causing
+an obvious crash.
+
+:issue:`4482`
+
+Note known issues with Verlet buffer estimation
+"""""""""""""""""""""""""""""""""""""""""""""""
+
+There are known issues with the Verlet buffer estimate for imhonogeneous
+systems as well as for potentials with only the repulsive part of the
+Lennard Jones potential. These issues and workarounds are listed in
+the :ref:`known issues <gmx-users-known-issues>` section.
+
+:issue:`4509`
+
+Fixes for ``gmx`` tools
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Clarified pdb2gmx error message for undefined atom type in terminal database
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+:issue:`4481`
+
+Lower severity of grompp exclusion distance issues with energy minimization
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+With energy minimization, the error/warning about pair distances
+beyond/close to the cut-off has been changed to a warning/note,
+as energy minimization might fix such issues.
+
+:issue:`4480`
+
+Fixed missing cmap torsion correction for periodic pepdites
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When using pdb2gmx with periodic peptides and the CHARMM27
+force field, the CMAP correction across the periodic boundary
+was missing (but not the torsion itself). Reprocess your
+PDB file with pdb2gmx from version 2022.2 or later to get a
+correct topology, or add it manually to the topology.
+
+Avoid crash in gmx bar with invalid input
+"""""""""""""""""""""""""""""""""""""""""
+
+gmx bar could try to read an invalid input data file and would fail with a hard
+crash instead of a helpful error message.
+
+Fix printing of incorrect data from analysis tools
+""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+A change on how we handle selections caused the analysis tools in the
+trajectoryanalysis framework to print data for wrong selections.
+
+:issue:`4508`
+
+Remove broken charge zeroing function in convert-tpr
+""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+This had been broken for a long time and no discernable use.
+
+:issue:`4226`
+
+
+Fixes that affect portability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warn when using gcc version 7 with CUDA builds
+""""""""""""""""""""""""""""""""""""""""""""""
+
+Different versions of gcc 7 behave differently in a way that makes it
+hard for |Gromacs| to check whether CUDA's ``nvcc`` compiler will
+accept compiler flags. |Gromacs| 2022 and 2022.1 sometimes would
+spuriously detect flags as invalid, avoid using them, and so produce
+slow CUDA kernels. Now |Gromacs| assumes all nvcc flags are valid in
+this case and the build system warns when this is occuring. If you
+then experience build failures, please use a newer version of gcc.
+
+:issue:`4478`
+
+Fix external tinyXML version to below 7
+"""""""""""""""""""""""""""""""""""""""
+Newer versions are not compatible with |Gromacs|.
+
+:issue:`4477`
+
+Fixed a possible software build error with OpenMP linking
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+In some situations, software builds could have errors linking ``omp`` symbols.
+A minor update to the CMake configuration helps the ``muparser`` component
+to find the same OpenMP dependency used by the rest of the library.
+
+:issue:`4499`
+
+Miscellaneous
+^^^^^^^^^^^^^
+
+Fixed detection of external TinyXML-2
+"""""""""""""""""""""""""""""""""""""
+
+Updated the code to properly detect the presence and the version of external
+TinyXML-2 (only relevant if ``-DGMX_EXTERNAL_TINYXML2=ON`` is used).
+
+:issue:`4477`
+
+Fixed warnings when using module-specific OpenMP thread-count environment variables
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+One of the arrays used to construct message strings wasn't updated
+properly, so sometimes an information message was wrong or may have
+printed garbage.

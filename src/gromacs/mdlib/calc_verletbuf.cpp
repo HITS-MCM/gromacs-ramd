@@ -362,6 +362,14 @@ static std::vector<VerletbufAtomtype> getVerletBufferAtomtypes(const gmx_mtop_t&
                 {
                     continue;
                 }
+                /* Check for flexible constraints, indicated by length=0.
+                 * As flexible constraints have varying length, we will not take
+                 * them into account, which gives a more conservative estimate.
+                 */
+                if (ip.constr.dA == 0)
+                {
+                    continue;
+                }
                 GMX_RELEASE_ASSERT(ip.constr.dA > 0,
                                    "We should only have positive constraint lengths here");
 
@@ -1334,11 +1342,23 @@ static real chanceOfUpdateGroupCrossingCell(const gmx_mtop_t&      mtop,
 real minCellSizeForAtomDisplacement(const gmx_mtop_t&      mtop,
                                     const t_inputrec&      ir,
                                     PartitioningPerMoltype updateGrouping,
-                                    real                   chanceRequested)
+                                    real                   chanceRequested,
+                                    const ChanceTarget     chanceTarget)
 {
     if (!EI_DYNAMICS(ir.eI) || (EI_MD(ir.eI) && ir.etc == TemperatureCoupling::No))
     {
         return minCellSizeFromPairlistBuffer(ir);
+    }
+
+    /* We will compute the chance for the whole system, so if the requested
+     * chance is per atom, we need to multiply the target chance
+     * by the number of atoms (since chance << 1).
+     */
+    switch (chanceTarget)
+    {
+        case ChanceTarget::System: break;
+        case ChanceTarget::Atom: chanceRequested *= mtop.natoms; break;
+        default: GMX_RELEASE_ASSERT(false, "Unhandled ChanceTarget");
     }
 
     /* We use the maximum temperature with multiple T-coupl groups.
