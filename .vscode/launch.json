@@ -431,6 +431,29 @@
                 }
             ],
             "preLaunchTask": "CMake: build tests"
+        },
+        {
+            "name": "(gdb) gmx energy",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["energy",
+                     "-s", "${workspaceFolder}/src/gromacs/energyanalysis/tests/dhdl.tpr",
+                     "-f", "${workspaceFolder}/src/gromacs/energyanalysis/tests/dhdl.edr",
+                     "-odh", "dhdl.xvg"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/tests",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake: build tests"
         }
     ]
 }
