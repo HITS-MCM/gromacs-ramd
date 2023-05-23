@@ -61,6 +61,8 @@ protected:
     RAMDParams params;
     std::unique_ptr<RAMD> ramd;
     CommrecHandle cr;
+    pull_t pull;
+    t_pull_coord coord_params;
 
     void SetUp() override
     {
@@ -75,24 +77,21 @@ protected:
         params.old_angle_dist = false;
         params.eval_freq = 1;
 
-        cr = init_commrec(MPI_COMM_WORLD, nullptr);
+        cr = init_commrec(MPI_COMM_WORLD);
 
         t_filenm fnm[] = {
             { efXVG, "-ramd", "ramd", ffOPTWR }
         };
 
         int64_t step = 0;
-        pull_t pull;
-        t_pull_coord coord_params;
-        coord_params.eType = epullEXTERNAL;
-        char buf[] = "RAMD";
-        coord_params.externalPotentialProvider = buf;
-        pull_coord_work_t pull_coord(coord_params);
-        pull.coord.push_back(pull_coord);
-        pull.coord.push_back(pull_coord);
-        pull.coord.push_back(pull_coord);
+        coord_params.eType = PullingAlgorithm::External;
+        coord_params.externalPotentialProvider = "RAMD";
+        pull.coord.push_back(pull_coord_work_t(coord_params));
+        pull.coord.push_back(pull_coord_work_t(coord_params));
+        pull.coord.push_back(pull_coord_work_t(coord_params));
+        // pull.group.push_back(pull_group_work_t{});
         pull.numUnregisteredExternalPotentials = 3;
-        pull.ePBC = 0;
+        pull.pbcType = PbcType::No;
 
         ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation,
             cr.get(), 1, fnm, nullptr);
@@ -112,17 +111,16 @@ TEST_F(RAMDTest, construction)
 TEST_F(RAMDTest, calculateForces)
 {
     PaddedVector<RVec> x = {{0, 0, 0}};
-    t_mdatoms md;
-    double time = 0.0;
+    std::vector<real> chargeA{1};
     matrix box = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    ForceProviderInput forceProviderInput(x, md, time, box, *cr);
+    ForceProviderInput forceProviderInput(x, ssize(chargeA), chargeA, {}, 0.0, 0, box, *cr);
 
     PaddedVector<RVec> f = {{0, 0, 0}};
     ForceWithVirial forceWithVirial(f, true);
     gmx_enerdata_t enerd(1, 0);
     ForceProviderOutput forceProviderOutput(&forceWithVirial, &enerd);
 
-    //ramd->calculateForces(forceProviderInput, &forceProviderOutput);
+    // ramd->calculateForces(forceProviderInput, &forceProviderOutput);
 }
 
 } // namespace

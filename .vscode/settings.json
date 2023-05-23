@@ -78,7 +78,8 @@
         "cassert": "cpp",
         "variant": "cpp",
         "__functional_base": "cpp",
-        "locale": "cpp"
+        "locale": "cpp",
+        "any": "cpp"
     },
     "cmake.configureOnOpen": false
 }

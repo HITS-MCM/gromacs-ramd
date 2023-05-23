@@ -35,6 +35,9 @@
 # the research papers on the package. Check out http://www.gromacs.org.
 
 gmx_add_unit_test(RAMDTest ramd-test
+    CPP_SOURCE_FILES
     ramd.cpp
     randomsphericaldirectiongenerator.cpp
 )
+
+target_link_libraries(ramd-test PRIVATE muparser)

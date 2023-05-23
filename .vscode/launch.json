@@ -393,10 +393,10 @@
             "preLaunchTask": "CMake: build tests"
         },
         {
-            "name": "(gdb) MdrunTest",
+            "name": "(gdb) MdrunModulesTest",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/bin/mdrun-output-test",
+            "program": "${workspaceFolder}/build/bin/mdrun-modules-test",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/tests",
