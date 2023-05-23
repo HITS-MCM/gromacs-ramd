@@ -306,7 +306,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
             number_of_steps = stoi(gmx::splitString(line)[8]);
         }
     }
-    EXPECT_EQ(number_of_steps, 63790);
+    EXPECT_EQ(number_of_steps, 630);
 
     TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
     // std::cout << reader_pullx.readAll();

@@ -648,7 +648,6 @@ static void computeSpecialForces(FILE*                          fplog,
                                  bool                           didNeighborSearch)
 {
     // RAMD: Pull forces must be applied before ForceProviders
-
     if ((inputrec.bRAMD) && pull_have_potential(*pull_work))
     {
         const int mtsLevel = forceGroupMtsLevel(inputrec.mtsLevels, gmx::MtsForceGroups::Pull);
@@ -703,7 +702,7 @@ static void computeSpecialForces(FILE*                          fplog,
         enerd->term[F_COM_PULL] += awh->applyBiasForcesAndUpdateBias(
                 inputrec.pbcType, foreignLambdaDeltaH, foreignLambdaDhDl, box, t, step, wcycle, fplog);
     }
-    if (doPulling)
+    if (doPulling || inputrec.bRAMD)
     {
         wallcycle_start_nocount(wcycle, WallCycleCounter::PullPot);
         auto& forceWithVirial = (pullMtsLevel == 0) ? forceWithVirialMtsLevel0 : forceWithVirialMtsLevel1;
