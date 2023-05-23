@@ -393,10 +393,50 @@
             "preLaunchTask": "CMake: build tests"
         },
         {
+            "name": "(gdb) PullTest",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/pull-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/tests",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake: build tests"
+        },
+        {
             "name": "(gdb) MdrunModulesTest",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/mdrun-modules-test",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/tests",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake: build tests"
+        },
+        {
+            "name": "(gdb) MdrunPullTest",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/mdrun-pull-test",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/tests",
