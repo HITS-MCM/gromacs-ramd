@@ -65,17 +65,22 @@ AtomDistribution::AtomDistribution(const ivec numCells, int numAtomGroups, int n
     }
 }
 
-void get_commbuffer_counts(AtomDistribution* ma, int** counts, int** disps)
+void get_commbuffer_counts(AtomDistribution*         ma,
+                           gmx::ArrayRef<const int>* counts,
+                           gmx::ArrayRef<const int>* displacements)
 {
-    GMX_ASSERT(ma != nullptr, "Need a valid AtomDistribution struct (on the master rank)");
+    GMX_ASSERT(ma != nullptr, "Need a valid AtomDistribution struct (on the main rank)");
 
-    /* Make the rvec count and displacement arrays */
-    int numRanks = ma->intBuffer.size() / 2;
-    *counts      = ma->intBuffer.data();
-    *disps       = ma->intBuffer.data() + numRanks;
+    /* Make the real (not rvec) count and displacement arrays */
+    int  numRanks = ma->intBuffer.size() / 2;
+    auto c        = gmx::makeArrayRef(ma->intBuffer).subArray(0, numRanks);
+    auto d        = gmx::makeArrayRef(ma->intBuffer).subArray(numRanks, numRanks);
     for (int rank = 0; rank < numRanks; rank++)
     {
-        (*counts)[rank] = ma->domainGroups[rank].numAtoms * sizeof(rvec);
-        (*disps)[rank]  = (rank == 0 ? 0 : (*disps)[rank - 1] + (*counts)[rank - 1]);
+        c[rank] = ma->domainGroups[rank].numAtoms;
+        d[rank] = (rank == 0 ? 0 : d[rank - 1] + c[rank - 1]);
     }
+
+    *counts        = c;
+    *displacements = d;
 }

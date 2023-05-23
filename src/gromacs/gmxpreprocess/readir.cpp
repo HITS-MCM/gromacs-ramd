@@ -57,6 +57,7 @@
 #include "gromacs/mdlib/calc_verletbuf.h"
 #include "gromacs/mdlib/vcm.h"
 #include "gromacs/mdrun/mdmodules.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/awh_params.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
@@ -71,6 +72,7 @@
 #include "gromacs/topology/block.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/topology/index.h"
+#include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/symtab.h"
 #include "gromacs/topology/topology.h"
@@ -85,7 +87,6 @@
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreemdpwriter.h"
 #include "gromacs/utility/keyvaluetreetransform.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strconvert.h"
 #include "gromacs/utility/stringcompare.h"
@@ -147,12 +148,10 @@ enum class GroupCoverage
     OneGroup //<! Merge all selected groups into one group, make a rest group for the remaining particles
 };
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static const char* constraints[eshNR + 1] = { "none",     "h-bonds",    "all-bonds",
-                                              "h-angles", "all-angles", nullptr };
+static const char* const constraints[eshNR + 1] = { "none",     "h-bonds",    "all-bonds",
+                                                    "h-angles", "all-angles", nullptr };
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static const char* couple_lam[ecouplamNR + 1] = { "vdw-q", "vdw", "q", "none", nullptr };
+static const char* const couple_lam[ecouplamNR + 1] = { "vdw-q", "vdw", "q", "none", nullptr };
 
 static void getSimTemps(int ntemps, t_simtemp* simtemp, gmx::ArrayRef<double> temperature_lambdas)
 {
@@ -191,15 +190,15 @@ static void getSimTemps(int ntemps, t_simtemp* simtemp, gmx::ArrayRef<double> te
 }
 
 
-static void _low_check(bool b, const char* s, warninp_t wi)
+static void _low_check(bool b, const char* s, WarningHandler* wi)
 {
     if (b)
     {
-        warning_error(wi, s);
+        wi->addError(s);
     }
 }
 
-static void check_nst(const char* desc_nst, int nst, const char* desc_p, int* p, warninp_t wi)
+static void check_nst(const char* desc_nst, int nst, const char* desc_p, int* p, WarningHandler* wi)
 {
     char buf[STRLEN];
 
@@ -208,7 +207,7 @@ static void check_nst(const char* desc_nst, int nst, const char* desc_p, int* p,
         /* Round up to the next multiple of nst */
         *p = ((*p) / nst + 1) * nst;
         sprintf(buf, "%s should be a multiple of %s, changing %s to %d\n", desc_p, desc_nst, desc_p, *p);
-        warning(wi, buf);
+        wi->addWarning(buf);
     }
 }
 
@@ -225,7 +224,7 @@ void check_ir(const char*                    mdparin,
               const gmx::MDModulesNotifiers& mdModulesNotifiers,
               t_inputrec*                    ir,
               t_gromppopts*                  opts,
-              warninp_t                      wi)
+              WarningHandler*                wi)
 /* Check internal consistency.
  * NOTE: index groups are not set here yet, don't check things
  * like temperature coupling group options here, but in triple_check
@@ -242,7 +241,12 @@ void check_ir(const char*                    mdparin,
     t_lambda*   fep    = ir->fepvals.get();
     t_expanded* expand = ir->expandedvals.get();
 
-    set_warning_line(wi, mdparin, -1);
+    wi->setFileAndLineNumber(mdparin, -1);
+
+    if (EI_DYNAMICS(ir->eI) && ir->delta_t <= 0)
+    {
+        wi->addError("dt should be larger than 0");
+    }
 
     /* We cannot check MTS requirements with an invalid MTS setup
      * and we will already have generated errors with an invalid MTS setup.
@@ -253,7 +257,7 @@ void check_ir(const char*                    mdparin,
 
         for (const auto& errorMessage : errorMessages)
         {
-            warning_error(wi, errorMessage.c_str());
+            wi->addError(errorMessage);
         }
     }
 
@@ -262,21 +266,21 @@ void check_ir(const char*                    mdparin,
         std::string message =
                 gmx::formatString("%s electrostatics is no longer supported",
                                   enumValueToString(CoulombInteractionType::RFNecUnsupported));
-        warning_error(wi, message);
+        wi->addError(message);
     }
 
     /* BASIC CUT-OFF STUFF */
     if (ir->rcoulomb < 0)
     {
-        warning_error(wi, "rcoulomb should be >= 0");
+        wi->addError("rcoulomb should be >= 0");
     }
     if (ir->rvdw < 0)
     {
-        warning_error(wi, "rvdw should be >= 0");
+        wi->addError("rvdw should be >= 0");
     }
     if (ir->rlist < 0 && !(ir->cutoff_scheme == CutoffScheme::Verlet && ir->verletbuf_tol > 0))
     {
-        warning_error(wi, "rlist should be >= 0");
+        wi->addError("rlist should be >= 0");
     }
     sprintf(err_buf,
             "nstlist can not be smaller than 0. (If you were trying to use the heuristic "
@@ -300,7 +304,7 @@ void check_ir(const char*                    mdparin,
         /* Normal Verlet type neighbor-list, currently only limited feature support */
         if (inputrec2nboundeddim(ir) < 3)
         {
-            warning_error(wi, "With Verlet lists only full pbc or pbc=xy with walls is supported");
+            wi->addError("With Verlet lists only full pbc or pbc=xy with walls is supported");
         }
 
         // We don't (yet) have general Verlet kernels for rcoulomb!=rvdw
@@ -309,13 +313,13 @@ void check_ir(const char*                    mdparin,
             // Since we have PME coulomb + LJ cut-off kernels with rcoulomb>rvdw
             // for PME load balancing, we can support this exception.
             bool bUsesPmeTwinRangeKernel =
-                    (EEL_PME_EWALD(ir->coulombtype) && ir->vdwtype == VanDerWaalsType::Cut
+                    (usingPmeOrEwald(ir->coulombtype) && ir->vdwtype == VanDerWaalsType::Cut
                      && ir->rcoulomb > ir->rvdw);
             if (!bUsesPmeTwinRangeKernel)
             {
-                warning_error(wi,
-                              "With Verlet lists rcoulomb!=rvdw is not supported (except for "
-                              "rcoulomb>rvdw with PME electrostatics)");
+                wi->addError(
+                        "With Verlet lists rcoulomb!=rvdw is not supported (except for "
+                        "rcoulomb>rvdw with PME electrostatics)");
             }
         }
 
@@ -334,7 +338,7 @@ void check_ir(const char*                    mdparin,
                         enumValueToString(ir->vdwtype),
                         enumValueToString(VanDerWaalsType::Cut),
                         enumValueToString(ir->vdw_modifier));
-                warning_note(wi, warn_buf);
+                wi->addNote(warn_buf);
 
                 ir->vdwtype = VanDerWaalsType::Cut;
             }
@@ -344,48 +348,47 @@ void check_ir(const char*                    mdparin,
                         "Unsupported combination of vdwtype=%s and vdw_modifier=%s",
                         enumValueToString(ir->vdwtype),
                         enumValueToString(ir->vdw_modifier));
-                warning_error(wi, warn_buf);
+                wi->addError(warn_buf);
             }
         }
 
         if (!(ir->vdwtype == VanDerWaalsType::Cut || ir->vdwtype == VanDerWaalsType::Pme))
         {
-            warning_error(wi,
-                          "With Verlet lists only cut-off and PME LJ interactions are supported");
+            wi->addError("With Verlet lists only cut-off and PME LJ interactions are supported");
         }
-        if (!(ir->coulombtype == CoulombInteractionType::Cut || EEL_RF(ir->coulombtype)
-              || EEL_PME(ir->coulombtype) || ir->coulombtype == CoulombInteractionType::Ewald))
+        if (!(ir->coulombtype == CoulombInteractionType::Cut || usingRF(ir->coulombtype)
+              || usingPme(ir->coulombtype) || ir->coulombtype == CoulombInteractionType::Ewald))
         {
-            warning_error(wi,
-                          "With Verlet lists only cut-off, reaction-field, PME and Ewald "
-                          "electrostatics are supported");
+            wi->addError(
+                    "With Verlet lists only cut-off, reaction-field, PME and Ewald "
+                    "electrostatics are supported");
         }
         if (!(ir->coulomb_modifier == InteractionModifiers::None
               || ir->coulomb_modifier == InteractionModifiers::PotShift))
         {
             sprintf(warn_buf, "coulomb_modifier=%s is not supported", enumValueToString(ir->coulomb_modifier));
-            warning_error(wi, warn_buf);
+            wi->addError(warn_buf);
         }
 
-        if (EEL_USER(ir->coulombtype))
+        if (usingUserTableElectrostatics(ir->coulombtype))
         {
             sprintf(warn_buf,
                     "Coulomb type %s is not supported with the verlet scheme",
                     enumValueToString(ir->coulombtype));
-            warning_error(wi, warn_buf);
+            wi->addError(warn_buf);
         }
 
         if (ir->nstlist <= 0)
         {
-            warning_error(wi, "With Verlet lists nstlist should be larger than 0");
+            wi->addError("With Verlet lists nstlist should be larger than 0");
         }
 
         if (ir->nstlist < 10)
         {
-            warning_note(wi,
-                         "With Verlet lists the optimal nstlist is >= 10, with GPUs >= 20. Note "
-                         "that with the Verlet scheme, nstlist has no effect on the accuracy of "
-                         "your simulation.");
+            wi->addNote(
+                    "With Verlet lists the optimal nstlist is >= 10, with GPUs >= 20. Note "
+                    "that with the Verlet scheme, nstlist has no effect on the accuracy of "
+                    "your simulation.");
         }
 
         rc_max = std::max(ir->rvdw, ir->rcoulomb);
@@ -400,19 +403,18 @@ void check_ir(const char*                    mdparin,
         {
             if (ir->verletbuf_tol == 0)
             {
-                warning_error(wi, "Can not have Verlet buffer tolerance of exactly 0");
+                wi->addError("Can not have Verlet buffer tolerance of exactly 0");
             }
 
             if (ir->rlist < rc_max)
             {
-                warning_error(wi,
-                              "With verlet lists rlist can not be smaller than rvdw or rcoulomb");
+                wi->addError("With verlet lists rlist can not be smaller than rvdw or rcoulomb");
             }
 
             if (ir->rlist == rc_max && ir->nstlist > 1)
             {
-                warning_note(
-                        wi,
+                wi->addNote(
+
                         "rlist is equal to rvdw and/or rcoulomb: there is no explicit Verlet "
                         "buffer. The cluster pair list does have a buffering effect, but choosing "
                         "a larger rlist might be necessary for good energy conservation.");
@@ -422,10 +424,10 @@ void check_ir(const char*                    mdparin,
         {
             if (ir->rlist > rc_max)
             {
-                warning_note(wi,
-                             "You have set rlist larger than the interaction cut-off, but you also "
-                             "have verlet-buffer-tolerance > 0. Will set rlist using "
-                             "verlet-buffer-tolerance.");
+                wi->addNote(
+                        "You have set rlist larger than the interaction cut-off, but you also "
+                        "have verlet-buffer-tolerance > 0. Will set rlist using "
+                        "verlet-buffer-tolerance.");
             }
 
             if (ir->nstlist == 1)
@@ -439,12 +441,12 @@ void check_ir(const char*                    mdparin,
                 {
                     if (inputrec2nboundeddim(ir) < 3)
                     {
-                        warning_error(wi,
-                                      "The box volume is required for calculating rlist from the "
-                                      "energy drift with verlet-buffer-tolerance > 0. You are "
-                                      "using at least one unbounded dimension, so no volume can be "
-                                      "computed. Either use a finite box, or set rlist yourself "
-                                      "together with verlet-buffer-tolerance = -1.");
+                        wi->addError(
+                                "The box volume is required for calculating rlist from the "
+                                "energy drift with verlet-buffer-tolerance > 0. You are "
+                                "using at least one unbounded dimension, so no volume can be "
+                                "computed. Either use a finite box, or set rlist yourself "
+                                "together with verlet-buffer-tolerance = -1.");
                     }
                     /* Set rlist temporarily so we can continue processing */
                     ir->rlist = rc_max;
@@ -481,7 +483,7 @@ void check_ir(const char*                    mdparin,
                         enumValueToString(ir->etc),
                         enumValueToString(ir->eI));
             }
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
         ir->etc = TemperatureCoupling::No;
     }
@@ -493,43 +495,31 @@ void check_ir(const char*                    mdparin,
                 enumValueToString(IntegrationAlgorithm::VVAK),
                 enumValueToString(IntegrationAlgorithm::MD),
                 enumValueToString(IntegrationAlgorithm::VV));
-        warning_note(wi, warn_buf);
+        wi->addNote(warn_buf);
     }
     if (!EI_DYNAMICS(ir->eI))
     {
-        if (ir->epc != PressureCoupling::No)
+        if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
         {
             sprintf(warn_buf,
                     "Setting pcoupl from '%s' to 'no'. Pressure coupling does not apply to %s.",
-                    enumValueToString(ir->epc),
+                    enumValueToString(ir->pressureCouplingOptions.epc),
                     enumValueToString(ir->eI));
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
-        ir->epc = PressureCoupling::No;
+        ir->pressureCouplingOptions.epc = PressureCoupling::No;
     }
     if (EI_DYNAMICS(ir->eI))
     {
+        // Replace old -1 "automation" values by the default value of 100
         if (ir->nstcalcenergy < 0)
         {
-            ir->nstcalcenergy = ir_optimal_nstcalcenergy(ir);
-            if (ir->nstenergy != 0 && ir->nstenergy < ir->nstcalcenergy)
-            {
-                /* nstcalcenergy larger than nstener does not make sense.
-                 * We ideally want nstcalcenergy=nstener.
-                 */
-                if (ir->nstlist > 0)
-                {
-                    ir->nstcalcenergy = std::gcd(ir->nstenergy, ir->nstlist);
-                }
-                else
-                {
-                    ir->nstcalcenergy = ir->nstenergy;
-                }
-            }
+            ir->nstcalcenergy = 100;
         }
-        else if ((ir->nstenergy > 0 && ir->nstcalcenergy > ir->nstenergy)
-                 || (ir->efep != FreeEnergyPerturbationType::No && ir->fepvals->nstdhdl > 0
-                     && (ir->nstcalcenergy > ir->fepvals->nstdhdl)))
+
+        if ((ir->nstenergy > 0 && ir->nstcalcenergy > ir->nstenergy)
+            || (ir->efep != FreeEnergyPerturbationType::No && ir->fepvals->nstdhdl > 0
+                && (ir->nstcalcenergy > ir->fepvals->nstdhdl)))
 
         {
             const char* nsten    = "nstenergy";
@@ -546,21 +536,21 @@ void check_ir(const char*                    mdparin,
             }
             /* If the user sets nstenergy small, we should respect that */
             sprintf(warn_buf, "Setting nstcalcenergy (%d) equal to %s (%d)", ir->nstcalcenergy, min_name, min_nst);
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
             ir->nstcalcenergy = min_nst;
         }
 
-        if (ir->epc != PressureCoupling::No)
+        if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
         {
-            if (ir->nstpcouple < 0)
+            if (ir->pressureCouplingOptions.nstpcouple < 0)
             {
-                ir->nstpcouple = ir_optimal_nstpcouple(ir);
+                ir->pressureCouplingOptions.nstpcouple = ir_optimal_nstpcouple(ir);
             }
-            if (ir->useMts && ir->nstpcouple % ir->mtsLevels.back().stepFactor != 0)
+            if (ir->useMts && ir->pressureCouplingOptions.nstpcouple % ir->mtsLevels.back().stepFactor != 0)
             {
-                warning_error(wi,
-                              "With multiple time stepping, nstpcouple should be a mutiple of "
-                              "mts-factor");
+                wi->addError(
+                        "With multiple time stepping, nstpcouple should be a multiple of "
+                        "mts-factor");
             }
         }
 
@@ -591,23 +581,23 @@ void check_ir(const char*                    mdparin,
         for (const std::string& energyFrequencyErrorMessage :
              energyCalculationFrequencyErrors.errorMessages())
         {
-            warning_error(wi, energyFrequencyErrorMessage);
+            wi->addError(energyFrequencyErrorMessage);
         }
     }
 
     if (ir->nsteps == 0 && !ir->bContinuation)
     {
-        warning_note(wi,
-                     "For a correct single-point energy evaluation with nsteps = 0, use "
-                     "continuation = yes to avoid constraining the input coordinates.");
+        wi->addNote(
+                "For a correct single-point energy evaluation with nsteps = 0, use "
+                "continuation = yes to avoid constraining the input coordinates.");
     }
 
     /* LD STUFF */
     if ((EI_SD(ir->eI) || ir->eI == IntegrationAlgorithm::BD) && ir->bContinuation && ir->ld_seed != -1)
     {
-        warning_note(wi,
-                     "You are doing a continuation with SD or BD, make sure that ld_seed is "
-                     "different from the previous run (using ld_seed=-1 will ensure this)");
+        wi->addNote(
+                "You are doing a continuation with SD or BD, make sure that ld_seed is "
+                "different from the previous run (using ld_seed=-1 will ensure this)");
     }
 
     /* TPI STUFF */
@@ -618,21 +608,21 @@ void check_ir(const char*                    mdparin,
         sprintf(err_buf, "with TPI nstlist should be larger than zero");
         CHECK(ir->nstlist <= 0);
         sprintf(err_buf, "TPI does not work with full electrostatics other than PME");
-        CHECK(EEL_FULL(ir->coulombtype) && !EEL_PME(ir->coulombtype));
+        CHECK(usingFullElectrostatics(ir->coulombtype) && !usingPme(ir->coulombtype));
     }
 
     /* SHAKE / LINCS */
     if ((opts->nshake > 0) && (opts->bMorse))
     {
         sprintf(warn_buf, "Using morse bond-potentials while constraining bonds is useless");
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
     }
 
     if ((EI_SD(ir->eI) || ir->eI == IntegrationAlgorithm::BD) && ir->bContinuation && ir->ld_seed != -1)
     {
-        warning_note(wi,
-                     "You are doing a continuation with SD or BD, make sure that ld_seed is "
-                     "different from the previous run (using ld_seed=-1 will ensure this)");
+        wi->addNote(
+                "You are doing a continuation with SD or BD, make sure that ld_seed is "
+                "different from the previous run (using ld_seed=-1 will ensure this)");
     }
     /* verify simulated tempering options */
 
@@ -651,7 +641,7 @@ void check_ir(const char*                    mdparin,
                         i,
                         enumValueToString(FreeEnergyPerturbationCouplingType::Temperature),
                         fep->all_lambda[static_cast<int>(FreeEnergyPerturbationCouplingType::Temperature)][i]);
-                warning_error(wi, message);
+                wi->addError(message);
             }
             if (fep->all_lambda[static_cast<int>(FreeEnergyPerturbationCouplingType::Temperature)][i] > 1)
             {
@@ -670,7 +660,7 @@ void check_ir(const char*                    mdparin,
                     "what you are doing. Check for inconsistencies with "
                     "simulated-tempering-scaling.",
                     enumValueToString(FreeEnergyPerturbationCouplingType::Temperature));
-            warning(wi, warningText);
+            wi->addWarning(warningText);
         }
 
         sprintf(err_buf, "if simulated tempering is on, temperature-lambdas may not be all zero");
@@ -687,7 +677,7 @@ void check_ir(const char*                    mdparin,
                     "Nose-Hoover based temperature control such as [%s] my not be "
                     "entirelyconsistent with simulated tempering",
                     enumValueToString(ir->etc));
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
 
         /* check that the temperatures make sense */
@@ -743,7 +733,7 @@ void check_ir(const char*                    mdparin,
                         fep->delta_lambda,
                         intStepNumberWhenLambdaIsOne,
                         ir->nsteps);
-                warning(wi, warningText);
+                wi->addWarning(warningText);
             }
             else if (fep->n_lambda <= 0)
             {
@@ -756,7 +746,7 @@ void check_ir(const char*                    mdparin,
                             "Therefore, coul-lambdas and vdw-lambdas will (initially) be greater "
                             "than 1. "
                             "This is not compatible with using soft-core potentials.\n");
-                    warning_error(wi, message);
+                    wi->addError(message);
                 }
             }
         }
@@ -795,7 +785,7 @@ void check_ir(const char*                    mdparin,
                             fep->delta_lambda,
                             intStepNumberWhenLambdaIsCapped,
                             ir->nsteps);
-                    warning(wi, warningText);
+                    wi->addWarning(warningText);
                 }
             }
 
@@ -828,7 +818,7 @@ void check_ir(const char*                    mdparin,
                                     fep->delta_lambda,
                                     intStepNumberWhenLambdaIsCapped,
                                     ir->nsteps);
-                            warning_error(wi, message);
+                            wi->addError(message);
                         }
                         /* No capping warning needed. */
                         intStepNumberWhenLambdaIsCapped = ir->nsteps;
@@ -851,7 +841,7 @@ void check_ir(const char*                    mdparin,
                             fep->delta_lambda,
                             intStepNumberWhenLambdaIsCapped,
                             ir->nsteps);
-                    warning(wi, warningText);
+                    wi->addWarning(warningText);
                 }
             }
 
@@ -862,7 +852,7 @@ void check_ir(const char*                    mdparin,
                         "while using a lambda vector that has one column. "
                         "The lambda components will therefore stay the same, "
                         "and delta-lambda has no effect.");
-                warning(wi, warningText);
+                wi->addWarning(warningText);
             }
         }
 
@@ -922,14 +912,14 @@ void check_ir(const char*                    mdparin,
                         "If lambda vector states (fep-lambdas, coul-lambdas etc.) are set, don't "
                         "use init-lambda to set lambda state (except for slow growth). Use "
                         "init-lambda-state instead.");
-                warning(wi, warn_buf);
+                wi->addWarning(warn_buf);
             }
 
             if (n_lambda_terms < 2 && fep->n_lambda > 0)
             {
-                warning_note(wi,
-                             "init-lambda is deprecated for setting lambda state (except for slow "
-                             "growth). Use init-lambda-state instead.");
+                wi->addNote(
+                        "init-lambda is deprecated for setting lambda state (except for slow "
+                        "growth). Use init-lambda-state instead.");
             }
         }
 
@@ -956,7 +946,7 @@ void check_ir(const char*                    mdparin,
                                 i,
                                 enumValueToString(enumValue),
                                 fep->all_lambda[j][i]);
-                        warning_error(wi, message);
+                        wi->addError(message);
                     }
                 }
             }
@@ -972,7 +962,7 @@ void check_ir(const char*                    mdparin,
                                 i,
                                 enumValueToString(enumValue),
                                 fep->all_lambda[j][i]);
-                        warning_error(wi, message);
+                        wi->addError(message);
                     }
                 }
             }
@@ -1007,7 +997,8 @@ void check_ir(const char*                    mdparin,
             }
         }
 
-        if ((fep->softcoreFunction == SoftcoreType::Beutler) && (fep->bScCoul) && (EEL_PME(ir->coulombtype)))
+        if ((fep->softcoreFunction == SoftcoreType::Beutler) && (fep->bScCoul)
+            && (usingPme(ir->coulombtype)))
         {
             // PME is formulated for computing 1/r potential, whereas the Coulombic potential softened by means of Beutler softcore no longer has this functional form.
             // This Warning is issued when PME is used for electrostatics and Beutler softcore is applied to the Coulombic interactions.
@@ -1032,7 +1023,7 @@ void check_ir(const char*                    mdparin,
                     lambda,
                     r_sc - 1.0,
                     ir->ewald_rtol);
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
 
         if (fep->softcoreFunction == SoftcoreType::Gapsys)
@@ -1042,7 +1033,7 @@ void check_ir(const char*                    mdparin,
                 sprintf(warn_buf,
                         "sc_scale_linpoint_Q_gapsys is equal %g but must be >= 0",
                         fep->scGapsysScaleLinpointQ);
-                warning_note(wi, warn_buf);
+                wi->addNote(warn_buf);
             }
 
             if ((fep->scGapsysScaleLinpointLJ < 0.0) || (fep->scGapsysScaleLinpointLJ >= 1.0))
@@ -1052,7 +1043,7 @@ void check_ir(const char*                    mdparin,
                         "with "
                         "sc_function=gapsys.",
                         fep->scGapsysScaleLinpointLJ);
-                warning_note(wi, warn_buf);
+                wi->addNote(warn_buf);
             }
         }
     }
@@ -1165,13 +1156,13 @@ void check_ir(const char*                    mdparin,
         CHECK((expand->wl_scale <= 0) || (expand->wl_scale >= 1));
 
         /* if there is no temperature control, we need to specify an MC temperature */
-        if (!integratorHasReferenceTemperature(ir)
+        if (!integratorHasReferenceTemperature(*ir)
             && (expand->elmcmove != LambdaMoveCalculation::No) && (expand->mc_temp <= 0.0))
         {
             sprintf(err_buf,
-                    "If there is no temperature control, and lmc-mcmove!='no', mc_temp must be set "
-                    "to a positive number");
-            warning_error(wi, err_buf);
+                    "If the system has no reference temperature, and lmc-mcmove!='no', mc_temp "
+                    "must be set to a positive number");
+            wi->addError(err_buf);
         }
         if (expand->nstTij > 0)
         {
@@ -1198,10 +1189,10 @@ void check_ir(const char*                    mdparin,
     {
         if (ir->pbcType == PbcType::No)
         {
-            if (ir->epc != PressureCoupling::No)
+            if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
             {
-                warning(wi, "Turning off pressure coupling for vacuum system");
-                ir->epc = PressureCoupling::No;
+                wi->addWarning("Turning off pressure coupling for vacuum system");
+                ir->pressureCouplingOptions.epc = PressureCoupling::No;
             }
         }
         else
@@ -1209,10 +1200,10 @@ void check_ir(const char*                    mdparin,
             sprintf(err_buf,
                     "Can not have pressure coupling with pbc=%s",
                     c_pbcTypeNames[ir->pbcType].c_str());
-            CHECK(ir->epc != PressureCoupling::No);
+            CHECK(ir->pressureCouplingOptions.epc != PressureCoupling::No);
         }
         sprintf(err_buf, "Can not have Ewald with pbc=%s", c_pbcTypeNames[ir->pbcType].c_str());
-        CHECK(EEL_FULL(ir->coulombtype));
+        CHECK(usingFullElectrostatics(ir->coulombtype));
 
         sprintf(err_buf,
                 "Can not have dispersion correction with pbc=%s",
@@ -1236,9 +1227,9 @@ void check_ir(const char*                    mdparin,
 
         if (ir->nstlist > 0)
         {
-            warning_note(wi,
-                         "Simulating without cut-offs can be (slightly) faster with nstlist=0, "
-                         "nstype=simple and only one MPI rank");
+            wi->addNote(
+                    "Simulating without cut-offs can be (slightly) faster with nstlist=0, "
+                    "nstype=simple and only one MPI rank");
         }
     }
 
@@ -1257,7 +1248,7 @@ void check_ir(const char*                    mdparin,
             // helpful for a few years, we should reject such input,
             // lest we have to support every historical decision
             // forever.
-            warning(wi,
+            wi->addWarning(
                     "If you want to remove the rotation around the center of mass, you should set "
                     "comm_mode = Angular instead of setting nstcomm < 0. nstcomm is modified to "
                     "its absolute value");
@@ -1267,9 +1258,9 @@ void check_ir(const char*                    mdparin,
         if (ir->nstcalcenergy > 0 && ir->nstcomm < ir->nstcalcenergy
             && ir->comm_mode != ComRemovalAlgorithm::LinearAccelerationCorrection)
         {
-            warning_note(wi,
-                         "nstcomm < nstcalcenergy defeats the purpose of nstcalcenergy, consider "
-                         "setting nstcomm equal to nstcalcenergy for less overhead");
+            wi->addNote(
+                    "nstcomm < nstcalcenergy defeats the purpose of nstcalcenergy, consider "
+                    "setting nstcomm equal to nstcalcenergy for less overhead");
         }
 
         if (ir->comm_mode == ComRemovalAlgorithm::Angular)
@@ -1280,7 +1271,7 @@ void check_ir(const char*                    mdparin,
             CHECK(ir->bPeriodicMols);
             if (ir->pbcType != PbcType::No)
             {
-                warning(wi,
+                wi->addWarning(
                         "Removing the rotation around the center of mass in a periodic system, "
                         "this can lead to artifacts. Only use this on a single (cluster of) "
                         "molecules. This cluster should not cross periodic boundaries.");
@@ -1296,19 +1287,20 @@ void check_ir(const char*                    mdparin,
                 "in a non-periodic system. You should probably set comm_mode = ANGULAR or use "
                 "integrator = %s.",
                 enumValueToString(IntegrationAlgorithm::SD1));
-        warning_note(wi, warn_buf);
+        wi->addNote(warn_buf);
     }
 
     /* TEMPERATURE COUPLING */
     if (ir->etc == TemperatureCoupling::Yes)
     {
         ir->etc = TemperatureCoupling::Berendsen;
-        warning_note(wi,
-                     "Old option for temperature coupling given: "
-                     "changing \"yes\" to \"Berendsen\"\n");
+        wi->addNote(
+                "Old option for temperature coupling given: "
+                "changing \"yes\" to \"Berendsen\"\n");
     }
 
-    if ((ir->etc == TemperatureCoupling::NoseHoover) || (ir->epc == PressureCoupling::Mttk))
+    if ((ir->etc == TemperatureCoupling::NoseHoover)
+        || (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk))
     {
         if (ir->opts.nhchainlength < 1)
         {
@@ -1317,13 +1309,13 @@ void check_ir(const char*                    mdparin,
                     "1\n",
                     ir->opts.nhchainlength);
             ir->opts.nhchainlength = 1;
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
         }
 
         if (ir->etc == TemperatureCoupling::NoseHoover && !EI_VV(ir->eI) && ir->opts.nhchainlength > 1)
         {
-            warning_note(
-                    wi,
+            wi->addNote(
+
                     "leapfrog does not yet support Nose-Hoover chains, nhchainlength reset to 1");
             ir->opts.nhchainlength = 1;
         }
@@ -1339,7 +1331,7 @@ void check_ir(const char*                    mdparin,
                 "%s implemented primarily for validation, and requires nsttcouple = 1 and "
                 "nstpcouple = 1.",
                 enumValueToString(IntegrationAlgorithm::VVAK));
-        CHECK((ir->nsttcouple != 1) || (ir->nstpcouple != 1));
+        CHECK((ir->nsttcouple != 1) || (ir->pressureCouplingOptions.nstpcouple != 1));
     }
 
     if (ETC_ANDERSEN(ir->etc))
@@ -1357,7 +1349,7 @@ void check_ir(const char*                    mdparin,
                     "groups are rerandomized periodically, so flying ice cube errors will not "
                     "occur.",
                     enumValueToString(ir->etc));
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
 
         sprintf(err_buf,
@@ -1373,7 +1365,7 @@ void check_ir(const char*                    mdparin,
                     "Use %s instead",
                     enumValueToString(TemperatureCoupling::Andersen),
                     enumValueToString(TemperatureCoupling::AndersenMassive));
-            warning_error(wi, message);
+            wi->addError(message);
         }
     }
 
@@ -1385,11 +1377,11 @@ void check_ir(const char*                    mdparin,
                 "We would recommend the %s thermostat.",
                 enumValueToString(ir->etc),
                 enumValueToString(TemperatureCoupling::VRescale));
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
     }
 
     /* PRESSURE COUPLING */
-    if (ir->epc == PressureCoupling::Berendsen)
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::Berendsen)
     {
         sprintf(warn_buf,
                 "The %s barostat does not generate any strictly correct ensemble, "
@@ -1397,48 +1389,53 @@ void check_ir(const char*                    mdparin,
                 "For isotropic scaling we would recommend the %s barostat that also "
                 "ensures fast relaxation without oscillations, and for anisotropic "
                 "scaling you likely want to use the %s barostat.",
-                enumValueToString(ir->epc),
+                enumValueToString(ir->pressureCouplingOptions.epc),
                 enumValueToString(PressureCoupling::CRescale),
                 enumValueToString(PressureCoupling::ParrinelloRahman));
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
     }
 
-    if (ir->epc == PressureCoupling::Isotropic)
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::Isotropic)
     {
-        ir->epc = PressureCoupling::Berendsen;
-        warning_note(wi,
-                     "Old option for pressure coupling given: "
-                     "changing \"Isotropic\" to \"Berendsen\"\n");
+        ir->pressureCouplingOptions.epc = PressureCoupling::Berendsen;
+        wi->addNote(
+                "Old option for pressure coupling given: "
+                "changing \"Isotropic\" to \"Berendsen\"\n");
     }
 
-    if (ir->epc != PressureCoupling::No)
+    if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
     {
-        dt_pcoupl = ir->nstpcouple * ir->delta_t;
+        dt_pcoupl = ir->pressureCouplingOptions.nstpcouple * ir->delta_t;
 
-        sprintf(err_buf, "tau-p must be > 0 instead of %g\n", ir->tau_p);
-        CHECK(ir->tau_p <= 0);
+        sprintf(err_buf, "tau-p must be > 0 instead of %g\n", ir->pressureCouplingOptions.tau_p);
+        CHECK(ir->pressureCouplingOptions.tau_p <= 0);
 
-        if (ir->tau_p / dt_pcoupl < pcouple_min_integration_steps(ir->epc) - 10 * GMX_REAL_EPS)
+        if (ir->pressureCouplingOptions.tau_p / dt_pcoupl
+            < pcouple_min_integration_steps(ir->pressureCouplingOptions.epc) - 10 * GMX_REAL_EPS)
         {
             sprintf(warn_buf,
                     "For proper integration of the %s barostat, tau-p (%g) should be at least %d "
                     "times larger than nstpcouple*dt (%g)",
-                    enumValueToString(ir->epc),
-                    ir->tau_p,
-                    pcouple_min_integration_steps(ir->epc),
+                    enumValueToString(ir->pressureCouplingOptions.epc),
+                    ir->pressureCouplingOptions.tau_p,
+                    pcouple_min_integration_steps(ir->pressureCouplingOptions.epc),
                     dt_pcoupl);
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
         }
 
         sprintf(err_buf,
                 "compressibility must be > 0 when using pressure"
                 " coupling %s\n",
-                enumValueToString(ir->epc));
-        CHECK(ir->compress[XX][XX] < 0 || ir->compress[YY][YY] < 0 || ir->compress[ZZ][ZZ] < 0
-              || (trace(ir->compress) == 0 && ir->compress[YY][XX] <= 0 && ir->compress[ZZ][XX] <= 0
-                  && ir->compress[ZZ][YY] <= 0));
+                enumValueToString(ir->pressureCouplingOptions.epc));
+        CHECK(ir->pressureCouplingOptions.compress[XX][XX] < 0
+              || ir->pressureCouplingOptions.compress[YY][YY] < 0
+              || ir->pressureCouplingOptions.compress[ZZ][ZZ] < 0
+              || (trace(ir->pressureCouplingOptions.compress) == 0
+                  && ir->pressureCouplingOptions.compress[YY][XX] <= 0
+                  && ir->pressureCouplingOptions.compress[ZZ][XX] <= 0
+                  && ir->pressureCouplingOptions.compress[ZZ][YY] <= 0));
 
-        if (PressureCoupling::ParrinelloRahman == ir->epc && opts->bGenVel)
+        if (PressureCoupling::ParrinelloRahman == ir->pressureCouplingOptions.epc && opts->bGenVel)
         {
             sprintf(warn_buf,
                     "You are generating velocities so I am assuming you "
@@ -1448,16 +1445,16 @@ void check_ir(const char*                    mdparin,
                     "equilibrating first with Berendsen pressure coupling. If "
                     "you are not equilibrating the system, you can probably "
                     "ignore this warning.",
-                    enumValueToString(ir->epc));
-            warning(wi, warn_buf);
+                    enumValueToString(ir->pressureCouplingOptions.epc));
+            wi->addWarning(warn_buf);
         }
     }
 
     if (!EI_VV(ir->eI))
     {
-        if (ir->epc == PressureCoupling::Mttk)
+        if (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk)
         {
-            warning_error(wi, "MTTK pressure coupling requires a Velocity-verlet integrator");
+            wi->addError("MTTK pressure coupling requires a Velocity-verlet integrator");
         }
     }
 
@@ -1471,16 +1468,16 @@ void check_ir(const char*                    mdparin,
                 "artifacts, advice: use coulombtype = %s",
                 enumValueToString(ir->coulombtype),
                 enumValueToString(CoulombInteractionType::RFZero));
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
     }
 
-    if (EEL_RF(ir->coulombtype) && ir->epsilon_rf == 1 && ir->epsilon_r != 1)
+    if (usingRF(ir->coulombtype) && ir->epsilon_rf == 1 && ir->epsilon_r != 1)
     {
         sprintf(warn_buf,
                 "epsilon-r = %g and epsilon-rf = 1 with reaction field, proceeding assuming old "
                 "format and exchanging epsilon-r and epsilon-rf",
                 ir->epsilon_r);
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
         ir->epsilon_rf = ir->epsilon_r;
         ir->epsilon_r  = 1.0;
     }
@@ -1492,7 +1489,7 @@ void check_ir(const char*                    mdparin,
                 "permittivity."
                 "Since you are effectively turning of electrostatics, a plain cutoff will be much "
                 "faster.");
-        CHECK(EEL_FULL(ir->coulombtype));
+        CHECK(usingFullElectrostatics(ir->coulombtype));
     }
 
     if (getenv("GMX_DO_GALACTIC_DYNAMICS") == nullptr)
@@ -1501,7 +1498,7 @@ void check_ir(const char*                    mdparin,
         CHECK(ir->epsilon_r < 0);
     }
 
-    if (EEL_RF(ir->coulombtype))
+    if (usingRF(ir->coulombtype))
     {
         /* reaction field (at the cut-off) */
 
@@ -1510,7 +1507,7 @@ void check_ir(const char*                    mdparin,
             sprintf(warn_buf,
                     "With coulombtype = %s, epsilon-rf must be 0, assuming you meant epsilon_rf=0",
                     enumValueToString(ir->coulombtype));
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
             ir->epsilon_rf = 0.0;
         }
 
@@ -1521,7 +1518,7 @@ void check_ir(const char*                    mdparin,
             sprintf(warn_buf,
                     "Using epsilon-rf = epsilon-r with %s does not make sense",
                     enumValueToString(ir->coulombtype));
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
         }
     }
     /* Allow rlist>rcoulomb for tabulated long range stuff. This just
@@ -1562,7 +1559,7 @@ void check_ir(const char*                    mdparin,
                 "The switch/shift interaction settings are just for compatibility; you will get "
                 "better "
                 "performance from applying potential modifiers to your interactions!\n");
-        warning_note(wi, warn_buf);
+        wi->addNote(warn_buf);
     }
 
     if (ir->coulombtype == CoulombInteractionType::PmeSwitch
@@ -1579,7 +1576,7 @@ void check_ir(const char*                    mdparin,
                     ir->rcoulomb_switch,
                     ir->rcoulomb,
                     ir->ewald_rtol);
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
         }
     }
 
@@ -1592,11 +1589,11 @@ void check_ir(const char*                    mdparin,
                     "potential.  This suggests it was not set in the mdp, which can lead to large "
                     "energy errors.  In GROMACS, 0.05 to 0.1 nm is often a reasonable vdw "
                     "switching range.");
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
         }
     }
 
-    if (EEL_FULL(ir->coulombtype))
+    if (usingFullElectrostatics(ir->coulombtype))
     {
         if (ir->coulombtype == CoulombInteractionType::PmeSwitch
             || ir->coulombtype == CoulombInteractionType::PmeUser
@@ -1609,7 +1606,7 @@ void check_ir(const char*                    mdparin,
         }
     }
 
-    if (EEL_PME(ir->coulombtype) || EVDW_PME(ir->vdwtype))
+    if (usingPme(ir->coulombtype) || usingLJPme(ir->vdwtype))
     {
         // TODO: Move these checks into the ewald module with the options class
         int orderMin = 3;
@@ -1622,11 +1619,11 @@ void check_ir(const char*                    mdparin,
                     enumValueToString(ir->coulombtype),
                     orderMin,
                     orderMax);
-            warning_error(wi, warn_buf);
+            wi->addError(warn_buf);
         }
     }
 
-    if (ir->nwall == 2 && EEL_FULL(ir->coulombtype))
+    if (ir->nwall == 2 && usingFullElectrostatics(ir->coulombtype))
     {
         if (ir->ewald_geometry == EwaldGeometry::ThreeD)
         {
@@ -1634,33 +1631,33 @@ void check_ir(const char*                    mdparin,
                     "With pbc=%s you should use ewald-geometry=%s",
                     c_pbcTypeNames[ir->pbcType].c_str(),
                     enumValueToString(EwaldGeometry::ThreeDC));
-            warning(wi, warn_buf);
+            wi->addWarning(warn_buf);
         }
         /* This check avoids extra pbc coding for exclusion corrections */
         sprintf(err_buf, "wall-ewald-zfac should be >= 2");
         CHECK(ir->wall_ewald_zfac < 2);
     }
     if ((ir->ewald_geometry == EwaldGeometry::ThreeDC) && (ir->pbcType != PbcType::XY)
-        && EEL_FULL(ir->coulombtype))
+        && usingFullElectrostatics(ir->coulombtype))
     {
         sprintf(warn_buf,
                 "With %s and ewald_geometry = %s you should use pbc = %s",
                 enumValueToString(ir->coulombtype),
                 enumValueToString(EwaldGeometry::ThreeDC),
                 c_pbcTypeNames[PbcType::XY].c_str());
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
     }
-    if ((ir->epsilon_surface != 0) && EEL_FULL(ir->coulombtype))
+    if ((ir->epsilon_surface != 0) && usingFullElectrostatics(ir->coulombtype))
     {
         sprintf(err_buf, "Cannot have periodic molecules with epsilon_surface > 0");
         CHECK(ir->bPeriodicMols);
         sprintf(warn_buf, "With epsilon_surface > 0 all molecules should be neutral.");
-        warning_note(wi, warn_buf);
+        wi->addNote(warn_buf);
         sprintf(warn_buf,
                 "With epsilon_surface > 0 you can only use domain decomposition "
                 "when there are only small molecules with all bonds constrained (mdrun will check "
                 "for this).");
-        warning_note(wi, warn_buf);
+        wi->addNote(warn_buf);
     }
 
     if (ir_vdw_switched(ir))
@@ -1676,7 +1673,7 @@ void check_ir(const char*                    mdparin,
                     "are intended to act only close to the cut-off.",
                     ir->rvdw_switch,
                     ir->rvdw);
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
     }
 
@@ -1690,41 +1687,41 @@ void check_ir(const char*                    mdparin,
                     enumValueToString(ir->vdwtype),
                     enumValueToString(InteractionModifiers::PotShift),
                     enumValueToString(InteractionModifiers::None));
-            warning_error(wi, err_buf);
+            wi->addError(err_buf);
         }
     }
 
     if (ir->vdwtype == VanDerWaalsType::User && ir->eDispCorr != DispersionCorrectionType::No)
     {
-        warning_note(wi,
-                     "You have selected user tables with dispersion correction, the dispersion "
-                     "will be corrected to -C6/r^6 beyond rvdw_switch (the tabulated interaction "
-                     "between rvdw_switch and rvdw will not be double counted). Make sure that you "
-                     "really want dispersion correction to -C6/r^6.");
+        wi->addNote(
+                "You have selected user tables with dispersion correction, the dispersion "
+                "will be corrected to -C6/r^6 beyond rvdw_switch (the tabulated interaction "
+                "between rvdw_switch and rvdw will not be double counted). Make sure that you "
+                "really want dispersion correction to -C6/r^6.");
     }
 
     if (ir->eI == IntegrationAlgorithm::LBFGS
         && (ir->coulombtype == CoulombInteractionType::Cut || ir->vdwtype == VanDerWaalsType::Cut)
         && ir->rvdw != 0)
     {
-        warning(wi, "For efficient BFGS minimization, use switch/shift/pme instead of cut-off.");
+        wi->addWarning("For efficient BFGS minimization, use switch/shift/pme instead of cut-off.");
     }
 
     if (ir->eI == IntegrationAlgorithm::LBFGS && ir->nbfgscorr <= 0)
     {
-        warning(wi, "Using L-BFGS with nbfgscorr<=0 just gets you steepest descent.");
+        wi->addWarning("Using L-BFGS with nbfgscorr<=0 just gets you steepest descent.");
     }
 
     /* IMPLICIT SOLVENT */
     if (ir->coulombtype == CoulombInteractionType::GBNotused)
     {
         sprintf(warn_buf, "Invalid option %s for coulombtype", enumValueToString(ir->coulombtype));
-        warning_error(wi, warn_buf);
+        wi->addError(warn_buf);
     }
 
     if (ir->bQMMM)
     {
-        warning_error(wi, "The QMMM integration you are trying to use is no longer supported");
+        wi->addError("The QMMM integration you are trying to use is no longer supported");
     }
 
     if (ir->bAdress)
@@ -1735,7 +1732,7 @@ void check_ir(const char*                    mdparin,
     // cosine acceleration is only supported in leap-frog
     if (ir->cos_accel != 0.0 && ir->eI != IntegrationAlgorithm::MD)
     {
-        warning_error(wi, "cos-acceleration is only supported by integrator = md");
+        wi->addError("cos-acceleration is only supported by integrator = md");
     }
 }
 
@@ -1744,7 +1741,7 @@ void check_ir(const char*                    mdparin,
    str = the input string
    n = the (pre-allocated) number of doubles read
    r = the output array of doubles. */
-static std::vector<real> parse_n_real(const std::string& str, int* n, warninp_t wi)
+static std::vector<real> parse_n_real(const std::string& str, int* n, WarningHandler* wi)
 {
     auto values = gmx::splitString(str);
     *n          = values.size();
@@ -1758,16 +1755,18 @@ static std::vector<real> parse_n_real(const std::string& str, int* n, warninp_t 
         }
         catch (gmx::GromacsException&)
         {
-            warning_error(wi,
-                          "Invalid value " + values[i]
-                                  + " in string in mdp file. Expected a real number.");
+            wi->addError("Invalid value " + values[i]
+                         + " in string in mdp file. Expected a real number.");
         }
     }
     return r;
 }
 
 
-static void do_fep_params(t_inputrec* ir, gmx::ArrayRef<std::string> fep_lambda, char weights[STRLEN], warninp_t wi)
+static void do_fep_params(t_inputrec*                ir,
+                          gmx::ArrayRef<std::string> fep_lambda,
+                          char                       weights[STRLEN],
+                          WarningHandler*            wi)
 {
 
     int         i, j, max_n_lambda, nweights;
@@ -1928,7 +1927,7 @@ static void do_simtemp_params(t_inputrec* ir)
 }
 
 template<typename T>
-void convertInts(warninp_t wi, gmx::ArrayRef<const std::string> inputs, const char* name, T* outputs)
+void convertInts(WarningHandler* wi, gmx::ArrayRef<const std::string> inputs, const char* name, T* outputs)
 {
     int i = 0;
     for (const auto& input : inputs)
@@ -1944,13 +1943,13 @@ void convertInts(warninp_t wi, gmx::ArrayRef<const std::string> inputs, const ch
                     "by spaces.",
                     name,
                     name);
-            warning_error(wi, message);
+            wi->addError(message);
         }
         ++i;
     }
 }
 
-static void convertReals(warninp_t wi, gmx::ArrayRef<const std::string> inputs, const char* name, real* outputs)
+static void convertReals(WarningHandler* wi, gmx::ArrayRef<const std::string> inputs, const char* name, real* outputs)
 {
     int i = 0;
     for (const auto& input : inputs)
@@ -1966,13 +1965,13 @@ static void convertReals(warninp_t wi, gmx::ArrayRef<const std::string> inputs, 
                     "separated by spaces.",
                     name,
                     name);
-            warning_error(wi, message);
+            wi->addError(message);
         }
         ++i;
     }
 }
 
-static void convertRvecs(warninp_t wi, gmx::ArrayRef<const std::string> inputs, const char* name, rvec* outputs)
+static void convertRvecs(WarningHandler* wi, gmx::ArrayRef<const std::string> inputs, const char* name, rvec* outputs)
 {
     int i = 0, d = 0;
     for (const auto& input : inputs)
@@ -1988,7 +1987,7 @@ static void convertRvecs(warninp_t wi, gmx::ArrayRef<const std::string> inputs, 
                     "separated by spaces.",
                     name,
                     name);
-            warning_error(wi, message);
+            wi->addError(message);
         }
         ++d;
         if (d == DIM)
@@ -1999,7 +1998,7 @@ static void convertRvecs(warninp_t wi, gmx::ArrayRef<const std::string> inputs, 
     }
 }
 
-static void do_wall_params(t_inputrec* ir, char* wall_atomtype, char* wall_density, t_gromppopts* opts, warninp_t wi)
+static void do_wall_params(t_inputrec* ir, char* wall_atomtype, char* wall_density, t_gromppopts* opts, WarningHandler* wi)
 {
     opts->wall_atomtype[0] = nullptr;
     opts->wall_atomtype[1] = nullptr;
@@ -2060,7 +2059,7 @@ static void add_wall_energrps(SimulationGroups* groups, int nwall, t_symtab* sym
     }
 }
 
-static void read_expandedparams(std::vector<t_inpfile>* inp, t_expanded* expand, warninp_t wi)
+static void read_expandedparams(std::vector<t_inpfile>* inp, t_expanded* expand, WarningHandler* wi)
 {
     /* read expanded ensemble parameters */
     printStringNewline(inp, "expanded ensemble variables");
@@ -2107,7 +2106,7 @@ namespace
 class MdpErrorHandler : public gmx::IKeyValueTreeErrorHandler
 {
 public:
-    explicit MdpErrorHandler(warninp_t wi) : wi_(wi), mapping_(nullptr) {}
+    explicit MdpErrorHandler(WarningHandler* wi) : wi_(wi), mapping_(nullptr) {}
 
     void setBackMapping(const gmx::IKeyValueTreeBackMapping& mapping) { mapping_ = &mapping; }
 
@@ -2116,7 +2115,7 @@ public:
         ex->prependContext(
                 gmx::formatString("Error in mdp option \"%s\":", getOptionName(context).c_str()));
         std::string message = gmx::formatExceptionMessageToString(*ex);
-        warning_error(wi_, message.c_str());
+        wi_->addError(message);
         return true;
     }
 
@@ -2133,7 +2132,7 @@ private:
         return context[0];
     }
 
-    warninp_t                            wi_;
+    WarningHandler*                      wi_;
     const gmx::IKeyValueTreeBackMapping* mapping_;
 };
 
@@ -2145,7 +2144,7 @@ void get_ir(const char*     mdparin,
             t_inputrec*     ir,
             t_gromppopts*   opts,
             WriteMdpHeader  writeMdpHeader,
-            warninp_t       wi)
+            WarningHandler* wi)
 {
     char*       dumstr[2];
     double      dumdub[2][6];
@@ -2359,6 +2358,9 @@ void get_ir(const char*     mdparin,
 
     /* Coupling stuff */
     printStringNewline(&inp, "OPTIONS FOR WEAK COUPLING ALGORITHMS");
+    ir->ensembleTemperatureSetting =
+            getEnum<EnsembleTemperatureSetting>(&inp, "ensemble-temperature-setting", wi);
+    ir->ensembleTemperature = get_ereal(&inp, "ensemble-temperature", -1, wi);
     printStringNoNewline(&inp, "Temperature coupling");
     ir->etc                = getEnum<TemperatureCoupling>(&inp, "tcoupl", wi);
     ir->nsttcouple         = get_eint(&inp, "nsttcouple", -1, wi);
@@ -2370,15 +2372,15 @@ void get_ir(const char*     mdparin,
     setStringEntry(&inp, "tau-t", inputrecStrings->tau_t, nullptr);
     setStringEntry(&inp, "ref-t", inputrecStrings->ref_t, nullptr);
     printStringNoNewline(&inp, "pressure coupling");
-    ir->epc        = getEnum<PressureCoupling>(&inp, "pcoupl", wi);
-    ir->epct       = getEnum<PressureCouplingType>(&inp, "pcoupltype", wi);
-    ir->nstpcouple = get_eint(&inp, "nstpcouple", -1, wi);
+    ir->pressureCouplingOptions.epc        = getEnum<PressureCoupling>(&inp, "pcoupl", wi);
+    ir->pressureCouplingOptions.epct       = getEnum<PressureCouplingType>(&inp, "pcoupltype", wi);
+    ir->pressureCouplingOptions.nstpcouple = get_eint(&inp, "nstpcouple", -1, wi);
     printStringNoNewline(&inp, "Time constant (ps), compressibility (1/bar) and reference P (bar)");
-    ir->tau_p = get_ereal(&inp, "tau-p", 1.0, wi);
+    ir->pressureCouplingOptions.tau_p = get_ereal(&inp, "tau-p", 1.0, wi);
     setStringEntry(&inp, "compressibility", dumstr[0], nullptr);
     setStringEntry(&inp, "ref-p", dumstr[1], nullptr);
     printStringNoNewline(&inp, "Scaling of reference coordinates, No, All or COM");
-    ir->refcoord_scaling = getEnum<RefCoordScaling>(&inp, "refcoord-scaling", wi);
+    ir->pressureCouplingOptions.refcoord_scaling = getEnum<RefCoordScaling>(&inp, "refcoord-scaling", wi);
 
     /* QMMM */
     printStringNewline(&inp, "OPTIONS FOR QMMM calculations");
@@ -2474,9 +2476,9 @@ void get_ir(const char*     mdparin,
             {
                 if (ir->pull->coord[c].eType == PullingAlgorithm::Constraint)
                 {
-                    warning_error(wi,
-                                  "Constraint COM pulling is not supported in combination with "
-                                  "multiple time stepping");
+                    wi->addError(
+                            "Constraint COM pulling is not supported in combination with "
+                            "multiple time stepping");
                     break;
                 }
             }
@@ -2498,8 +2500,8 @@ void get_ir(const char*     mdparin,
     ir->bRot = (getEnum<Boolean>(&inp, "rotation", wi) != Boolean::No);
     if (ir->bRot)
     {
-        snew(ir->rot, 1);
-        inputrecStrings->rotateGroupNames = read_rotparams(&inp, ir->rot, wi);
+        ir->rot                           = std::make_unique<t_rot>();
+        inputrecStrings->rotateGroupNames = read_rotparams(&inp, ir->rot.get(), wi);
     }
 
     /* Interactive MD */
@@ -2640,7 +2642,7 @@ void get_ir(const char*     mdparin,
         nIonTypes = get_eint(&inp, "iontypes", 1, wi);
         if (nIonTypes < 1)
         {
-            warning_error(wi, "You need to provide at least one ion type for position exchanges.");
+            wi->addError("You need to provide at least one ion type for position exchanges.");
         }
         ir->swap->ngrp = nIonTypes + static_cast<int>(SwapGroupSplittingType::Count);
         snew(ir->swap->grp, ir->swap->ngrp);
@@ -2724,7 +2726,7 @@ void get_ir(const char*     mdparin,
         if (!(ir->swap->bulkOffset[0] > -1.0 && ir->swap->bulkOffset[0] < 1.0)
             || !(ir->swap->bulkOffset[1] > -1.0 && ir->swap->bulkOffset[1] < 1.0))
         {
-            warning_error(wi, "Bulk layer offsets must be > -1.0 and < 1.0 !");
+            wi->addError("Bulk layer offsets must be > -1.0 and < 1.0 !");
         }
 
         printStringNoNewline(
@@ -2781,15 +2783,15 @@ void get_ir(const char*     mdparin,
         {
             dumdub[m][i] = 0.0;
         }
-        if (ir->epc != PressureCoupling::No)
+        if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
         {
-            switch (ir->epct)
+            switch (ir->pressureCouplingOptions.epct)
             {
                 case PressureCouplingType::Isotropic:
                     if (sscanf(dumstr[m], "%lf", &(dumdub[m][XX])) != 1)
                     {
-                        warning_error(
-                                wi,
+                        wi->addError(
+
                                 "Pressure coupling incorrect number of values (I need exactly 1)");
                     }
                     dumdub[m][YY] = dumdub[m][ZZ] = dumdub[m][XX];
@@ -2798,8 +2800,8 @@ void get_ir(const char*     mdparin,
                 case PressureCouplingType::SurfaceTension:
                     if (sscanf(dumstr[m], "%lf%lf", &(dumdub[m][XX]), &(dumdub[m][ZZ])) != 2)
                     {
-                        warning_error(
-                                wi,
+                        wi->addError(
+
                                 "Pressure coupling incorrect number of values (I need exactly 2)");
                     }
                     dumdub[m][YY] = dumdub[m][XX];
@@ -2815,45 +2817,46 @@ void get_ir(const char*     mdparin,
                                &(dumdub[m][5]))
                         != 6)
                     {
-                        warning_error(
-                                wi,
+                        wi->addError(
+
                                 "Pressure coupling incorrect number of values (I need exactly 6)");
                     }
                     break;
                 default:
                     gmx_fatal(FARGS,
                               "Pressure coupling type %s not implemented yet",
-                              enumValueToString(ir->epct));
+                              enumValueToString(ir->pressureCouplingOptions.epct));
             }
         }
     }
-    clear_mat(ir->ref_p);
-    clear_mat(ir->compress);
+    clear_mat(ir->pressureCouplingOptions.ref_p);
+    clear_mat(ir->pressureCouplingOptions.compress);
     for (i = 0; i < DIM; i++)
     {
-        ir->ref_p[i][i]    = dumdub[1][i];
-        ir->compress[i][i] = dumdub[0][i];
+        ir->pressureCouplingOptions.ref_p[i][i]    = dumdub[1][i];
+        ir->pressureCouplingOptions.compress[i][i] = dumdub[0][i];
     }
-    if (ir->epct == PressureCouplingType::Anisotropic)
+    if (ir->pressureCouplingOptions.epct == PressureCouplingType::Anisotropic)
     {
-        ir->ref_p[XX][YY] = dumdub[1][3];
-        ir->ref_p[XX][ZZ] = dumdub[1][4];
-        ir->ref_p[YY][ZZ] = dumdub[1][5];
-        if (ir->ref_p[XX][YY] != 0 && ir->ref_p[XX][ZZ] != 0 && ir->ref_p[YY][ZZ] != 0)
+        ir->pressureCouplingOptions.ref_p[XX][YY] = dumdub[1][3];
+        ir->pressureCouplingOptions.ref_p[XX][ZZ] = dumdub[1][4];
+        ir->pressureCouplingOptions.ref_p[YY][ZZ] = dumdub[1][5];
+        if (ir->pressureCouplingOptions.ref_p[XX][YY] != 0 && ir->pressureCouplingOptions.ref_p[XX][ZZ] != 0
+            && ir->pressureCouplingOptions.ref_p[YY][ZZ] != 0)
         {
-            warning(wi,
+            wi->addWarning(
                     "All off-diagonal reference pressures are non-zero. Are you sure you want to "
                     "apply a threefold shear stress?\n");
         }
-        ir->compress[XX][YY] = dumdub[0][3];
-        ir->compress[XX][ZZ] = dumdub[0][4];
-        ir->compress[YY][ZZ] = dumdub[0][5];
+        ir->pressureCouplingOptions.compress[XX][YY] = dumdub[0][3];
+        ir->pressureCouplingOptions.compress[XX][ZZ] = dumdub[0][4];
+        ir->pressureCouplingOptions.compress[YY][ZZ] = dumdub[0][5];
         for (i = 0; i < DIM; i++)
         {
             for (m = 0; m < i; m++)
             {
-                ir->ref_p[i][m]    = ir->ref_p[m][i];
-                ir->compress[i][m] = ir->compress[m][i];
+                ir->pressureCouplingOptions.ref_p[i][m] = ir->pressureCouplingOptions.ref_p[m][i];
+                ir->pressureCouplingOptions.compress[i][m] = ir->pressureCouplingOptions.compress[m][i];
             }
         }
     }
@@ -2871,22 +2874,22 @@ void get_ir(const char*     mdparin,
             opts->couple_moltype = gmx_strdup(inputrecStrings->couple_moltype);
             if (opts->couple_lam0 == opts->couple_lam1)
             {
-                warning(wi, "The lambda=0 and lambda=1 states for coupling are identical");
+                wi->addWarning("The lambda=0 and lambda=1 states for coupling are identical");
             }
             if (!EI_SD(ir->eI) && ir->eI != IntegrationAlgorithm::BD
                 && (opts->couple_lam0 == ecouplamNONE || opts->couple_lam1 == ecouplamNONE))
             {
-                warning_note(
-                        wi,
+                wi->addNote(
+
                         "For proper sampling of the (nearly) decoupled state, stochastic dynamics "
                         "should be used");
             }
         }
         else
         {
-            warning_note(wi,
-                         "Free energy is turned off, so we will not decouple the molecule listed "
-                         "in your input.");
+            wi->addNote(
+                    "Free energy is turned off, so we will not decouple the molecule listed "
+                    "in your input.");
         }
     }
     /* FREE ENERGY AND EXPANDED ENSEMBLE OPTIONS */
@@ -2901,9 +2904,9 @@ void get_ir(const char*     mdparin,
     if (fep->edHdLPrintEnergy == FreeEnergyPrintEnergy::Yes)
     {
         fep->edHdLPrintEnergy = FreeEnergyPrintEnergy::Total;
-        warning_note(wi,
-                     "Old option for dhdl-print-energy given: "
-                     "changing \"yes\" to \"total\"\n");
+        wi->addNote(
+                "Old option for dhdl-print-energy given: "
+                "changing \"yes\" to \"total\"\n");
     }
 
     if (ir->bSimTemp && (fep->edHdLPrintEnergy == FreeEnergyPrintEnergy::No))
@@ -2943,7 +2946,7 @@ void get_ir(const char*     mdparin,
             && ir->fepvals->sc_alpha != 0
             && (couple_lambda_has_vdw_on(opts->couple_lam0) && couple_lambda_has_vdw_on(opts->couple_lam1)))
         {
-            warning(wi,
+            wi->addWarning(
                     "You are using soft-core interactions while the Van der Waals interactions are "
                     "not decoupled (note that the sc-coul option is only active when using lambda "
                     "states). Although this will not lead to errors, you will need much more "
@@ -2963,7 +2966,7 @@ void get_ir(const char*     mdparin,
 
     if (opts->bOrire && gmx::splitString(inputrecStrings->orirefitgrp).size() != 1)
     {
-        warning_error(wi, "ERROR: Need one orientation restraint fit group\n");
+        wi->addError("ERROR: Need one orientation restraint fit group\n");
     }
 
     /* DEFORMATION PARAMETERS */
@@ -2987,11 +2990,9 @@ void get_ir(const char*     mdparin,
 
     if (strlen(inputrecStrings->deform) > 0 && ndeform != 6)
     {
-        warning_error(wi,
-                      gmx::formatString(
-                              "Cannot parse exactly 6 box deformation velocities from string '%s'",
-                              inputrecStrings->deform)
-                              .c_str());
+        wi->addError(gmx::formatString(
+                "Cannot parse exactly 6 box deformation velocities from string '%s'",
+                inputrecStrings->deform));
     }
     for (i = 0; i < 3; i++)
     {
@@ -3000,15 +3001,15 @@ void get_ir(const char*     mdparin,
     ir->deform[YY][XX] = dumdub[0][3];
     ir->deform[ZZ][XX] = dumdub[0][4];
     ir->deform[ZZ][YY] = dumdub[0][5];
-    if (ir->epc != PressureCoupling::No)
+    if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
     {
         for (i = 0; i < 3; i++)
         {
             for (j = 0; j <= i; j++)
             {
-                if (ir->deform[i][j] != 0 && ir->compress[i][j] != 0)
+                if (ir->deform[i][j] != 0 && ir->pressureCouplingOptions.compress[i][j] != 0)
                 {
-                    warning_error(wi, "A box element has deform set and compressibility > 0");
+                    wi->addError("A box element has deform set and compressibility > 0");
                 }
             }
         }
@@ -3020,13 +3021,13 @@ void get_ir(const char*     mdparin,
                 {
                     for (m = j; m < DIM; m++)
                     {
-                        if (ir->compress[m][j] != 0)
+                        if (ir->pressureCouplingOptions.compress[m][j] != 0)
                         {
                             sprintf(warn_buf,
                                     "An off-diagonal box element has deform set while "
                                     "compressibility > 0 for the same component of another box "
                                     "vector, this might lead to spurious periodicity effects.");
-                            warning(wi, warn_buf);
+                            wi->addWarning(warn_buf);
                         }
                     }
                 }
@@ -3039,15 +3040,15 @@ void get_ir(const char*     mdparin,
     {
         if (ir->swap->nstswap < 1)
         {
-            warning_error(wi, "swap_frequency must be 1 or larger when ion swapping is requested");
+            wi->addError("swap_frequency must be 1 or larger when ion swapping is requested");
         }
         if (ir->swap->nAverage < 1)
         {
-            warning_error(wi, "coupl_steps must be 1 or larger.\n");
+            wi->addError("coupl_steps must be 1 or larger.\n");
         }
         if (ir->swap->threshold < 1.0)
         {
-            warning_error(wi, "Ion count threshold must be at least 1.\n");
+            wi->addError("Ion count threshold must be at least 1.\n");
         }
     }
 
@@ -3059,7 +3060,7 @@ void get_ir(const char*     mdparin,
 
         for (const auto& errorMessage : errorMessages)
         {
-            warning_error(wi, errorMessage.c_str());
+            wi->addError(errorMessage);
         }
     }
 
@@ -3072,13 +3073,11 @@ void get_ir(const char*     mdparin,
     sfree(dumstr[1]);
 }
 
-int search_string(const char* s, int ng, char* const gn[])
+int getGroupIndex(const std::string& s, gmx::ArrayRef<const IndexGroup> indexGroups)
 {
-    int i;
-
-    for (i = 0; (i < ng); i++)
+    for (int i = 0; i < gmx::ssize(indexGroups); i++)
     {
-        if (gmx_strcasecmp(s, gn[i]) == 0)
+        if (gmx_strcasecmp(s.c_str(), indexGroups[i].name.c_str()) == 0)
         {
             return i;
         }
@@ -3089,16 +3088,14 @@ int search_string(const char* s, int ng, char* const gn[])
               "Group names must match either [moleculetype] names or custom index group\n"
               "names, in which case you must supply an index file to the '-n' option\n"
               "of grompp.",
-              s);
+              s.c_str());
 }
 
-static void atomGroupRangeValidation(int natoms, int groupIndex, const t_blocka& block)
+static void atomGroupRangeValidation(const int natoms, gmx::ArrayRef<const int> particleIndices)
 {
     /* Now go over the atoms in the group */
-    for (int j = block.index[groupIndex]; (j < block.index[groupIndex + 1]); j++)
+    for (const int aj : particleIndices)
     {
-        int aj = block.a[j];
-
         /* Range checking */
         if ((aj < 0) || (aj >= natoms))
         {
@@ -3112,24 +3109,24 @@ static void atomGroupRangeValidation(int natoms, int groupIndex, const t_blocka&
  * \param[in] natoms  The total number of atoms in the system
  * \param[in,out] groups  Index \p gtype in this list of list of groups will be set
  * \param[in] groupsFromMdpFile  The list of group names set for \p gtype in the mdp file
- * \param[in] block       The list of atom indices for all available index groups
- * \param[in] gnames      The list of names for all available index groups
+ * \param[in] indexGroups The list of all available index groups
  * \param[in] gtype       The group type to creates groups for
  * \param[in] restnm      The index of rest group name in \p gnames
  * \param[in] coverage    How to treat coverage of all atoms in the system
  * \param[in] bVerbose    Whether to print when we make a rest group
  * \param[in,out] wi      List of warnings
+ *
+ * \returns whether all atoms have been assigned to a group
  */
-static void do_numbering(const int                        natoms,
+static bool do_numbering(const int                        natoms,
                          SimulationGroups*                groups,
                          gmx::ArrayRef<const std::string> groupsFromMdpFile,
-                         const t_blocka*                  block,
-                         char* const                      gnames[],
+                         gmx::ArrayRef<const IndexGroup>  indexGroups,
                          const SimulationAtomGroupType    gtype,
                          const int                        restnm,
                          const GroupCoverage              coverage,
                          const bool                       bVerbose,
-                         warninp_t                        wi)
+                         WarningHandler*                  wi)
 {
     unsigned short*   cbuf;
     AtomGroupIndices* grps = &(groups->groups[gtype]);
@@ -3149,17 +3146,16 @@ static void do_numbering(const int                        natoms,
     for (int i = 0; i != groupsFromMdpFile.ssize(); ++i)
     {
         /* Lookup the group name in the block structure */
-        const int gid = search_string(groupsFromMdpFile[i].c_str(), block->nr, gnames);
+        const int gid = getGroupIndex(groupsFromMdpFile[i], indexGroups);
         if ((coverage != GroupCoverage::OneGroup) || (i == 0))
         {
             grps->emplace_back(gid);
         }
-        GMX_ASSERT(block, "Can't have a nullptr block");
-        atomGroupRangeValidation(natoms, gid, *block);
+        gmx::ArrayRef<const int> indexGroup = indexGroups[gid].particleIndices;
+        atomGroupRangeValidation(natoms, indexGroup);
         /* Now go over the atoms in the group */
-        for (int j = block->index[gid]; (j < block->index[gid + 1]); j++)
+        for (const int aj : indexGroup)
         {
-            const int aj = block->a[j];
             /* Lookup up the old group number */
             const int ognr = cbuf[aj];
             if (ognr != NOGID)
@@ -3192,7 +3188,7 @@ static void do_numbering(const int                        natoms,
         else if (coverage == GroupCoverage::Partial)
         {
             sprintf(warn_buf, "%d atoms are not part of any of the %s groups", natoms - ntot, title);
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
         /* Assign all atoms currently unassigned to a rest group */
         for (int j = 0; (j < natoms); j++)
@@ -3237,9 +3233,11 @@ static void do_numbering(const int                        natoms,
     }
 
     sfree(cbuf);
+
+    return ntot == natoms;
 }
 
-static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, char** gnames)
+static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, gmx::ArrayRef<const std::string> gnames)
 {
     t_grpopts*     opts;
     pull_params_t* pull;
@@ -3428,7 +3426,8 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, char** gnames)
                                   "Center of mass pulling constraints caused the number of degrees "
                                   "of freedom for temperature coupling group %s to be negative",
                                   gnames[groups.groups[SimulationAtomGroupType::TemperatureCoupling][getGroupType(
-                                          groups, SimulationAtomGroupType::TemperatureCoupling, ai)]]);
+                                                 groups, SimulationAtomGroupType::TemperatureCoupling, ai)]]
+                                          .c_str());
                     }
                 }
                 else
@@ -3521,7 +3520,7 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, char** gnames)
         }
         fprintf(stderr,
                 "Number of degrees of freedom in T-Coupling group %s is %.2f\n",
-                gnames[groups.groups[SimulationAtomGroupType::TemperatureCoupling][i]],
+                gnames[groups.groups[SimulationAtomGroupType::TemperatureCoupling][i]].c_str(),
                 opts->nrdf[i]);
     }
 
@@ -3588,7 +3587,7 @@ static bool do_egp_flag(t_inputrec* ir, SimulationGroups* groups, const char* op
 }
 
 
-static void make_swap_groups(t_swapcoords* swap, t_blocka* grps, char** gnames)
+static void make_swap_groups(t_swapcoords* swap, gmx::ArrayRef<const IndexGroup> indexGroups)
 {
     int          ig = -1, i = 0, gind;
     t_swapGroup* swapg;
@@ -3608,8 +3607,8 @@ static void make_swap_groups(t_swapcoords* swap, t_blocka* grps, char** gnames)
     for (ig = 0; ig < swap->ngrp; ig++)
     {
         swapg      = &swap->grp[ig];
-        gind       = search_string(swap->grp[ig].molname, grps->nr, gnames);
-        swapg->nat = grps->index[gind + 1] - grps->index[gind];
+        gind       = getGroupIndex(swap->grp[ig].molname, indexGroups);
+        swapg->nat = gmx::ssize(indexGroups[gind].particleIndices);
 
         if (swapg->nat > 0)
         {
@@ -3621,7 +3620,7 @@ static void make_swap_groups(t_swapcoords* swap, t_blocka* grps, char** gnames)
             snew(swapg->ind, swapg->nat);
             for (i = 0; i < swapg->nat; i++)
             {
-                swapg->ind[i] = grps->a[grps->index[gind] + i];
+                swapg->ind[i] = indexGroups[gind].particleIndices[i];
             }
         }
         else
@@ -3632,13 +3631,13 @@ static void make_swap_groups(t_swapcoords* swap, t_blocka* grps, char** gnames)
 }
 
 
-static void make_IMD_group(t_IMD* IMDgroup, char* IMDgname, t_blocka* grps, char** gnames)
+static void make_IMD_group(t_IMD* IMDgroup, const char* IMDgname, gmx::ArrayRef<const IndexGroup> indexGroups)
 {
     int ig, i;
 
 
-    ig            = search_string(IMDgname, grps->nr, gnames);
-    IMDgroup->nat = grps->index[ig + 1] - grps->index[ig];
+    ig            = getGroupIndex(IMDgname, indexGroups);
+    IMDgroup->nat = gmx::ssize(indexGroups[ig].particleIndices);
 
     if (IMDgroup->nat > 0)
     {
@@ -3650,7 +3649,7 @@ static void make_IMD_group(t_IMD* IMDgroup, char* IMDgname, t_blocka* grps, char
         snew(IMDgroup->ind, IMDgroup->nat);
         for (i = 0; i < IMDgroup->nat; i++)
         {
-            IMDgroup->ind[i] = grps->a[grps->index[ig] + i];
+            IMDgroup->ind[i] = indexGroups[ig].particleIndices[i];
         }
     }
 }
@@ -3667,7 +3666,7 @@ static void make_IMD_group(t_IMD* IMDgroup, char* IMDgname, t_blocka* grps, char
 static void checkAndUpdateVcmFreezeGroupConsistency(SimulationGroups* groups,
                                                     const int         numAtoms,
                                                     const t_grpopts&  opts,
-                                                    warninp_t         wi)
+                                                    WarningHandler*   wi)
 {
     const int vcmRestGroup =
             std::max(int(groups->groups[SimulationAtomGroupType::MassCenterVelocityRemoval].size()), 1);
@@ -3715,7 +3714,7 @@ static void checkAndUpdateVcmFreezeGroupConsistency(SimulationGroups* groups,
                 "There are %d atoms that are fully frozen and part of COMM removal group(s), "
                 "removing these atoms from the COMM removal group(s)",
                 numFullyFrozenVcmAtoms);
-        warning_note(wi, warningText.c_str());
+        wi->addNote(warningText);
     }
     if (numPartiallyFrozenVcmAtoms > 0 && numPartiallyFrozenVcmAtoms < numAtoms)
     {
@@ -3726,7 +3725,7 @@ static void checkAndUpdateVcmFreezeGroupConsistency(SimulationGroups* groups,
                 "too small.",
                 numPartiallyFrozenVcmAtoms,
                 DIM);
-        warning(wi, warningText.c_str());
+        wi->addWarning(warningText);
     }
     if (numNonVcmAtoms > 0)
     {
@@ -3735,7 +3734,93 @@ static void checkAndUpdateVcmFreezeGroupConsistency(SimulationGroups* groups,
                 "This may lead to artifacts.\n"
                 "In most cases one should use one group for the whole system.",
                 numNonVcmAtoms);
-        warning(wi, warningText.c_str());
+        wi->addWarning(warningText);
+    }
+}
+
+static void processEnsembleTemperature(t_inputrec* ir, const bool allAtomsCoupled, WarningHandler* wi)
+{
+    if (ir->ensembleTemperatureSetting == EnsembleTemperatureSetting::NotAvailable)
+    {
+        ir->ensembleTemperature = -1;
+    }
+    else if (ir->ensembleTemperatureSetting == EnsembleTemperatureSetting::Constant)
+    {
+        if (ir->ensembleTemperature < 0)
+        {
+            wi->addError("ensemble-temperature can not be negative");
+        }
+        else if (integratorHasReferenceTemperature(*ir))
+        {
+            bool refTEqual = true;
+            for (int i = 1; i < ir->opts.ngtc; i++)
+            {
+                if (ir->opts.ref_t[i] != ir->opts.ref_t[0])
+                {
+                    refTEqual = false;
+                }
+            }
+            if (refTEqual && ir->ensembleTemperature != ir->opts.ref_t[0])
+            {
+                wi->addWarning(
+                        "The ensemble temperature of the system does not match the reference "
+                        "temperature(s) of the T-coupling group(s)");
+            }
+        }
+    }
+    else if (ir->ensembleTemperatureSetting == EnsembleTemperatureSetting::Auto)
+    {
+        if (integratorHasReferenceTemperature(*ir))
+        {
+            if (!allAtomsCoupled)
+            {
+                fprintf(stderr,
+                        "Not all atoms are temperature coupled: there is no ensemble temperature "
+                        "available\n");
+                ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::NotAvailable;
+                ir->ensembleTemperature        = -1;
+            }
+            else if (doSimulatedAnnealing(*ir) && ir->opts.ngtc > 1)
+            {
+                fprintf(stderr,
+                        "Simulated tempering is used with multiple T-coupling groups: setting the "
+                        "ensemble temperature to not available\n");
+            }
+            else if (doSimulatedAnnealing(*ir) || ir->bSimTemp)
+            {
+                ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::Variable;
+            }
+            else
+            {
+                bool refTEqual = true;
+                for (int i = 1; i < ir->opts.ngtc; i++)
+                {
+                    if (ir->opts.ref_t[i] != ir->opts.ref_t[0])
+                    {
+                        refTEqual = false;
+                    }
+                }
+                if (refTEqual)
+                {
+                    ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::Constant;
+                    ir->ensembleTemperature        = ir->opts.ref_t[0];
+                }
+                else
+                {
+                    ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::NotAvailable;
+                    ir->ensembleTemperature        = -1;
+                }
+            }
+        }
+        else
+        {
+            // We do not have an ensemble temperature available
+            fprintf(stderr,
+                    "The integrator does not provide a ensemble temperature, there is no system "
+                    "ensemble temperature\n");
+            ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::NotAvailable;
+            ir->ensembleTemperature        = -1;
+        }
     }
 }
 
@@ -3745,16 +3830,13 @@ void do_index(const char*                    mdparin,
               bool                           bVerbose,
               const gmx::MDModulesNotifiers& mdModulesNotifiers,
               t_inputrec*                    ir,
-              warninp_t                      wi)
+              WarningHandler*                wi)
 {
-    t_blocka* defaultIndexGroups;
     int       natoms;
     t_symtab* symtab;
     t_atoms   atoms_all;
-    char**    gnames;
     int       nr;
     real      tau_min;
-    int       nstcmin;
     int       i, j, k, restnm;
     bool      bExcl, bTable, bAnneal;
     char      warn_buf[STRLEN];
@@ -3763,35 +3845,35 @@ void do_index(const char*                    mdparin,
     {
         fprintf(stderr, "processing index file...\n");
     }
+    std::vector<IndexGroup> defaultIndexGroups;
     if (ndx == nullptr)
     {
-        snew(defaultIndexGroups, 1);
-        snew(defaultIndexGroups->index, 1);
-        snew(gnames, 1);
-        atoms_all = gmx_mtop_global_atoms(*mtop);
-        analyse(&atoms_all, defaultIndexGroups, &gnames, FALSE, TRUE);
+        atoms_all          = gmx_mtop_global_atoms(*mtop);
+        defaultIndexGroups = analyse(&atoms_all, false, true);
         done_atom(&atoms_all);
     }
     else
     {
-        defaultIndexGroups = init_index(ndx, &gnames);
+        defaultIndexGroups = init_index(ndx);
     }
 
     SimulationGroups* groups = &mtop->groups;
     natoms                   = mtop->natoms;
     symtab                   = &mtop->symtab;
 
-    for (int i = 0; (i < defaultIndexGroups->nr); i++)
+    // We need a temporary list of the group names from the index file plus the rest group
+    std::vector<std::string> gnames;
+    for (const auto& indexGroup : defaultIndexGroups)
     {
-        groups->groupNames.emplace_back(put_symtab(symtab, gnames[i]));
+        groups->groupNames.emplace_back(put_symtab(symtab, indexGroup.name.c_str()));
+        gnames.emplace_back(*groups->groupNames.back());
     }
     groups->groupNames.emplace_back(put_symtab(symtab, "rest"));
     restnm = groups->groupNames.size() - 1;
-    GMX_RELEASE_ASSERT(restnm == defaultIndexGroups->nr, "Size of allocations must match");
-    srenew(gnames, defaultIndexGroups->nr + 1);
-    gnames[restnm] = *(groups->groupNames.back());
+    GMX_RELEASE_ASSERT(restnm == gmx::ssize(defaultIndexGroups), "Size of allocations must match");
+    gnames.emplace_back(*groups->groupNames.back());
 
-    set_warning_line(wi, mdparin, -1);
+    wi->setFileAndLineNumber(mdparin, -1);
 
     auto temperatureCouplingTauValues       = gmx::splitString(inputrecStrings->tau_t);
     auto temperatureCouplingReferenceValues = gmx::splitString(inputrecStrings->ref_t);
@@ -3807,17 +3889,17 @@ void do_index(const char*                    mdparin,
                   temperatureCouplingTauValues.size());
     }
 
-    const bool useReferenceTemperature = integratorHasReferenceTemperature(ir);
-    do_numbering(natoms,
-                 groups,
-                 temperatureCouplingGroupNames,
-                 defaultIndexGroups,
-                 gnames,
-                 SimulationAtomGroupType::TemperatureCoupling,
-                 restnm,
-                 useReferenceTemperature ? GroupCoverage::All : GroupCoverage::AllGenerateRest,
-                 bVerbose,
-                 wi);
+    const bool useReferenceTemperature = integratorHasReferenceTemperature(*ir);
+    const bool allAtomsAreTCoupled =
+            do_numbering(natoms,
+                         groups,
+                         temperatureCouplingGroupNames,
+                         defaultIndexGroups,
+                         SimulationAtomGroupType::TemperatureCoupling,
+                         restnm,
+                         useReferenceTemperature ? GroupCoverage::All : GroupCoverage::AllGenerateRest,
+                         bVerbose,
+                         wi);
     nr            = groups->groups[SimulationAtomGroupType::TemperatureCoupling].size();
     ir->opts.ngtc = nr;
     snew(ir->opts.nrdf, nr);
@@ -3844,13 +3926,13 @@ void do_index(const char*                    mdparin,
                 sprintf(warn_buf,
                         "With integrator %s tau-t should be larger than 0",
                         enumValueToString(ir->eI));
-                warning_error(wi, warn_buf);
+                wi->addError(warn_buf);
             }
 
             if (ir->etc != TemperatureCoupling::VRescale && ir->opts.tau_t[i] == 0)
             {
-                warning_note(
-                        wi,
+                wi->addNote(
+
                         "tau-t = -1 is the value to signal that a group should not have "
                         "temperature coupling. Treating your use of tau-t = 0 as if you used -1.");
             }
@@ -3867,14 +3949,15 @@ void do_index(const char*                    mdparin,
 
         if (EI_VV(ir->eI))
         {
-            if ((ir->etc == TemperatureCoupling::NoseHoover) && (ir->epc == PressureCoupling::Berendsen))
+            if ((ir->etc == TemperatureCoupling::NoseHoover)
+                && (ir->pressureCouplingOptions.epc == PressureCoupling::Berendsen))
             {
                 gmx_fatal(FARGS,
                           "Cannot do Nose-Hoover temperature with Berendsen pressure control with "
                           "md-vv; use either vrescale temperature with berendsen pressure or "
                           "Nose-Hoover temperature with MTTK pressure");
             }
-            if (ir->epc == PressureCoupling::Mttk)
+            if (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk)
             {
                 if (ir->etc != TemperatureCoupling::NoseHoover)
                 {
@@ -3884,16 +3967,16 @@ void do_index(const char*                    mdparin,
                 }
                 else
                 {
-                    if (ir->nstpcouple != ir->nsttcouple)
+                    if (ir->pressureCouplingOptions.nstpcouple != ir->nsttcouple)
                     {
-                        int mincouple  = std::min(ir->nstpcouple, ir->nsttcouple);
-                        ir->nstpcouple = ir->nsttcouple = mincouple;
+                        int mincouple = std::min(ir->pressureCouplingOptions.nstpcouple, ir->nsttcouple);
+                        ir->pressureCouplingOptions.nstpcouple = ir->nsttcouple = mincouple;
                         sprintf(warn_buf,
                                 "for current Trotter decomposition methods with vv, nsttcouple and "
                                 "nstpcouple must be equal.  Both have been reset to "
                                 "min(nsttcouple,nstpcouple) = %d",
                                 mincouple);
-                        warning_note(wi, warn_buf);
+                        wi->addNote(warn_buf);
                     }
                 }
             }
@@ -3910,11 +3993,12 @@ void do_index(const char*                    mdparin,
                         "Andersen temperature control methods assume nsttcouple = 1; there is no "
                         "need for larger nsttcouple > 1, since no global parameters are computed. "
                         "nsttcouple has been reset to 1");
-                warning_note(wi, warn_buf);
+                wi->addNote(warn_buf);
             }
         }
-        nstcmin = tcouple_min_integration_steps(ir->etc);
-        if (nstcmin > 1)
+        const int nstcmin = tcouple_min_integration_steps(ir->etc);
+        // V-rescale can act correctly with any coupling interval
+        if (nstcmin > 1 && ir->etc != TemperatureCoupling::VRescale)
         {
             if (tau_min / (ir->delta_t * ir->nsttcouple) < nstcmin - 10 * GMX_REAL_EPS)
             {
@@ -3925,7 +4009,7 @@ void do_index(const char*                    mdparin,
                         tau_min,
                         nstcmin,
                         ir->nsttcouple * ir->delta_t);
-                warning(wi, warn_buf);
+                wi->addWarning(warn_buf);
             }
         }
         convertReals(wi, temperatureCouplingReferenceValues, "ref-t", ir->opts.ref_t);
@@ -4114,9 +4198,9 @@ void do_index(const char*                    mdparin,
                                     ir->opts.anneal_temp[i][j]);
                             if (std::fabs(ir->opts.anneal_temp[i][j] - ir->opts.anneal_temp[i][0]) > GMX_REAL_EPS)
                             {
-                                warning_note(wi,
-                                             "There is a temperature jump when your annealing "
-                                             "loops back.\n");
+                                wi->addNote(
+                                        "There is a temperature jump when your annealing "
+                                        "loops back.\n");
                             }
                         }
                     }
@@ -4129,35 +4213,33 @@ void do_index(const char*                    mdparin,
     {
         for (int i = 1; i < ir->pull->ngroup; i++)
         {
-            const int gid = search_string(
-                    inputrecStrings->pullGroupNames[i].c_str(), defaultIndexGroups->nr, gnames);
-            GMX_ASSERT(defaultIndexGroups, "Must have initialized default index groups");
-            atomGroupRangeValidation(natoms, gid, *defaultIndexGroups);
+            const int gid = getGroupIndex(inputrecStrings->pullGroupNames[i], defaultIndexGroups);
+            GMX_ASSERT(!defaultIndexGroups.empty(), "Must have initialized default index groups");
+            atomGroupRangeValidation(natoms, defaultIndexGroups[gid].particleIndices);
         }
 
-        process_pull_groups(ir->pull->group, inputrecStrings->pullGroupNames, defaultIndexGroups, gnames);
+        process_pull_groups(ir->pull->group, inputrecStrings->pullGroupNames, defaultIndexGroups);
 
         checkPullCoords(ir->pull->group, ir->pull->coord);
     }
 
     if (ir->bRot)
     {
-        make_rotation_groups(ir->rot, inputrecStrings->rotateGroupNames, defaultIndexGroups, gnames);
+        make_rotation_groups(ir->rot.get(), inputrecStrings->rotateGroupNames, defaultIndexGroups);
     }
 
     if (ir->eSwapCoords != SwapType::No)
     {
-        make_swap_groups(ir->swap, defaultIndexGroups, gnames);
+        make_swap_groups(ir->swap, defaultIndexGroups);
     }
 
     /* Make indices for IMD session */
     if (ir->bIMD)
     {
-        make_IMD_group(ir->imd, inputrecStrings->imd_grp, defaultIndexGroups, gnames);
+        make_IMD_group(ir->imd, inputrecStrings->imd_grp, defaultIndexGroups);
     }
 
-    gmx::IndexGroupsAndNames defaultIndexGroupsAndNames(
-            *defaultIndexGroups, gmx::arrayRefFromArray(gnames, defaultIndexGroups->nr));
+    gmx::IndexGroupsAndNames defaultIndexGroupsAndNames(defaultIndexGroups);
     mdModulesNotifiers.preProcessingNotifier_.notify(defaultIndexGroupsAndNames);
 
     auto accelerations          = gmx::splitString(inputrecStrings->acceleration);
@@ -4173,7 +4255,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  accelerationGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::Acceleration,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4198,7 +4279,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  freezeGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::Freeze,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4220,7 +4300,7 @@ void do_index(const char*                    mdparin,
                             "Please use Y(ES) or N(O) for freezedim only "
                             "(not %s)",
                             freezeDims[k].c_str());
-                    warning(wi, warn_buf);
+                    wi->addWarning(warn_buf);
                 }
             }
         }
@@ -4238,7 +4318,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  energyGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::EnergyOutput,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4251,7 +4330,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  vcmGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::MassCenterVelocityRemoval,
                  restnm,
                  vcmGroupNames.empty() ? GroupCoverage::AllGenerateRest : GroupCoverage::Partial,
@@ -4271,7 +4349,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  user1GroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::User1,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4282,7 +4359,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  user2GroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::User2,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4293,7 +4369,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  compressedXGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::CompressedPositionOutput,
                  restnm,
                  GroupCoverage::OneGroup,
@@ -4304,7 +4379,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  orirefFitGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::OrientationRestraintsFit,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4322,7 +4396,6 @@ void do_index(const char*                    mdparin,
                  groups,
                  qmGroupNames,
                  defaultIndexGroups,
-                 gnames,
                  SimulationAtomGroupType::QuantumMechanics,
                  restnm,
                  GroupCoverage::AllGenerateRest,
@@ -4351,11 +4424,11 @@ void do_index(const char*                    mdparin,
     bExcl = do_egp_flag(ir, groups, "energygrp-excl", inputrecStrings->egpexcl, EGP_EXCL);
     if (bExcl && ir->cutoff_scheme == CutoffScheme::Verlet)
     {
-        warning_error(wi, "Energy group exclusions are currently not supported");
+        wi->addError("Energy group exclusions are currently not supported");
     }
-    if (bExcl && EEL_FULL(ir->coulombtype))
+    if (bExcl && usingFullElectrostatics(ir->coulombtype))
     {
-        warning(wi, "Can not exclude the lattice Coulomb energy between energy groups");
+        wi->addWarning("Can not exclude the lattice Coulomb energy between energy groups");
     }
 
     bTable = do_egp_flag(ir, groups, "energygrp-table", inputrecStrings->egptable, EGP_TABLE);
@@ -4375,20 +4448,15 @@ void do_index(const char*                    mdparin,
     if ((ir->expandedvals->nstexpanded < 0) && ir->bSimTemp)
     {
         ir->expandedvals->nstexpanded = 2 * static_cast<int>(ir->opts.tau_t[0] / ir->delta_t);
-        warning(wi,
-                gmx::formatString(
-                        "the value for nstexpanded was not specified for "
-                        " expanded ensemble simulated tempering. It is set to 2*tau_t (%d) "
-                        "by default, but it is recommended to set it to an explicit value!",
-                        ir->expandedvals->nstexpanded));
+        wi->addWarning(gmx::formatString(
+                "the value for nstexpanded was not specified for "
+                " expanded ensemble simulated tempering. It is set to 2*tau_t (%d) "
+                "by default, but it is recommended to set it to an explicit value!",
+                ir->expandedvals->nstexpanded));
     }
-    for (i = 0; (i < defaultIndexGroups->nr); i++)
-    {
-        sfree(gnames[i]);
-    }
-    sfree(gnames);
-    done_blocka(defaultIndexGroups);
-    sfree(defaultIndexGroups);
+
+    // Now that we have the temperature coupling options, we can process the ensemble temperature
+    processEnsembleTemperature(ir, allAtomsAreTCoupled, wi);
 }
 
 
@@ -4589,7 +4657,7 @@ static void check_combination_rule_differences(const gmx_mtop_t& mtop,
     sfree(typecount);
 }
 
-static void check_combination_rules(const t_inputrec* ir, const gmx_mtop_t& mtop, warninp_t wi)
+static void check_combination_rules(const t_inputrec* ir, const gmx_mtop_t& mtop, WarningHandler* wi)
 {
     bool bLBRulesPossible, bC6ParametersWorkWithGeometricRules, bC6ParametersWorkWithLBRules;
 
@@ -4599,7 +4667,7 @@ static void check_combination_rules(const t_inputrec* ir, const gmx_mtop_t& mtop
     {
         if (!bC6ParametersWorkWithLBRules || !bLBRulesPossible)
         {
-            warning(wi,
+            wi->addWarning(
                     "You are using arithmetic-geometric combination rules "
                     "in LJ-PME, but your non-bonded C6 parameters do not "
                     "follow these rules.");
@@ -4611,25 +4679,25 @@ static void check_combination_rules(const t_inputrec* ir, const gmx_mtop_t& mtop
         {
             if (ir->eDispCorr != DispersionCorrectionType::No)
             {
-                warning_note(wi,
-                             "You are using geometric combination rules in "
-                             "LJ-PME, but your non-bonded C6 parameters do "
-                             "not follow these rules. "
-                             "This will introduce very small errors in the forces and energies in "
-                             "your simulations. Dispersion correction will correct total energy "
-                             "and/or pressure for isotropic systems, but not forces or surface "
-                             "tensions.");
+                wi->addNote(
+                        "You are using geometric combination rules in "
+                        "LJ-PME, but your non-bonded C6 parameters do "
+                        "not follow these rules. "
+                        "This will introduce very small errors in the forces and energies in "
+                        "your simulations. Dispersion correction will correct total energy "
+                        "and/or pressure for isotropic systems, but not forces or surface "
+                        "tensions.");
             }
             else
             {
-                warning_note(wi,
-                             "You are using geometric combination rules in "
-                             "LJ-PME, but your non-bonded C6 parameters do "
-                             "not follow these rules. "
-                             "This will introduce very small errors in the forces and energies in "
-                             "your simulations. If your system is homogeneous, consider using "
-                             "dispersion correction "
-                             "for the total energy and pressure.");
+                wi->addNote(
+                        "You are using geometric combination rules in "
+                        "LJ-PME, but your non-bonded C6 parameters do "
+                        "not follow these rules. "
+                        "This will introduce very small errors in the forces and energies in "
+                        "your simulations. If your system is homogeneous, consider using "
+                        "dispersion correction "
+                        "for the total energy and pressure.");
             }
         }
     }
@@ -4641,7 +4709,7 @@ static bool allTrue(const BasicVector<bool>& boolVector)
 }
 
 /* Generates an error or warning when lambda will become > 1, when appropriate */
-static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& mtop, warninp_t wi)
+static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& mtop, WarningHandler* wi)
 {
     /* The warnings below are only relevant if we have perturbed atoms */
     if (!haveFepPerturbedNBInteractions(mtop) && !haveFepPerturbedMasses(mtop))
@@ -4658,7 +4726,7 @@ static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& m
                 "all lambdas will (initially) be greater than 1. "
                 "Please only use this if you are aware of what you are "
                 "doing.\n");
-        warning(wi, warningText);
+        wi->addWarning(warningText);
     }
 
     /* lambda vector components become > 1 in the course of the simulation */
@@ -4683,7 +4751,7 @@ static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& m
                     ir.fepvals->delta_lambda,
                     intStepNumberWhenLambdaIsOne,
                     ir.nsteps);
-            warning(wi, warningText);
+            wi->addWarning(warningText);
         }
     }
 
@@ -4725,12 +4793,12 @@ static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& m
                     "if you are aware of "
                     "what you are doing.",
                     enumValueToString(enumValue));
-            warning(wi, warningText);
+            wi->addWarning(warningText);
         }
     }
 }
 
-void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_t wi)
+void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, WarningHandler* wi)
 {
     // Not meeting MTS requirements should have resulted in a fatal error, so we can assert here
     GMX_ASSERT(gmx::checkMtsRequirements(*ir).empty(), "All MTS requirements should be met here");
@@ -4742,14 +4810,14 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
     gmx_mtop_atomloop_block_t aloopb;
     char                      warn_buf[STRLEN];
 
-    set_warning_line(wi, mdparin, -1);
+    wi->setFileAndLineNumber(mdparin, -1);
 
     if (ir->comm_mode != ComRemovalAlgorithm::No && allTrue(havePositionRestraints(*sys)))
     {
-        warning_note(wi,
-                     "Removing center of mass motion in the presence of position restraints might "
-                     "cause artifacts. When you are using position restraints to equilibrate a "
-                     "macro-molecule, the artifacts are usually negligible.");
+        wi->addNote(
+                "Removing center of mass motion in the presence of position restraints might "
+                "cause artifacts. When you are using position restraints to equilibrate a "
+                "macro-molecule, the artifacts are usually negligible.");
     }
 
     if (ir->cutoff_scheme == CutoffScheme::Verlet && ir->verletbuf_tol > 0 && ir->nstlist > 1
@@ -4795,7 +4863,7 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
                         100 * max_T_error,
                         100 * T_error_suggest,
                         ir->verletbuf_tol * T_error_suggest / max_T_error);
-                warning(wi, warn_buf);
+                wi->addWarning(warn_buf);
             }
         }
     }
@@ -4844,85 +4912,67 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
         && !(allTrue(haveAbsoluteReference(*ir)) || allTrue(havePositionRestraints(*sys)) || ir->nsteps <= 10)
         && !ETC_ANDERSEN(ir->etc))
     {
-        warning(wi,
+        wi->addWarning(
                 "You are not using center of mass motion removal (mdp option comm-mode), numerical "
                 "rounding errors can lead to build up of kinetic energy of the center of mass");
     }
 
-    if (ir->epc == PressureCoupling::CRescale)
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::CRescale && !haveEnsembleTemperature(*ir))
     {
-        // These checks should be moved to the reference temperature automation/checking
-        // code when we introduce that in the next major release.
-        //
-        // Note that we should also check for atoms not being part of any T-coupling
-        // group. This check is not present here yet.
-
-        if (!EI_RANDOM(ir->eI) && ir->etc == TemperatureCoupling::No)
-        {
-            sprintf(warn_buf,
-                    "Can not use the %s barostat without temperature coupling",
-                    enumValueToString(ir->epc));
-            warning_error(wi, warn_buf);
-        }
-        else
-        {
-            GMX_RELEASE_ASSERT(ir->opts.ngtc > 0, "Expect at least one temperature coupling group");
-            const real refT0 = ir->opts.ref_t[0];
-            for (int i = 1; i < ir->opts.ngtc; i++)
-            {
-                if (ir->opts.ref_t[i] != refT0)
-                {
-                    sprintf(warn_buf,
-                            "The %s barostat needs a reference temperature, but the reference "
-                            "temperatures for the T-coupling groups are not identical. Will "
-                            "use the temperature of the first group as reference temperature.",
-                            enumValueToString(ir->epc));
-                    warning(wi, warn_buf);
-
-                    break;
-                }
-            }
-        }
+        sprintf(warn_buf,
+                "Can not use the %s barostat without an ensemble temperature for the system",
+                enumValueToString(ir->pressureCouplingOptions.epc));
+        wi->addError(warn_buf);
     }
 
-    if (ir->epc == PressureCoupling::ParrinelloRahman && ir->etc == TemperatureCoupling::NoseHoover)
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::ParrinelloRahman
+        && ir->etc == TemperatureCoupling::NoseHoover)
     {
         real tau_t_max = 0;
         for (int g = 0; g < ir->opts.ngtc; g++)
         {
             tau_t_max = std::max(tau_t_max, ir->opts.tau_t[g]);
         }
-        if (ir->tau_p < 1.9 * tau_t_max)
+        if (ir->pressureCouplingOptions.tau_p < 1.9 * tau_t_max)
         {
             std::string message = gmx::formatString(
                     "With %s T-coupling and %s p-coupling, "
                     "%s (%g) should be at least twice as large as %s (%g) to avoid resonances",
                     enumValueToString(ir->etc),
-                    enumValueToString(ir->epc),
+                    enumValueToString(ir->pressureCouplingOptions.epc),
                     "tau-p",
-                    ir->tau_p,
+                    ir->pressureCouplingOptions.tau_p,
                     "tau-t",
                     tau_t_max);
-            warning(wi, message.c_str());
+            wi->addWarning(message);
         }
     }
 
     /* Check for pressure coupling with absolute position restraints */
-    if (ir->epc != PressureCoupling::No && ir->refcoord_scaling == RefCoordScaling::No)
+    if (ir->pressureCouplingOptions.epc != PressureCoupling::No
+        && ir->pressureCouplingOptions.refcoord_scaling == RefCoordScaling::No)
     {
         const BasicVector<bool> havePosres = havePositionRestraints(*sys);
         {
             for (m = 0; m < DIM; m++)
             {
-                if (havePosres[m] && norm2(ir->compress[m]) > 0)
+                if (havePosres[m] && norm2(ir->pressureCouplingOptions.compress[m]) > 0)
                 {
-                    warning(wi,
+                    wi->addWarning(
                             "You are using pressure coupling with absolute position restraints, "
                             "this will give artifacts. Use the refcoord_scaling option.");
                     break;
                 }
             }
         }
+    }
+
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk && !haveConstantEnsembleTemperature(*ir))
+    {
+        sprintf(warn_buf,
+                "The %s barostat requires a constant ensemble temperature for the system",
+                enumValueToString(ir->pressureCouplingOptions.epc));
+        wi->addError(warn_buf);
     }
 
     bCharge = FALSE;
@@ -4938,7 +4988,7 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
 
     if (!bCharge)
     {
-        if (EEL_FULL(ir->coulombtype))
+        if (usingFullElectrostatics(ir->coulombtype))
         {
             sprintf(err_buf,
                     "You are using full electrostatics treatment %s for a system without charges.\n"
@@ -4946,7 +4996,7 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
                     "instead.\n",
                     enumValueToString(ir->coulombtype),
                     enumValueToString(CoulombInteractionType::Cut));
-            warning(wi, err_buf);
+            wi->addWarning(err_buf);
         }
     }
     else
@@ -4957,12 +5007,12 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
                     "You are using a plain Coulomb cut-off, which might produce artifacts.\n"
                     "You might want to consider using %s electrostatics.\n",
                     enumValueToString(CoulombInteractionType::Pme));
-            warning_note(wi, err_buf);
+            wi->addNote(err_buf);
         }
     }
 
     /* Check if combination rules used in LJ-PME are the same as in the force field */
-    if (EVDW_PME(ir->vdwtype))
+    if (usingLJPme(ir->vdwtype))
     {
         check_combination_rules(ir, *sys, wi);
     }
@@ -4970,10 +5020,10 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
     /* Generalized reaction field */
     if (ir->coulombtype == CoulombInteractionType::GRFNotused)
     {
-        warning_error(wi,
-                      "Generalized reaction-field electrostatics is no longer supported. "
-                      "You can use normal reaction-field instead and compute the reaction-field "
-                      "constant by hand.");
+        wi->addError(
+                "Generalized reaction-field electrostatics is no longer supported. "
+                "You can use normal reaction-field instead and compute the reaction-field "
+                "constant by hand.");
     }
 
     ir->useConstantAcceleration = false;
@@ -5055,7 +5105,7 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
                 {
                     if (ir->pull->coord[i].dim[m] && !(absRef[m] || havePosres[m]))
                     {
-                        warning(wi,
+                        wi->addWarning(
                                 "You are using an absolute reference for pulling, but the rest of "
                                 "the system does not have an absolute reference. This will lead to "
                                 "artifacts.");
@@ -5070,7 +5120,9 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
         {
             for (m = 0; m <= i; m++)
             {
-                if ((ir->epc != PressureCoupling::No && ir->compress[i][m] != 0) || ir->deform[i][m] != 0)
+                if ((ir->pressureCouplingOptions.epc != PressureCoupling::No
+                     && ir->pressureCouplingOptions.compress[i][m] != 0)
+                    || ir->deform[i][m] != 0)
                 {
                     for (c = 0; c < ir->pull->ncoord; c++)
                     {
@@ -5089,10 +5141,15 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, warninp_
         }
     }
 
+    if (ir->bDoAwh && !haveConstantEnsembleTemperature(*ir))
+    {
+        wi->addError("With AWH a constant ensemble temperature is required");
+    }
+
     check_disre(*sys);
 }
 
-void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool bHasAnyConstraints, warninp_t wi)
+void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool bHasAnyConstraints, WarningHandler* wi)
 {
     char        warn_buf[STRLEN];
     const char* ptr;
@@ -5100,7 +5157,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
     ptr = check_box(ir->pbcType, box);
     if (ptr)
     {
-        warning_error(wi, ptr);
+        wi->addError(ptr);
     }
 
     if (bHasNormalConstraints && ir->eConstrAlg == ConstraintAlgorithm::Shake)
@@ -5108,7 +5165,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
         if (ir->shake_tol <= 0.0)
         {
             sprintf(warn_buf, "ERROR: shake-tol must be > 0 instead of %g\n", ir->shake_tol);
-            warning_error(wi, warn_buf);
+            wi->addError(warn_buf);
         }
     }
 
@@ -5120,7 +5177,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
         {
             sprintf(warn_buf,
                     "For energy conservation with LINCS, lincs_iter should be 2 or larger.\n");
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
 
         if ((ir->eI == IntegrationAlgorithm::CG || ir->eI == IntegrationAlgorithm::LBFGS)
@@ -5129,23 +5186,23 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
             sprintf(warn_buf,
                     "For accurate %s with LINCS constraints, lincs-order should be 8 or more.",
                     enumValueToString(ir->eI));
-            warning_note(wi, warn_buf);
+            wi->addNote(warn_buf);
         }
-        if (ir->epc == PressureCoupling::Mttk)
+        if (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk)
         {
-            warning_error(wi, "MTTK not compatible with lincs -- use shake instead.");
+            wi->addError("MTTK not compatible with lincs -- use shake instead.");
         }
     }
 
-    if (bHasAnyConstraints && ir->epc == PressureCoupling::Mttk)
+    if (bHasAnyConstraints && ir->pressureCouplingOptions.epc == PressureCoupling::Mttk)
     {
-        warning_error(wi, "Constraints are not implemented with MTTK pressure control.");
+        wi->addError("Constraints are not implemented with MTTK pressure control.");
     }
 
     if (ir->LincsWarnAngle > 90.0)
     {
         sprintf(warn_buf, "lincs-warnangle can not be larger than 90 degrees, setting it to 90.\n");
-        warning(wi, warn_buf);
+        wi->addWarning(warn_buf);
         ir->LincsWarnAngle = 90.0;
     }
 
@@ -5153,7 +5210,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
     {
         if (ir->nstlist == 0)
         {
-            warning(wi,
+            wi->addWarning(
                     "With nstlist=0 atoms are only put into the box at step 0, therefore drifting "
                     "atoms might cause the simulation to crash.");
         }
@@ -5163,7 +5220,7 @@ void double_check(t_inputrec* ir, matrix box, bool bHasNormalConstraints, bool b
                     "ERROR: The cut-off length is longer than half the shortest box vector or "
                     "longer than the smallest box diagonal element. Increase the box size or "
                     "decrease rlist.\n");
-            warning_error(wi, warn_buf);
+            wi->addError(warn_buf);
         }
     }
 }

@@ -53,12 +53,13 @@
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/trajectory/energyframe.h"
 #include "gromacs/utility/arraysize.h"
+#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/cstringutil.h"
-#include "gromacs/utility/dir_separator.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
+#include "gromacs/utility/stringutil.h"
 
 
 /* Structure for the names of lambda vector components */
@@ -90,7 +91,6 @@ typedef struct xvg_t
     int           ftp;          /* file type */
     int           nset;         /* number of lambdas, including dhdl */
     int*          np;           /* number of data points (du or hists) per lambda */
-    int           np_alloc;     /* number of points (du or hists) allocated */
     double        temp;         /* temperature */
     lambda_vec_t* lambda;       /* the lambdas (of first index for y). */
     double*       t;            /* the times (of second index for y) */
@@ -138,9 +138,8 @@ typedef struct samples_t
     hist_t* hist; /* a histogram */
 
     /* allocation data: (not NULL for data 'owned' by this struct) */
-    double *du_alloc, *t_alloc;  /* allocated delta u arrays  */
-    size_t  ndu_alloc, nt_alloc; /* pre-allocated sizes */
-    hist_t* hist_alloc;          /* allocated hist */
+    double* du_alloc;  /* allocated delta u arrays  */
+    size_t  ndu_alloc; /* pre-allocated sizes */
 
     int64_t     ntot;     /* total number of samples */
     const char* filename; /* the file name this sample comes from */
@@ -239,7 +238,12 @@ static void lambda_components_add(lambda_components_t* lc, const char* name, siz
         srenew(lc->names, lc->Nalloc);
     }
     snew(lc->names[lc->N], name_length + 1);
+    // clang-format off
+    // GCC 12.1 has a false positive about the missing \0. But it is already there, nothing to worry about.
+    GCC_DIAGNOSTIC_IGNORE(-Wstringop-truncation)
+    // clang-format on
     std::strncpy(lc->names[lc->N], name, name_length);
+    GCC_DIAGNOSTIC_RESET
     lc->N++;
 }
 
@@ -562,7 +566,6 @@ static void xvg_init(xvg_t* ba)
 {
     ba->filename = nullptr;
     ba->nset     = 0;
-    ba->np_alloc = 0;
     ba->np       = nullptr;
     ba->y        = nullptr;
 }
@@ -585,10 +588,7 @@ static void samples_init(samples_t*    s,
     s->start_time = s->delta_time = 0;
     s->hist                       = nullptr;
     s->du_alloc                   = nullptr;
-    s->t_alloc                    = nullptr;
-    s->hist_alloc                 = nullptr;
     s->ndu_alloc                  = 0;
-    s->nt_alloc                   = 0;
 
     s->ntot     = 0;
     s->filename = filename;
@@ -976,15 +976,14 @@ static void sample_coll_make_hist(sample_coll_t* sc, std::vector<int>* bin, doub
 /* write a collection of histograms to a file */
 static void sim_data_histogram(sim_data_t* sd, const char* filename, int nbin_default, const gmx_output_env_t* oenv)
 {
-    char           label_x[STRLEN];
-    const char *   dhdl = "dH/d\\lambda", *deltag = "\\DeltaH", *lambda = "\\lambda";
-    const char*    title   = "N(\\DeltaH)";
-    const char*    label_y = "Samples";
-    FILE*          fp;
-    lambda_data_t* bl;
-    int            nsets     = 0;
-    char**         setnames  = nullptr;
-    gmx_bool       first_set = FALSE;
+    char                     label_x[STRLEN];
+    const char *             dhdl = "dH/d\\lambda", *deltag = "\\DeltaH", *lambda = "\\lambda";
+    const char*              title   = "N(\\DeltaH)";
+    const char*              label_y = "Samples";
+    FILE*                    fp;
+    lambda_data_t*           bl;
+    std::vector<std::string> setnames;
+    gmx_bool                 first_set = FALSE;
     /* histogram data: */
     std::vector<int> hist;
     double           dx      = 0;
@@ -1008,26 +1007,24 @@ static void sim_data_histogram(sim_data_t* sd, const char* filename, int nbin_de
         {
             char buf[STRLEN], buf2[STRLEN];
 
-            nsets++;
-            srenew(setnames, nsets);
-            snew(setnames[nsets - 1], STRLEN);
             if (sc->foreign_lambda->dhdl < 0)
             {
                 lambda_vec_print(sc->native_lambda, buf, FALSE);
                 lambda_vec_print(sc->foreign_lambda, buf2, FALSE);
-                sprintf(setnames[nsets - 1], "N(%s(%s=%s) | %s=%s)", deltag, lambda, buf2, lambda, buf);
+                setnames.emplace_back(gmx::formatString(
+                        "N(%s(%s=%s) | %s=%s)", deltag, lambda, buf2, lambda, buf));
             }
             else
             {
                 lambda_vec_print(sc->native_lambda, buf, FALSE);
-                sprintf(setnames[nsets - 1], "N(%s | %s=%s)", dhdl, lambda, buf);
+                setnames.emplace_back(gmx::formatString("N(%s | %s=%s)", dhdl, lambda, buf));
             }
             sc = sc->next;
         }
 
         bl = bl->next;
     }
-    xvgr_legend(fp, nsets, setnames, oenv);
+    xvgrLegend(fp, setnames, oenv);
 
 
     /* now make the histograms */
@@ -1042,7 +1039,7 @@ static void sim_data_histogram(sim_data_t* sd, const char* filename, int nbin_de
         {
             if (!first_set)
             {
-                xvgr_new_dataset(fp, 0, 0, nullptr, oenv);
+                xvgrNewDataset(fp, 0, {}, oenv);
             }
 
             sample_coll_make_hist(sc, &hist, &dx, &minval, nbin_default);
@@ -3467,7 +3464,6 @@ int gmx_bar(int argc, char* argv[])
 #define NFILE asize(fnm)
 
     int        f;
-    int        nf = 0;    /* file counter */
     int        nfile_tot; /* total number of input files */
     sim_data_t sim_data;  /* the simulation data */
     barres_t*  results;   /* the results */
@@ -3523,20 +3519,16 @@ int gmx_bar(int argc, char* argv[])
     prec = std::pow(10.0, static_cast<double>(-nd));
 
     snew(partsum, (nbmax + 1) * (nbmax + 1));
-    nf = 0;
 
     /* read in all files. First xvg files */
     for (const std::string& filenm : xvgFiles)
     {
         read_bar_xvg(filenm.c_str(), &temp, &sim_data);
-        nf++;
     }
     /* then .edr files */
     for (const std::string& filenm : edrFiles)
     {
         read_barsim_edr(filenm.c_str(), &temp, &sim_data);
-
-        nf++;
     }
 
     /* fix the times to allow for equilibration */

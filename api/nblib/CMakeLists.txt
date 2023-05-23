@@ -97,15 +97,20 @@ target_sources(nblib
 gmx_target_compile_options(nblib)
 
 target_link_libraries(nblib PRIVATE libgromacs)
-target_include_directories(nblib PRIVATE ${PROJECT_SOURCE_DIR}/api)
-include_directories(BEFORE ${CMAKE_SOURCE_DIR}/api)
+target_include_directories(nblib PUBLIC
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+                           $<INSTALL_INTERFACE:include>)
 target_link_libraries(nblib PRIVATE common)
 target_link_libraries(nblib PRIVATE
                       fileio
                       gmxlib
                       listed_forces
+                      math
                       mdtypes
                       mdlib
+                      pbcutil
+                      simd
                       topology
                       utility)
 
@@ -127,24 +132,7 @@ install(TARGETS nblib
         )
 
 if(GMX_INSTALL_NBLIB_API)
-    install(FILES
-            basicdefinitions.h
-            box.h
-            exception.h
-            gmxcalculatorcpu.h
-            integrator.h
-            interactions.h
-            molecules.h
-            kerneloptions.h
-            nblib.h
-            nbnxmsetuphelpers.h
-            particlesequencer.h
-            particletype.h
-            simulationstate.h
-            topology.h
-            tpr.h
-            vector.h
-            DESTINATION include/nblib)
+    install(DIRECTORY include/nblib DESTINATION include)
 endif()
 
 add_subdirectory(listed_forces)

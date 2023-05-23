@@ -36,7 +36,6 @@
 
 #include "gromacs/math/gmxcomplex.h"
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
 
 struct gmx_output_env_t;
 struct t_topology;
@@ -78,7 +77,7 @@ void rearrange_atoms(reduced_atom_t*         positions,
                      const int*              index,
                      int                     isize,
                      const t_topology*       top,
-                     gmx_bool                flag,
+                     bool                    flag,
                      gmx_structurefactors_t* gsf);
 
 int do_scattering_intensity(const char*             fnTPS,

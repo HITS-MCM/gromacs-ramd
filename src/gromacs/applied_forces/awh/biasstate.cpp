@@ -68,11 +68,13 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringutil.h"
 
 #include "biasgrid.h"
 #include "biassharing.h"
+#include "correlationgrid.h"
+#include "correlationtensor.h"
+#include "dimparams.h"
 #include "pointstate.h"
 
 namespace gmx
@@ -441,6 +443,7 @@ double BiasState::calcUmbrellaForceAndPotential(ArrayRef<const DimParams> dimPar
     {
         if (dimParams[d].isFepLambdaDimension())
         {
+            /* The force we set here is only used for computing the friction metric */
             if (!neighborLambdaDhdl.empty())
             {
                 const int coordpointLambdaIndex = grid.point(point).coordValue[d];
@@ -785,10 +788,11 @@ void sumHistograms(gmx::ArrayRef<PointState> pointState,
 
         for (size_t localIndex = 0; localIndex < localUpdateList.size(); localIndex++)
         {
-            const PointState& ps = pointState[localUpdateList[localIndex]];
+            PointState& ps = pointState[localUpdateList[localIndex]];
 
             weightSum[localIndex]   = ps.weightSumIteration();
             coordVisits[localIndex] = ps.numVisitsIteration();
+            ps.addLocalWeightSum();
         }
 
         biasSharing->sumOverSharingSimulations(gmx::ArrayRef<double>(weightSum), biasIndex);
@@ -800,15 +804,25 @@ void sumHistograms(gmx::ArrayRef<PointState> pointState,
             PointState& ps = pointState[localUpdateList[localIndex]];
 
             ps.setPartialWeightAndCount(weightSum[localIndex], coordVisits[localIndex]);
+
+            /* Now add the partial counts and weights to the accumulating histograms.
+            Note: we still need to use the weights for the update so we wait
+            with resetting them until the end of the update. */
+            ps.addPartialWeightAndCount();
         }
     }
-
-    /* Now add the partial counts and weights to the accumulating histograms.
-       Note: we still need to use the weights for the update so we wait
-       with resetting them until the end of the update. */
-    for (int globalIndex : localUpdateList)
+    else
     {
-        pointState[globalIndex].addPartialWeightAndCount();
+        for (int globalIndex : localUpdateList)
+        {
+            PointState& ps = pointState[globalIndex];
+            ps.addLocalWeightSum();
+
+            /* Now add the partial counts and weights to the accumulating histograms.
+            Note: we still need to use the weights for the update so we wait
+            with resetting them until the end of the update. */
+            ps.addPartialWeightAndCount();
+        }
     }
 }
 
@@ -1532,6 +1546,108 @@ void BiasState::setFreeEnergyToConvolvedPmf(ArrayRef<const DimParams> dimParams,
     }
 }
 
+void BiasState::updateSharedCorrelationTensorTimeIntegral(const BiasParams&      biasParams,
+                                                          const CorrelationGrid& forceCorrelation)
+{
+    const int numCorrelation = forceCorrelation.tensorSize();
+    const int numPoints      = points_.size();
+
+    GMX_ASSERT(numPoints > 0, "There must be points in the AWH coordinate grid.");
+    GMX_ASSERT(static_cast<int>(sharedCorrelationTensorTimeIntegral_.size()) == numPoints,
+               "The number of points in sharedCorrelationTensorTimeIntegral_ does not match the "
+               "number of AWH points.");
+    GMX_ASSERT(
+            static_cast<int>(sharedCorrelationTensorTimeIntegral_[0].size()) == numCorrelation,
+            "The number of correlations in sharedCorrelationTensorTimeIntegral_ does not match the "
+            "AWH correlation grid tensor size.");
+
+    std::vector<double> buffer(numCorrelation * numPoints, 0);
+
+    if (biasParams.numSharedUpdate > 1)
+    {
+        GMX_ASSERT(biasSharing_ != nullptr
+                           && biasParams.numSharedUpdate
+                                              % biasSharing_->numSharingSimulations(biasParams.biasIndex)
+                                      == 0,
+                   "numSharedUpdate should be a multiple of multiSimComm->numSimulations_");
+        GMX_ASSERT(biasParams.numSharedUpdate == biasSharing_->numSharingSimulations(biasParams.biasIndex),
+                   "Sharing within a simulation is not implemented (yet)");
+
+        for (int gridPointIndex = 0; gridPointIndex < numPoints; gridPointIndex++)
+        {
+            if (points_[gridPointIndex].inTargetRegion())
+            {
+                for (int correlationTensorIndex = 0; correlationTensorIndex < numCorrelation;
+                     correlationTensorIndex++)
+                {
+                    int index     = gridPointIndex * numCorrelation + correlationTensorIndex;
+                    buffer[index] = forceCorrelation.tensors()[gridPointIndex].getTimeIntegral(
+                                            correlationTensorIndex, forceCorrelation.dtSample)
+                                    * points_[gridPointIndex].localWeightSum();
+                }
+            }
+        }
+
+        biasSharing_->sumOverSharingSimulations(buffer, biasParams.biasIndex);
+
+        for (int gridPointIndex = 0; gridPointIndex < numPoints; gridPointIndex++)
+        {
+            for (int correlationTensorIndex = 0; correlationTensorIndex < numCorrelation;
+                 correlationTensorIndex++)
+            {
+                int index = gridPointIndex * numCorrelation + correlationTensorIndex;
+                if (points_[gridPointIndex].weightSumTot() > 0 && points_[gridPointIndex].inTargetRegion())
+                {
+                    sharedCorrelationTensorTimeIntegral_[gridPointIndex][correlationTensorIndex] =
+                            buffer[index] / points_[gridPointIndex].weightSumTot();
+                }
+                else
+                {
+                    sharedCorrelationTensorTimeIntegral_[gridPointIndex][correlationTensorIndex] = 0;
+                }
+            }
+        }
+    }
+    else
+    {
+        for (int gridPointIndex = 0; gridPointIndex < numPoints; gridPointIndex++)
+        {
+            for (int correlationTensorIndex = 0; correlationTensorIndex < numCorrelation;
+                 correlationTensorIndex++)
+            {
+                sharedCorrelationTensorTimeIntegral_[gridPointIndex][correlationTensorIndex] =
+                        forceCorrelation.tensors()[gridPointIndex].getTimeIntegral(
+                                correlationTensorIndex, forceCorrelation.dtSample);
+            }
+        }
+    }
+}
+
+double BiasState::getSharedCorrelationTensorTimeIntegral(const int gridPointIndex,
+                                                         const int correlationTensorIndex) const
+{
+    if (!points_[gridPointIndex].inTargetRegion() || points_[gridPointIndex].weightSumTot() <= 0)
+    {
+        return 0;
+    }
+
+    return sharedCorrelationTensorTimeIntegral_[gridPointIndex][correlationTensorIndex];
+}
+
+const std::vector<double>& BiasState::getSharedPointCorrelationIntegral(const int gridPointIndex) const
+{
+    if (!points_[gridPointIndex].inTargetRegion() || points_[gridPointIndex].weightSumTot() <= 0)
+    {
+        for (size_t i = 0; i < sharedCorrelationTensorTimeIntegral_[gridPointIndex].size(); i++)
+        {
+            GMX_RELEASE_ASSERT(sharedCorrelationTensorTimeIntegral_[gridPointIndex][i] == 0,
+                               "Correlation tensor time integral of unvisited points should be 0.");
+        }
+    }
+
+    return sharedCorrelationTensorTimeIntegral_[gridPointIndex];
+}
+
 /*! \brief
  * Count trailing data rows containing only zeros.
  *
@@ -1540,15 +1656,19 @@ void BiasState::setFreeEnergyToConvolvedPmf(ArrayRef<const DimParams> dimParams,
  * \param[in] numColumns  Number of cols in array.
  * \returns the number of trailing zero rows.
  */
-static int countTrailingZeroRows(const double* const* data, int numRows, int numColumns)
+static int countTrailingZeroRows(const MultiDimArray<std::vector<double>, dynamicExtents2D>& data,
+                                 int numRows,
+                                 int numColumns)
 {
+    const auto& dataView = data.asConstView();
+
     int numZeroRows = 0;
     for (int m = numRows - 1; m >= 0; m--)
     {
         bool rowIsZero = true;
         for (int d = 0; d < numColumns; d++)
         {
-            if (data[d][m] != 0)
+            if (dataView[d][m] != 0)
             {
                 rowIsZero = false;
                 break;
@@ -1616,9 +1736,9 @@ static void readUserPmfAndTargetDistribution(ArrayRef<const DimParams> dimParams
     wrapper.settings().setLineLength(c_linewidth);
     correctFormatMessage = wrapper.wrapToString(correctFormatMessage);
 
-    double** data;
-    int      numColumns;
-    int      numRows = read_xvg(filenameModified.c_str(), &data, &numColumns);
+    gmx::MultiDimArray<std::vector<double>, gmx::dynamicExtents2D> data = readXvgData(filenameModified);
+    const int                                                      numColumns = data.extent(0);
+    const int                                                      numRows    = data.extent(1);
 
     /* Check basic data properties here. BiasGrid takes care of more complicated things. */
 
@@ -1670,6 +1790,8 @@ static void readUserPmfAndTargetDistribution(ArrayRef<const DimParams> dimParams
         GMX_THROW(InvalidInputError(mesg));
     }
 
+    const auto& dataView = data.asView();
+
     /* read_xvg can give trailing zero data rows for trailing new lines in the input. We allow 1 zero row,
        since this could be real data. But multiple trailing zero rows cannot correspond to valid data. */
     int numZeroRows = countTrailingZeroRows(data, numRows, numColumns);
@@ -1693,7 +1815,7 @@ static void readUserPmfAndTargetDistribution(ArrayRef<const DimParams> dimParams
         }
         for (size_t m = 0; m < pointState->size(); m++)
         {
-            data[d][m] *= scalingFactor;
+            dataView[d][m] *= scalingFactor;
         }
     }
 
@@ -1710,14 +1832,14 @@ static void readUserPmfAndTargetDistribution(ArrayRef<const DimParams> dimParams
     bool targetDistributionIsZero = true;
     for (size_t m = 0; m < pointState->size(); m++)
     {
-        const double pmf = data[columnIndexPmf][gridIndexToDataIndex[m]];
+        const double pmf = dataView[columnIndexPmf][gridIndexToDataIndex[m]];
         if (pmf < -c_pmfMax || pmf > c_pmfMax)
         {
             GMX_THROW(InvalidInputError(
                     "A value in the user input PMF is beyond the bounds of +-700 kT"));
         }
         (*pointState)[m].setLogPmfSum(-pmf);
-        double target = data[columnIndexTarget][gridIndexToDataIndex[m]];
+        double target = dataView[columnIndexTarget][gridIndexToDataIndex[m]];
 
         /* Check if the values are allowed. */
         if (target < 0)
@@ -1744,13 +1866,6 @@ static void readUserPmfAndTargetDistribution(ArrayRef<const DimParams> dimParams
                                   filename.c_str());
         GMX_THROW(InvalidInputError(mesg));
     }
-
-    /* Free the arrays. */
-    for (int m = 0; m < numColumns; m++)
-    {
-        sfree(data[m]);
-    }
-    sfree(data);
 }
 
 void BiasState::normalizePmf(int numSharingSims)
@@ -1841,7 +1956,11 @@ BiasState::BiasState(const AwhBiasParams&      awhBiasParams,
     points_(grid.numPoints()),
     weightSumCovering_(grid.numPoints()),
     histogramSize_(awhBiasParams, histogramSizeInitial),
-    biasSharing_(biasSharing)
+    biasSharing_(biasSharing),
+    /* The number of tensor elements are dim*(dim+1)/2 */
+    sharedCorrelationTensorTimeIntegral_(
+            grid.numPoints(),
+            std::vector<double>(dimParams.size() * (dimParams.size() + 1) / 2, 0))
 {
     /* The minimum and maximum multidimensional point indices that are affected by the next update */
     for (size_t d = 0; d < dimParams.size(); d++)

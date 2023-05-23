@@ -41,17 +41,17 @@
 #include <tuple>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gmock/gmock-matchers.h>
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "gromacs/applied_forces/awh/correlationgrid.h"
 #include "gromacs/applied_forces/awh/pointstate.h"
+#include "gromacs/applied_forces/awh/tests/awh_setup.h"
 #include "gromacs/mdtypes/awh_params.h"
 #include "gromacs/utility/inmemoryserializer.h"
 #include "gromacs/utility/stringutil.h"
 
-#include "gromacs/applied_forces/awh/tests/awh_setup.h"
 #include "testutils/refdata.h"
 #include "testutils/testasserts.h"
 
@@ -83,6 +83,9 @@ public:
     std::vector<double> coordinates_;
     //! The awh Bias
     std::unique_ptr<Bias> bias_;
+
+    //! Return the awhParams
+    const AwhParams& awhParams() const { return params_->awhParams; }
 
     BiasTest() : coordinates_(std::begin(g_coords), std::end(g_coords))
     {
@@ -140,7 +143,7 @@ public:
     }
 };
 
-TEST_P(BiasTest, ForcesBiasPmf)
+TEST_P(BiasTest, ForcesBiasPmfWeightSum)
 {
     gmx::test::TestReferenceData    data;
     gmx::test::TestReferenceChecker checker(data.rootChecker());
@@ -186,11 +189,15 @@ TEST_P(BiasTest, ForcesBiasPmf)
         bias.doSkippedUpdatesForAllPoints();
     }
 
-    std::vector<double> pointBias, logPmfsum;
+    std::vector<double> pointBias, logPmfsum, pointLocalWeightSum, pointWeightSumTot,
+            pointWeightSumIteration;
     for (const auto& point : bias.state().points())
     {
         pointBias.push_back(point.bias());
         logPmfsum.push_back(point.logPmfSum());
+        pointLocalWeightSum.push_back(point.localWeightSum());
+        pointWeightSumTot.push_back(point.weightSumTot());
+        pointWeightSumIteration.push_back(point.weightSumIteration());
     }
 
     /* The umbrella force is computed from the coordinate deviation.
@@ -199,16 +206,25 @@ TEST_P(BiasTest, ForcesBiasPmf)
      */
     const double kCoordMax = bias.dimParams()[0].pullDimParams().k * coordMaxValue;
 
-    constexpr int ulpTol = 10;
+    constexpr int lowUlpTol = 10;
+    /* Allow higher tolerance for weight sum calculations - base it on the number of steps. */
+    const double highUlpTol = 10 * std::sqrt(step);
 
     checker.checkSequence(props.begin(), props.end(), "Properties");
-    checker.setDefaultTolerance(absoluteTolerance(kCoordMax * GMX_DOUBLE_EPS * ulpTol));
+    checker.setDefaultTolerance(absoluteTolerance(kCoordMax * GMX_DOUBLE_EPS * lowUlpTol));
     checker.checkSequence(force.begin(), force.end(), "Force");
     checker.checkSequence(pot.begin(), pot.end(), "Potential");
     checker.checkSequence(potJump.begin(), potJump.end(), "PotentialJump");
-    checker.setDefaultTolerance(relativeToleranceAsUlp(1.0, ulpTol));
+    checker.setDefaultTolerance(relativeToleranceAsUlp(1.0, lowUlpTol));
     checker.checkSequence(pointBias.begin(), pointBias.end(), "PointBias");
     checker.checkSequence(logPmfsum.begin(), logPmfsum.end(), "PointLogPmfsum");
+    checker.setDefaultTolerance(relativeToleranceAsUlp(1.0, highUlpTol));
+    checker.checkSequence(
+            pointLocalWeightSum.begin(), pointLocalWeightSum.end(), "pointLocalWeightSum");
+    checker.checkSequence(pointWeightSumTot.begin(), pointWeightSumTot.end(), "pointWeightSumTot");
+    checker.checkSequence(pointWeightSumIteration.begin(),
+                          pointWeightSumIteration.end(),
+                          "pointWeightSumIteration");
 }
 
 /* Scan initial/final phase, MC/convolved force and update skip (not) allowed

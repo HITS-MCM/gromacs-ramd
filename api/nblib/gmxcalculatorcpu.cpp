@@ -39,6 +39,8 @@
  * \author Prashanth Kanduri <kanduri@cscs.ch>
  * \author Sebastian Keller <keller@cscs.ch>
  */
+#include "nblib/gmxcalculatorcpu.h"
+
 #include "gromacs/ewald/ewald_utils.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/interaction_const.h"
@@ -49,15 +51,16 @@
 #include "gromacs/nbnxm/pairsearch.h"
 #include "gromacs/utility/listoflists.h"
 #include "gromacs/utility/range.h"
+
 #include "nblib/exception.h"
-#include "nblib/gmxbackenddata.h"
-#include "nblib/gmxcalculatorcpu.h"
 #include "nblib/nbnxmsetuphelpers.h"
-#include "nblib/pbc.hpp"
-#include "nblib/systemdescription.h"
 #include "nblib/topology.h"
 #include "nblib/tpr.h"
-#include "nblib/virials.h"
+
+#include "gmxbackenddata.h"
+#include "pbc.hpp"
+#include "systemdescription.h"
+#include "virials.h"
 
 namespace nblib
 {

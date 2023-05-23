@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "filenameoption.h"
+#include "gromacs/options/filenameoption.h"
 
 #include <cstring>
 
@@ -66,17 +66,6 @@ namespace
 
 //! \addtogroup module_options
 //! \{
-
-/*! \brief
- * Mapping from OptionFileType to a file type in filetypes.h.
- */
-struct FileTypeMapping
-{
-    //! OptionFileType value to map.
-    OptionFileType optionType;
-    //! Corresponding file type from filetypes.h.
-    int fileType;
-};
 
 //! Mappings from OptionFileType to file types in filetypes.h.
 constexpr EnumerationArray<OptionFileType, int> sc_fileTypeMapping = { efTPS, efTPR, efTRX, efEDR,
@@ -321,13 +310,15 @@ std::string FileNameOptionStorage::processValue(const std::string& value) const
             // except for sanity checking.
             if (!isDirectoryOption())
             {
-                const int fileType = fn2ftp(processedValue.c_str());
+                const int fileType = fn2ftp(processedValue);
                 if (fileType == efNR)
                 {
                     // If the manager returned an invalid file name, assume
                     // that it knows what it is doing.  But assert that it
                     // only does that for the only case that it is currently
                     // required for: VMD plugins.
+                    fprintf(stderr, "Value is %s\n", processedValue.c_str());
+                    fflush(stderr);
                     GMX_ASSERT(isInputFile() && isTrajectoryOption(),
                                "Manager returned an invalid file name");
                 }
@@ -346,7 +337,7 @@ std::string FileNameOptionStorage::processValue(const std::string& value) const
     {
         return value;
     }
-    const int fileType = fn2ftp(value.c_str());
+    const int fileType = fn2ftp(value);
     if (fileType == efNR)
     {
         std::string message = formatString(

@@ -104,12 +104,12 @@ enum class NumVelocityScalingValues
     Count
 };
 
-//! Sets the type of Parrinello-Rahman pressure scaling
+//! Describes the properties of the Parrinello-Rahman pressure scaling matrix
 enum class ParrinelloRahmanVelocityScaling
 {
-    No,       //!< Do not apply velocity scaling (not a PR-coupling run or step)
-    Diagonal, //!< Apply velocity scaling using a diagonal matrix
-    Full,     //!< Apply velocity scaling using a full matrix
+    No,          //!< Do not apply velocity scaling (not a PR-coupling run or step)
+    Diagonal,    //!< Apply velocity scaling using a diagonal matrix
+    Anisotropic, //!< Apply velocity scaling using a matrix with off-diagonal elements
     Count
 };
 
@@ -167,7 +167,7 @@ public:
     PropagatorCallback positionScalingCallback();
 
     //! Get view on the full PR scaling matrix
-    ArrayRef<rvec> viewOnPRScalingMatrix();
+    Matrix3x3* viewOnPRScalingMatrix();
     //! Get PR scaling callback
     PropagatorCallback prScalingCallback();
 
@@ -257,10 +257,8 @@ private:
     //! The next position scaling step
     Step scalingStepPosition_;
 
-    //! The diagonal of the PR scaling matrix
-    rvec diagPR_;
     //! The full PR scaling matrix
-    matrix matrixPR_;
+    Matrix3x3 matrixPR_ = { { 0._real } };
     //! The next PR scaling step
     Step scalingStepPR_;
 

@@ -34,7 +34,7 @@
 #ifndef GMX_MDTYPES_COMMREC_H
 #define GMX_MDTYPES_COMMREC_H
 
-#include <stddef.h>
+#include <cstddef>
 
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/gmxmpi.h"
@@ -44,10 +44,10 @@ struct gmx_domdec_t;
 #define DUTY_PP (1U << 0U)
 #define DUTY_PME (1U << 1U)
 
-//! Whether the current DD role is master or slave
+//! Whether the current DD role is main or slave
 enum class DDRole
 {
-    Master,
+    Main,
     Agent
 };
 
@@ -58,55 +58,71 @@ enum class NumRanks
     Multiple
 };
 
-typedef struct
+//! Settings and communicators for two-step communication: intra + inter-node
+struct gmx_nodecomm_t
 {
-    int      bUse;
-    MPI_Comm comm_intra;
-    int      rank_intra;
-    MPI_Comm comm_inter;
-
-} gmx_nodecomm_t;
+    bool     bUse       = false;
+    MPI_Comm comm_intra = MPI_COMM_NULL;
+    int      rank_intra = 0;
+    MPI_Comm comm_inter = MPI_COMM_NULL;
+};
 
 struct t_commrec
 {
+    //! Constructs a valid object with one rank and no communicators
+    t_commrec();
+
+    ~t_commrec();
+
+    //! Transfers the ownership of \p ddUniquePtr and sets \p dd
+    void setDD(std::unique_ptr<gmx_domdec_t>&& ddUniquePtr);
+
+    //! Destroys the dd object
+    void destroyDD();
+
     /* The nodeids in one sim are numbered sequentially from 0.
      * All communication within some simulation should happen
      * in mpi_comm_mysim, or its subset mpi_comm_mygroup.
      */
     //! The rank-id in mpi_comm_mysim;
-    int sim_nodeid;
+    int sim_nodeid = 0;
     //! The number of ranks in mpi_comm_mysim
-    int nnodes;
+    int nnodes = 1;
     //! The number of separate PME ranks, 0 when no separate PME ranks are used
-    int npmenodes;
+    int npmenodes = 0;
 
     //! The rank-id in mpi_comm_mygroup;
-    int nodeid;
+    int nodeid = 0;
 
     /* MPI communicators within a single simulation
      * Note: other parts of the code may further subset these communicators.
      */
-    MPI_Comm mpi_comm_mysim;   /* communicator including all ranks of
+    MPI_Comm mpi_comm_mysim = MPI_COMM_NULL;   /* communicator including all ranks of
                                   a single simulation */
-    MPI_Comm mpi_comm_mygroup; /* subset of mpi_comm_mysim including only
+    MPI_Comm mpi_comm_mygroup = MPI_COMM_NULL; /* subset of mpi_comm_mysim including only
                                   the ranks in the same group (PP or PME) */
     //! The number of ranks in mpi_comm_mygroup
-    int sizeOfMyGroupCommunicator;
+    int sizeOfMyGroupCommunicator = 1;
 
     //! The communicator used before DD was initialized
-    MPI_Comm mpiDefaultCommunicator;
-    int      sizeOfDefaultCommunicator;
-    int      rankInDefaultCommunicator;
+    MPI_Comm mpiDefaultCommunicator    = MPI_COMM_NULL;
+    int      sizeOfDefaultCommunicator = 0;
+    int      rankInDefaultCommunicator = 0;
 
     gmx_nodecomm_t nc;
 
-    /* For domain decomposition */
-    gmx_domdec_t* dd;
+private:
+    //! Storage for the domain decomposition data
+    std::unique_ptr<gmx_domdec_t> ddUniquePtr_;
+
+public:
+    //! C-pointer to ddUniquePtr (should be replaced by a getter)
+    gmx_domdec_t* dd = nullptr;
 
     /* The duties of this node, see the DUTY_ defines above.
      * This should be read through thisRankHasDuty() or getThisRankDuties().
      */
-    int duty;
+    int duty = 0;
 };
 
 /*! \brief
@@ -141,18 +157,18 @@ inline bool thisRankHasDuty(const t_commrec* cr, int duty)
  * other simulation types. */
 #define PAR(cr) ((cr)->sizeOfDefaultCommunicator > 1)
 
-//! True of this is the master node
-#define MASTER(cr) (((cr)->rankInDefaultCommunicator == 0) || !PAR(cr))
+//! True of this is the main node
+#define MAIN(cr) (((cr)->rankInDefaultCommunicator == 0) || !PAR(cr))
 
-// Note that currently, master is always PP master, so this is equivalent to MASTER(cr)
-//! True if this is the particle-particle master
-#define SIMMASTER(cr) ((MASTER(cr) && thisRankHasDuty((cr), DUTY_PP)) || !PAR(cr))
+// Note that currently, main is always PP main, so this is equivalent to MAIN(cr)
+//! True if this is the particle-particle main
+#define SIMMAIN(cr) ((MAIN(cr) && thisRankHasDuty((cr), DUTY_PP)) || !PAR(cr))
 
 //! The node id for this rank
 #define RANK(cr, nodeid) (nodeid)
 
-//! The node id for the master
-#define MASTERRANK(cr) (0)
+//! The node id for the main
+#define MAINRANK(cr) (0)
 
 /*! \brief Returns whether the domain decomposition machinery is active and reorders atoms
  *

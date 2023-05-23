@@ -115,8 +115,8 @@ const char* enumValueToString(PmeSolveAlgorithm enumValue)
 const char* enumValueToString(GridOrdering enumValue)
 {
     static constexpr gmx::EnumerationArray<GridOrdering, const char*> s_strings = {
-        "XYZ",
         "YZX",
+        "XYZ",
     };
     return s_strings[enumValue];
 }
@@ -256,8 +256,7 @@ public:
 
         const PmeTestHardwareContext& pmeTestHardwareContext = getPmeTestHardwareContexts()[contextIndex];
         CodePath                      codePath               = pmeTestHardwareContext.codePath();
-        MessageStringCollector        messages =
-                getSkipMessagesIfNecessary(*getTestHardwareEnvironment()->hwinfo(), inputRec, codePath);
+        MessageStringCollector        messages = getSkipMessagesIfNecessary(inputRec, codePath);
         messages.appendIf(!pmeTestHardwareContext.gpuId().has_value() && gridOrdering == GridOrdering::XYZ,
                           "CPU PME solve does not implement XYZ grid ordering");
         if (!messages.isEmpty())

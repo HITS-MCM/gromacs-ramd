@@ -37,6 +37,7 @@ gmx_add_gtest_executable(gmxpreprocess-test
         genconf.cpp
         genion.cpp
         genrestr.cpp
+        gen_maxwell_velocities.cpp
         gpp_atomtype.cpp
         gpp_bond_atomtype.cpp
         grompp_directives.cpp
@@ -46,6 +47,10 @@ gmx_add_gtest_executable(gmxpreprocess-test
         topdirs.cpp
         )
 gmx_register_gtest_test(GmxPreprocessTests gmxpreprocess-test SLOW_TEST)
+target_link_libraries(gmxpreprocess-test PRIVATE
+        gmxpreprocess
+        topology
+        )
 
 # Currently these can be slow to run in CI, so they are in
 # several test binaries.

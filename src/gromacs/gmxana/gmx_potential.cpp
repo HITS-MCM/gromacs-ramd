@@ -35,7 +35,8 @@
 
 #include <cctype>
 #include <cmath>
-#include <cstring>
+
+#include <vector>
 
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/commandline/viewit.h"
@@ -45,16 +46,15 @@
 #include "gromacs/gmxana/princ.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
-#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/rmpbc.h"
 #include "gromacs/topology/index.h"
 #include "gromacs/topology/topology.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
 
 #define EPS0 8.85419E-12
@@ -164,7 +164,6 @@ static void calc_potential(const char*             fn,
     int          natoms; /* nr. atoms in trj */
     t_trxstatus* status;
     int          i, n;
-    int          teller    = 0;
     int          nr_frames = 0;
     int          slice;
     double       qsum, nn;
@@ -206,7 +205,6 @@ static void calc_potential(const char*             fn,
     /*********** Start processing trajectory ***********/
     do
     {
-        teller++;
         gmx_rmpbc(gpbc, natoms, box, x0);
 
         // Translate atoms so the com of the center-group is in the
@@ -426,21 +424,21 @@ static void calc_potential(const char*             fn,
     sfree(x0); /* free memory used by coordinate array */
 }
 
-static void plot_potential(double*                 potential[],
-                           double*                 charge[],
-                           double*                 field[],
-                           const char*             afile,
-                           const char*             bfile,
-                           const char*             cfile,
-                           int                     nslices,
-                           int                     nr_grps,
-                           const char* const       grpname[],
-                           double                  slWidth,
-                           gmx_bool                bCenter,
-                           gmx_bool                bSymmetrize,
-                           int                     cb,
-                           int                     ce,
-                           const gmx_output_env_t* oenv)
+static void plot_potential(double*                          potential[],
+                           double*                          charge[],
+                           double*                          field[],
+                           const char*                      afile,
+                           const char*                      bfile,
+                           const char*                      cfile,
+                           int                              nslices,
+                           int                              nr_grps,
+                           gmx::ArrayRef<const std::string> grpname,
+                           double                           slWidth,
+                           gmx_bool                         bCenter,
+                           gmx_bool                         bSymmetrize,
+                           int                              cb,
+                           int                              ce,
+                           const gmx_output_env_t*          oenv)
 {
     FILE *pot,    /* xvgr file with potential */
             *cha, /* xvgr file with charges   */
@@ -453,15 +451,15 @@ static void plot_potential(double*                 potential[],
 
     title = bSymmetrize ? "Symmetrized electrostatic potential" : "Electrostatic Potential";
     pot   = xvgropen(afile, title, xlabel, "Potential (V)", oenv);
-    xvgr_legend(pot, nr_grps, grpname, oenv);
+    xvgrLegend(pot, grpname, oenv);
 
     title = bSymmetrize ? "Symmetrized charge distribution" : "Charge Distribution";
     cha   = xvgropen(bfile, title, xlabel, "Charge density (q/nm\\S3\\N)", oenv);
-    xvgr_legend(cha, nr_grps, grpname, oenv);
+    xvgrLegend(cha, grpname, oenv);
 
     title = bSymmetrize ? "Symmetrized electric field" : "Electric Field";
     fie   = xvgropen(cfile, title, xlabel, "Field (V/nm)", oenv);
-    xvgr_legend(fie, nr_grps, grpname, oenv);
+    xvgrLegend(fie, grpname, oenv);
 
     for (slice = cb; slice < (nslices - ce); slice++)
     {
@@ -678,6 +676,12 @@ int gmx_potential(int argc, char* argv[])
                    ce,
                    oenv);
 
+    std::vector<std::string> names;
+    names.resize(ngrps);
+    for (int i = 0; i < ngrps; ++i)
+    {
+        names[i] = grpname[i];
+    }
     plot_potential(potential,
                    charge,
                    field,
@@ -686,7 +690,7 @@ int gmx_potential(int argc, char* argv[])
                    opt2fn("-of", NFILE, fnm),
                    nslices,
                    ngrps,
-                   grpname,
+                   names,
                    slWidth,
                    bCenter,
                    bSymmetrize,

@@ -47,6 +47,7 @@
 
 #include "gromacs/fileio/warninp.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/options/basicoptions.h"
 #include "gromacs/options/optionsection.h"
 #include "gromacs/selection/indexutil.h"
@@ -57,7 +58,6 @@
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreetransform.h"
 #include "gromacs/utility/logger.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/path.h"
 #include "gromacs/utility/strconvert.h"
 #include "gromacs/utility/stringutil.h"
@@ -214,7 +214,7 @@ void QMMMOptions::setLogger(const MDLogger& logger)
     logger_ = &logger;
 }
 
-void QMMMOptions::setWarninp(warninp* wi)
+void QMMMOptions::setWarninp(WarningHandler* wi)
 {
     // Exit if QMMM module is not active
     if (!parameters_.active_)
@@ -237,7 +237,7 @@ void QMMMOptions::appendWarning(const std::string& msg)
 {
     if (wi_)
     {
-        warning(wi_, msg);
+        wi_->addWarning(msg);
     }
 }
 
@@ -307,7 +307,9 @@ void QMMMOptions::processTprFilename(const MdRunInputFilename& tprFilename)
     }
 
     parameters_.qmFileNameBase_ =
-            gmx::Path::stripExtension(gmx::Path::getFilename(tprFilename.mdRunFilename_)) + "_cp2k";
+            stripExtension(std::filesystem::path(tprFilename.mdRunFilename_).filename())
+                    .append("_cp2k")
+                    .u8string();
 }
 
 void QMMMOptions::processExternalInputFile()

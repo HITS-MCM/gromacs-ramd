@@ -44,19 +44,10 @@
 
 #include "testutils/test_device.h"
 
-#include <memory>
-
 #include "gromacs/gpu_utils/device_context.h"
 #include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/gpu_utils/gputraits.h"
-#include "gromacs/hardware/detecthardware.h"
 #include "gromacs/hardware/device_information.h"
-#include "gromacs/hardware/hw_info.h"
-#include "gromacs/utility/basenetwork.h"
-#include "gromacs/utility/exceptions.h"
-#include "gromacs/utility/loggerbuilder.h"
-#include "gromacs/utility/physicalnodecommunicator.h"
 
 namespace gmx
 {
@@ -66,7 +57,6 @@ namespace test
 class TestDevice::Impl
 {
 public:
-    Impl(const char* description);
     Impl(const char* description, const DeviceInformation& deviceInfo);
     ~Impl();
     //! Returns a human-readable context description line
@@ -126,6 +116,11 @@ const DeviceContext& TestDevice::deviceContext() const
 const DeviceStream& TestDevice::deviceStream() const
 {
     return impl_->deviceStream();
+}
+
+void TestDevice::activate() const
+{
+    deviceContext().activate();
 }
 
 } // namespace test

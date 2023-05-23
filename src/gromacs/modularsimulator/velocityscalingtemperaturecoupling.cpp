@@ -439,7 +439,7 @@ public:
     //! Write thermostat dof to checkpoint
     void writeCheckpoint(std::optional<WriteCheckpointData> checkpointData, const t_commrec* cr) override
     {
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             doCheckpointData(&checkpointData.value());
         }
@@ -447,7 +447,7 @@ public:
     //! Read thermostat dof from checkpoint
     void readCheckpoint(std::optional<ReadCheckpointData> checkpointData, const t_commrec* cr) override
     {
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             doCheckpointData(&checkpointData.value());
         }
@@ -626,8 +626,8 @@ void VelocityScalingTemperatureCoupling::setLambda(Step step)
     for (int temperatureGroup = 0; (temperatureGroup < numTemperatureGroups_); temperatureGroup++)
     {
         const real currentKineticEnergy = useFullStepKE_ == UseFullStepKE::Yes
-                                                  ? trace(ekind->tcstat[temperatureGroup].ekinf)
-                                                  : trace(ekind->tcstat[temperatureGroup].ekinh);
+                                                  ? ::trace(ekind->tcstat[temperatureGroup].ekinf)
+                                                  : ::trace(ekind->tcstat[temperatureGroup].ekinh);
         const real currentTemperature   = useFullStepKE_ == UseFullStepKE::Yes
                                                   ? ekind->tcstat[temperatureGroup].T
                                                   : ekind->tcstat[temperatureGroup].Th;
@@ -683,7 +683,7 @@ void VelocityScalingTemperatureCoupling::doCheckpointData(CheckpointData<operati
 void VelocityScalingTemperatureCoupling::saveCheckpointState(std::optional<WriteCheckpointData> checkpointData,
                                                              const t_commrec*                   cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Write>(&checkpointData.value());
     }
@@ -697,7 +697,7 @@ void VelocityScalingTemperatureCoupling::saveCheckpointState(std::optional<Write
 void VelocityScalingTemperatureCoupling::restoreCheckpointState(std::optional<ReadCheckpointData> checkpointData,
                                                                 const t_commrec* cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Read>(&checkpointData.value());
     }

@@ -45,6 +45,7 @@
 #include "gromacs/math/veccompare.h"
 #include "gromacs/mdtypes/awh_history.h"
 #include "gromacs/mdtypes/df_history.h"
+#include "gromacs/mdtypes/group.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/pull_params.h"
@@ -358,7 +359,7 @@ t_state::t_state() :
     nhchainlength(0),
     flags(0),
     fep_state(0),
-    lambda(),
+    lambda{ { 0 } },
 
     baros_integral(0),
     veta(0),
@@ -372,11 +373,6 @@ t_state::t_state() :
     ddp_count_cg_gl(0)
 
 {
-    // It would be nicer to initialize these with {} or {{0}} in the
-    // above initialization list, but uncrustify doesn't understand
-    // that.
-    // TODO Fix this if we switch to clang-format some time.
-    lambda = { { 0 } };
     clear_mat(box);
     clear_mat(box_rel);
     clear_mat(boxv);
@@ -392,19 +388,22 @@ void set_box_rel(const t_inputrec* ir, t_state* state)
 
     clear_mat(state->box_rel);
 
-    if (inputrecPreserveShape(ir))
+    if (shouldPreserveBoxShape(ir->pressureCouplingOptions, ir->deform))
     {
-        const int ndim = ir->epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
+        const int ndim = ir->pressureCouplingOptions.epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
         do_box_rel(ndim, ir->deform, state->box_rel, state->box, true);
     }
 }
 
-void preserve_box_shape(const t_inputrec* ir, matrix box_rel, matrix box)
+void preserveBoxShape(const PressureCouplingOptions& pressureCouplingOptions,
+                      const tensor                   deform,
+                      matrix                         box_rel,
+                      matrix                         box)
 {
-    if (inputrecPreserveShape(ir))
+    if (shouldPreserveBoxShape(pressureCouplingOptions, deform))
     {
-        const int ndim = ir->epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
-        do_box_rel(ndim, ir->deform, box_rel, box, false);
+        const int ndim = pressureCouplingOptions.epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
+        do_box_rel(ndim, deform, box_rel, box, false);
     }
 }
 
@@ -426,8 +425,8 @@ void initialize_lambdas(FILE*                            fplog,
                         const bool                       haveSimulatedTempering,
                         const t_lambda&                  fep,
                         gmx::ArrayRef<const real>        simulatedTemperingTemps,
-                        gmx::ArrayRef<real>              ref_t,
-                        bool                             isMaster,
+                        gmx_ekindata_t*                  ekind,
+                        const bool                       isMain,
                         int*                             fep_state,
                         gmx::ArrayRef<real>              lambda)
 {
@@ -440,7 +439,7 @@ void initialize_lambdas(FILE*                            fplog,
         return;
     }
 
-    if (isMaster)
+    if (isMain)
     {
         *fep_state = fep.init_fep_state; /* this might overwrite the checkpoint
                                              if checkpoint is set -- a kludge is in for now
@@ -459,19 +458,21 @@ void initialize_lambdas(FILE*                            fplog,
         {
             thisLambda = fep.all_lambda[i][fep.init_fep_state];
         }
-        if (isMaster)
+        if (isMain)
         {
             lambda[i] = thisLambda;
         }
     }
     if (haveSimulatedTempering)
     {
+        GMX_RELEASE_ASSERT(ekind, "Need ekind with simulated tempering");
+
         /* need to rescale control temperatures to match current state */
-        for (int i = 0; i < ref_t.ssize(); i++)
+        for (int i = 0; i < ekind->numTemperatureCouplingGroups(); i++)
         {
-            if (ref_t[i] > 0)
+            if (ekind->currentReferenceTemperature(i) > 0)
             {
-                ref_t[i] = simulatedTemperingTemps[fep.init_fep_state];
+                ekind->setCurrentReferenceTemperature(i, simulatedTemperingTemps[fep.init_fep_state]);
             }
         }
     }

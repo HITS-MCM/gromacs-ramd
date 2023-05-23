@@ -58,6 +58,25 @@ namespace gmx
 
 struct CorrelationBlockDataHistory;
 
+/*! \brief
+ * Returns the volume element of the correlation metric.
+ *
+ * The matrix of the metric equals the time-integrated correlation matrix. The volume element of
+ * the metric therefore equals the square-root of the absolute value of its determinant
+ * according to the standard formula for a volume element in a metric space.
+ *
+ * The order of the tensor elements is:
+ * 1-dimensional tensor: [0]
+ * 2-dimensional tensor: [0 1; 1 2]
+ * 3-dimensional tensor: [0 1 3; 1 2 4; 3 4 5]
+ *
+ * \param[in] correlationIntegral  A pre-filled vector of time integral elements. The correlation
+ * index lists the elements of the upper-triangular correlation matrix row-wise, so e.g. in 3D:
+ * 0 (0,0), 1 (1,0), 2 (1,1), 3 (2,0), 4 (2,1), 5 (2,2).
+ * \returns the volume element.
+ */
+double getSqrtDeterminant(gmx::ArrayRef<const double> correlationIntegral);
+
 /*! \internal \brief Correlation block averaging weight-only data.
  */
 class CorrelationBlockData
@@ -159,7 +178,7 @@ public:
     const std::vector<double>& correlationIntegral() const { return correlationIntegral_; }
 
 private:
-    /* Weight sum data, indentical for all dimensions */
+    /* Weight sum data, identical for all dimensions */
     double blockSumWeight_;                 /**< Sum weights for current block. */
     double blockSumSquareWeight_;           /**< Sum weights^2 for current block. */
     double sumOverBlocksSquareBlockWeight_; /**< Sum over all blocks in the simulation of block weight^2. */

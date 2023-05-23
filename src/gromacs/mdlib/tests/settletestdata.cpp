@@ -54,6 +54,7 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdlib/settle.h"
+#include "gromacs/mdlib/tests/watersystem.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/idef.h"
@@ -63,7 +64,6 @@
 #include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/unique_cptr.h"
 
-#include "gromacs/mdlib/tests/watersystem.h"
 #include "testutils/testasserts.h"
 
 namespace gmx
@@ -72,10 +72,7 @@ namespace test
 {
 
 SettleTestData::SettleTestData(int numSettles) :
-    numSettles_(numSettles),
-    x_(c_waterPositions.size()),
-    xPrime_(c_waterPositions.size()),
-    v_(c_waterPositions.size())
+    x_(c_waterPositions.size()), xPrime_(c_waterPositions.size()), v_(c_waterPositions.size())
 {
     // Initialize coordinates and velocities from the constant set of coordinates
     std::copy(c_waterPositions.begin(), c_waterPositions.end(), x_.begin());

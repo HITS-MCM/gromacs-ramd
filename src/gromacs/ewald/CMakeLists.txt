@@ -61,9 +61,11 @@ if (GMX_GPU_CUDA)
         pme_solve.cu
         pme_spread.cu
         pme_gpu_program_impl.cu
-        pme_pp_comm_gpu_impl.cu
-        pme_force_sender_gpu_impl.cu
-        pme_coordinate_receiver_gpu_impl.cu
+        pme_pp_comm_gpu_impl_gpu.cpp
+        pme_pp_comm_gpu_impl_gpu.cu
+        pme_force_sender_gpu_impl_gpu.cpp
+        pme_force_sender_gpu_impl_gpu.cu
+        pme_coordinate_receiver_gpu_impl_gpu.cpp
         pme_gpu_grid.cu
         # GPU-specific sources
         pme_gpu.cpp
@@ -74,6 +76,9 @@ if (GMX_GPU_CUDA)
         # Must add these files so they can include device_information.h
         pme_gpu_internal.cpp
         pme_gpu_timings.cpp
+        pme_pp_comm_gpu_impl_gpu.cpp
+        pme_force_sender_gpu_impl_gpu.cpp
+        pme_coordinate_receiver_gpu_impl_gpu.cpp
         )
 elseif (GMX_GPU_OPENCL)
     gmx_add_libgromacs_sources(
@@ -90,20 +95,32 @@ elseif (GMX_GPU_SYCL)
         # GPU-specific sources
         pme_gather_sycl.cpp
         pme_gpu.cpp
+        pme_gpu_grid_sycl.cpp
         pme_gpu_internal.cpp
         pme_gpu_program_impl_sycl.cpp
-        pme_gpu_sycl_stubs.cpp
         pme_gpu_timings.cpp
         pme_solve_sycl.cpp
         pme_spread_sycl.cpp
+        pme_pp_comm_gpu_impl_gpu_sycl.cpp
+        pme_force_sender_gpu_impl_gpu_sycl.cpp
+        pme_pp_comm_gpu_impl_gpu.cpp
+        pme_force_sender_gpu_impl_gpu.cpp
+        pme_force_sender_gpu_impl_gpu_sycl.cpp
+        pme_coordinate_receiver_gpu_impl_gpu.cpp
         )
     _gmx_add_files_to_property(SYCL_SOURCES
         pme_gather_sycl.cpp
+        pme_gpu_grid_sycl.cpp
         pme_gpu_internal.cpp
         pme_gpu_program.cpp
         pme_gpu_program_impl_sycl.cpp
         pme_gpu_3dfft_sycl.cpp
         pme_gpu_timings.cpp
+        pme_pp_comm_gpu_impl_gpu.cpp
+        pme_pp_comm_gpu_impl_gpu_sycl.cpp
+        pme_force_sender_gpu_impl_gpu.cpp
+        pme_force_sender_gpu_impl_gpu_sycl.cpp
+        pme_coordinate_receiver_gpu_impl_gpu.cpp
         pme_solve_sycl.cpp
         pme_spread_sycl.cpp
       )
@@ -135,12 +152,6 @@ target_link_libraries(ewald INTERFACE
 #target_link_libraries(ewald PUBLIC legacy_api)
 #target_link_libraries(ewald PRIVATE common)
 
-# Module dependencies
-# This module convey transitive dependence on these modules.
-#target_link_libraries(ewald PUBLIC
-target_link_libraries(ewald INTERFACE
-                      #                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(ewald PRIVATE tng_io)
 # TODO: Explicitly link specific modules.
@@ -165,7 +176,7 @@ else()
 endif()
 
 # TODO: test all warp sizes on all vendor targets?
-foreach(VENDOR AMD NVIDIA INTEL)
+foreach(VENDOR AMD NVIDIA INTEL APPLE)
     foreach(WARPSIZE 16 32 64)
         math(EXPR SPREAD_WG_SIZE "8*${WARPSIZE}")
         math(EXPR SOLVE_WG_SIZE "8*${WARPSIZE}")

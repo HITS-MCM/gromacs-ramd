@@ -46,7 +46,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <string>
 #include <vector>
 
 #include "gromacs/analysisdata/analysisdata.h"
@@ -55,7 +54,6 @@
 #include "gromacs/analysisdata/modules/plot.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
-#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/options/basicoptions.h"
 #include "gromacs/options/filenameoption.h"

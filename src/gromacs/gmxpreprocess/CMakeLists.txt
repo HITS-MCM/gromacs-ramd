@@ -53,18 +53,13 @@ target_include_directories(gmxpreprocess INTERFACE
 #target_link_libraries(gmxpreprocess PUBLIC
 target_link_libraries(gmxpreprocess INTERFACE
                       legacy_api
+                      mdtypes
                       )
 
 # TODO: when is an OBJECT target
 #target_link_libraries(gmxpreprocess PUBLIC legacy_api)
 #target_link_libraries(gmxpreprocess PRIVATE common)
 
-# Module dependencies
-# This module convey transitive dependence on these modules.
-#target_link_libraries(gmxpreprocess PUBLIC
-target_link_libraries(gmxpreprocess INTERFACE
-                      #                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(gmxpreprocess PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

@@ -34,14 +34,14 @@
 #include "gmxpre.h"
 
 #include "gromacs/math/utilities.h"
-#include "gromacs/utility/real.h"
 
 #include "config.h"
 
-#include <cstdint>
-#include <cmath>
-
 #include <cfenv>
+#include <cmath>
+#include <cstdint>
+
+#include "gromacs/utility/real.h"
 
 #if HAVE_FEDISABLEEXCEPT || (defined(__i386__) || defined(__x86_64__)) && defined(__APPLE__)
 //! Floating point exception set that we use and care about
@@ -89,7 +89,11 @@ bool check_int_multiply_for_overflow(int64_t a, int64_t b, int64_t* result)
 
 int gmx_feenableexcept()
 {
-#if HAVE_FEENABLEEXCEPT
+    // While the function is present on RISC-V, actually calling it fails for now
+#if HAVE_FEENABLEEXCEPT && !defined(__riscv)
+#    if defined(__powerpc__) || defined(__ppc__) || defined(__PPC__)
+    feclearexcept(c_FPexceptions);
+#    endif
     return feenableexcept(c_FPexceptions);
 #elif (defined(__i386__) || defined(__x86_64__)) && defined(__APPLE__)
     /* Author:  David N. Williams
@@ -118,7 +122,8 @@ int gmx_feenableexcept()
 
 int gmx_fedisableexcept()
 {
-#if HAVE_FEDISABLEEXCEPT
+    // While the function is present on RISC-V, actually calling it fails for now
+#if HAVE_FEDISABLEEXCEPT && !defined(__riscv)
     return fedisableexcept(c_FPexceptions);
 #elif (defined(__i386__) || defined(__x86_64__)) && defined(__APPLE__)
     static fenv_t fenv;
@@ -142,7 +147,7 @@ bool gmxShouldEnableFPExceptions()
 {
 #if defined(NDEBUG)
     return false; // Release build
-#elif ((defined __clang__ || (defined(__GNUC__) && __GNUC__ == 7)) && defined __OPTIMIZE__)
+#elif defined __clang__ && defined __OPTIMIZE__
     return false; // Buggy compiler
 #elif GMX_GPU_SYCL
     return false; // avoid spurious FPE during SYCL JIT

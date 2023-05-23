@@ -48,7 +48,7 @@ macro(manage_linear_algebra_library name function_in_library)
     # end, which would require caching whether the previous provider
     # was user/MKL/external/internal. It's possible (we do it for
     # FFT), but the number of times the user changes these is pretty
-    # low, so let's solve that one in master branch when we have
+    # low, so let's solve that one in main branch when we have
     # better CMake gear to support it.
     if(GMX_EXTERNAL_${name} OR NOT DEFINED GMX_EXTERNAL_${name})
         set(_find_quietly FALSE)
@@ -81,16 +81,12 @@ macro(manage_linear_algebra_library name function_in_library)
                     message(STATUS "MKL and GMX_${name}_USER were both specified. Using the latter for ${name}.")
                 endif()
             endif()
+            set(GMX_DESCRIBE_${name} "External - user-supplied")
         endif()
 
         if(NOT _library_was_found AND HAVE_LIBMKL)
             set(CMAKE_REQUIRED_LIBRARIES "${FFT_LIBRARIES}")
             set(CMAKE_REQUIRED_FLAGS "${FFT_LINKER_FLAGS}")
-            # This may also not work correctly if the user changes
-            # MKL_LIBRARIES after the first run. However,
-            # MKL_LIBRARIES is only needed
-            # for trying to use MKL with a non-Intel compiler, and we
-            # can live with that for now.
             check_function_exists(${function_in_library} _${name}_mkl_works)
             if(_${name}_mkl_works)
                 # If we ever need to compile with MKL linear algebra and
@@ -98,6 +94,7 @@ macro(manage_linear_algebra_library name function_in_library)
                 # (and probably tweak other things).
 #                list(APPEND LINEAR_ALGEBRA_LIBRARIES ${FFT_LINKER_FLAGS} ${FFT_LIBRARIES})
                 set(_library_was_found 1)
+                set(GMX_DESCRIBE_${name} "External - MKL")
             else()
                 set(_message_text "Intel's MKL was specified, and it should provide ${name}, but it does not. ")
             endif()
@@ -114,11 +111,15 @@ macro(manage_linear_algebra_library name function_in_library)
             if (${name}_FOUND)
                 set(_libraries_to_link ${${name}_LIBRARIES})
                 set(_library_was_found 1)
+                set(GMX_DESCRIBE_${name} "External - detected on the system")
             endif()
         endif()
 
-        if (NOT _library_was_found AND NOT _find_quietly)
-            message(STATUS "${_message_text}Using GROMACS built-in ${name}.")
+        if (NOT _library_was_found)
+            if (NOT _find_quietly)
+                message(STATUS "${_message_text}Using GROMACS built-in ${name}.")
+            endif()
+            set(GMX_DESCRIBE_${name} "Internal")
         endif()
     endif()
 
@@ -183,6 +184,8 @@ endmacro()
 #
 # This function sets the following variables in its parent scope:
 #     LINEAR_ALGEBRA_LIBRARIES  will be set as required to add libraries required for linear algebra
+#     GMX_DESCRIBE_BLAS         describes the origin of BLAS routines used in GROMACS
+#     GMX_DESCRIBE_LAPACK       describes the origin of LAPACK routines used in GROMACS
 #
 function(gmxManageLinearAlgebraLibraries)
     include(CheckFunctionExists)
@@ -195,6 +198,8 @@ function(gmxManageLinearAlgebraLibraries)
 
     # Propagate the new local value to the parent scope
     set(LINEAR_ALGEBRA_LIBRARIES "${LINEAR_ALGEBRA_LIBRARIES}" PARENT_SCOPE)
+    set(GMX_DESCRIBE_BLAS ${GMX_DESCRIBE_BLAS} PARENT_SCOPE)
+    set(GMX_DESCRIBE_LAPACK ${GMX_DESCRIBE_LAPACK} PARENT_SCOPE)
 endfunction()
 
 gmxManageLinearAlgebraLibraries()

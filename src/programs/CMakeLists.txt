@@ -39,10 +39,12 @@ target_compile_definitions(mdrun_objlib PRIVATE HAVE_CONFIG_H TMPI_USE_VISIBILIT
 target_include_directories(mdrun_objlib SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
 # Should be possible to remove this when resolving #3290
 target_include_directories(mdrun_objlib SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/src/external)
-target_link_libraries(mdrun_objlib PRIVATE common)
-target_link_libraries(mdrun_objlib PRIVATE legacy_api)
-# TODO: Explicitly link specific modules.
-target_link_libraries(mdrun_objlib PRIVATE legacy_modules)
+target_link_libraries(mdrun_objlib PRIVATE
+        common
+        legacy_api
+        legacy_modules
+        utility
+        )
 
 if(GMX_FAHCORE)
     # The lack of a real source file here alongside the object library
@@ -52,28 +54,17 @@ if(GMX_FAHCORE)
     target_link_libraries(fahcore PRIVATE ${GMX_COMMON_LIBRARIES} legacy_api)
 else()
     file(GLOB GMX_MAIN_SOURCES gmx.cpp legacymodules.cpp)
-    if(GMX_X11)
-        file(GLOB VIEW_SOURCES view/*.cpp)
-    else()
-        file(GLOB VIEW_SOURCES view/view.cpp)
-    endif()
-    add_library(view_objlib OBJECT ${VIEW_SOURCES})
-    gmx_target_compile_options(view_objlib)
-    target_compile_definitions(view_objlib PRIVATE HAVE_CONFIG_H)
-    target_include_directories(view_objlib SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/src/external)
-    target_link_libraries(view_objlib PRIVATE common legacy_api)
-    # TODO: Explicitly link specific modules.
-    target_link_libraries(view_objlib PRIVATE legacy_modules)
     add_library(gmx_objlib OBJECT ${GMX_MAIN_SOURCES})
     target_link_libraries(gmx_objlib PRIVATE common legacy_api)
-    # TODO: Explicitly link specific modules.
+    # TODO: Remove `legacy_modules` once specific modules are explicitly linked.
     target_link_libraries(gmx_objlib PRIVATE legacy_modules)
+    target_link_libraries(gmx_objlib PRIVATE utility commandline)
     target_include_directories(gmx_objlib SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/src/external)
     target_include_directories(gmx_objlib SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+    target_compile_definitions(gmx_objlib PRIVATE TMPI_USE_VISIBILITY)
     add_executable(gmx
         $<TARGET_OBJECTS:gmx_objlib>
-        $<TARGET_OBJECTS:mdrun_objlib>
-        $<TARGET_OBJECTS:view_objlib>)
+        $<TARGET_OBJECTS:mdrun_objlib>)
     add_executable(Gromacs::gmx ALIAS gmx)
     gmx_target_compile_options(gmx)
     target_compile_definitions(gmx PRIVATE HAVE_CONFIG_H)
@@ -82,8 +73,10 @@ else()
                           libgromacs
                           ${GMX_COMMON_LIBRARIES}
                           ${GMX_EXE_LINKER_FLAGS})
-    if(GMX_X11)
-        target_link_libraries(gmx PRIVATE ${X11_LIBRARIES})
+    # Ensure that on Windows the application code page is set to utf8 mode so the behavior is
+    # like Linux. For proper UTF8 console output, the user needs to enable utf8 (chcp 65001).
+    if (MSVC)
+        target_sources(gmx PRIVATE utf8.manifest)
     endif()
     set(BINARY_NAME "gmx${GMX_BINARY_SUFFIX}")
     set_target_properties(gmx PROPERTIES

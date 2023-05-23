@@ -8,14 +8,15 @@ prepare-release-version:
     - .variables:default
     - .rules:nightly-only-for-release
   cache: {}
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-9-docs
   stage: configure-build
   variables:
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
     KUBERNETES_MEMORY_REQUEST: 2Gi
   script:
-    - cmake . -DGMX_BUILD_TARBALL=on
+    - ${CMAKE} . -DGMX_BUILD_TARBALL=on
   artifacts:
     paths:
       - VersionInfo-partial.cmake.cmakein
@@ -28,21 +29,21 @@ regressiontests:prepare:
     - .variables:default
     - .rules:merge-and-post-merge-acceptance
   cache: {}
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-9-docs
   stage: configure-build
   variables:
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
     KUBERNETES_MEMORY_REQUEST: 2Gi
-  # Always clone the default version for this branch, release-2022 in this case
+  # Always clone the default version for this branch, release-2023 in this case
   script:
-    - export REGTESTBRANCH=release-2022
-    - if [[ ! -z $REGRESSIONTESTBRANCH ]] ; then
+    - export REGTESTBRANCH=release-2023
+    - if [[ ! -z "$REGRESSIONTESTBRANCH" ]] ; then
       export REGTESTBRANCH=$REGRESSIONTESTBRANCH ;
       echo "Using $REGTESTBRANCH instead of default" ;
       fi
     - export CHECKOUTCOMMIT=FETCH_HEAD
-    - if [[ ! -z $REGRESSIONTESTCOMMIT ]] ; then
+    - if [[ ! -z "$REGRESSIONTESTCOMMIT" ]] ; then
       export CHECKOUTCOMMIT=$REGRESSIONTESTCOMMIT ;
       echo "Using $CHECKOUTCOMMIT instead of head of $REGTESTBRANCH" ;
       fi
@@ -72,7 +73,7 @@ regressiontests:package:
   cache: {}
   # Docker image uploaded to dockerhub by user eriklindahl
   # TODO: Get DockerFile for admin/dockerfiles
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-9-docs
   stage: release-package
   variables:
     KUBERNETES_CPU_LIMIT: 1
@@ -86,8 +87,8 @@ regressiontests:package:
     - if [[ $GROMACS_RELEASE != "true" ]] ; then
       REGTESTNAME=$REGTESTNAME-dev ;
       fi
-    - export REGTESTBRANCH=release-2022
-    - if [[ $CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "release-20"[1-2][0-9] ]] ; then
+    - export REGTESTBRANCH=release-2023
+    - if [[ $CI_COMMIT_REF_NAME == "main" || $CI_COMMIT_REF_NAME == "release-20"[1-2][0-9] ]] ; then
       export REGTESTBRANCH=$CI_COMMIT_REF_NAME ;
       fi
     - if [[ ! -d regressiontests ]] ; then
@@ -145,7 +146,7 @@ archive:configure:release:
     - .use-ccache
     - .before_script:default
     - .docs:build
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-9-docs
   variables:
     KUBERNETES_CPU_LIMIT: 4
     KUBERNETES_CPU_REQUEST: 2
@@ -209,7 +210,7 @@ archive:package:
     BUILD_DIR: build-package
 
 checksum-verify:
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-9-docs
   stage: release-verify
   extends:
     - .variables:default
@@ -250,7 +251,7 @@ checksum-verify:
     - prepare-release-version
 
 version-verify:
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-7-docs:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-9-docs
   stage: release-verify
   extends:
     - .variables:default
@@ -304,16 +305,33 @@ archive:nightly-webpage:
 archive:full-release:
   extends:
     - .webpage:build
-    - .rules:nightly-only-for-release
+    - .rules:nightly-only-for-release-user-triggered
   stage: release-deploy
   dependencies:
     - webpage:build:release
     - archive:package
     - regressiontests:package
+    - prepare-release-version
   variables:
     BUILD_DIR: release-doc-builds
+  before_script:
+    - eval $(ssh-agent -s)
+    # Ref https://gitlab.com/gitlab-examples/ssh-private-key/issues/1#note_48526556
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan manual.gromacs.org > ~/.ssh/known_hosts # Force overwrite the known hosts
+    - ssh-keyscan ftp.gromacs.org >> ~/.ssh/known_hosts   # as we only want these two keys.
+    - chmod 644 ~/.ssh/known_hosts
   script:
+    # Running CMake with the venv activated should not be strictly necessary,
+    # but helps to find and cache self-consistent Python and Sphinx details
+    # without additional hinting. Once CMakeCache.txt exists, the later stages
+    # should work fine without reactivating the venv.
+    - source /root/venv/py3.9/bin/activate
     - tar czf webpage.tar.gz $BUILD_DIR/docs/html/
+    - export VERSION=`sed -n -e '/GMX_VERSION_STRING\b/ s/.*"\(.*\)")/\1/p' VersionInfo-partial.cmake.cmakein`
+    - python admin/make-release-build.py --server
   artifacts:
     when: always
     paths:

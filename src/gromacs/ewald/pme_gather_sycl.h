@@ -38,12 +38,10 @@
  *  \author Andrey Alekseenko <al42and@gmail.com>
  */
 
-#include "gromacs/gpu_utils/gmxsycl.h"
-
 #include "gromacs/gpu_utils/syclutils.h"
 
-#include "pme_grid.h"
 #include "pme_gpu_types_host.h"
+#include "pme_grid.h"
 
 struct PmeGpuGridParams;
 struct PmeGpuAtomParams;
@@ -54,8 +52,8 @@ class PmeGatherKernel : public ISyclKernelFunctor
 {
 public:
     PmeGatherKernel();
-    void        setArg(size_t argIndex, void* arg) override;
-    sycl::event launch(const KernelLaunchConfig& config, const DeviceStream& deviceStream) override;
+    void setArg(size_t argIndex, void* arg) override;
+    void launch(const KernelLaunchConfig& config, const DeviceStream& deviceStream) override;
 
 private:
     PmeGpuGridParams*    gridParams_;

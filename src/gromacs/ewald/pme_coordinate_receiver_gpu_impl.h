@@ -63,6 +63,8 @@ struct PpCommManager
     std::unique_ptr<DeviceStream> stream;
     //! Synchronization event to receive from PP rank
     GpuEventSynchronizer* sync = nullptr;
+    //! Synchronization event to indicate that all communications in \ref stream are complete.
+    std::unique_ptr<GpuEventSynchronizer> ready;
     //! Range of atoms corresponding to PP rank
     std::tuple<int, int> atomRange = { 0, 0 };
 };
@@ -93,7 +95,7 @@ public:
      * Receive coordinate synchronizer pointer from the PP ranks.
      * \param[in] ppRank  PP rank to receive the synchronizer from.
      */
-    void receiveCoordinatesSynchronizerFromPpCudaDirect(int ppRank);
+    void receiveCoordinatesSynchronizerFromPpPeerToPeer(int ppRank);
 
     /*! \brief
      * Used for lib MPI, receives co-ordinates from PP ranks
@@ -103,27 +105,25 @@ public:
      * \param[in] ppRank       PP rank to send data
      * \param[in] senderIndex  Index of PP rank within those involved in communication with this PME rank
      */
-    void launchReceiveCoordinatesFromPpCudaMpi(DeviceBuffer<RVec> recvbuf,
-                                               int                numAtoms,
-                                               int                numBytes,
-                                               int                ppRank,
-                                               int                senderIndex);
+    void launchReceiveCoordinatesFromPpGpuAwareMpi(DeviceBuffer<RVec> recvbuf,
+                                                   int                numAtoms,
+                                                   int                numBytes,
+                                                   int                ppRank,
+                                                   int                senderIndex);
 
     /*! \brief
-     * For lib MPI, wait for coordinates from any PP rank
-     * For thread MPI, enqueue PP co-ordinate transfer event received from PP
-     * rank determined from pipeline stage into given stream
+     * Return PP co-ordinate transfer event received from PP
+     * rank determined from pipeline stage, for consumer to enqueue
      * \param[in] pipelineStage  stage of pipeline corresponding to this transfer
-     * \param[in] deviceStream   stream in which to enqueue the wait event.
+     * \returns                  tuple with rank of sending PP task and corresponding event
+     */
+    std::tuple<int, GpuEventSynchronizer*> receivePpCoordinateSendEvent(int pipelineStage);
+
+    /*! \brief
+     * Wait for coordinates from any PP rank
      * \returns                  rank of sending PP task
      */
-    int synchronizeOnCoordinatesFromPpRank(int pipelineStage, const DeviceStream& deviceStream);
-
-    /*! \brief Perform above synchronizeOnCoordinatesFromPpRanks for all PP ranks,
-     * enqueueing all events to a single stream
-     * \param[in] deviceStream   stream in which to enqueue the wait events.
-     */
-    void synchronizeOnCoordinatesFromAllPpRanks(const DeviceStream& deviceStream);
+    int waitForCoordinatesFromAnyPpRank();
 
     /*! \brief
      * Return pointer to stream associated with specific PP rank sender index
@@ -141,6 +141,11 @@ public:
      * Return number of PP ranks involved in PME-PP communication
      */
     int ppCommNumSenderRanks();
+
+    /*! \brief
+     * Mark an event in the sender stream \p senderIndex and enqueue it into \p stream.
+     */
+    void insertAsDependencyIntoStream(int senderIndex, const DeviceStream& stream);
 
 private:
     //! communicator for simulation

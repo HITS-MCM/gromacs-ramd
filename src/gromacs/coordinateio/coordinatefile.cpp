@@ -46,12 +46,13 @@
 
 #include <algorithm>
 
-#include "gromacs/options.h"
 #include "gromacs/coordinateio/outputadapters.h"
 #include "gromacs/coordinateio/requirements.h"
+#include "gromacs/fileio/filetypes.h"
 #include "gromacs/fileio/trxio.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/topology.h"
 #include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/exceptions.h"
 
@@ -345,10 +346,10 @@ static t_trxstatus* openTNG(const std::string& name, const Selection& sel, const
     if (sel.isValid())
     {
         GMX_ASSERT(sel.hasOnlyAtoms(), "Can only work with selections consisting out of atoms");
-        return trjtools_gmx_prepare_tng_writing(name.c_str(),
+        return trjtools_gmx_prepare_tng_writing(name,
                                                 filemode[0],
                                                 nullptr, // infile_, //how to get the input file here?
-                                                nullptr,
+                                                {},
                                                 sel.atomCount(),
                                                 mtop,
                                                 sel.atomIndices(),
@@ -356,10 +357,10 @@ static t_trxstatus* openTNG(const std::string& name, const Selection& sel, const
     }
     else
     {
-        return trjtools_gmx_prepare_tng_writing(name.c_str(),
+        return trjtools_gmx_prepare_tng_writing(name,
                                                 filemode[0],
                                                 nullptr, // infile_, //how to get the input file here?
-                                                nullptr,
+                                                {},
                                                 mtop->natoms,
                                                 mtop,
                                                 get_atom_index(*mtop),

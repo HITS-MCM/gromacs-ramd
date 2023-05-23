@@ -51,17 +51,16 @@
 #include <utility>
 #include <vector>
 
-#include "gromacs/commandline/pargs.h"
 #include "gromacs/commandline/filenm.h"
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/hardware/detecthardware.h"
 #include "gromacs/hardware/hw_info.h"
 #include "gromacs/mdlib/stophandler.h"
-#include "gromacs/mdrunutility/logging.h"
-#include "gromacs/mdrunutility/multisim.h"
 #include "gromacs/mdrun/runner.h"
 #include "gromacs/mdrunutility/handlerestart.h"
+#include "gromacs/mdrunutility/logging.h"
+#include "gromacs/mdrunutility/multisim.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/basenetwork.h"
 #include "gromacs/utility/fatalerror.h"
@@ -69,8 +68,8 @@
 #include "gromacs/utility/init.h"
 #include "gromacs/utility/physicalnodecommunicator.h"
 
-#include "gmxapi/mpi/resourceassignment.h"
 #include "gmxapi/exceptions.h"
+#include "gmxapi/mpi/resourceassignment.h"
 #include "gmxapi/session.h"
 #include "gmxapi/status.h"
 #include "gmxapi/version.h"
@@ -164,7 +163,7 @@ MpiContextManager::MpiContextManager(MPI_Comm communicator) :
         // Synchronise at the point of acquiring a MpiContextManager.
         gmx_barrier(this->communicator());
     }
-};
+}
 
 MpiContextManager::~MpiContextManager()
 {
@@ -233,7 +232,8 @@ Context createContext()
 ContextImpl::ContextImpl(MpiContextManager&& mpi) noexcept(std::is_nothrow_constructible_v<gmx::LegacyMdrunOptions>) :
     mpi_(std::move(mpi)),
     hardwareInformation_(gmx_detect_hardware(
-            gmx::PhysicalNodeCommunicator(mpi_.communicator(), gmx_physicalnode_id_hash())))
+            gmx::PhysicalNodeCommunicator(mpi_.communicator(), gmx_physicalnode_id_hash()),
+            mpi_.communicator()))
 {
     // Confirm our understanding of the MpiContextManager invariant.
     GMX_ASSERT(mpi_.communicator() == MPI_COMM_NULL ? !GMX_LIB_MPI : GMX_LIB_MPI,
@@ -333,9 +333,10 @@ std::shared_ptr<Session> ContextImpl::launch(const Workflow& work)
         *argv[0] = '\0';
         for (size_t argvIndex = offset; argvIndex < argc; ++argvIndex)
         {
-            const auto& mdArg = mdArgs_[argvIndex - offset];
-            argv[argvIndex]   = new char[mdArg.length() + 1];
-            strcpy(argv[argvIndex], mdArg.c_str());
+            const auto&  mdArg   = mdArgs_[argvIndex - offset];
+            const size_t argSize = mdArg.length() + 1;
+            argv[argvIndex]      = new char[argSize];
+            strncpy(argv[argvIndex], mdArg.c_str(), argSize);
         }
 
         auto mdModules = std::make_unique<MDModules>();
@@ -373,7 +374,7 @@ std::shared_ptr<Session> ContextImpl::launch(const Workflow& work)
         LogFilePtr       logFileGuard     = nullptr;
         gmx_multisim_t*  ms               = simulationContext.multiSimulation_.get();
         std::tie(startingBehavior, logFileGuard) =
-                handleRestart(findIsSimulationMasterRank(ms, simulationContext.simulationCommunicator_),
+                handleRestart(findIsSimulationMainRank(ms, simulationContext.simulationCommunicator_),
                               simulationContext.simulationCommunicator_,
                               ms,
                               options.mdrunOptions.appendingBehavior,

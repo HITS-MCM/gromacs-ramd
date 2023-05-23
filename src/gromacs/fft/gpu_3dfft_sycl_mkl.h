@@ -44,8 +44,6 @@
 #ifndef GMX_FFT_GPU_3DFFT_SYCL_MKL_H
 #define GMX_FFT_GPU_3DFFT_SYCL_MKL_H
 
-#include "gpu_3dfft_impl.h"
-
 #include <oneapi/mkl/dfti.hpp>
 
 #include "gromacs/fft/fft.h"
@@ -53,6 +51,8 @@
 #include "gromacs/gpu_utils/gmxsycl.h"
 #include "gromacs/gpu_utils/gputraits.h"
 #include "gromacs/utility/gmxmpi.h"
+
+#include "gpu_3dfft_impl.h"
 
 class DeviceContext;
 class DeviceStream;
@@ -67,7 +67,7 @@ class Gpu3dFft::ImplSyclMkl : public Gpu3dFft::Impl
 {
 public:
     //! \copydoc Gpu3dFft::Impl::Impl
-    ImplSyclMkl(bool                 allocateGrids,
+    ImplSyclMkl(bool                 allocateRealGrid,
                 MPI_Comm             comm,
                 ArrayRef<const int>  gridSizesInXForEachRank,
                 ArrayRef<const int>  gridSizesInYForEachRank,
@@ -92,13 +92,7 @@ private:
     using Descriptor =
             oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>;
 
-#if GMX_SYCL_USE_USM
-    float* realGrid_;
-    float* complexGrid_;
-#else
-    sycl::buffer<float, 1> realGrid_;
-    sycl::buffer<float, 1> complexGrid_;
-#endif
+    float*      realGrid_;
     sycl::queue queue_;
     Descriptor  r2cDescriptor_, c2rDescriptor_;
 

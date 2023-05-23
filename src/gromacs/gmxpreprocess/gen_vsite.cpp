@@ -226,7 +226,7 @@ static int ddb_name2dir(char* name)
 }
 
 
-static void read_vsite_database(const char*                            ddbname,
+static void read_vsite_database(const std::filesystem::path&           ddbname,
                                 std::vector<VirtualSiteConfiguration>* vsiteconflist,
                                 std::vector<VirtualSiteTopology>*      vsitetoplist)
 {
@@ -284,7 +284,10 @@ static void read_vsite_database(const char*                            ddbname,
                 curdir = ddb_name2dir(dirstr);
                 if (curdir < 0)
                 {
-                    gmx_fatal(FARGS, "Invalid directive %s in vsite database %s", dirstr, ddbname);
+                    gmx_fatal(FARGS,
+                              "Invalid directive %s in vsite database %s",
+                              dirstr,
+                              ddbname.u8string().c_str());
                 }
             }
             else
@@ -362,7 +365,7 @@ static void read_vsite_database(const char*                            ddbname,
                         {
                             gmx_fatal(FARGS,
                                       "Need 3 or 4 values to specify bond/angle values in %s: %s\n",
-                                      ddbname,
+                                      ddbname.u8string().c_str(),
                                       pline);
                         }
                     }
@@ -1664,7 +1667,7 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
                int*                                   cgnr[],
                real                                   mHmult,
                bool                                   bVsiteAromatics,
-               const char*                            ffdir)
+               const std::filesystem::path&           ffdir)
 {
 #define MAXATOMSPERRESIDUE 16
     int     k, m, i0, ni0, whatres, add_shift, nvsite, nadd;
@@ -1675,7 +1678,6 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
     matrix  tmpmat;
     real    mHtot, mtot, fact, fact2;
     rvec    rpar, rperp, temp;
-    char    tpname[32], nexttpname[32];
     int *   o2n, *newvsite_type, *newcgnr, ats[MAXATOMSPERRESIDUE];
     t_atom* newatom;
     char*** newatomname;
@@ -1760,7 +1762,7 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
         fprintf(debug, "# # # VSITES # # #\n");
     }
 
-    std::vector<std::string> db = fflib_search_file_end(ffdir, ".vsd", FALSE);
+    auto db = fflib_search_file_end(ffdir, ".vsd", FALSE);
 
     /* Container of CH3/NH3/NH2 configuration entries.
      * See comments in read_vsite_database. It isnt beautiful,
@@ -1780,7 +1782,7 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
     std::vector<VirtualSiteTopology> vsitetop;
     for (const auto& filename : db)
     {
-        read_vsite_database(filename.c_str(), &vsiteconflist, &vsitetop);
+        read_vsite_database(filename, &vsiteconflist, &vsitetop);
     }
 
     bFirstWater = TRUE;
@@ -1964,8 +1966,8 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
                and return H atom numbers (Hatoms) and heavy atom numbers (heavies) */
             count_bonds(i, &plist[F_BONDS], at->atomname, &nrbonds, &nrHatoms, Hatoms, &Heavy, &nrheavies, heavies);
             /* get Heavy atom type */
-            tpHeavy = get_atype(Heavy, at, rtpFFDB, residueTypeMap);
-            strcpy(tpname, *atype->atomNameFromAtomType(tpHeavy));
+            tpHeavy     = get_atype(Heavy, at, rtpFFDB, residueTypeMap);
+            auto tpname = atype->atomNameFromAtomType(tpHeavy);
 
             bWARNING       = FALSE;
             bAddVsiteParam = TRUE;
@@ -2060,10 +2062,10 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
                 if ((nrHatoms == 2) && ((*at->atomname[Heavy])[0] == 'N'))
                 {
                     isN   = TRUE;
-                    int j = nitrogen_is_planar(vsiteconflist, tpname);
+                    int j = nitrogen_is_planar(vsiteconflist, *tpname);
                     if (j < 0)
                     {
-                        gmx_fatal(FARGS, "No vsite database NH2 entry for type %s\n", tpname);
+                        gmx_fatal(FARGS, "No vsite database NH2 entry for type %s\n", tpname->c_str());
                     }
                     planarN = (j == 1);
                 }
@@ -2093,9 +2095,9 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
                     }
                     /* get dummy mass type from first char of heavy atom type (N or C) */
 
-                    strcpy(nexttpname,
-                           *atype->atomNameFromAtomType(get_atype(heavies[0], at, rtpFFDB, residueTypeMap)));
-                    std::string ch = get_dummymass_name(vsiteconflist, tpname, nexttpname);
+                    auto nexttpname = atype->atomNameFromAtomType(
+                            get_atype(heavies[0], at, rtpFFDB, residueTypeMap));
+                    std::string ch = get_dummymass_name(vsiteconflist, *tpname, *nexttpname);
                     std::string name;
                     if (ch.empty())
                     {
@@ -2105,16 +2107,16 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
                                     FARGS,
                                     "Can't find dummy mass for type %s bonded to type %s in the "
                                     "virtual site database (.vsd files). Add it to the database!\n",
-                                    tpname,
-                                    nexttpname);
+                                    tpname->c_str(),
+                                    nexttpname->c_str());
                         }
                         else
                         {
                             gmx_fatal(FARGS,
                                       "A dummy mass for type %s bonded to type %s is required, but "
                                       "no virtual site database (.vsd) files where found.\n",
-                                      tpname,
-                                      nexttpname);
+                                      tpname->c_str(),
+                                      nexttpname->c_str());
                         }
                     }
                     else
@@ -2246,7 +2248,7 @@ void do_vsites(gmx::ArrayRef<const PreprocessResidue> rtpFFDB,
                           "         %d bonds and %d bound hydrogens atoms) to virtual site\n",
                           i + 1,
                           *(at->atomname[i]),
-                          tpname,
+                          tpname->c_str(),
                           nrbonds,
                           nrHatoms);
             }

@@ -38,7 +38,9 @@
 #include <cstring>
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/commandline/viewit.h"
@@ -72,6 +74,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
+#include "gromacs/utility/stringutil.h"
 
 typedef struct
 {
@@ -431,17 +434,16 @@ static void dump_stats(FILE*                          log,
     sfree(drs);
 }
 
-static void dump_clust_stats(FILE*                          fp,
-                             const t_disresdata&            dd,
-                             const InteractionList&         disres,
-                             gmx::ArrayRef<const t_iparams> ip,
-                             t_blocka*                      clust,
-                             t_dr_result                    dr[],
-                             char*                          clust_name[],
-                             int                            isize,
-                             int                            index[])
+static void dump_clust_stats(FILE*                           fp,
+                             const t_disresdata&             dd,
+                             const InteractionList&          disres,
+                             gmx::ArrayRef<const t_iparams>  ip,
+                             gmx::ArrayRef<const IndexGroup> clusters,
+                             t_dr_result                     dr[],
+                             int                             isize,
+                             int                             index[])
 {
-    int         k, nra, mmm = 0;
+    int         nra;
     double      sumV, maxV, sumVT3, sumVT6, maxVT3, maxVT6;
     t_dr_stats* drs;
 
@@ -451,22 +453,24 @@ static void dump_clust_stats(FILE*                          fp,
 
     snew(drs, dd.nres);
 
-    for (k = 0; (k < clust->nr); k++)
+    for (int k = 0; k < gmx::ssize(clusters); k++)
     {
+        const auto& cluster = clusters[k];
+
         if (dr[k].nframes == 0)
         {
             continue;
         }
-        if (dr[k].nframes != (clust->index[k + 1] - clust->index[k]))
+        if (dr[k].nframes != gmx::ssize(cluster.particleIndices))
         {
             gmx_fatal(FARGS,
                       "Inconsistency in cluster %s.\n"
-                      "Found %d frames in trajectory rather than the expected %d\n",
-                      clust_name[k],
+                      "Found %d frames in trajectory rather than the expected %td\n",
+                      cluster.name.c_str(),
                       dr[k].nframes,
-                      clust->index[k + 1] - clust->index[k]);
+                      gmx::ssize(cluster.particleIndices));
         }
-        if (!clust_name[k])
+        if (cluster.name.empty())
         {
             gmx_fatal(FARGS, "Inconsistency with cluster %d. Invalid name", k);
         }
@@ -508,13 +512,9 @@ static void dump_clust_stats(FILE*                          fp,
             // We have processed restraint i, mark it as such
             restraintHasBeenProcessed[i] = true;
         }
-        if (std::strcmp(clust_name[k], "1000") == 0)
-        {
-            mmm++;
-        }
         fprintf(fp,
                 "%-10s%6d%8.3f  %8.3f  %8.3f  %8.3f  %8.3f  %8.3f\n",
-                clust_name[k],
+                cluster.name.c_str(),
                 dr[k].nframes,
                 sumV,
                 maxV,
@@ -709,7 +709,7 @@ int gmx_disre(int argc, char* argv[])
         "the program will compute average violations using the third power",
         "averaging algorithm and print them in the log file."
     };
-    static int      ntop    = 0;
+    static int      ntoppar = 0;
     static int      nlevels = 20;
     static real     max_dr  = 0;
     static gmx_bool bThird  = TRUE;
@@ -717,7 +717,7 @@ int gmx_disre(int argc, char* argv[])
         { "-ntop",
           FALSE,
           etINT,
-          { &ntop },
+          { &ntoppar },
           "Number of large violations that are stored in the log file every step" },
         { "-maxdr",
           FALSE,
@@ -744,15 +744,14 @@ int gmx_disre(int argc, char* argv[])
     int          isize;
     int *        index = nullptr, *ind_fit = nullptr;
     char*        grpname;
-    t_cluster_ndx*    clust = nullptr;
-    t_dr_result       dr, *dr_clust = nullptr;
-    char**            leg;
-    real *            vvindex = nullptr, *w_rls = nullptr;
-    t_pbc             pbc, *pbc_null;
-    int               my_clust;
-    FILE*             fplog;
-    gmx_output_env_t* oenv;
-    gmx_rmpbc_t       gpbc = nullptr;
+    t_dr_result  dr, *dr_clust = nullptr;
+    std::vector<std::string> leg;
+    real *                   vvindex = nullptr, *w_rls = nullptr;
+    t_pbc                    pbc, *pbc_null;
+    int                      my_clust;
+    FILE*                    fplog;
+    gmx_output_env_t*        oenv;
+    gmx_rmpbc_t              gpbc = nullptr;
 
     t_filenm fnm[] = { { efTPR, nullptr, nullptr, ffREAD }, { efTRX, "-f", nullptr, ffREAD },
                        { efXVG, "-ds", "drsum", ffWRITE },  { efXVG, "-da", "draver", ffWRITE },
@@ -770,9 +769,9 @@ int gmx_disre(int argc, char* argv[])
 
     fplog = ftp2FILE(efLOG, NFILE, fnm, "w");
 
-    if (ntop)
+    if (ntoppar)
     {
-        init5(ntop);
+        init5(ntoppar);
     }
 
     t_inputrec  irInstance;
@@ -803,9 +802,9 @@ int gmx_disre(int argc, char* argv[])
         atoms->havePdbInfo = TRUE;
     }
 
-    gmx_localtop_t top(topInfo.mtop()->ffparams);
-    gmx_mtop_generate_local_top(*topInfo.mtop(), &top, ir->efep != FreeEnergyPerturbationType::No);
-    const InteractionDefinitions& idef = top.idef;
+    gmx_localtop_t localtop(topInfo.mtop()->ffparams);
+    gmx_mtop_generate_local_top(*topInfo.mtop(), &localtop, ir->efep != FreeEnergyPerturbationType::No);
+    const InteractionDefinitions& idef = localtop.idef;
 
     pbc_null = nullptr;
     if (ir->pbcType != PbcType::No)
@@ -820,14 +819,12 @@ int gmx_disre(int argc, char* argv[])
         rd_index(ftp2fn(efNDX, NFILE, fnm), 1, &isize, &index, &grpname);
         xvg = xvgropen(opt2fn("-dr", NFILE, fnm), "Individual Restraints", "Time (ps)", "nm", oenv);
         snew(vvindex, isize);
-        snew(leg, isize);
         for (i = 0; (i < isize); i++)
         {
             index[i]++;
-            snew(leg[i], 12);
-            sprintf(leg[i], "index %d", index[i]);
+            leg.emplace_back(gmx::formatString("index %d", index[i]));
         }
-        xvgr_legend(xvg, isize, leg, oenv);
+        xvgrLegend(xvg, leg, oenv);
     }
     else
     {
@@ -840,7 +837,7 @@ int gmx_disre(int argc, char* argv[])
                 *topInfo.mtop(),
                 ir,
                 DisResRunMode::AnalysisTool,
-                DDRole::Master,
+                DDRole::Main,
                 NumRanks::Single,
                 MPI_COMM_NULL,
                 nullptr,
@@ -851,12 +848,13 @@ int gmx_disre(int argc, char* argv[])
     int natoms = read_first_x(oenv, &status, ftp2fn(efTRX, NFILE, fnm), &t, &x, box);
     snew(f, 5 * natoms);
 
+    std::optional<t_cluster_ndx> clust;
     init_dr_res(&dr, disresdata.nres);
     if (opt2bSet("-c", NFILE, fnm))
     {
         clust = cluster_index(fplog, opt2fn("-c", NFILE, fnm));
-        snew(dr_clust, clust->clust->nr + 1);
-        for (i = 0; (i <= clust->clust->nr); i++)
+        snew(dr_clust, gmx::ssize(clust->clusters) + 1);
+        for (i = 0; i <= gmx::ssize(clust->clusters); i++)
         {
             init_dr_res(&dr_clust[i], disresdata.nres);
         }
@@ -902,7 +900,7 @@ int gmx_disre(int argc, char* argv[])
                           t);
             }
             my_clust = clust->inv_clust[j];
-            range_check(my_clust, 0, clust->clust->nr);
+            range_check(my_clust, 0, gmx::ssize(clust->clusters));
             check_viol(
                     fplog, idef.il[F_DISRES], idef.iparams, x, f, pbc_null, dr_clust, my_clust, isize, index, vvindex, &disresdata);
         }
@@ -952,7 +950,7 @@ int gmx_disre(int argc, char* argv[])
     if (clust)
     {
         dump_clust_stats(
-                fplog, disresdata, idef.il[F_DISRES], idef.iparams, clust->clust, dr_clust, clust->grpname, isize, index);
+                fplog, disresdata, idef.il[F_DISRES], idef.iparams, clust->clusters, dr_clust, isize, index);
     }
     else
     {

@@ -32,7 +32,7 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out https://www.gromacs.org.
 
-# This script runs uncrustify, clang-format, copyright header checks, or include sorter on
+# This script runs clang-format, copyright header checks, or include sorter on
 # all applicable files in the source tree.
 #
 # See `reformat_all.sh -h` for a brief usage, and docs/dev-manual/code-formatting.rst
@@ -40,9 +40,9 @@
 
 function usage() {
     echo "usage: reformat_all.sh [-f|--force]"
-    echo "           [--filter=(complete_formatting|clangformat|uncrustify|copyright|includesort)]"
+    echo "           [--filter=(complete_formatting|clangformat|copyright)]"
     echo "           [--pattern=<pattern>] [<action>] [-B=<build dir>]"
-    echo "<action>: (list-files|uncrustify|clang-format*|copyright|includesort) (*=default)"
+    echo "<action>: (list-files|clang-format*|copyright) (*=default)"
 }
 
 filter=default
@@ -50,9 +50,8 @@ force=
 patterns=()
 action=clang-format
 for arg in "$@" ; do
-    if [[ "$arg" == "list-files" || "$arg" == "uncrustify" ||
-          "$arg" == "clang-format" || "$arg" == "copyright" ||
-          "$arg" == "includesort" ]] ; then
+    if [[ "$arg" == "list-files" ||
+          "$arg" == "clang-format" || "$arg" == "copyright" ]] ; then
         action=$arg
     elif [[ "$arg" == --filter=* ]] ; then
         filter=${arg#--filter=}
@@ -84,20 +83,6 @@ case "$action" in
     list-files)
         command=cat
         ;;
-    uncrustify)
-        # Check that uncrustify is present
-        if [ -z "$UNCRUSTIFY" ] ; then
-            echo "Please set the path to uncrustify using UNCRUSTIFY."
-            echo "Note that you need a custom version of uncrustify."
-            echo "See comments in the script file for how to get one."
-            exit 2
-        fi
-        if ! which "$UNCRUSTIFY" 1>/dev/null ; then
-            echo "Uncrustify not found: $UNCRUSTIFY"
-            exit 2
-        fi
-        command="xargs $UNCRUSTIFY -c admin/uncrustify.cfg --no-backup"
-        ;;
     clang-format)
         if [ -z "$CLANG_FORMAT" ] ; then
             CLANG_FORMAT=clang-format-7
@@ -110,13 +95,6 @@ case "$action" in
         ;;
     copyright)
         command="xargs admin/copyright.py --check"
-        ;;
-    includesort)
-        if [ -z "${builddir}" ] ; then
-            echo "Build directory must be set with -B for includesort."
-            exit 2
-        fi
-        command="docs/doxygen/includesorter.py -S . -B ${builddir} -F -"
         ;;
     *)
         echo "Unknown action: $action"
@@ -132,12 +110,6 @@ if [[ "$filter" == "default" ]] ; then
 fi
 
 case "$filter" in
-    includesort)
-        filter_re="(complete_formatting|includesort)"
-        ;;
-    uncrustify)
-        filter_re="(uncrustify)"
-        ;;
     copyright)
         filter_re="(complete_formatting|copyright)"
         ;;

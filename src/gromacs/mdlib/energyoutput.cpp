@@ -66,6 +66,7 @@
 #include "gromacs/mdlib/ebin.h"
 #include "gromacs/mdlib/mdebin_bar.h"
 #include "gromacs/mdrunutility/handlerestart.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/energyhistory.h"
 #include "gromacs/mdtypes/fcdata.h"
 #include "gromacs/mdtypes/group.h"
@@ -75,11 +76,11 @@
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
 #include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/topology.h"
 #include "gromacs/trajectory/energyframe.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringutil.h"
 
@@ -221,9 +222,9 @@ EnergyOutput::EnergyOutput(ener_file*                fp_ene,
 
     bEner_[F_LJ]   = !bBHAM;
     bEner_[F_BHAM] = bBHAM;
-    bEner_[F_RF_EXCL] = (EEL_RF(inputrec.coulombtype) && inputrec.cutoff_scheme == CutoffScheme::Group);
-    bEner_[F_COUL_RECIP]   = EEL_FULL(inputrec.coulombtype);
-    bEner_[F_LJ_RECIP]     = EVDW_PME(inputrec.vdwtype);
+    bEner_[F_RF_EXCL] = (usingRF(inputrec.coulombtype) && inputrec.cutoff_scheme == CutoffScheme::Group);
+    bEner_[F_COUL_RECIP]   = usingFullElectrostatics(inputrec.coulombtype);
+    bEner_[F_LJ_RECIP]     = usingLJPme(inputrec.vdwtype);
     bEner_[F_LJ14]         = b14;
     bEner_[F_COUL14]       = b14;
     bEner_[F_LJC14_Q]      = false;
@@ -278,12 +279,15 @@ EnergyOutput::EnergyOutput(ener_file*                fp_ene,
         }
     }
 
-    epc_       = isRerun ? PressureCoupling::No : inputrec.epc;
-    bDiagPres_ = !TRICLINIC(inputrec.ref_p) && !isRerun;
-    ref_p_     = (inputrec.ref_p[XX][XX] + inputrec.ref_p[YY][YY] + inputrec.ref_p[ZZ][ZZ]) / DIM;
-    bTricl_    = TRICLINIC(inputrec.compress) || TRICLINIC(inputrec.deform);
-    bDynBox_   = inputrecDynamicBox(&inputrec);
-    etc_       = isRerun ? TemperatureCoupling::No : inputrec.etc;
+    epc_       = isRerun ? PressureCoupling::No : inputrec.pressureCouplingOptions.epc;
+    bDiagPres_ = !TRICLINIC(inputrec.pressureCouplingOptions.ref_p) && !isRerun;
+    ref_p_     = (inputrec.pressureCouplingOptions.ref_p[XX][XX]
+              + inputrec.pressureCouplingOptions.ref_p[YY][YY]
+              + inputrec.pressureCouplingOptions.ref_p[ZZ][ZZ])
+             / DIM;
+    bTricl_  = TRICLINIC(inputrec.pressureCouplingOptions.compress) || TRICLINIC(inputrec.deform);
+    bDynBox_ = inputrecDynamicBox(&inputrec);
+    etc_     = isRerun ? TemperatureCoupling::No : inputrec.etc;
     bNHC_trotter_   = inputrecNvtTrotter(&inputrec) && !isRerun;
     bPrintNHChains_ = inputrec.bPrintNHChains && !isRerun;
     bMTTK_          = (inputrecNptTrotter(&inputrec) || inputrecNphTrotter(&inputrec)) && !isRerun;
@@ -533,7 +537,7 @@ EnergyOutput::EnergyOutput(ener_file*                fp_ene,
     }
     sfree(grpnms);
 
-    /* Note that fp_ene should be valid on the master rank and null otherwise */
+    /* Note that fp_ene should be valid on the main rank and null otherwise */
     if (fp_ene != nullptr && startingBehavior != StartingBehavior::RestartWithAppending)
     {
         do_enxnms(fp_ene, &ebin_->nener, &ebin_->enm);
@@ -675,9 +679,9 @@ FILE* open_dhdl(const char* filename, const t_inputrec* ir, const gmx_output_env
     xvgr_header(fp, title.c_str(), label_x, label_y, exvggtXNY, oenv);
 
     std::string buf;
-    if (!(ir->bSimTemp))
+    if (!(ir->bSimTemp) && haveConstantEnsembleTemperature(*ir))
     {
-        buf = gmx::formatString("T = %g (K) ", ir->opts.ref_t[0]);
+        buf = gmx::formatString("T = %g (K) ", constantEnsembleTemperature(*ir));
     }
     if ((ir->efep != FreeEnergyPerturbationType::SlowGrowth)
         && (ir->efep != FreeEnergyPerturbationType::Expanded)
@@ -720,7 +724,8 @@ FILE* open_dhdl(const char* filename, const t_inputrec* ir, const gmx_output_env
     }
 
     nsetsextend = nsets;
-    if ((ir->epc != PressureCoupling::No) && (fep->n_lambda > 0) && (fep->init_lambda < 0))
+    if ((ir->pressureCouplingOptions.epc != PressureCoupling::No) && (fep->n_lambda > 0)
+        && (fep->init_lambda < 0))
     {
         nsetsextend += 1; /* for PV term, other terms possible if required for
                              the reduced potential (only needed with foreign
@@ -1286,24 +1291,24 @@ void EnergyOutput::printStepToEnergyFile(ener_file* fp_ene,
     }
 }
 
-void EnergyOutput::printAnnealingTemperatures(FILE* log, const SimulationGroups* groups, const t_grpopts* opts)
+void EnergyOutput::printAnnealingTemperatures(FILE*                   log,
+                                              const SimulationGroups& groups,
+                                              const t_grpopts&        opts,
+                                              const gmx_ekindata_t&   ekind)
 {
     if (log)
     {
-        if (opts)
+        for (int i = 0; i < opts.ngtc; i++)
         {
-            for (int i = 0; i < opts->ngtc; i++)
+            if (opts.annealing[i] != SimulatedAnnealing::No)
             {
-                if (opts->annealing[i] != SimulatedAnnealing::No)
-                {
-                    fprintf(log,
-                            "Current ref_t for group %s: %8.1f\n",
-                            *(groups->groupNames[groups->groups[SimulationAtomGroupType::TemperatureCoupling][i]]),
-                            opts->ref_t[i]);
-                }
+                fprintf(log,
+                        "Current ref_t for group %s: %8.1f\n",
+                        *(groups.groupNames[groups.groups[SimulationAtomGroupType::TemperatureCoupling][i]]),
+                        ekind.currentReferenceTemperature(i));
             }
-            fprintf(log, "\n");
         }
+        fprintf(log, "\n");
     }
 }
 

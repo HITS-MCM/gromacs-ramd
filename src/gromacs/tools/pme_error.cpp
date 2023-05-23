@@ -58,6 +58,7 @@
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/random/threefry.h"
 #include "gromacs/random/uniformintdistribution.h"
+#include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/arraysize.h"
@@ -498,14 +499,14 @@ static real estimate_reciprocal(PmeErrorInputs* info,
 
 #if GMX_LIB_MPI
 #    ifdef TAKETIME
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         t0 = MPI_Wtime();
     }
 #    endif
 #endif
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
 
         fprintf(stderr, "Calculating reciprocal error part 1 ...");
@@ -600,7 +601,7 @@ static real estimate_reciprocal(PmeErrorInputs* info,
                 e_rec2 += 4.0 * coeff * coeff * tmp * q2_all * q2_all / nr;
             }
         }
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             fprintf(stderr,
                     "\rCalculating reciprocal error part 1 ... %3.0f%%",
@@ -609,7 +610,7 @@ static real estimate_reciprocal(PmeErrorInputs* info,
         }
     }
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fprintf(stderr, "\n");
     }
@@ -639,9 +640,9 @@ static real estimate_reciprocal(PmeErrorInputs* info,
     {
         /* Make shure we get identical results in serial and parallel. Therefore,
          * take the sample indices from a single, global random number array that
-         * is constructed on the master node and that only depends on the seed */
+         * is constructed on the main node and that only depends on the seed */
         snew(numbers, xtot);
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             for (i = 0; i < xtot; i++)
             {
@@ -654,7 +655,7 @@ static real estimate_reciprocal(PmeErrorInputs* info,
             nblock_bc(cr->mpi_comm_mygroup, xtot, numbers);
         }
 
-        if (bVerbose && MASTER(cr))
+        if (bVerbose && MAIN(cr))
         {
             fprintf(stdout,
                     "Using %d sample%s to approximate the self interaction error term",
@@ -730,21 +731,21 @@ static real estimate_reciprocal(PmeErrorInputs* info,
 
         e_rec3 += q[ci] * q[ci] * q[ci] * q[ci] * norm2(tmpvec2)
                   / (xtot * M_PI * info->volume * M_PI * info->volume);
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             fprintf(stderr, "\rCalculating reciprocal error part 2 ... %3.0f%%", 100.0 * (i + 1) / stoplocal);
             fflush(stderr);
         }
     }
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fprintf(stderr, "\n");
     }
 
 #if GMX_LIB_MPI
 #    ifdef TAKETIME
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         t1 = MPI_Wtime() - t0;
         fprintf(fp_out, "Recip. err. est. took   : %lf s\n", t1);
@@ -804,7 +805,7 @@ static int prepare_x_q(real* q[], rvec* x[], const gmx_mtop_t* mtop, const rvec 
     int nq; /* number of charged particles */
 
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         snew(*q, mtop->natoms);
         snew(*x, mtop->natoms);
@@ -832,8 +833,8 @@ static int prepare_x_q(real* q[], rvec* x[], const gmx_mtop_t* mtop, const rvec 
     {
         /* Transfer the number of charges */
         block_bc(cr->mpi_comm_mygroup, nq);
-        snew_bc(MASTER(cr), *x, nq);
-        snew_bc(MASTER(cr), *q, nq);
+        snew_bc(MAIN(cr), *x, nq);
+        snew_bc(MAIN(cr), *q, nq);
         nblock_bc(cr->mpi_comm_mygroup, nq, *x);
         nblock_bc(cr->mpi_comm_mygroup, nq, *q);
     }
@@ -874,7 +875,7 @@ static void read_tpr_file(const char*     fn_sim_tpr,
     }
 
     /* Check if PME was chosen */
-    if (EEL_PME(ir->coulombtype) == FALSE)
+    if (!usingPme(ir->coulombtype))
     {
         gmx_fatal(FARGS, "Can only do optimizations for simulations with PME");
     }
@@ -932,14 +933,14 @@ static void estimate_PME_error(PmeErrorInputs*   info,
                             * self-energy error term */
     int i = 0;
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fprintf(fp_out, "\n--- PME ERROR ESTIMATE ---\n");
     }
 
     /* Prepare an x and q array with only the charged atoms */
     ncharges = prepare_x_q(&q, &x, mtop, state->x.rvec_array(), cr);
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         calc_q2all(mtop, &(info->q2all), &(info->q2allnr));
         info->ewald_rtol[0] = std::erfc(info->rcoulomb[0] * info->ewald_beta[0]);
@@ -971,7 +972,7 @@ static void estimate_PME_error(PmeErrorInputs*   info,
         bcast_info(info, cr);
     }
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fprintf(fp_out, "Direct space error est. : %10.3e kJ/(mol*nm)\n", info->e_dir[0]);
         fprintf(fp_out, "Reciprocal sp. err. est.: %10.3e kJ/(mol*nm)\n", info->e_rec[0]);
@@ -985,7 +986,7 @@ static void estimate_PME_error(PmeErrorInputs*   info,
 
     if (info->bTUNE)
     {
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             fprintf(stderr, "Starting tuning ...\n");
         }
@@ -1035,7 +1036,7 @@ static void estimate_PME_error(PmeErrorInputs*   info,
             erec = info->e_rec[0];
             derr = edir - erec;
 
-            if (MASTER(cr))
+            if (MAIN(cr))
             {
                 i++;
                 fprintf(stderr,
@@ -1049,7 +1050,7 @@ static void estimate_PME_error(PmeErrorInputs*   info,
 
         info->ewald_rtol[0] = std::erfc(info->rcoulomb[0] * info->ewald_beta[0]);
 
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             /* Write some info to log file */
             fflush(fp_out);
@@ -1128,9 +1129,9 @@ int gmx_pme_error(int argc, char* argv[])
 
 #define NFILE asize(fnm)
 
-    CommrecHandle commrecHandle = init_commrec(MPI_COMM_WORLD);
-    t_commrec*    cr            = commrecHandle.get();
-    PCA_Flags                   = PCA_NOEXIT_ON_ARGS;
+    std::unique_ptr<t_commrec> commrecHandle = init_commrec(MPI_COMM_WORLD);
+    t_commrec*                 cr            = commrecHandle.get();
+    PCA_Flags                                = PCA_NOEXIT_ON_ARGS;
 
     if (!parse_common_args(
                 &argc, argv, PCA_Flags, NFILE, fnm, asize(pa), pa, asize(desc), desc, 0, nullptr, &oenv))
@@ -1150,7 +1151,7 @@ int gmx_pme_error(int argc, char* argv[])
     info.fourier_sp[0] = fs;
 
     t_inputrec ir;
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         read_tpr_file(opt2fn("-s", NFILE, fnm), &info, &state, &mtop, &ir, user_beta, fracself);
         /* Open logfile for reading */
@@ -1164,7 +1165,7 @@ int gmx_pme_error(int argc, char* argv[])
     }
 
     /* Check consistency if the user provided fourierspacing */
-    if (fs > 0 && MASTER(cr))
+    if (fs > 0 && MAIN(cr))
     {
         /* Recalculate the grid dimensions using fourierspacing from user input */
         info.nkx[0] = 0;
@@ -1202,7 +1203,7 @@ int gmx_pme_error(int argc, char* argv[])
     /* Get an error estimate of the input tpr file and do some tuning if requested */
     estimate_PME_error(&info, &state, &mtop, fp, bVerbose, seed, cr);
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         /* Write out optimized tpr file if requested */
         if (opt2bSet("-so", NFILE, fnm) || bTUNE)

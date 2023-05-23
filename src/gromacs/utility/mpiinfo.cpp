@@ -32,7 +32,10 @@
  * the research papers on the package. Check out https://www.gromacs.org.
  */
 
+#include "gmxpre.h"
+
 #include "gromacs/utility/mpiinfo.h"
+
 #include <cstdlib>
 
 // need to include gmxapi.h here as mpi.h needs to be included before mpi-ext.h
@@ -63,7 +66,42 @@ GpuAwareMpiStatus checkMpiCudaAwareSupport()
     {
         status = GpuAwareMpiStatus::Forced;
     }
+    return status;
+}
 
+GpuAwareMpiStatus checkMpiHipAwareSupport()
+{
+#if MPI_SUPPORTS_HIP_AWARE_DETECTION
+    GpuAwareMpiStatus status = (MPIX_Query_hip_support() == 1) ? GpuAwareMpiStatus::Supported
+                                                               : GpuAwareMpiStatus::NotSupported;
+#elif MPI_SUPPORTS_ROCM_AWARE_DETECTION
+    GpuAwareMpiStatus status = (MPIX_Query_rocm_support() == 1) ? GpuAwareMpiStatus::Supported
+                                                                : GpuAwareMpiStatus::NotSupported;
+#else
+    GpuAwareMpiStatus status = GpuAwareMpiStatus::NotKnown;
+#endif
+
+    if (status != GpuAwareMpiStatus::Supported && getenv("GMX_FORCE_GPU_AWARE_MPI") != nullptr)
+    {
+        status = GpuAwareMpiStatus::Forced;
+    }
+    return status;
+}
+
+
+GpuAwareMpiStatus checkMpiZEAwareSupport()
+{
+#if MPI_SUPPORTS_ZE_AWARE_DETECTION
+    GpuAwareMpiStatus status = (MPIX_Query_ze_support() == 1) ? GpuAwareMpiStatus::Supported
+                                                              : GpuAwareMpiStatus::NotSupported;
+#else
+    GpuAwareMpiStatus status = GpuAwareMpiStatus::NotKnown;
+#endif
+
+    if (status != GpuAwareMpiStatus::Supported && getenv("GMX_FORCE_GPU_AWARE_MPI") != nullptr)
+    {
+        status = GpuAwareMpiStatus::Forced;
+    }
     return status;
 }
 

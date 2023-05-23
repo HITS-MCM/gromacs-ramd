@@ -55,6 +55,7 @@
 #include "gromacs/topology/idef.h"
 
 class DeviceContext;
+struct DeviceInformation;
 class DeviceStream;
 
 struct gmx_enerdata_t;
@@ -62,6 +63,7 @@ struct gmx_ffparams_t;
 struct gmx_mtop_t;
 struct t_inputrec;
 struct gmx_wallcycle;
+struct NBAtomDataGpu;
 
 
 namespace gmx
@@ -79,7 +81,7 @@ static constexpr int numFTypesOnGpu = 8;
  * \note This list should be in sync with the actual GPU code.
  * \note Perturbed interactions are not supported on GPUs.
  * \note The function types in the list are ordered on increasing value.
- * \note Currently bonded are only supported with CUDA, not with OpenCL.
+ * \note Currently bonded are only supported with CUDA and SYCL, not with OpenCL.
  */
 constexpr std::array<int, numFTypesOnGpu> fTypesOnGpu = { F_BONDS,  F_ANGLES, F_UREY_BRADLEY,
                                                           F_PDIHS,  F_RBDIHS, F_IDIHS,
@@ -113,16 +115,18 @@ public:
      * \param[in] ffparams                   Force-field parameters.
      * \param[in] electrostaticsScaleFactor  Scaling factor for the electrostatic potential
      *                                       (Coulomb constant, multiplied by the Fudge factor).
+     * \param[in] deviceInfo                 GPU device handle.
      * \param[in] deviceContext              GPU device context (not used in CUDA).
      * \param[in] deviceStream               GPU device stream.
      * \param[in] wcycle                     The wallclock counter.
      *
      */
-    ListedForcesGpu(const gmx_ffparams_t& ffparams,
-                    float                 electrostaticsScaleFactor,
-                    const DeviceContext&  deviceContext,
-                    const DeviceStream&   deviceStream,
-                    gmx_wallcycle*        wcycle);
+    ListedForcesGpu(const gmx_ffparams_t&    ffparams,
+                    float                    electrostaticsScaleFactor,
+                    const DeviceInformation& deviceInfo,
+                    const DeviceContext&     deviceContext,
+                    const DeviceStream&      deviceStream,
+                    gmx_wallcycle*           wcycle);
     //! Destructor
     ~ListedForcesGpu();
 
@@ -134,17 +138,13 @@ public:
      * to device data structures, and updates device buffers that
      * may have been updated after search.
      *
-     * \param[in]     nbnxnAtomOrder  Mapping between rvec and NBNXM formats.
-     * \param[in]     idef            List of interactions to compute.
-     * \param[in]     xqDevice        Device buffer with coordinates and charge in xyzq-format.
-     * \param[in,out] forceDevice     Device buffer with forces.
-     * \param[in,out] fshiftDevice    Device buffer with shift forces.
+     * \param[in]     nbnxnAtomOrder   Mapping between rvec and NBNXM formats.
+     * \param[in]     idef             List of interactions to compute.
+     * \param[in,out] nbnxmAtomDataGpu Nbnxm GPU atom data (XQ and force buffers).
      */
     void updateInteractionListsAndDeviceBuffers(ArrayRef<const int>           nbnxnAtomOrder,
                                                 const InteractionDefinitions& idef,
-                                                void*                         xqDevice,
-                                                DeviceBuffer<RVec>            forceDevice,
-                                                DeviceBuffer<RVec>            fshiftDevice);
+                                                NBAtomDataGpu*                nbnxmAtomDataGpu);
     /*! \brief
      * Update PBC data.
      *

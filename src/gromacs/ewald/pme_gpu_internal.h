@@ -57,7 +57,6 @@ struct DeviceInformation;
 class DeviceStream;
 class GpuEventSynchronizer;
 struct gmx_hw_info_t;
-struct gmx_gpu_opt_t;
 struct gmx_pme_t; // only used in pme_gpu_reinit
 struct gmx_wallcycle;
 class PmeAtomComm;
@@ -107,9 +106,13 @@ enum class GridOrdering
  * size divisible by the returned number.
  *
  * \returns Number of atoms in a single GPU atom data chunk, which
- * determines a minimum divisior of the size of the memory allocated.
+ * determines a minimum divisor of the size of the memory allocated.
  */
 int pme_gpu_get_atom_data_block_size();
+
+/*!\brief Return the number of atoms per warp */
+GPU_FUNC_QUALIFIER int pme_gpu_get_atoms_per_warp(const PmeGpu* GPU_FUNC_ARGUMENT(pmeGpu))
+        GPU_FUNC_TERM_WITH_RETURN(0);
 
 /*! \libinternal \brief
  * Synchronizes the current computation, waiting for the GPU kernels/transfers to finish.
@@ -137,8 +140,9 @@ void pme_gpu_free_energy_virial(PmeGpu* pmeGpu);
  * Should be called at the end of PME computation which returned energy/virial.
  *
  * \param[in] pmeGpu            The PME GPU structure.
+ * \param[in] useMdGpuGraph     Whether MD GPU Graph is in use.
  */
-void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu);
+void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu, bool useMdGpuGraph);
 
 /*! \libinternal \brief
  * Reallocates and copies the pre-computed B-spline values to the GPU.
@@ -260,6 +264,20 @@ void pme_gpu_realloc_grids(PmeGpu* pmeGpu);
 void pme_gpu_free_grids(const PmeGpu* pmeGpu);
 
 /*! \libinternal \brief
+ * Reinitialize PME halo exchange parameters and staging device buffers for MPI communication.
+ *
+ * \param[in] pmeGpu            The PME GPU structure.
+ */
+void pme_gpu_reinit_haloexchange(PmeGpu* pmeGpu);
+
+/*! \libinternal \brief
+ * Frees device staging buffers used for PME halo exchange.
+ *
+ * \param[in] pmeGpu            The PME GPU structure.
+ */
+void pme_gpu_free_haloexchange(const PmeGpu* pmeGpu);
+
+/*! \libinternal \brief
  * Clears the real space grid on the GPU.
  * Should be called at the end of each computation.
  *
@@ -356,17 +374,18 @@ void pme_gpu_destroy_3dfft(const PmeGpu* pmeGpu);
  * \param[in]  useGpuDirectComm          Whether direct GPU PME-PP communication is active
  * \param[in]  pmeCoordinateReceiverGpu  Coordinate receiver object, which must be valid when
  *                                       direct GPU PME-PP communication is active
+ * \param[in]  wcycle                    The wallclock counter.
  */
-GPU_FUNC_QUALIFIER void
-pme_gpu_spread(const PmeGpu*                  GPU_FUNC_ARGUMENT(pmeGpu),
-               GpuEventSynchronizer*          GPU_FUNC_ARGUMENT(xReadyOnDevice),
-               float**                        GPU_FUNC_ARGUMENT(h_grids),
-               gmx_parallel_3dfft_t*          GPU_FUNC_ARGUMENT(fftSetup),
-               bool                           GPU_FUNC_ARGUMENT(computeSplines),
-               bool                           GPU_FUNC_ARGUMENT(spreadCharges),
-               real                           GPU_FUNC_ARGUMENT(lambda),
-               bool                           GPU_FUNC_ARGUMENT(useGpuDirectComm),
-               gmx::PmeCoordinateReceiverGpu* GPU_FUNC_ARGUMENT(pmeCoordinateReceiverGpu)) GPU_FUNC_TERM;
+GPU_FUNC_QUALIFIER void pme_gpu_spread(const PmeGpu*         GPU_FUNC_ARGUMENT(pmeGpu),
+                                       GpuEventSynchronizer* GPU_FUNC_ARGUMENT(xReadyOnDevice),
+                                       float**               GPU_FUNC_ARGUMENT(h_grids),
+                                       gmx_parallel_3dfft_t* GPU_FUNC_ARGUMENT(fftSetup),
+                                       bool                  GPU_FUNC_ARGUMENT(computeSplines),
+                                       bool                  GPU_FUNC_ARGUMENT(spreadCharges),
+                                       real                  GPU_FUNC_ARGUMENT(lambda),
+                                       bool                  GPU_FUNC_ARGUMENT(useGpuDirectComm),
+                                       gmx::PmeCoordinateReceiverGpu* GPU_FUNC_ARGUMENT(pmeCoordinateReceiverGpu),
+                                       gmx_wallcycle* GPU_FUNC_ARGUMENT(wcycle)) GPU_FUNC_TERM;
 
 /*! \libinternal \brief
  * 3D FFT R2C/C2R routine.
@@ -401,11 +420,13 @@ GPU_FUNC_QUALIFIER void pme_gpu_solve(const PmeGpu* GPU_FUNC_ARGUMENT(pmeGpu),
  * \param[in]     h_grids                  The host-side grid buffer (used only in testing mode).
  * \param[in]     fftSetup                 Host-side FFT setup structure used in Mixed mode
  * \param[in]     lambda                   The lambda value to use.
+ * \param[in]     wcycle                   The wallclock counter.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_gather(PmeGpu*               GPU_FUNC_ARGUMENT(pmeGpu),
                                        float**               GPU_FUNC_ARGUMENT(h_grids),
                                        gmx_parallel_3dfft_t* GPU_FUNC_ARGUMENT(fftSetup),
-                                       float GPU_FUNC_ARGUMENT(lambda)) GPU_FUNC_TERM;
+                                       float                 GPU_FUNC_ARGUMENT(lambda),
+                                       gmx_wallcycle* GPU_FUNC_ARGUMENT(wcycle)) GPU_FUNC_TERM;
 
 
 /*! \brief Sets the device pointer to coordinate data
@@ -505,18 +526,6 @@ GPU_FUNC_QUALIFIER void pme_gpu_update_input_box(PmeGpu*      GPU_FUNC_ARGUMENT(
                                                  const matrix GPU_FUNC_ARGUMENT(box)) GPU_FUNC_TERM;
 
 /*! \libinternal \brief
- * Finishes the PME GPU computation, waiting for the output forces and/or energy/virial to be copied to the host.
- * If forces were computed, they will have arrived at the external host buffer provided to gather.
- * If virial/energy were computed, they will have arrived into the internal staging buffer
- * (even though that should have already happened before even launching the gather).
- * Finally, cudaEvent_t based GPU timers get updated if enabled. They also need stream synchronization for correctness.
- * Additionally, device-side buffers are cleared asynchronously for the next computation.
- *
- * \param[in] pmeGpu         The PME GPU structure.
- */
-void pme_gpu_finish_computation(const PmeGpu* pmeGpu);
-
-/*! \libinternal \brief
  * Get the normal/padded grid dimensions of the real-space PME grid on GPU. Only used in tests.
  *
  * \param[in] pmeGpu             The PME GPU structure.
@@ -530,17 +539,18 @@ GPU_FUNC_QUALIFIER void pme_gpu_get_real_grid_sizes(const PmeGpu* GPU_FUNC_ARGUM
 /*! \libinternal \brief
  * (Re-)initializes the PME GPU data at the beginning of the run or on DLB.
  *
- * \param[in,out] pme            The PME structure.
- * \param[in]     deviceContext  The GPU context.
- * \param[in]     deviceStream   The GPU stream.
- * \param[in,out] pmeGpuProgram  The handle to the program/kernel data created outside (e.g. in unit tests/runner)
- *
+ * \param[in,out] pme               The PME structure.
+ * \param[in]     deviceContext     The GPU context.
+ * \param[in]     deviceStream      The GPU stream.
+ * \param[in,out] pmeGpuProgram     The handle to the program/kernel data created outside (e.g. in unit tests/runner)
+ * \param[in]     useMdGpuGraph     Whether MD GPU Graph is in use
  * \throws gmx::NotImplementedError if this generally valid PME structure is not valid for GPU runs.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_reinit(gmx_pme_t*           GPU_FUNC_ARGUMENT(pme),
                                        const DeviceContext* GPU_FUNC_ARGUMENT(deviceContext),
                                        const DeviceStream*  GPU_FUNC_ARGUMENT(deviceStream),
-                                       const PmeGpuProgram* GPU_FUNC_ARGUMENT(pmeGpuProgram)) GPU_FUNC_TERM;
+                                       const PmeGpuProgram* GPU_FUNC_ARGUMENT(pmeGpuProgram),
+                                       bool GPU_FUNC_ARGUMENT(useMdGpuGraph)) GPU_FUNC_TERM;
 
 /*! \libinternal \brief
  * Destroys the PME GPU data at the end of the run.

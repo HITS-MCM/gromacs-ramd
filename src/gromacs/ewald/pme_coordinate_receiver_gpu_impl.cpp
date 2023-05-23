@@ -36,7 +36,7 @@
  * \brief May be used to implement PME-PP GPU comm interfaces for non-GPU builds.
  *
  * Currently, reports and exits if any of the interfaces are called.
- * Needed to satisfy compiler on systems, where CUDA is not available.
+ * Needed to satisfy compiler when compiling without GPU support.
  *
  * \author Alan Gray <alang@nvidia.com>
  *
@@ -50,7 +50,7 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/gmxassert.h"
 
-#if !GMX_GPU_CUDA
+#if !GMX_GPU_CUDA && !GMX_GPU_SYCL
 
 namespace gmx
 {
@@ -81,38 +81,38 @@ void PmeCoordinateReceiverGpu::reinitCoordinateReceiver(DeviceBuffer<RVec> /* d_
                "correct implementation.");
 }
 
-void PmeCoordinateReceiverGpu::receiveCoordinatesSynchronizerFromPpCudaDirect(int /* ppRank */)
+void PmeCoordinateReceiverGpu::receiveCoordinatesSynchronizerFromPpPeerToPeer(int /* ppRank */)
 {
     GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "
                "implementation.");
 }
 
-void PmeCoordinateReceiverGpu::launchReceiveCoordinatesFromPpCudaMpi(DeviceBuffer<RVec> /* recvbuf */,
-                                                                     int /* numAtoms */,
-                                                                     int /* numBytes */,
-                                                                     int /* ppRank */,
-                                                                     int /* senderIndex */)
+void PmeCoordinateReceiverGpu::launchReceiveCoordinatesFromPpGpuAwareMpi(DeviceBuffer<RVec> /* recvbuf */,
+                                                                         int /* numAtoms */,
+                                                                         int /* numBytes */,
+                                                                         int /* ppRank */,
+                                                                         int /* senderIndex */)
 {
     GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "
                "implementation.");
 }
 
-int PmeCoordinateReceiverGpu::synchronizeOnCoordinatesFromPpRank(int /* pipelineStage */,
-                                                                 const DeviceStream& /* deviceStream */)
+std::tuple<int, GpuEventSynchronizer*> PmeCoordinateReceiverGpu::receivePpCoordinateSendEvent(int /* pipelineStage */)
+{
+    GMX_ASSERT(!impl_,
+               "A CPU stub for PME-PP GPU communication was called instead of the correct "
+               "implementation.");
+    return std::make_tuple(0, nullptr);
+}
+
+int PmeCoordinateReceiverGpu::waitForCoordinatesFromAnyPpRank()
 {
     GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "
                "implementation.");
     return 0;
-}
-
-void PmeCoordinateReceiverGpu::synchronizeOnCoordinatesFromAllPpRanks(const DeviceStream& /* deviceStream */)
-{
-    GMX_ASSERT(!impl_,
-               "A CPU stub for PME-PP GPU communication was called instead of the correct "
-               "implementation.");
 }
 
 DeviceStream* PmeCoordinateReceiverGpu::ppCommStream(int /* senderIndex */)
@@ -139,6 +139,12 @@ int PmeCoordinateReceiverGpu::ppCommNumSenderRanks()
     return 0;
 }
 
+void PmeCoordinateReceiverGpu::insertAsDependencyIntoStream(int /*senderIndex*/, const DeviceStream& /*stream*/)
+{
+    GMX_ASSERT(!impl_,
+               "A CPU stub for PME-PP GPU communication was called instead of the correct "
+               "implementation.");
+}
 
 } // namespace gmx
 

@@ -40,13 +40,15 @@
  * \ingroup module_mdlib
  */
 
-#include "settle_gpu_internal.h"
+#include "gmxpre.h"
 
 #include "gromacs/gpu_utils/devicebuffer.h"
 #include "gromacs/gpu_utils/sycl_kernel_utils.h"
 #include "gromacs/pbcutil/pbc_aiuc_sycl.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/template_mp.h"
+
+#include "settle_gpu_internal.h"
 
 namespace gmx
 {
@@ -98,7 +100,7 @@ auto settleKernel(sycl::handler&                                               c
         constexpr float almost_zero = real(1e-12);
         const int       settleIdx   = itemIdx.get_global_linear_id();
         const int       threadIdx = itemIdx.get_local_linear_id(); // Work-item index in work-group
-        assert(itemIdx.get_local_range(0) == sc_workGroupSize);
+        SYCL_ASSERT(itemIdx.get_local_range(0) == sc_workGroupSize);
         // These are the indexes of three atoms in a single 'water' molecule.
         // TODO Can be reduced to one integer if atoms are consecutive in memory.
         if (settleIdx < numSettles)
@@ -353,7 +355,7 @@ class SettleKernelName;
 
 //! \brief SETTLE SYCL kernel launch code.
 template<bool updateVelocities, bool computeVirial, class... Args>
-static sycl::event launchSettleKernel(const DeviceStream& deviceStream, int numSettles, Args&&... args)
+static void launchSettleKernel(const DeviceStream& deviceStream, int numSettles, Args&&... args)
 {
     // Should not be needed for SYCL2020.
     using kernelNameType = SettleKernelName<updateVelocities, computeVirial>;
@@ -363,20 +365,18 @@ static sycl::event launchSettleKernel(const DeviceStream& deviceStream, int numS
     const sycl::nd_range<1> rangeAllSettles(numSettlesRoundedUp, sc_workGroupSize);
     sycl::queue             q = deviceStream.stream();
 
-    sycl::event e = q.submit([&](sycl::handler& cgh) {
+    q.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel = settleKernel<updateVelocities, computeVirial>(
                 cgh, numSettles, std::forward<Args>(args)...);
         cgh.parallel_for<kernelNameType>(rangeAllSettles, kernel);
     });
-
-    return e;
 }
 
 /*! \brief Select templated kernel and launch it. */
 template<class... Args>
-static inline sycl::event launchSettleKernel(bool updateVelocities, bool computeVirial, Args&&... args)
+static inline void launchSettleKernel(bool updateVelocities, bool computeVirial, Args&&... args)
 {
-    return dispatchTemplatedFunction(
+    dispatchTemplatedFunction(
             [&](auto updateVelocities_, auto computeVirial_) {
                 return launchSettleKernel<updateVelocities_, computeVirial_>(std::forward<Args>(args)...);
             },

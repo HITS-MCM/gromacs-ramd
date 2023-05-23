@@ -61,7 +61,6 @@ ENDMACRO(GMX_TEST_CXXFLAG VARIABLE FLAGS CXXFLAGSVAR)
 function(gmx_target_compile_options_inner)
     set(CFLAGS
             ${SIMD_C_FLAGS}
-            ${MPI_C_COMPILE_OPTIONS}
             ${EXTRA_C_FLAGS}
             ${GMXC_CFLAGS}
          PARENT_SCOPE)
@@ -71,7 +70,6 @@ function(gmx_target_compile_options_inner)
     # enable SYCL for the few files using it, as well as the linker.
     set(CXXFLAGS
             ${SIMD_CXX_FLAGS}
-            ${MPI_CXX_COMPILE_OPTIONS}
             ${DISABLE_SYCL_CXX_FLAGS}
             ${EXTRA_CXX_FLAGS}
             ${GMXC_CXXFLAGS}
@@ -111,6 +109,20 @@ function(gmx_target_compile_options TARGET)
             $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:${build_type}>>:${GMXC_CXXFLAGS_${build_type}}>
             )
     endforeach()
+    # TODO: Restrict the scope of MPI dependence.
+    # Targets that actually need MPI headers and build tool flags should
+    # manage their own `target_link_libraries` locally. Such a change is beyond
+    # the scope of the bug fix for #4678.
+    if (GMX_LIB_MPI AND TARGET ${TARGET})
+        target_link_libraries(
+            ${TARGET} PRIVATE
+            $<$<LINK_LANGUAGE:CXX>:MPI::MPI_CXX>
+            # We don't know whether we have sought the MPI::C component at all, or at least
+            # by the time we process these lines.
+            $<$<AND:$<TARGET_EXISTS:MPI::MPI_C>,$<LINK_LANGUAGE:C>>:MPI::MPI_C>
+            $<$<LINK_LANGUAGE:CUDA>:MPI::MPI_CXX>
+        )
+    endif ()
     # Add the release-configuration compiler options to build
     # configurations that derive from it.
     foreach(build_type RELWITHDEBINFO RELWITHASSERT MINSIZEREL PROFILE)
@@ -211,6 +223,13 @@ function(gmx_source_file_warning_suppression SOURCE_FILE WARNING_FLAG VARNAME)
     check_cxx_compiler_flag(${WARNING_FLAG} ${VARNAME})
     if(${VARNAME})
         set_source_files_properties(${SOURCE_FILE} PROPERTIES COMPILE_FLAGS ${WARNING_FLAG})
+    endif()
+endfunction()
+
+function(gmx_target_interface_warning_suppression TARGET WARNING_FLAG VARNAME)
+    check_cxx_compiler_flag(${WARNING_FLAG} ${VARNAME})
+    if(${VARNAME})
+        target_compile_options(${TARGET} INTERFACE $<$<COMPILE_LANGUAGE:CXX>:${WARNING_FLAG}>)
     endif()
 endfunction()
 
@@ -352,6 +371,9 @@ macro (gmx_c_flags)
             GMX_TEST_CFLAG(CFLAGS_WARN "-Wall;-Wno-unused;-Wunused-value;-Wunused-parameter" GMXC_CFLAGS)
             GMX_TEST_CFLAG(CFLAGS_WARN_EXTRA "-Wpointer-arith" GMXC_CFLAGS_EXTRA)
         endif()
+        if (CMAKE_BUILD_TYPE MATCHES "Debug")
+            GMX_TEST_CFLAG(CFLAGS_NO_DEBUG_DISABLES_OPTIMIZATION "-Wno-debug-disables-optimization" GMXC_CFLAGS)
+        endif()
         GMX_TEST_CFLAG(CFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CFLAGS)
     endif()
 
@@ -375,6 +397,9 @@ macro (gmx_c_flags)
         endif()
         GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_RESERVED_IDENTIFIER "-Wno-reserved-identifier" GMXC_CXXFLAGS) # LLVM BUG #50644
         GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CXXFLAGS)
+        if (CMAKE_BUILD_TYPE MATCHES "Debug")
+            GMX_TEST_CXXFLAG(CXXFLAGS_NO_DEBUG_DISABLES_OPTIMIZATION "-Wno-debug-disables-optimization" GMXC_CXXFLAGS)
+        endif()
         # Some versions of Intel ICPX compiler (at least 2021.1.1 to 2021.3.0) fail to unroll a loop
         # in sycl::accessor::__init, and emit -Wpass-failed=transform-warning. This is a useful
         # warning, but mostly noise right now. Probably related to using shared memory accessors.
@@ -455,6 +480,9 @@ function(gmx_warn_on_everything target)
     gmx_target_warning_suppression(${target} "-Wno-c++98-compat" HAS_WARNING_NO_CPLUSPLUS98_COMPAT)
     gmx_target_warning_suppression(${target} "-Wno-c++98-compat-pedantic" HAS_WARNING_NO_CPLUSPLUS98_COMPAT_PEDANTIC)
 
+    # We require newer C++ than version 11, so ignore c++11 specific warnings
+    gmx_target_warning_suppression(${target} "-Wno-return-std-move-in-c++11" HAS_WARNING_NO_RETURN_STD_MOVE_IN_CPLUSPLUS11)
+
     # Don't warn for use of OpenMP pragmas in no-omp build
     gmx_target_warning_suppression(${target} "-Wno-source-uses-openmp" HAS_WARNING_NO_SOURCE_USED_OPENMP)
 
@@ -515,6 +543,14 @@ function(gmx_warn_on_everything target)
     # case-by-base basis.
     gmx_target_warning_suppression(${target} "-Wno-float-equal" HAS_WARNING_NO_FLOAT_EQUAL)
 
+    if(GMX_GPU_SYCL)
+        # Intel oneAPI compiler warns about compiling kernels with non-32 subgroups for CUDA devices.
+        # But we can not avoid compiling kernels for other sub-group sizes unless we have
+        # sycl_ext_oneapi_kernel_properties and/or sycl::any_device_has (https://github.com/intel/llvm/issues/5562).
+        # Even then, we might want to build for multiple devices. So, we silence the warning.
+        gmx_target_warning_suppression(${target} "-Wno-cuda-compat" HAS_WARNING_NO_CUDA_COMPAT)
+    endif()
+
     #
     # Exceptions we should consider fixing
     #
@@ -532,5 +568,9 @@ function(gmx_warn_on_everything target)
     # The NBNXM simd kernels define lots of macros that are not used
     # It would be better to localize this exception.
     gmx_target_warning_suppression(${target} "-Wno-unused-macros" HAS_WARNING_NO_UNUSED_MACROS)
+
+    # The C++ Buffer hardening warning in Clang is still experimental as of January 2023.
+    # After it is more mature it would better to localize this exception.
+    gmx_target_warning_suppression(${target} "-Wno-unsafe-buffer-usage" HAS_WARNING_NO_UNSAFE_BUFFER_USAGE)
 
 endfunction()

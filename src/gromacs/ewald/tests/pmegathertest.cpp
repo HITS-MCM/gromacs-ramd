@@ -51,8 +51,8 @@
 
 #include "testutils/refdata.h"
 #include "testutils/test_hardware_environment.h"
-#include "testutils/testinit.h"
 #include "testutils/testasserts.h"
+#include "testutils/testinit.h"
 
 #include "pmetestcommon.h"
 
@@ -350,8 +350,7 @@ public:
 
         const PmeTestHardwareContext& pmeTestHardwareContext = getPmeTestHardwareContexts()[contextIndex];
         CodePath                      codePath               = pmeTestHardwareContext.codePath();
-        MessageStringCollector        messages =
-                getSkipMessagesIfNecessary(*getTestHardwareEnvironment()->hwinfo(), inputRec, codePath);
+        MessageStringCollector        messages = getSkipMessagesIfNecessary(inputRec, codePath);
         if (!messages.isEmpty())
         {
             GTEST_SKIP() << messages.toString();

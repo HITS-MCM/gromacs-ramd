@@ -46,8 +46,8 @@
 #include <string>
 
 #include "gromacs/mdrun/simulationinputhandle.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/checkpointdata.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 
 // Forward declarations for types from other modules that are opaque to the public API.
 // TODO: Document the sources of these symbols or import a (self-documenting) fwd header.
@@ -92,9 +92,9 @@ public:
  * computing contexts, the client is responsible for calling only where needed.
  *
  * Example:
- *    if (SIMMASTER(cr))
+ *    if (SIMMAIN(cr))
  *    {
- *        // Only the master rank has the global state
+ *        // Only the main rank has the global state
  *        globalState = globalSimulationState(simulationInput);
  *
  *        // Read (nearly) all data required for the simulation
@@ -102,7 +102,7 @@ public:
  *        applyGlobalTopology(simulationInput, &mtop);
  *     }
  *
- * \todo Factor the logic for global/local and master-rank-checks.
+ * \todo Factor the logic for global/local and main-rank-checks.
  * The SimulationInput utilities should behave properly for the various distributed data scenarios.
  * Consider supplying data directly to the consumers rather than exposing the
  * implementation details of the legacy aggregate types.

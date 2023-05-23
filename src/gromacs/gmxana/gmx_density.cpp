@@ -38,18 +38,20 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <vector>
+
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/commandline/viewit.h"
 #include "gromacs/fileio/trxio.h"
 #include "gromacs/fileio/xvgr.h"
 #include "gromacs/gmxana/gmx_ana.h"
-#include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pbcutil/rmpbc.h"
 #include "gromacs/topology/index.h"
 #include "gromacs/topology/topology.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
@@ -69,11 +71,11 @@ typedef struct
 /****************************************************************************/
 
 /* used for sorting the list */
-static int compare(void* a, void* b)
+static int compare(const void* a, const void* b)
 {
-    t_electron *tmp1, *tmp2;
-    tmp1 = static_cast<t_electron*>(a);
-    tmp2 = static_cast<t_electron*>(b);
+    const t_electron *tmp1, *tmp2;
+    tmp1 = static_cast<const t_electron*>(a);
+    tmp2 = static_cast<const t_electron*>(b);
 
     return std::strcmp(tmp1->atomname, tmp2->atomname);
 }
@@ -122,7 +124,7 @@ static int get_electrons(t_electron** eltab, const char* fn)
 
     /* sort the list */
     fprintf(stderr, "Sorting list..\n");
-    qsort(*eltab, nr, sizeof(t_electron), reinterpret_cast<int (*)(const void*, const void*)>(compare));
+    qsort(*eltab, nr, sizeof(t_electron), compare);
 
     return nr;
 }
@@ -280,12 +282,7 @@ static void calc_electron_density(const char*             fn,
                 sought.atomname = gmx_strdup(*(top->atoms.atomname[index[n][i]]));
 
                 /* now find the number of electrons. This is not efficient. */
-                found = static_cast<t_electron*>(
-                        bsearch(&sought,
-                                eltab,
-                                nr,
-                                sizeof(t_electron),
-                                reinterpret_cast<int (*)(const void*, const void*)>(compare)));
+                found = static_cast<t_electron*>(bsearch(&sought, eltab, nr, sizeof(t_electron), compare));
 
                 if (found == nullptr)
                 {
@@ -488,22 +485,21 @@ static void calc_density(const char*             fn,
     sfree(den_val);
 }
 
-static void plot_density(double*                 slDensity[],
-                         const char*             afile,
-                         int                     nslices,
-                         int                     nr_grps,
-                         char*                   grpname[],
-                         real                    slWidth,
-                         const char**            dens_opt,
-                         gmx_bool                bCenter,
-                         gmx_bool                bSymmetrize,
-                         const gmx_output_env_t* oenv)
+static void plot_density(double*                          slDensity[],
+                         const char*                      afile,
+                         int                              nslices,
+                         gmx::ArrayRef<const std::string> grpname,
+                         real                             slWidth,
+                         const char**                     dens_opt,
+                         gmx_bool                         bCenter,
+                         gmx_bool                         bSymmetrize,
+                         const gmx_output_env_t*          oenv)
 {
     FILE*       den;
     const char* title  = nullptr;
     const char* xlabel = nullptr;
     const char* ylabel = nullptr;
-    int         slice, n;
+    int         slice;
     real        ddd;
     real        axispos;
 
@@ -521,7 +517,7 @@ static void plot_density(double*                 slDensity[],
 
     den = xvgropen(afile, title, xlabel, ylabel, oenv);
 
-    xvgr_legend(den, nr_grps, grpname, oenv);
+    xvgrLegend(den, grpname, oenv);
 
     for (slice = 0; (slice < nslices); slice++)
     {
@@ -534,7 +530,7 @@ static void plot_density(double*                 slDensity[],
             axispos = (slice + 0.5) * slWidth;
         }
         fprintf(den, "%12g  ", axispos);
-        for (n = 0; (n < nr_grps); n++)
+        for (int n = 0; (n < gmx::ssize(grpname)); n++)
         {
             if (bSymmetrize)
             {
@@ -762,8 +758,13 @@ int gmx_density(int argc, char* argv[])
                      dens_opt);
     }
 
-    plot_density(
-            density, opt2fn("-o", NFILE, fnm), nslices, ngrps, grpname, slWidth, dens_opt, bCenter, bSymmetrize, oenv);
+    std::vector<std::string> names;
+    names.resize(ngrps);
+    for (int i = 0; i < ngrps; ++i)
+    {
+        names[i] = grpname[i];
+    }
+    plot_density(density, opt2fn("-o", NFILE, fnm), nslices, names, slWidth, dens_opt, bCenter, bSymmetrize, oenv);
 
     do_view(oenv, opt2fn("-o", NFILE, fnm), "-nxy"); /* view xvgr file */
     return 0;

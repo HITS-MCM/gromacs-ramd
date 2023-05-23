@@ -40,7 +40,7 @@
 
 #include "gmxpre.h"
 
-#include "neldermead.h"
+#include "gromacs/math/neldermead.h"
 
 #include <algorithm>
 #include <list>
@@ -76,7 +76,7 @@ std::vector<real> linearCombination(real alpha, ArrayRef<const real> a, real bet
                 return alpha * a + beta * b;
             });
     return result;
-};
+}
 
 /*! \internal
  *  \brief The parameters for a Nelder-Mead optimisation.

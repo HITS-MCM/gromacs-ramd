@@ -173,6 +173,8 @@ public:
 
         return *this *= 1 / right;
     }
+    //! Unary minus
+    BasicVector<ValueType> operator-() const { return { -x_[0], -x_[1], -x_[2] }; }
     //! Return dot product
     ValueType dot(const BasicVector<ValueType>& right) const
     {
@@ -337,6 +339,7 @@ typedef BasicVector<real> RVec;
 typedef BasicVector<double> DVec;
 //! Shorthand for C++ `ivec`-equivalent type.
 typedef BasicVector<int> IVec;
+
 //! Casts a gmx::RVec array into an `rvec` array.
 static inline rvec* as_rvec_array(RVec* x)
 {
@@ -370,8 +373,6 @@ static inline const ivec* as_ivec_array(const IVec* x)
     return as_vec_array(x);
 }
 
-//! Shorthand for C++ `ivec`-equivalent type.
-typedef BasicVector<int> IVec;
 
 } // namespace gmx
 

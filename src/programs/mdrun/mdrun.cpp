@@ -78,7 +78,7 @@ int gmx_mdrun(int argc, char* argv[])
     // SimulationContext).
     MPI_Comm                 communicator = GMX_LIB_MPI ? MPI_COMM_WORLD : MPI_COMM_NULL;
     PhysicalNodeCommunicator physicalNodeCommunicator(communicator, gmx_physicalnode_id_hash());
-    std::unique_ptr<gmx_hw_info_t> hwinfo = gmx_detect_hardware(physicalNodeCommunicator);
+    std::unique_ptr<gmx_hw_info_t> hwinfo = gmx_detect_hardware(physicalNodeCommunicator, communicator);
     return gmx_mdrun(communicator, *hwinfo, argc, argv);
 }
 
@@ -233,7 +233,7 @@ int gmx_mdrun(MPI_Comm communicator, const gmx_hw_info_t& hwinfo, int argc, char
     StartingBehavior startingBehavior        = StartingBehavior::NewSimulation;
     LogFilePtr       logFileGuard            = nullptr;
     gmx_multisim_t*  ms                      = simulationContext.multiSimulation_.get();
-    std::tie(startingBehavior, logFileGuard) = handleRestart(findIsSimulationMasterRank(ms, communicator),
+    std::tie(startingBehavior, logFileGuard) = handleRestart(findIsSimulationMainRank(ms, communicator),
                                                              communicator,
                                                              ms,
                                                              options.mdrunOptions.appendingBehavior,

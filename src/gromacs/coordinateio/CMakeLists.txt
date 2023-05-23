@@ -33,7 +33,7 @@
 
 # Set up the module library
 add_library(coordinateio INTERFACE)
-file(GLOB COORDINATEIO_SOURCES *.cpp outputadapters/*.cpp)
+file(GLOB COORDINATEIO_SOURCES *.cpp outputadapters/*.cpp frameconverters/*.cpp)
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${COORDINATEIO_SOURCES} PARENT_SCOPE)
 
 # Source files have the following dependencies on library infrastructure.
@@ -55,12 +55,6 @@ target_link_libraries(coordinateio INTERFACE
 #target_link_libraries(coordinateio PUBLIC legacy_api)
 #target_link_libraries(coordinateio PRIVATE common)
 
-# Module dependencies
-# coordinateio interfaces convey transitive dependence on these modules.
-#target_link_libraries(coordinateio PUBLIC
-target_link_libraries(coordinateio INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(coordinateio PRIVATE NOTHING)
 # TODO: Explicitly link specific modules.

@@ -40,7 +40,6 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/utility/enumerationhelpers.h"
 #include "swapcoords.h"
 
 #include <cstdio>
@@ -73,11 +72,14 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/topology/topology.h"
+#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/pleasecite.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
+#include "gromacs/utility/stringutil.h"
 
 static const std::string SwS      = { "SWAP:" }; /**< For output that comes from the swap module */
 static const std::string SwSEmpty = { "     " }; /**< Placeholder for multi-line output */
@@ -210,7 +212,7 @@ t_swapgrp::swap_group(const gmx::LocalAtomSet& atomset) : atomset{ atomset }
         fluxfromAtoB[channel] = 0;
         nCyl[channel]         = 0;
     }
-};
+}
 
 /*! \internal \brief
  * Main (private) data structure for the position swapping protocol.
@@ -742,8 +744,8 @@ static void sortMoleculesIntoCompartments(t_swapgrp*          g,
                 /* Add the first atom of this molecule to the list of molecules in this compartment */
                 add_to_list(iAtom, &g->comp[comp], dist);
 
-                /* Master also checks for ion groups through which channel each ion has passed */
-                if (MASTER(cr) && (g->comp_now != nullptr) && !bIsSolvent)
+                /* Main also checks for ion groups through which channel each ion has passed */
+                if (MAIN(cr) && (g->comp_now != nullptr) && !bIsSolvent)
                 {
                     int globalAtomNr = g->atomset.globalIndex()[iAtom] + 1; /* PDB index starts at 1 ... */
                     detect_flux_per_channel(g,
@@ -775,7 +777,7 @@ static void sortMoleculesIntoCompartments(t_swapgrp*          g,
     }
 
     /* Flux detection warnings */
-    if (MASTER(cr) && !bIsSolvent)
+    if (MAIN(cr) && !bIsSolvent)
     {
         if (g->nCylBoth > 0)
         {
@@ -925,7 +927,7 @@ static void get_initial_ioncounts_from_cpt(const t_inputrec* ir,
 
     sc = ir->swap;
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         /* Copy the past values from the checkpoint values that have been read in already */
         if (bVerbose)
@@ -970,7 +972,7 @@ static void get_initial_ioncounts_from_cpt(const t_inputrec* ir,
 }
 
 
-/*! \brief The master lets all others know about the initial ion counts. */
+/*! \brief The main lets all others know about the initial ion counts. */
 static void bc_initial_concentrations(t_commrec* cr, t_swapcoords* swap, t_swap* s)
 {
     for (int ig = static_cast<int>(SwapGroupSplittingType::Count); ig < s->ngrp; ig++)
@@ -1088,14 +1090,7 @@ static int get_group_apm_check(int igroup, t_swap* s, gmx_bool bVerbose, const g
  */
 static void print_ionlist_legend(const t_inputrec* ir, t_swap* s, const gmx_output_env_t* oenv)
 {
-    const char** legend;
-    int          count = 0;
-    char         buf[STRLEN];
-
-    int nIonTypes = ir->swap->ngrp - static_cast<int>(SwapGroupSplittingType::Count);
-    snew(legend,
-         static_cast<int>(Compartment::Count) * nIonTypes * 3 + 2
-                 + static_cast<int>(Channel::Count) * nIonTypes + 1);
+    std::vector<std::string> legend;
 
     // Number of molecules and difference to reference counts for each
     // compartment and ion type
@@ -1106,35 +1101,24 @@ static void print_ionlist_legend(const t_inputrec* ir, t_swap* s, const gmx_outp
             t_swapGroup* g = &ir->swap->grp[ig];
             real         q = s->group[ig].q;
 
-            snprintf(buf, STRLEN, "%s %s ions (charge %s%g)", CompStr[ic], g->molname, q > 0 ? "+" : "", q);
-            legend[count++] = gmx_strdup(buf);
+            legend.emplace_back(gmx::formatString(
+                    "%s %s ions (charge %s%g)", CompStr[ic], g->molname, q > 0 ? "+" : "", q));
+            legend.emplace_back(gmx::formatString(
+                    "%s av. mismatch to %d %s ions", CompStr[ic], s->group[ig].comp[ic].nMolReq, g->molname));
 
-            snprintf(buf,
-                     STRLEN,
-                     "%s av. mismatch to %d %s ions",
-                     CompStr[ic],
-                     s->group[ig].comp[ic].nMolReq,
-                     g->molname);
-            legend[count++] = gmx_strdup(buf);
-
-            snprintf(buf, STRLEN, "%s net %s ion influx", CompStr[ic], g->molname);
-            legend[count++] = gmx_strdup(buf);
+            legend.emplace_back(gmx::formatString("%s net %s ion influx", CompStr[ic], g->molname));
         }
     }
 
     // Center of split groups
-    snprintf(buf,
-             STRLEN,
-             "%scenter of %s of split group 0",
-             SwapStr[ir->eSwapCoords],
-             (nullptr != s->group[static_cast<int>(SwapGroupSplittingType::Split0)].m) ? "mass" : "geometry");
-    legend[count++] = gmx_strdup(buf);
-    snprintf(buf,
-             STRLEN,
-             "%scenter of %s of split group 1",
-             SwapStr[ir->eSwapCoords],
-             (nullptr != s->group[static_cast<int>(SwapGroupSplittingType::Split1)].m) ? "mass" : "geometry");
-    legend[count++] = gmx_strdup(buf);
+    legend.emplace_back(gmx::formatString(
+            "%scenter of %s of split group 0",
+            SwapStr[ir->eSwapCoords],
+            (nullptr != s->group[static_cast<int>(SwapGroupSplittingType::Split0)].m) ? "mass" : "geometry"));
+    legend.emplace_back(gmx::formatString(
+            "%scenter of %s of split group 1",
+            SwapStr[ir->eSwapCoords],
+            (nullptr != s->group[static_cast<int>(SwapGroupSplittingType::Split1)].m) ? "mass" : "geometry"));
 
     // Ion flux for each channel and ion type
     for (auto ic : gmx::EnumerationWrapper<Channel>{})
@@ -1142,26 +1126,24 @@ static void print_ionlist_legend(const t_inputrec* ir, t_swap* s, const gmx_outp
         for (int ig = static_cast<int>(SwapGroupSplittingType::Count); ig < s->ngrp; ig++)
         {
             t_swapGroup* g = &ir->swap->grp[ig];
-            snprintf(buf, STRLEN, "A->ch%d->B %s permeations", static_cast<int>(ic), g->molname);
-            legend[count++] = gmx_strdup(buf);
+            legend.emplace_back(gmx::formatString(
+                    "A->ch%d->B %s permeations", static_cast<int>(ic), g->molname));
         }
     }
 
     // Number of molecules that leaked from A to B
-    snprintf(buf, STRLEN, "leakage");
-    legend[count++] = gmx_strdup(buf);
+    legend.emplace_back("leakage");
 
-    xvgr_legend(s->fpout, count, legend, oenv);
+    xvgrLegend(s->fpout, legend, oenv);
 
     fprintf(s->fpout,
             "# Instantaneous ion counts and time-averaged differences to requested numbers\n");
 
     // We add a simple text legend helping to identify the columns with xvgr legend strings
     fprintf(s->fpout, "#  time (ps)");
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < gmx::ssize(legend); i++)
     {
-        snprintf(buf, STRLEN, "s%d", i);
-        fprintf(s->fpout, "%10s", buf);
+        fprintf(s->fpout, "%10s", gmx::formatString("s%d", i).c_str());
     }
     fprintf(s->fpout, "\n");
     fflush(s->fpout);
@@ -1178,7 +1160,7 @@ static void detect_flux_per_channel_init(t_swap* s, swaphistory_t* swapstate, co
     t_swapgrp*       g;
     swapstateIons_t* gs;
 
-    /* All these flux detection routines run on the master only */
+    /* All these flux detection routines run on the main only */
     if (swapstate == nullptr)
     {
         return;
@@ -1438,7 +1420,7 @@ static void copyIndicesToGroup(const int* indIons, int nIons, t_swapGroup* g, t_
         {
             gmx_fatal_collective(FARGS,
                                  cr->mpi_comm_mysim,
-                                 MASTER(cr),
+                                 MAIN(cr),
                                  "%s Inconsistency while importing swap-related data from an old "
                                  "input file version.\n"
                                  "%s The requested ion counts in compartments A (%d) and B (%d)\n"
@@ -1576,7 +1558,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
         sc->nAverage = 1; /* averaging makes no sense for reruns */
     }
 
-    if (MASTER(cr) && startingBehavior == gmx::StartingBehavior::NewSimulation)
+    if (MAIN(cr) && startingBehavior == gmx::StartingBehavior::NewSimulation)
     {
         fprintf(fplog, "\nInitializing ion/water position exchanges\n");
         please_cite(fplog, "Kutzner2011b");
@@ -1595,7 +1577,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
     // For compatibility with old .tpr files
     if (bConvertFromOldTpr(sc))
     {
-        convertOldToNewGroupFormat(sc, mtop, bVerbose && MASTER(cr), cr);
+        convertOldToNewGroupFormat(sc, mtop, bVerbose && MAIN(cr), cr);
     }
 
     /* Copy some data and pointers to the group structures for convenience */
@@ -1609,7 +1591,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
     }
 
     /* Check for overlapping atoms */
-    check_swap_groups(s, mtop.natoms, bVerbose && MASTER(cr));
+    check_swap_groups(s, mtop.natoms, bVerbose && MAIN(cr));
 
     /* Allocate space for the collective arrays for all groups */
     /* For the collective position array */
@@ -1630,7 +1612,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
         }
     }
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         if (oh->swapHistory == nullptr)
         {
@@ -1661,7 +1643,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
         real charge;
 
         g      = &(s->group[ig]);
-        g->apm = get_group_apm_check(ig, s, MASTER(cr) && bVerbose, mtop);
+        g->apm = get_group_apm_check(ig, s, MAIN(cr) && bVerbose, mtop);
 
         /* Since all molecules of a group are equal, we only need enough space
          * to determine properties of a single molecule at at time */
@@ -1702,7 +1684,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
     snew(s->pbc, 1);
 
     bool restartWithAppending = (startingBehavior == gmx::StartingBehavior::RestartWithAppending);
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         if (bVerbose)
         {
@@ -1829,7 +1811,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
     }
 
     /* Get the initial particle concentrations and let the other nodes know */
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         if (startingBehavior != gmx::StartingBehavior::NewSimulation)
         {
@@ -1905,7 +1887,7 @@ t_swap* init_swapcoords(FILE*                       fplog,
     detect_flux_per_channel_init(s, swapstate, startingBehavior != gmx::StartingBehavior::NewSimulation);
 
     /* We need to print the legend if we open this file for the first time. */
-    if (MASTER(cr) && !restartWithAppending)
+    if (MAIN(cr) && !restartWithAppending)
     {
         print_ionlist_legend(ir, s, oenv);
     }
@@ -2109,7 +2091,7 @@ gmx_bool do_swapcoords(t_commrec*        cr,
     }
 
     /* Output how many ions are in the compartments */
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         print_ionlist(s, t, "");
     }
@@ -2207,7 +2189,7 @@ gmx_bool do_swapcoords(t_commrec*        cr,
                         g->comp[otherC].nMolPast[j]--;
                     }
                     /* Clear ion history */
-                    if (MASTER(cr))
+                    if (MAIN(cr))
                     {
                         int iMol               = iion / g->apm;
                         g->channel_label[iMol] = ChannelHistory::None;

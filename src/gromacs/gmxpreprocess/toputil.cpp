@@ -33,7 +33,6 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/utility/strconvert.h"
 #include "toputil.h"
 
 #include <climits>
@@ -52,6 +51,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
+#include "gromacs/utility/strconvert.h"
 #include "gromacs/utility/stringutil.h"
 
 /* UTILITIES */
@@ -160,14 +160,14 @@ static void print_bt(FILE*                                   out,
         {
             for (int j = 0; (j < nral); j++)
             {
-                fprintf(out, "%5s ", *at->atomNameFromAtomType(atoms[j]));
+                fprintf(out, "%5s ", at->atomNameFromAtomType(atoms[j])->c_str());
             }
         }
         else
         {
             for (int j = 0; (j < 2); j++)
             {
-                fprintf(out, "%5s ", *at->atomNameFromAtomType(atoms[dihp[f][j]]));
+                fprintf(out, "%5s ", at->atomNameFromAtomType(atoms[dihp[f][j]])->c_str());
             }
         }
         fprintf(out, "%5d ", bSwapParity ? -f - 1 : f + 1);
@@ -302,7 +302,7 @@ void print_atoms(FILE* out, PreprocessingAtomTypes* atype, t_atoms* at, int* cgn
             fprintf(out,
                     "%6d %10s %6d%c %5s %6s %6d %10g %10g",
                     i + 1,
-                    *tpnmA,
+                    tpnmA->c_str(),
                     at->resinfo[ri].nr,
                     at->resinfo[ri].ic,
                     bRTPresname ? *(at->resinfo[at->atom[i].resind].rtp)
@@ -319,7 +319,7 @@ void print_atoms(FILE* out, PreprocessingAtomTypes* atype, t_atoms* at, int* cgn
                 {
                     gmx_fatal(FARGS, "tpB = %d, i= %d in print_atoms", tpB, i);
                 }
-                fprintf(out, " %6s %10g %10g", *tpnmB, at->atom[i].qB, at->atom[i].mB);
+                fprintf(out, " %6s %10g %10g", tpnmB->c_str(), at->atom[i].qB, at->atom[i].mB);
             }
             // Accumulate the total charge to help troubleshoot issues.
             qtot += static_cast<double>(at->atom[i].q);
@@ -348,19 +348,12 @@ void print_atoms(FILE* out, PreprocessingAtomTypes* atype, t_atoms* at, int* cgn
 
 void print_bondeds(FILE* out, int natoms, Directive d, int ftype, int fsubtype, gmx::ArrayRef<const InteractionsOfType> plist)
 {
-    t_symtab stab;
-    t_atom*  a;
-
+    auto                   atom = std::make_unique<t_atom>();
     PreprocessingAtomTypes atype;
-    snew(a, 1);
-    open_symtab(&stab);
     for (int i = 0; (i < natoms); i++)
     {
         std::string name = gmx::toString(i + 1);
-        atype.addType(&stab, *a, name, InteractionOfType({}, {}), 0, 0);
+        atype.addType(*atom, name, InteractionOfType({}, {}), 0, 0);
     }
     print_bt(out, d, &atype, ftype, fsubtype, plist, TRUE);
-
-    done_symtab(&stab);
-    sfree(a);
 }

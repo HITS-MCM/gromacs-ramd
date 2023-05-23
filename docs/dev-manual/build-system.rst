@@ -55,7 +55,7 @@ testing. Their implementations can be found in ``cmake/gmxBuildTypeXXX.cmake``.
 **Reference**
   This build type compiles a version of |Gromacs| aimed solely at correctness. All
   parallelization and optimization possibilities are disabled. This build type is
-  compiled with GCC 7 to generate the regression test reference values, against
+  compiled with GCC 9 to generate the regression test reference values, against
   which all other |Gromacs| builds are tested.
 
 **RelWithAssert**
@@ -336,15 +336,6 @@ Variables affecting compilation/linking
 
    Path to VMD plugins for molfile I/O. Only used when ``GMX_USE_PLUGINS`` is enabled.
 
-.. cmake:: GMX_X11
-
-   Enable ``gmx view`` tool. Default: ``OFF``. Deprecated.
-
-.. cmake:: GMX_XML
-
-   Currently, this option has no effect on the compilation or linking, since
-   there is no code outside the tests that would use :file:`libxml2`.
-
 Variables affecting the ``all`` target
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -406,9 +397,23 @@ Variables affecting the ``all`` target
 Variables affecting special targets
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. cmake:: GMX_INSTALL_LEGACY_API
+
+    Default ``OFF``. If set to ``ON``, headers will be installed to ``gromacs/``
+    in the CMake header destination folder to allow use of the ``::gmx`` C++
+    namespace, supported by the :file:`libgromacs` library.
+    See `Legacy API <../doxygen/html-user/index.xhtml>`_.
+
+.. cmake:: GMX_INSTALL_NBLIB_API
+
+    If set to ``ON`` (default, when :cmake:`BUILD_SHARED_LIBS` on non-Windows platforms),
+    build and install the :file:`libnb_gmx` and :file:`nblib/` headers.
+    See :ref:`nblib`.
+
 .. cmake:: GMXAPI
 
-    If set ``ON``, the additional ``gmxapi`` C++ library is configured and the
+    If set ``ON`` (default, when :cmake:`BUILD_SHARED_LIBS` on non-Windows platforms),
+    the additional ``gmxapi`` C++ library is configured and the
     ``gmxapi`` headers will be installed. Provides the additional build tree
     targets ``gmxapi-cppdocs`` and ``gmxapi-cppdocs-dev`` when Doxygen is
     available. Also exports CMake configuration files for ``gmxapi`` that allow
@@ -556,7 +561,7 @@ tests
    See :doc:`testutils`.
 webpage
    Collection target that runs the other documentation targets to generate the
-   full set of HTML (and linked) documentaion.
+   full set of HTML (and linked) documentation.
    This target is used as part of the CI.
    All CMake code is in :file:`docs/`.
 webpage-sphinx

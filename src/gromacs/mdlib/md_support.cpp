@@ -138,7 +138,7 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
         gt = 0;
         for (n = start_t; n < end_t; n++)
         {
-            if (md->cTC)
+            if (!md->cTC.empty())
             {
                 gt = md->cTC[n];
             }
@@ -211,7 +211,7 @@ static void calc_ke_part_visc(const matrix                   box,
     dekindl = 0;
     for (n = start; n < start + homenr; n++)
     {
-        if (md->cTC)
+        if (!md->cTC.empty())
         {
             gt = md->cTC[n];
         }
@@ -419,23 +419,20 @@ static void min_zero(int* n, int i)
     }
 }
 
-static int lcd4(int i1, int i2, int i3, int i4)
+// Returns the lowest common denominator of all values > 0
+static int lcd3(const int i1, const int i2, const int i3)
 {
-    int nst;
+    int nst = 0;
 
-    nst = 0;
     min_zero(&nst, i1);
     min_zero(&nst, i2);
     min_zero(&nst, i3);
-    min_zero(&nst, i4);
     if (nst == 0)
     {
-        gmx_incons("All 4 inputs for determining nstglobalcomm are <= 0");
+        gmx_incons("All 3 inputs for determining nstglobalcomm are <= 0");
     }
 
-    while (nst > 1
-           && ((i1 > 0 && i1 % nst != 0) || (i2 > 0 && i2 % nst != 0) || (i3 > 0 && i3 % nst != 0)
-               || (i4 > 0 && i4 % nst != 0)))
+    while (nst > 1 && ((i1 > 0 && i1 % nst != 0) || (i2 > 0 && i2 % nst != 0) || (i3 > 0 && i3 % nst != 0)))
     {
         nst--;
     }
@@ -445,37 +442,37 @@ static int lcd4(int i1, int i2, int i3, int i4)
 
 int computeGlobalCommunicationPeriod(const t_inputrec* ir)
 {
-    int nstglobalcomm = 10;
+    // Maximum period for intra/inter simulation signalling
+    const int c_maximumCommunicationPeriod = 200;
+
+    int nstglobalcomm;
+
+    if (ir->nstcalcenergy == 0 && ir->etc == TemperatureCoupling::No
+        && ir->pressureCouplingOptions.epc != PressureCoupling::No)
     {
-        // Set up the default behaviour
-        if (!(ir->nstcalcenergy > 0 || ir->nstlist > 0 || ir->etc != TemperatureCoupling::No
-              || ir->epc != PressureCoupling::No))
+        nstglobalcomm = c_maximumCommunicationPeriod;
+    }
+    else
+    {
+        /* Some algorithms assume that certain energies are available
+         * at nstglobalcomm steps.
+         * We plan to remove nstglobalcomm. To achieve that, we need
+         * to figure out the needs of these algorithms.
+         */
+        nstglobalcomm = lcd3(ir->nstcalcenergy,
+                             ir->etc != TemperatureCoupling::No ? ir->nsttcouple : 0,
+                             ir->pressureCouplingOptions.epc != PressureCoupling::No
+                                     ? ir->pressureCouplingOptions.nstpcouple
+                                     : 0);
+        if (nstglobalcomm > c_maximumCommunicationPeriod)
         {
-            /* The user didn't choose the period for anything
-               important, so we just make sure we can send signals and
-               write output suitably. */
-            if (ir->nstenergy > 0 && ir->nstenergy < nstglobalcomm)
-            {
-                nstglobalcomm = ir->nstenergy;
-            }
-        }
-        else
-        {
-            /* The user has made a choice (perhaps implicitly), so we
-             * ensure that we do timely intra-simulation communication
-             * for (possibly) each of the four parts that care.
-             *
-             * TODO Does the Verlet scheme (+ DD) need any
-             * communication at nstlist steps? Is the use of nstlist
-             * here a leftover of the twin-range scheme? Can we remove
-             * nstlist when we remove the group scheme?
+            /* As this is an uncommon situation, we simply use the LCD of
+             * the current value and the maximum.
              */
-            nstglobalcomm = lcd4(ir->nstcalcenergy,
-                                 ir->nstlist,
-                                 ir->etc != TemperatureCoupling::No ? ir->nsttcouple : 0,
-                                 ir->epc != PressureCoupling::No ? ir->nstpcouple : 0);
+            nstglobalcomm = lcd3(nstglobalcomm, c_maximumCommunicationPeriod, 0);
         }
     }
+
     return nstglobalcomm;
 }
 
@@ -496,7 +493,7 @@ void rerun_parallel_comm(t_commrec* cr, t_trxframe* fr, gmx_bool* bLastStep)
 {
     rvec *xp, *vp;
 
-    if (MASTER(cr) && *bLastStep)
+    if (MAIN(cr) && *bLastStep)
     {
         fr->natoms = -1;
     }
@@ -533,11 +530,12 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
     if (ir->pbcType != PbcType::No)
     {
         state->flags |= enumValueToBitMask(StateEntry::Box);
-        if (inputrecPreserveShape(ir))
+        if (shouldPreserveBoxShape(ir->pressureCouplingOptions, ir->deform))
         {
             state->flags |= enumValueToBitMask(StateEntry::BoxRel);
         }
-        if ((ir->epc == PressureCoupling::ParrinelloRahman) || (ir->epc == PressureCoupling::Mttk))
+        if ((ir->pressureCouplingOptions.epc == PressureCoupling::ParrinelloRahman)
+            || (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk))
         {
             state->flags |= enumValueToBitMask(StateEntry::BoxV);
             if (!useModularSimulator)
@@ -555,7 +553,8 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
             state->flags |= enumValueToBitMask(StateEntry::Veta);
             state->flags |= enumValueToBitMask(StateEntry::Vol0);
         }
-        if (ir->epc == PressureCoupling::Berendsen || ir->epc == PressureCoupling::CRescale)
+        if (ir->pressureCouplingOptions.epc == PressureCoupling::Berendsen
+            || ir->pressureCouplingOptions.epc == PressureCoupling::CRescale)
         {
             state->flags |= enumValueToBitMask(StateEntry::BarosInt);
         }

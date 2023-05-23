@@ -40,6 +40,7 @@ add_subdirectory(kernels_simd_2xmm)
 file(GLOB NBNXM_SOURCES
     # Source files
     atomdata.cpp
+    exclusionchecker.cpp
     freeenergydispatch.cpp
     grid.cpp
     gridset.cpp
@@ -99,18 +100,13 @@ target_include_directories(nbnxm INTERFACE
 #target_link_libraries(nbnxm PUBLIC
 target_link_libraries(nbnxm INTERFACE
         legacy_api
+        gpu_utils
         )
 
 # TODO: when nbnxm is an OBJECT target
 #target_link_libraries(nbnxm PUBLIC legacy_api)
 #target_link_libraries(nbnxm PRIVATE common)
 
-# Module dependencies
-# nbnxm interfaces convey transitive dependence on these modules.
-#target_link_libraries(nbnxm PUBLIC
-target_link_libraries(nbnxm INTERFACE
-        utility
-        )
 
 if (BUILD_TESTING)
     add_subdirectory(tests)

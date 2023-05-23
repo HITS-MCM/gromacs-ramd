@@ -51,12 +51,14 @@
 #include <tuple>
 #include <vector>
 
-#include "nblib/listed_forces/traits.h"
-#include "nblib/listed_forces/kernels.hpp"
-#include "nblib/util/util.hpp"
-#include "nblib/pbc.hpp"
-#include "nblib/vector.h"
 #include "gromacs/utility/arrayref.h"
+
+#include "nblib/util/util.hpp"
+#include "nblib/vector.h"
+
+#include "listed_forces/traits.h"
+#include "listed_forces/kernels.hpp"
+#include "pbc.hpp"
 
 #define NBLIB_ALWAYS_INLINE __attribute((always_inline))
 
@@ -161,7 +163,7 @@ if (parameters.manifest == ThreeCenterType::Cargo::ij)
 
     // aggregate is empty
     return 0.0;
-};
+}
 
 template<class ThreeCenterType, class BasicVector, class ShiftForce>
 inline NBLIB_ALWAYS_INLINE
@@ -177,7 +179,7 @@ addTwoCenterAggregate(const ThreeCenterType& /* parameters */,
                       ShiftForce* /* shf_c */)
 {
     return 0.0;
-};
+}
 
 template<class ThreeCenterType, class BasicVector, class ShiftForce>
 inline NBLIB_ALWAYS_INLINE
@@ -350,7 +352,7 @@ addThreeCenterAggregate(const FourCenterType& parameters,
 
     // aggregate is empty
     return 0.0;
-};
+}
 
 template<class FourCenterType, class BasicVector>
 inline NBLIB_ALWAYS_INLINE
@@ -365,7 +367,7 @@ addThreeCenterAggregate(const FourCenterType& /* parameters*/,
                         BasicVector* /* fl */)
 {
     return 0.0;
-};
+}
 
 /*! \brief Calculate four-center interactions
  *

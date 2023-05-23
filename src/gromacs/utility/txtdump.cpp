@@ -33,9 +33,9 @@
  */
 #include "gmxpre.h"
 
-/* This file is completely threadsafe - please keep it that way! */
+#include "gromacs/utility/txtdump.h"
 
-#include "txtdump.h"
+/* This file is completely threadsafe - please keep it that way! */
 
 #include <cstdio>
 #include <cstdlib>
@@ -171,7 +171,7 @@ void pr_str(FILE* fp, int indent, const char* title, const char* s)
     fprintf(fp, "%-30s = %s\n", title, s);
 }
 
-void pr_strings(FILE* fp, int indent, const char* title, char*** nm, int n, gmx_bool bShowNumbers)
+void pr_strings(FILE* fp, int indent, const char* title, const char* const* const* nm, int n, gmx_bool bShowNumbers)
 {
     if (available(fp, nm, indent, title))
     {

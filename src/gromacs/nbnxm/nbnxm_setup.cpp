@@ -46,6 +46,7 @@
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/hardware/hw_info.h"
+#include "gromacs/mdlib/calc_verletbuf.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/enerdata.h"
@@ -61,6 +62,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/logger.h"
 
+#include "exclusionchecker.h"
 #include "freeenergydispatch.h"
 #include "grid.h"
 #include "nbnxm_geometry.h"
@@ -143,7 +145,7 @@ static KernelSetup pick_nbnxn_kernel_cpu(const t_inputrec gmx_unused& inputrec,
          */
         kernelSetup.kernelType = KernelType::Cpu4xN_Simd_4xN;
 
-        if (!GMX_SIMD_HAVE_FMA && (EEL_PME_EWALD(inputrec.coulombtype) || EVDW_PME(inputrec.vdwtype)))
+        if (!GMX_SIMD_HAVE_FMA && (usingPmeOrEwald(inputrec.coulombtype) || usingLJPme(inputrec.vdwtype)))
         {
             /* We have Ewald kernels without FMA (Intel Sandy/Ivy Bridge).
              * There are enough instructions to make 2x(4+4) efficient.
@@ -281,7 +283,7 @@ static KernelSetup pick_nbnxn_kernel(const gmx::MDLogger&     mdlog,
                 .asParagraph()
                 .appendTextFormatted(
                         "WARNING: Using the slow %s kernels. This should\n"
-                        "not happen during routine usage on supported platforms.",
+                        "not happen during routine usage on common platforms.",
                         lookup_kernel_name(kernelSetup.kernelType));
     }
 
@@ -381,8 +383,10 @@ std::unique_ptr<nonbonded_verlet_t> init_nb_verlet(const gmx::MDLogger& mdlog,
                                                    bool                 useGpuForNonbonded,
                                                    const gmx::DeviceStreamManager* deviceStreamManager,
                                                    const gmx_mtop_t&               mtop,
-                                                   matrix                          box,
-                                                   gmx_wallcycle*                  wcycle)
+                                                   gmx::ObservablesReducerBuilder* observablesReducerBuilder,
+                                                   gmx::ArrayRef<const gmx::RVec> coordinates,
+                                                   matrix                         box,
+                                                   gmx_wallcycle*                 wcycle)
 {
     const bool emulateGpu = (getenv("GMX_EMULATE_GPU") != nullptr);
 
@@ -413,7 +417,10 @@ std::unique_ptr<nonbonded_verlet_t> init_nb_verlet(const gmx::MDLogger& mdlog,
     PairlistParams pairlistParams(
             kernelSetup.kernelType, bFEP_NonBonded, inputrec.rlist, haveMultipleDomains);
 
-    setupDynamicPairlistPruning(mdlog, inputrec, mtop, box, *forcerec.ic, &pairlistParams);
+    const real effectiveAtomDensity = computeEffectiveAtomDensity(
+            coordinates, box, std::max(inputrec.rcoulomb, inputrec.rvdw), commrec->mpi_comm_mygroup);
+
+    setupDynamicPairlistPruning(mdlog, inputrec, mtop, effectiveAtomDensity, *forcerec.ic, &pairlistParams);
 
     const int enbnxninitcombrule = getENbnxnInitCombRule(forcerec);
 
@@ -468,8 +475,20 @@ std::unique_ptr<nonbonded_verlet_t> init_nb_verlet(const gmx::MDLogger& mdlog,
             gmx_omp_nthreads_get(ModuleMultiThread::Pairsearch),
             pinPolicy);
 
-    return std::make_unique<nonbonded_verlet_t>(
-            std::move(pairlistSets), std::move(pairSearch), std::move(nbat), kernelSetup, gpu_nbv, wcycle);
+    std::unique_ptr<ExclusionChecker> exclusionChecker;
+    if (inputrec.efep != FreeEnergyPerturbationType::No
+        && (usingPmeOrEwald(inputrec.coulombtype) || usingLJPme(inputrec.vdwtype)))
+    {
+        exclusionChecker = std::make_unique<ExclusionChecker>(commrec, mtop, observablesReducerBuilder);
+    }
+
+    return std::make_unique<nonbonded_verlet_t>(std::move(pairlistSets),
+                                                std::move(pairSearch),
+                                                std::move(nbat),
+                                                kernelSetup,
+                                                std::move(exclusionChecker),
+                                                gpu_nbv,
+                                                wcycle);
 }
 
 } // namespace Nbnxm
@@ -478,13 +497,38 @@ nonbonded_verlet_t::nonbonded_verlet_t(std::unique_ptr<PairlistSets>     pairlis
                                        std::unique_ptr<PairSearch>       pairSearch,
                                        std::unique_ptr<nbnxn_atomdata_t> nbat_in,
                                        const Nbnxm::KernelSetup&         kernelSetup,
+                                       std::unique_ptr<ExclusionChecker> exclusionChecker,
                                        NbnxmGpu*                         gpu_nbv_ptr,
                                        gmx_wallcycle*                    wcycle) :
     pairlistSets_(std::move(pairlistSets)),
     pairSearch_(std::move(pairSearch)),
     nbat(std::move(nbat_in)),
     kernelSetup_(kernelSetup),
+    exclusionChecker_(std::move(exclusionChecker)),
     wcycle_(wcycle),
+    gpu_nbv(gpu_nbv_ptr)
+{
+    GMX_RELEASE_ASSERT(pairlistSets_, "Need valid pairlistSets");
+    GMX_RELEASE_ASSERT(pairSearch_, "Need valid search object");
+    GMX_RELEASE_ASSERT(nbat, "Need valid atomdata object");
+
+    if (pairlistSets_->params().haveFep)
+    {
+        freeEnergyDispatch_ = std::make_unique<FreeEnergyDispatch>(nbat->params().nenergrp);
+    }
+}
+
+nonbonded_verlet_t::nonbonded_verlet_t(std::unique_ptr<PairlistSets>     pairlistSets,
+                                       std::unique_ptr<PairSearch>       pairSearch,
+                                       std::unique_ptr<nbnxn_atomdata_t> nbat_in,
+                                       const Nbnxm::KernelSetup&         kernelSetup,
+                                       NbnxmGpu*                         gpu_nbv_ptr) :
+    pairlistSets_(std::move(pairlistSets)),
+    pairSearch_(std::move(pairSearch)),
+    nbat(std::move(nbat_in)),
+    kernelSetup_(kernelSetup),
+    exclusionChecker_(),
+    wcycle_(nullptr),
     gpu_nbv(gpu_nbv_ptr)
 {
     GMX_RELEASE_ASSERT(pairlistSets_, "Need valid pairlistSets");

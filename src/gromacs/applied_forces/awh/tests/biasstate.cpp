@@ -45,12 +45,11 @@
 
 #include "gromacs/applied_forces/awh/biasgrid.h"
 #include "gromacs/applied_forces/awh/pointstate.h"
+#include "gromacs/applied_forces/awh/tests/awh_setup.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/mdtypes/awh_params.h"
 #include "gromacs/utility/arrayref.h"
-#include "gromacs/utility/smalloc.h"
 
-#include "gromacs/applied_forces/awh/tests/awh_setup.h"
 #include "testutils/testasserts.h"
 #include "testutils/testfilemanager.h"
 
@@ -104,7 +103,7 @@ public:
         biasState_ = std::make_unique<BiasState>(awhBiasParams, 1.0, dimParams, grid, nullptr);
 
         // Here we initialize the grid point state using the input file
-        std::string filename = gmx::test::TestFileManager::getInputFilePath(GetParam());
+        std::string filename = gmx::test::TestFileManager::getInputFilePath(GetParam()).u8string();
         biasState_->initGridPointState(
                 awhBiasParams, dimParams, grid, biasParams, filename, params_->awhParams.numBias());
     }

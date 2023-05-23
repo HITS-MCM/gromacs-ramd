@@ -406,7 +406,8 @@ TEST_P(ParameterizedFFTTest3D, RunsOnHost)
  *
  *  DPCPP uses oneMKL, which seems to have troubles with out-of-place
  *  transforms. */
-constexpr bool sc_performOutOfPlaceFFT = !((GMX_SYCL_DPCPP == 1) && (GMX_FFT_MKL == 1));
+constexpr bool sc_performOutOfPlaceFFT =
+        (GMX_GPU_FFT_MKL == 0) && (GMX_GPU_FFT_DBFFT == 0); // NOLINT(misc-redundant-expression)
 
 /*! \brief Return the output grid depending on whether in- or out-of
  * place FFT is used
@@ -419,7 +420,7 @@ constexpr bool sc_performOutOfPlaceFFT = !((GMX_SYCL_DPCPP == 1) && (GMX_FFT_MKL
 template<bool performOutOfPlaceFFT>
 DeviceBuffer<float>* actualOutputGrid(DeviceBuffer<float>* realGrid, DeviceBuffer<float>* complexGrid);
 
-#    if GMX_SYCL_DPCPP && GMX_FFT_MKL
+#    if GMX_SYCL_DPCPP && (GMX_GPU_FFT_MKL || GMX_GPU_FFT_DBFFT)
 
 template<>
 DeviceBuffer<float>* actualOutputGrid<false>(DeviceBuffer<float>* realGrid,
@@ -452,9 +453,9 @@ TEST_P(ParameterizedFFTTest3D, RunsOnDevices)
     ClfftInitializer clfftInitializer;
     for (const auto& testDevice : getTestHardwareEnvironment()->getTestDeviceList())
     {
+        testDevice->activate();
         const DeviceContext& deviceContext = testDevice->deviceContext();
-        setActiveDevice(testDevice->deviceInfo());
-        const DeviceStream& deviceStream = testDevice->deviceStream();
+        const DeviceStream&  deviceStream  = testDevice->deviceStream();
 
         ivec realGridSize = { std::get<0>(GetParam()), std::get<1>(GetParam()), std::get<2>(GetParam()) };
         // Note the real-grid padding differs from that on the CPU
@@ -492,48 +493,36 @@ TEST_P(ParameterizedFFTTest3D, RunsOnDevices)
 #    if GMX_GPU_CUDA
         const FftBackend backend = FftBackend::Cufft;
 #    elif GMX_GPU_OPENCL
-        const FftBackend backend = FftBackend::Ocl;
-#    elif GMX_GPU_SYCL
-#        if GMX_SYCL_HIPSYCL
-#            if GMX_HIPSYCL_HAVE_HIP_TARGET
-        const FftBackend backend = FftBackend::SyclRocfft;
-#            else
-        // Use stub backend so compilation succeeds
-        const FftBackend backend = FftBackend::Sycl;
-        // Don't complain about unused reference data
-        if (checker.has_value())
-        {
-            checker.value().disableUnusedEntriesCheck();
-        }
-        // Skip the rest of the test
-        GTEST_SKIP() << "Only rocFFT backend is supported with hipSYCL";
-#            endif
-#        elif GMX_SYCL_DPCPP
-#            if GMX_FFT_MKL
-        const FftBackend backend = FftBackend::SyclMkl;
-#            else
-        // Use stub backend so compilation succeeds
-        const FftBackend backend = FftBackend::Sycl;
-        // Don't complain about unused reference data
-        if (checker.has_value())
-        {
-            checker.value().disableUnusedEntriesCheck();
-        }
-        // Skip the rest of the test
-        GTEST_SKIP() << "Only MKL backend is supported with DPC++";
-#            endif
+#        if GMX_GPU_FFT_VKFFT
+        const FftBackend backend = FftBackend::OclVkfft;
 #        else
-#            error "Unsupported SYCL implementation"
+        const FftBackend backend = FftBackend::Ocl;
+#        endif
+#    elif GMX_GPU_SYCL
+#        if GMX_GPU_FFT_MKL
+        const FftBackend backend = FftBackend::SyclMkl;
+#        elif GMX_GPU_FFT_DBFFT
+        const FftBackend backend = FftBackend::SyclDbfft;
+#        elif GMX_GPU_FFT_ROCFFT
+        const FftBackend backend = FftBackend::SyclRocfft;
+#        elif GMX_GPU_FFT_VKFFT
+        const FftBackend backend = FftBackend::SyclVkfft;
+#        else
+        // Use stub backend so compilation succeeds
+        const FftBackend backend = FftBackend::Sycl;
+        // Don't complain about unused reference data
+        if (checker.has_value())
+        {
+            checker.value().disableUnusedEntriesCheck();
+        }
+        // Skip the rest of the test
+        GTEST_SKIP() << "No supported GPU FFT backend detected";
 #        endif
 #    endif
 
         SCOPED_TRACE("Allocating the device buffers");
-        DeviceBuffer<float> realGrid, complexGrid;
+        DeviceBuffer<float> realGrid, complexGrid = nullptr;
         allocateDeviceBuffer(&realGrid, in_.size(), deviceContext);
-        if (sc_performOutOfPlaceFFT)
-        {
-            allocateDeviceBuffer(&complexGrid, complexGridValues.size(), deviceContext);
-        }
 
         MPI_Comm           comm                    = MPI_COMM_NULL;
         const bool         allocateGrid            = false;
@@ -611,10 +600,6 @@ TEST_P(ParameterizedFFTTest3D, RunsOnDevices)
 
         SCOPED_TRACE("Cleaning up");
         freeDeviceBuffer(&realGrid);
-        if (sc_performOutOfPlaceFFT)
-        {
-            freeDeviceBuffer(&complexGrid);
-        }
     }
 }
 

@@ -41,13 +41,15 @@
  * \author Prashanth Kanduri <kanduri@cscs.ch>
  * \author Sebastian Keller <keller@cscs.ch>
  */
-#include "nblib/exception.h"
-#include "nblib/listed_forces/conversionscommon.h"
-
 #include "gmxcalculator.h"
+
+#include "listed_forces/conversionscommon.h"
+
 #include "gromacs/listed_forces/listed_forces.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/timing/wallcycle.h"
+
+#include "nblib/exception.h"
 
 namespace nblib
 {
@@ -68,7 +70,7 @@ ListedGmxCalculator::ListedGmxCalculator(const ListedInteractionData& interactio
                shiftBuffer),
     virialProxy(forceBuffer, true),
     forceOutputs(shiftProxy, true, virialProxy),
-    enerd(1, 0),
+    enerd(1, nullptr),
     lambdaBuffer(42) // values unused; just initialized with something larger than the number of enum types in FreeEnergyPerturbationCouplingType
 {
     std::tie(idef, ffparams) = convertToGmxInteractions(interactions);
@@ -96,8 +98,7 @@ ListedGmxCalculator::ListedGmxCalculator(const ListedInteractionData& interactio
 
     fr.natoms_force = numParticles;
 
-    mdatoms_.chargeA = nullptr;
-    mdatoms_.nr      = nP;
+    mdatoms_.nr = nP;
 }
 
 void ListedGmxCalculator::compute(gmx::ArrayRef<const gmx::RVec>     x,
@@ -146,7 +147,11 @@ void ListedGmxCalculator::compute(gmx::ArrayRef<const gmx::RVec>     x,
                                 &enerd,
                                 &nrnb,
                                 lambdaBuffer,
-                                &mdatoms_,
+                                mdatoms_.chargeA,
+                                mdatoms_.chargeB,
+                                makeConstArrayRef(mdatoms_.bPerturbed),
+                                mdatoms_.cENER,
+                                mdatoms_.nPerturbed,
                                 nullptr,
                                 stepWork);
 

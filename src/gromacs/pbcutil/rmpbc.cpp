@@ -33,7 +33,7 @@
  */
 #include "gmxpre.h"
 
-#include "rmpbc.h"
+#include "gromacs/pbcutil/rmpbc.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -62,7 +62,6 @@ struct gmx_rmpbc
     const t_idef*                 idef;
     int                           natoms_init;
     PbcType                       pbcType;
-    int                           ePBC;
     int                           ngraph;
     rmpbc_graph_t*                graph;
 };

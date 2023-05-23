@@ -51,7 +51,7 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/gmxassert.h"
 
-#if !GMX_GPU_CUDA
+#if !GMX_GPU_CUDA && !GMX_GPU_SYCL
 
 namespace gmx
 {
@@ -83,7 +83,7 @@ void PmeForceSenderGpu::setForceSendBuffer(DeviceBuffer<RVec> /* d_f */)
                "correct implementation.");
 }
 
-void PmeForceSenderGpu::sendFToPpCudaDirect(int /* ppRank */,
+void PmeForceSenderGpu::sendFToPpPeerToPeer(int /* ppRank */,
                                             int /* numAtoms */,
                                             bool /* sendForcesDirectToPpGpu */)
 {
@@ -92,11 +92,11 @@ void PmeForceSenderGpu::sendFToPpCudaDirect(int /* ppRank */,
                "implementation.");
 }
 
-void PmeForceSenderGpu::sendFToPpCudaMpi(DeviceBuffer<RVec> /* sendbuf */,
-                                         int /* offset */,
-                                         int /* numBytes */,
-                                         int /* ppRank */,
-                                         MPI_Request* /* request */)
+void PmeForceSenderGpu::sendFToPpGpuAwareMpi(DeviceBuffer<RVec> /* sendbuf */,
+                                             int /* offset */,
+                                             int /* numBytes */,
+                                             int /* ppRank */,
+                                             MPI_Request* /* request */)
 {
     GMX_ASSERT(!impl_,
                "A CPU stub for PME-PP GPU communication was called instead of the correct "

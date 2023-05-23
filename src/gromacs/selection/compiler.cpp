@@ -2592,7 +2592,7 @@ void compileSelection(SelectionCollection* coll)
     size_t                      i;
     int                         flags;
     bool bDebug = (coll->impl_->debugLevel_ == SelectionCollection::Impl::DebugLevel::Compiled
-                   && coll->impl_->debugLevel_ == SelectionCollection::Impl::DebugLevel::Full);
+                   || coll->impl_->debugLevel_ == SelectionCollection::Impl::DebugLevel::Full);
 
     /* FIXME: Clean up the collection on exceptions */
 

@@ -33,8 +33,12 @@
 
 gmx_add_unit_test(MdtypesUnitTest mdtypes-test
     CPP_SOURCE_FILES
+        enerdata.cpp
         observablesreducer.cpp
         checkpointdata.cpp
         forcebuffers.cpp
         multipletimestepping.cpp
+        )
+target_link_libraries(mdtypes-test PRIVATE
+        mdtypes
         )

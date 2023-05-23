@@ -36,13 +36,13 @@
 #include "fitahx.h"
 
 #include <cmath>
+
 #include <vector>
 
 #include "gromacs/math/do_fit.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/smalloc.h"
 
 static void my_calc_xcm(int nbb, const int bbind[], rvec x[], rvec xcm)
 {

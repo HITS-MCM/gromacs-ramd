@@ -36,8 +36,27 @@ gmx_add_unit_test(DomDecTests domdec-test
         hashedmap.cpp
         localatomsetmanager.cpp
         )
+target_link_libraries(domdec-test PRIVATE domdec)
+
+target_link_libraries(
+    domdec-test PRIVATE
+        domdec
+        gpu_utils
+        mdtypes
+        testutils
+)
 
 gmx_add_mpi_unit_test(DomDecMpiTests domdec-mpi-test 4 HARDWARE_DETECTION
     GPU_CPP_SOURCE_FILES
         haloexchange_mpi.cpp
         )
+
+if (TARGET domdec-mpi-test)
+    target_link_libraries(
+        domdec-mpi-test PRIVATE
+            domdec
+            gpu_utils
+            mdtypes
+            testutils
+    )
+endif ()

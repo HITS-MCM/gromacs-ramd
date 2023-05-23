@@ -233,33 +233,32 @@ static void get_input(const char* membed_input,
                       int*        pieces,
                       gmx_bool*   bALLOW_ASYMMETRY)
 {
-    warninp_t              wi;
     std::vector<t_inpfile> inp;
 
-    wi = init_warning(TRUE, 0);
+    WarningHandler wi{ true, 0 };
 
     {
         gmx::TextInputFile stream(membed_input);
-        inp = read_inpfile(&stream, membed_input, wi);
+        inp = read_inpfile(&stream, membed_input, &wi);
         stream.close();
     }
-    *it_xy                               = get_eint(&inp, "nxy", 1000, wi);
-    *it_z                                = get_eint(&inp, "nz", 0, wi);
-    *xy_fac                              = get_ereal(&inp, "xyinit", 0.5, wi);
-    *xy_max                              = get_ereal(&inp, "xyend", 1.0, wi);
-    *z_fac                               = get_ereal(&inp, "zinit", 1.0, wi);
-    *z_max                               = get_ereal(&inp, "zend", 1.0, wi);
-    *probe_rad                           = get_ereal(&inp, "rad", 0.22, wi);
-    *low_up_rm                           = get_eint(&inp, "ndiff", 0, wi);
-    *maxwarn                             = get_eint(&inp, "maxwarn", 0, wi);
-    *pieces                              = get_eint(&inp, "pieces", 1, wi);
+    *it_xy                               = get_eint(&inp, "nxy", 1000, &wi);
+    *it_z                                = get_eint(&inp, "nz", 0, &wi);
+    *xy_fac                              = get_ereal(&inp, "xyinit", 0.5, &wi);
+    *xy_max                              = get_ereal(&inp, "xyend", 1.0, &wi);
+    *z_fac                               = get_ereal(&inp, "zinit", 1.0, &wi);
+    *z_max                               = get_ereal(&inp, "zend", 1.0, &wi);
+    *probe_rad                           = get_ereal(&inp, "rad", 0.22, &wi);
+    *low_up_rm                           = get_eint(&inp, "ndiff", 0, &wi);
+    *maxwarn                             = get_eint(&inp, "maxwarn", 0, &wi);
+    *pieces                              = get_eint(&inp, "pieces", 1, &wi);
     const char* yesno_names[BOOL_NR + 1] = { "no", "yes", nullptr };
-    *bALLOW_ASYMMETRY                    = (get_eeenum(&inp, "asymmetry", yesno_names, wi) != 0);
+    *bALLOW_ASYMMETRY                    = (get_eeenum(&inp, "asymmetry", yesno_names, &wi) != 0);
 
     check_warning_error(wi, FARGS);
     {
         gmx::TextOutputFile stream(membed_input);
-        write_inpfile(&stream, membed_input, &inp, FALSE, WriteMdpHeader::yes, wi);
+        write_inpfile(&stream, membed_input, &inp, FALSE, WriteMdpHeader::yes, &wi);
         stream.close();
     }
     done_warning(wi, FARGS);
@@ -463,7 +462,7 @@ static int init_mem_at(mem_t* mem_p, const gmx_mtop_t& mtop, rvec* r, matrix box
 
 static void init_resize(t_block* ins_at, rvec* r_ins, pos_ins_t* pos_ins, mem_t* mem_p, rvec* r, gmx_bool bALLOW_ASYMMETRY)
 {
-    int i, j, at, c, outsidesum, gctr = 0;
+    int i, j, at, c, gctr = 0;
     int idxsum = 0;
 
     /*sanity check*/
@@ -481,8 +480,7 @@ static void init_resize(t_block* ins_at, rvec* r_ins, pos_ins_t* pos_ins, mem_t*
     snew(pos_ins->geom_cent, pos_ins->pieces);
     for (i = 0; i < pos_ins->pieces; i++)
     {
-        c          = 0;
-        outsidesum = 0;
+        c = 0;
         for (j = 0; j < DIM; j++)
         {
             pos_ins->geom_cent[i][j] = 0;
@@ -496,10 +494,6 @@ static void init_resize(t_block* ins_at, rvec* r_ins, pos_ins_t* pos_ins, mem_t*
             {
                 rvec_inc(pos_ins->geom_cent[i], r_ins[gctr]);
                 c++;
-            }
-            else
-            {
-                outsidesum++;
             }
             gctr++;
         }
@@ -917,7 +911,7 @@ static void top_update(const char* topfile, rm_t* rm_p, gmx_mtop_t* mtop)
     int   bMolecules = 0;
     FILE *fpin, *fpout;
     char  buf[STRLEN], buf2[STRLEN], *temp;
-    int   i, *nmol_rm, nmol, line;
+    int   i, *nmol_rm, nmol;
     char  temporary_filename[STRLEN];
 
     fpin = gmx_ffopen(topfile, "r");
@@ -931,10 +925,8 @@ static void top_update(const char* topfile, rm_t* rm_p, gmx_mtop_t* mtop)
         nmol_rm[rm_p->block[i]]++;
     }
 
-    line = 0;
     while (fgets(buf, STRLEN, fpin))
     {
-        line++;
         if (buf[0] != ';')
         {
             strcpy(buf2, buf);
@@ -1061,7 +1053,7 @@ gmx_membed_t* init_membed(FILE*          fplog,
     snew(ins_at, 1);
     snew(pos_ins, 1);
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fprintf(fplog,
                 "Note: it is expected that in future gmx mdrun -membed will not be the "

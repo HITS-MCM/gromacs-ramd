@@ -77,9 +77,9 @@ namespace gmx
  */
 inline bool needStateGpu(SimulationWorkload simulationWorkload)
 {
-    return (simulationWorkload.useGpuPme && !simulationWorkload.haveSeparatePmeRank)
-           || simulationWorkload.useGpuXBufferOps || simulationWorkload.useGpuFBufferOps
-           || simulationWorkload.useGpuHaloExchange || simulationWorkload.useGpuUpdate;
+    return (simulationWorkload.haveGpuPmeOnPpRank()) || simulationWorkload.useGpuXBufferOps
+           || simulationWorkload.useGpuFBufferOps || simulationWorkload.useGpuHaloExchange
+           || simulationWorkload.useGpuUpdate;
 }
 
 class DeviceStreamManager;
@@ -256,6 +256,17 @@ public:
      *  \param[in] expectedConsumptionCount  New value.
      */
     void setXUpdatedOnDeviceEventExpectedConsumptionCount(int expectedConsumptionCount);
+
+    /*! \brief Set the expected consumption count for the event associated with GPU forces computation.
+     *
+     * This is generally 1, but with GPU halo exchange, the completion of force calculation are used
+     * twice as a synchronization point: for local reduction and for F-halo exchange.
+     *
+     *  \param[in] atomLocality  Locality of the particles.
+     *  \param[in] expectedConsumptionCount  New value.
+     */
+    void setFReadyOnDeviceEventExpectedConsumptionCount(AtomLocality atomLocality,
+                                                        int          expectedConsumptionCount);
 
     /*! \brief Copy positions from the GPU memory, with an optional explicit dependency.
      *

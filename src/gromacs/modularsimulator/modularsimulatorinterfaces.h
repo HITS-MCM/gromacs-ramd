@@ -59,6 +59,7 @@
 #include <memory>
 #include <optional>
 
+#include "gromacs/math/matrix.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdtypes/checkpointdata.h"
 #include "gromacs/utility/basedefinitions.h"
@@ -377,10 +378,10 @@ public:
     //! Standard virtual destructor
     virtual ~ICheckpointHelperClient() = default;
 
-    //! Write checkpoint (CheckpointData object only passed on master rank)
+    //! Write checkpoint (CheckpointData object only passed on main rank)
     virtual void saveCheckpointState(std::optional<WriteCheckpointData> checkpointData,
                                      const t_commrec*                   cr) = 0;
-    //! Read checkpoint (CheckpointData object only passed on master rank)
+    //! Read checkpoint (CheckpointData object only passed on main rank)
     virtual void restoreCheckpointState(std::optional<ReadCheckpointData> checkpointData,
                                         const t_commrec*                  cr) = 0;
     //! Get unique client id
@@ -550,7 +551,7 @@ struct PropagatorConnection
     //! Function object to request callback allowing to signal a position scaling step
     std::function<PropagatorCallback()> getPositionScalingCallback;
     //! Function object for receiving view on pressure scaling matrix
-    std::function<ArrayRef<rvec>()> getViewOnPRScalingMatrix;
+    std::function<Matrix3x3*()> getViewOnPRScalingMatrix;
     //! Function object to request callback allowing to signal a Parrinello-Rahman scaling step
     std::function<PropagatorCallback()> getPRScalingCallback;
 };

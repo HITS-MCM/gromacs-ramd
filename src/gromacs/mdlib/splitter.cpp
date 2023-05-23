@@ -43,9 +43,9 @@
 #include "gromacs/pbcutil/mshift.h"
 #include "gromacs/topology/block.h"
 #include "gromacs/topology/idef.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/utility/smalloc.h"
 
 typedef struct
 {
@@ -64,7 +64,7 @@ static bool sid_comp(const t_sid& sa, const t_sid& sb)
     }
 }
 
-static int mk_grey(gmx::ArrayRef<egCol> edgeColor, const t_graph* g, int* AtomI, int maxsid, t_sid sid[])
+static int mk_grey(gmx::ArrayRef<egCol> edgeColor, const t_graph* g, int* AtomI, int maxsid, gmx::ArrayRef<t_sid> sid)
 {
     int ng, ai, g0;
 
@@ -128,7 +128,7 @@ static int first_colour(const int fC, const egCol Col, const t_graph* g, gmx::Ar
     return -1;
 }
 
-static int mk_sblocks(FILE* fp, t_graph* g, int maxsid, t_sid sid[])
+static int mk_sblocks(FILE* fp, t_graph* g, int maxsid, gmx::ArrayRef<t_sid> sid)
 {
     int ng;
     int nW, nG, nB; /* Number of Grey, Black, White	*/
@@ -162,7 +162,7 @@ static int mk_sblocks(FILE* fp, t_graph* g, int maxsid, t_sid sid[])
 
     while (nW > 0)
     {
-        /* Find the first white, this will allways be a larger
+        /* Find the first white, this will always be a larger
          * number than before, because no nodes are made white
          * in the loop
          */
@@ -239,10 +239,9 @@ static int ms_comp(const void* a, const void* b)
     }
 }
 
-static int merge_sid(int at_start, int at_end, int nsid, t_sid sid[], t_blocka* sblock)
+static gmx::ListOfLists<int> merge_sid(int at_start, int at_end, int nsid, gmx::ArrayRef<t_sid> sid)
 {
-    int          i, j, k, n, isid, ndel;
-    t_merge_sid* ms;
+    int i, j, isid;
 
     /* We try to remdy the following problem:
      * Atom: 1  2  3  4  5 6 7 8 9 10
@@ -250,13 +249,12 @@ static int merge_sid(int at_start, int at_end, int nsid, t_sid sid[], t_blocka* 
      */
 
     /* Determine first and last atom in each shake ID */
-    snew(ms, nsid);
+    std::vector<t_merge_sid> ms;
+    ms.reserve(nsid);
 
-    for (k = 0; (k < nsid); k++)
+    for (int k = 0; k < nsid; k++)
     {
-        ms[k].first = at_end + 1;
-        ms[k].last  = -1;
-        ms[k].sid   = k;
+        ms.push_back({ at_end + 1, -1, k });
     }
     for (i = at_start; (i < at_end); i++)
     {
@@ -268,11 +266,10 @@ static int merge_sid(int at_start, int at_end, int nsid, t_sid sid[], t_blocka* 
             ms[isid].last  = std::max(ms[isid].last, sid[i].atom);
         }
     }
-    qsort(ms, nsid, sizeof(ms[0]), ms_comp);
+    qsort(ms.data(), gmx::ssize(ms), sizeof(ms[0]), ms_comp);
 
     /* Now merge the overlapping ones */
-    ndel = 0;
-    for (k = 0; (k < nsid);)
+    for (int k = 0; k < nsid;)
     {
         for (j = k + 1; (j < nsid);)
         {
@@ -281,7 +278,6 @@ static int merge_sid(int at_start, int at_end, int nsid, t_sid sid[], t_blocka* 
                 ms[k].last  = std::max(ms[k].last, ms[j].last);
                 ms[k].first = std::min(ms[k].first, ms[j].first);
                 ms[j].sid   = -1;
-                ndel++;
                 j++;
             }
             else
@@ -295,7 +291,7 @@ static int merge_sid(int at_start, int at_end, int nsid, t_sid sid[], t_blocka* 
             k++;
         }
     }
-    for (k = 0; (k < nsid); k++)
+    for (int k = 0; k < nsid; k++)
     {
         while ((k < nsid - 1) && (ms[k].sid == -1))
         {
@@ -307,72 +303,54 @@ static int merge_sid(int at_start, int at_end, int nsid, t_sid sid[], t_blocka* 
         }
     }
 
-    for (k = at_start; (k < at_end); k++)
+    for (int k = at_start; k < at_end; k++)
     {
         sid[k].atom = k;
         sid[k].sid  = -1;
     }
-    sblock->nr           = nsid;
-    sblock->nalloc_index = sblock->nr + 1;
-    snew(sblock->index, sblock->nalloc_index);
-    sblock->nra      = at_end - at_start;
-    sblock->nalloc_a = sblock->nra;
-    snew(sblock->a, sblock->nalloc_a);
-    sblock->index[0] = 0;
-    for (k = n = 0; (k < nsid); k++)
+    gmx::ListOfLists<int> sblock;
+    std::vector<int>      listForSid;
+    for (int k = 0; k < nsid; k++)
     {
-        sblock->index[k + 1] = sblock->index[k] + ms[k].last - ms[k].first + 1;
+        listForSid.clear();
         for (j = ms[k].first; (j <= ms[k].last); j++)
         {
-            range_check(n, 0, sblock->nra);
-            sblock->a[n++] = j;
-            range_check(j, 0, at_end);
-            if (sid[j].sid == -1)
-            {
-                sid[j].sid = k;
-            }
-            else
-            {
-                fprintf(stderr, "Double sids (%d, %d) for atom %d\n", sid[j].sid, k, j);
-            }
+            listForSid.push_back(j);
+            GMX_RELEASE_ASSERT(sid[j].sid == -1, "Can not have double sids for an atom");
+            sid[j].sid = k;
         }
+        sblock.pushBack(listForSid);
     }
 
-    sblock->nra = n;
-    GMX_RELEASE_ASSERT(sblock->index[k] == sblock->nra, "Internal inconsistency; sid merge failed");
-
-    sfree(ms);
-
-    return nsid;
+    return sblock;
 }
 
-void gen_sblocks(FILE* fp, int at_end, const InteractionDefinitions& idef, t_blocka* sblock, gmx_bool bSettle)
+gmx::ListOfLists<int> gen_sblocks(FILE* fp, int at_end, const InteractionDefinitions& idef, const bool useSettles)
 {
     t_graph* g;
     int      i, i0;
-    t_sid*   sid;
     int      nsid;
 
-    g = mk_graph(nullptr, idef, at_end, TRUE, bSettle);
+    g = mk_graph(nullptr, idef, at_end, TRUE, useSettles);
     if (debug)
     {
         p_graph(debug, "Graaf Dracula", g);
     }
-    snew(sid, at_end);
+    std::vector<t_sid> sid;
+    sid.reserve(at_end);
     for (i = 0; i < at_end; i++)
     {
-        sid[i].atom = i;
-        sid[i].sid  = -1;
+        sid.push_back({ i, -1 });
     }
     nsid = mk_sblocks(fp, g, at_end, sid);
 
     if (!nsid)
     {
-        return;
+        return {};
     }
 
     /* Now sort the shake blocks... */
-    std::sort(sid, sid + at_end, sid_comp);
+    std::sort(sid.data(), sid.data() + at_end, sid_comp);
 
     if (debug)
     {
@@ -397,12 +375,13 @@ void gen_sblocks(FILE* fp, int at_end, const InteractionDefinitions& idef, t_blo
      * part of the shake block too. There may be cases where blocks overlap
      * and they will have to be merged.
      */
-    merge_sid(0, at_end, nsid, sid, sblock);
-    sfree(sid);
+    gmx::ListOfLists<int> sblock = merge_sid(0, at_end, nsid, sid);
     /* Due to unknown reason this free generates a problem sometimes */
     done_graph(g);
     if (debug)
     {
         fprintf(debug, "Done gen_sblocks\n");
     }
+
+    return sblock;
 }

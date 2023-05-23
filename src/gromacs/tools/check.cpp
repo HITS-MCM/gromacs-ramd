@@ -91,23 +91,23 @@ typedef struct
 
 static void comp_tpx(const char* fn1, const char* fn2, gmx_bool bRMSD, real ftol, real abstol)
 {
-    const char* ff[2];
-    t_inputrec* ir[2];
-    t_state     state[2];
-    gmx_mtop_t  mtop[2];
-    int         i;
+    const char*                 ff[2];
+    std::unique_ptr<t_inputrec> ir[2];
+    t_state                     state[2];
+    gmx_mtop_t                  mtop[2];
+    int                         i;
 
     ff[0] = fn1;
     ff[1] = fn2;
     for (i = 0; i < (fn2 ? 2 : 1); i++)
     {
-        ir[i] = new t_inputrec();
-        read_tpx_state(ff[i], ir[i], &state[i], &(mtop[i]));
-        gmx::MDModules().adjustInputrecBasedOnModules(ir[i]);
+        ir[i] = std::make_unique<t_inputrec>();
+        read_tpx_state(ff[i], ir[i].get(), &state[i], &(mtop[i]));
+        gmx::MDModules().adjustInputrecBasedOnModules(ir[i].get());
     }
     if (fn2)
     {
-        cmp_inputrec(stdout, ir[0], ir[1], ftol, abstol);
+        cmp_inputrec(stdout, ir[0].get(), ir[1].get(), ftol, abstol);
         compareMtop(stdout, mtop[0], mtop[1], ftol, abstol);
         comp_state(&state[0], &state[1], bRMSD, ftol, abstol);
     }
@@ -125,11 +125,6 @@ static void comp_tpx(const char* fn1, const char* fn2, gmx_bool bRMSD, real ftol
             }
             compareMtopAB(stdout, mtop[0], ftol, abstol);
         }
-    }
-    delete ir[0];
-    if (fn2)
-    {
-        delete ir[1];
     }
 }
 
@@ -664,36 +659,26 @@ static void chk_tps(const char* fn, real vdw_fac, real bon_lo, real bon_hi)
 
 static void chk_ndx(const char* fn)
 {
-    t_blocka* grps;
-    char**    grpname;
-    int       i;
-
-    grps = init_index(fn, &grpname);
+    const auto grps = init_index(fn);
     if (debug)
     {
-        pr_blocka(debug, 0, fn, grps, FALSE);
+        pr_blocka(debug, 0, fn, grps, false);
     }
     else
     {
         printf("Contents of index file %s\n", fn);
         printf("--------------------------------------------------\n");
         printf("Nr.   Group               #Entries   First    Last\n");
-        for (i = 0; (i < grps->nr); i++)
+        for (gmx::index i = 0; i < gmx::ssize(grps); i++)
         {
-            printf("%4d  %-20s%8d%8d%8d\n",
+            printf("%4td  %-20s%8td%8d%8d\n",
                    i,
-                   grpname[i],
-                   grps->index[i + 1] - grps->index[i],
-                   grps->a[grps->index[i]] + 1,
-                   grps->a[grps->index[i + 1] - 1] + 1);
+                   grps[i].name.c_str(),
+                   gmx::ssize(grps[i].particleIndices),
+                   grps[i].particleIndices[0] + 1,
+                   grps[i].particleIndices.back() + 1);
         }
     }
-    for (i = 0; (i < grps->nr); i++)
-    {
-        sfree(grpname[i]);
-    }
-    sfree(grpname);
-    done_blocka(grps);
 }
 
 static void chk_enx(const char* fn)

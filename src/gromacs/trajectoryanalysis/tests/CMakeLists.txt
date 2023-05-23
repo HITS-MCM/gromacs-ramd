@@ -41,6 +41,7 @@ gmx_add_gtest_executable(trajectoryanalysis-test
         cmdlinerunner.cpp
         convert_trj.cpp
         distance.cpp
+        dssp.cpp
         extract_cluster.cpp
         freevolume.cpp
         msd.cpp
@@ -63,4 +64,4 @@ target_link_libraries(test_selection PRIVATE
                       libgromacs
                       ${GMX_EXE_LINKER_FLAGS})
 # TODO: Explicitly link to module dependencies.
-target_link_libraries(test_selection PRIVATE legacy_modules)
+target_link_libraries(test_selection PRIVATE legacy_modules utility)

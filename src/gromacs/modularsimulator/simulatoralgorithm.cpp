@@ -68,12 +68,12 @@
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/mdrunoptions.h"
 #include "gromacs/mdtypes/observableshistory.h"
+#include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/nbnxm/nbnxm.h"
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/mdtypes/simulation_workload.h"
 
 #include "checkpointhelper.h"
 #include "domdechelper.h"
@@ -198,7 +198,7 @@ void ModularSimulatorAlgorithm::simulatorSetup()
                         "may be removed in a future version.");
     }
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         char        sbuf[STEPSTRSIZE], sbuf2[STEPSTRSIZE];
         std::string timeString;
@@ -282,7 +282,7 @@ void ModularSimulatorAlgorithm::preStep(Step step, Time gmx_unused time, bool is
 void ModularSimulatorAlgorithm::postStep(Step step, Time gmx_unused time)
 {
     // Output stuff
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         if (do_per_step(step, inputrec->nstlog))
         {
@@ -296,7 +296,7 @@ void ModularSimulatorAlgorithm::postStep(Step step, Time gmx_unused time)
                             && (step % mdrunOptions.verboseStepPrintInterval == 0
                                 || step == inputrec->init_step || step == signalHelper_->lastStep_);
     // Print the remaining wall clock time for the run
-    if (MASTER(cr) && (do_verbose || gmx_got_usr_signal())
+    if (MAIN(cr) && (do_verbose || gmx_got_usr_signal())
         && !(pmeLoadBalanceHelper_ && pmeLoadBalanceHelper_->pmePrinting()))
     {
         print_time(stderr, walltime_accounting, step, inputrec, cr);
@@ -418,8 +418,11 @@ ModularSimulatorAlgorithmBuilder::ModularSimulatorAlgorithmBuilder(
 {
     if (legacySimulatorData->inputrec->efep != FreeEnergyPerturbationType::No)
     {
-        freeEnergyPerturbationData_ = std::make_unique<FreeEnergyPerturbationData>(
-                legacySimulatorData->fplog, *legacySimulatorData->inputrec, legacySimulatorData->mdAtoms);
+        freeEnergyPerturbationData_ =
+                std::make_unique<FreeEnergyPerturbationData>(legacySimulatorData->fplog,
+                                                             *legacySimulatorData->inputrec,
+                                                             legacySimulatorData->mdAtoms,
+                                                             legacySimulatorData->ekind);
         registerExistingElement(freeEnergyPerturbationData_->element());
     }
 
@@ -439,7 +442,7 @@ ModularSimulatorAlgorithmBuilder::ModularSimulatorAlgorithmBuilder(
     registerExistingElement(statePropagatorData_->element());
 
     // Multi sim is turned off
-    const bool simulationsShareState = false;
+    const bool simulationsShareHamiltonian = false;
 
     energyData_ = std::make_unique<EnergyData>(statePropagatorData_.get(),
                                                freeEnergyPerturbationData_.get(),
@@ -452,18 +455,15 @@ ModularSimulatorAlgorithmBuilder::ModularSimulatorAlgorithmBuilder(
                                                legacySimulatorData->fplog,
                                                legacySimulatorData->fr->fcdata.get(),
                                                legacySimulatorData->mdModulesNotifiers,
-                                               MASTER(legacySimulatorData->cr),
+                                               MAIN(legacySimulatorData->cr),
                                                legacySimulatorData->observablesHistory,
                                                legacySimulatorData->startingBehavior,
-                                               simulationsShareState,
+                                               simulationsShareHamiltonian,
                                                legacySimulatorData->pull_work);
     registerExistingElement(energyData_->element());
 
-    // This is the only modular simulator object which changes the inputrec
-    // TODO: Avoid changing inputrec (#3854)
-    storeSimulationData(
-            "ReferenceTemperatureManager",
-            ReferenceTemperatureManager(const_cast<t_inputrec*>(legacySimulatorData->inputrec)));
+    storeSimulationData("ReferenceTemperatureManager",
+                        ReferenceTemperatureManager(legacySimulatorData->ekind));
     auto* referenceTemperatureManager =
             simulationData<ReferenceTemperatureManager>("ReferenceTemperatureManager").value();
 
@@ -519,7 +519,7 @@ ModularSimulatorAlgorithm ModularSimulatorAlgorithmBuilder::build()
             compat::not_null<SimulationSignal*>(
                     &(*globalCommunicationHelper_.simulationSignals())[eglsSTOPCOND]),
             simulationsShareState,
-            MASTER(legacySimulatorData_->cr),
+            MAIN(legacySimulatorData_->cr),
             legacySimulatorData_->inputrec->nstlist,
             legacySimulatorData_->mdrunOptions.reproducible,
             globalCommunicationHelper_.nstglobalcomm(),
@@ -537,7 +537,7 @@ ModularSimulatorAlgorithm ModularSimulatorAlgorithmBuilder::build()
                     &(*globalCommunicationHelper_.simulationSignals())[eglsRESETCOUNTERS]),
             simulationsShareResetCounters,
             legacySimulatorData_->inputrec->nsteps,
-            MASTER(legacySimulatorData_->cr),
+            MAIN(legacySimulatorData_->cr),
             legacySimulatorData_->mdrunOptions.timingOptions.resetHalfway,
             legacySimulatorData_->mdrunOptions.maximumHoursToRun,
             legacySimulatorData_->mdlog,
@@ -597,7 +597,6 @@ ModularSimulatorAlgorithm ModularSimulatorAlgorithmBuilder::build()
                                            legacySimulatorData_->mdrunOptions.verboseStepPrintInterval,
                                            algorithm.statePropagatorData_.get(),
                                            algorithm.topologyHolder_.get(),
-                                           globalCommunicationHelper_.nstglobalcomm(),
                                            legacySimulatorData_->fplog,
                                            legacySimulatorData_->cr,
                                            legacySimulatorData_->mdlog,
@@ -618,7 +617,7 @@ ModularSimulatorAlgorithm ModularSimulatorAlgorithmBuilder::build()
                 compat::make_not_null<SimulationSignal*>(&(*algorithm.signals_)[eglsCHKPT]),
                 simulationsShareState,
                 legacySimulatorData_->inputrec->nstlist == 0,
-                MASTER(legacySimulatorData_->cr),
+                MAIN(legacySimulatorData_->cr),
                 legacySimulatorData_->mdrunOptions.writeConfout,
                 legacySimulatorData_->mdrunOptions.checkpointOptions.period));
         algorithm.checkpointHelper_ =
@@ -656,7 +655,7 @@ ModularSimulatorAlgorithm ModularSimulatorAlgorithmBuilder::build()
         };
         const auto* inputrec   = legacySimulatorData_->inputrec;
         auto        virialMode = EnergySignallerVirialMode::Off;
-        if (inputrec->epc != PressureCoupling::No)
+        if (inputrec->pressureCouplingOptions.epc != PressureCoupling::No)
         {
             if (EI_VV(inputrec->eI))
             {
@@ -670,7 +669,7 @@ ModularSimulatorAlgorithm ModularSimulatorAlgorithmBuilder::build()
         addSignaller(energySignallerBuilder_.build(
                 inputrec->nstcalcenergy,
                 computeFepPeriod(*inputrec, legacySimulatorData_->replExParams),
-                inputrec->nstpcouple,
+                inputrec->pressureCouplingOptions.nstpcouple,
                 virialMode));
         addSignaller(trajectorySignallerBuilder_.build(inputrec->nstxout,
                                                        inputrec->nstvout,

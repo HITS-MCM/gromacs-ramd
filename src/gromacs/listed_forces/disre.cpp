@@ -51,11 +51,12 @@
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/fcdata.h"
 #include "gromacs/mdtypes/inputrec.h"
-#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/ishift.h"
 #include "gromacs/pbcutil/pbc.h"
+#include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/arrayref.h"
@@ -220,10 +221,10 @@ void init_disres(FILE*                 fplog,
         {
             fprintf(fplog, "Found GMX_DISRE_ENSEMBLE_SIZE set to %d systems per ensemble\n", dd->nsystems);
         }
-        /* This check is only valid on MASTER(cr), so probably
+        /* This check is only valid on MAIN(cr), so probably
          * ensemble-averaged distance restraints are broken on more
          * than one processor per simulation system. */
-        if (ddRole == DDRole::Master)
+        if (ddRole == DDRole::Main)
         {
             check_multi_int(fplog, ms, dd->nsystems, "the number of systems per ensemble", FALSE);
         }
@@ -280,7 +281,7 @@ void init_disres(FILE*                 fplog,
          * checks from appropriate processes (since check_multi_int is
          * too broken to check whether the communication will
          * succeed...) */
-        if ((disResRunMode == DisResRunMode::MDRun) && ms && dd->nsystems > 1 && (ddRole == DDRole::Master))
+        if ((disResRunMode == DisResRunMode::MDRun) && ms && dd->nsystems > 1 && (ddRole == DDRole::Main))
         {
             check_multi_int(fplog, ms, dd->nres, "the number of distance restraints", FALSE);
         }

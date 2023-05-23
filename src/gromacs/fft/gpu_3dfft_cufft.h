@@ -44,15 +44,16 @@
 #ifndef GMX_FFT_GPU_3DFFT_CUFFT_H
 #define GMX_FFT_GPU_3DFFT_CUFFT_H
 
+#include <cufft.h>
+
 #include <memory>
 
 #include "gromacs/fft/fft.h"
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/gpu_utils/gputraits.h"
 #include "gromacs/utility/gmxmpi.h"
-#include "gpu_3dfft_impl.h"
 
-#include <cufft.h>
+#include "gpu_3dfft_impl.h"
 
 class DeviceContext;
 class DeviceStream;
@@ -67,7 +68,7 @@ class Gpu3dFft::ImplCuFft : public Gpu3dFft::Impl
 {
 public:
     //! \copydoc Gpu3dFft::Impl::Impl
-    ImplCuFft(bool                 allocateGrids,
+    ImplCuFft(bool                 allocateRealGrid,
               MPI_Comm             comm,
               ArrayRef<const int>  gridSizesInXForEachRank,
               ArrayRef<const int>  gridSizesInYForEachRank,
@@ -88,10 +89,9 @@ public:
     void perform3dFft(gmx_fft_direction dir, CommandEvent* timingEvent) override;
 
 private:
-    cufftHandle   planR2C_;
-    cufftHandle   planC2R_;
-    cufftReal*    realGrid_;
-    cufftComplex* complexGrid_;
+    cufftHandle planR2C_;
+    cufftHandle planC2R_;
+    cufftReal*  realGrid_;
 };
 
 } // namespace gmx

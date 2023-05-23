@@ -40,6 +40,7 @@
 
 #include <cstdio>
 
+#include <filesystem>
 #include <vector>
 
 #include "gromacs/utility/arrayref.h"
@@ -83,10 +84,9 @@ getDatabaseEntry(const std::string& rtpname, gmx::ArrayRef<const PreprocessResid
  * Read atom types into database.
  *
  * \param[in] ffdir Force field directory.
- * \param[in] tab Symbol table for names.
  * \returns Atom type database.
  */
-PreprocessingAtomTypes read_atype(const char* ffdir, t_symtab* tab);
+PreprocessingAtomTypes read_atype(const std::filesystem::path& ffdir);
 
 /*! \brief
  * Read in database, append to exisiting.
@@ -98,7 +98,7 @@ PreprocessingAtomTypes read_atype(const char* ffdir, t_symtab* tab);
  * \param[in] logger MDLogger interface.
  * \param[in] bAllowOverrideRTP If entries can be overwritten in the database.
  */
-void readResidueDatabase(const std::string&              resdb,
+void readResidueDatabase(const std::filesystem::path&    resdb,
                          std::vector<PreprocessResidue>* rtpDBEntry,
                          PreprocessingAtomTypes*         atype,
                          t_symtab*                       tab,

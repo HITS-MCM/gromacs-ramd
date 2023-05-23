@@ -52,8 +52,9 @@
 
 #include "config.h"
 
-#include "gromacs/gpu_utils/devicebuffer_sycl.h"
 #include "gromacs/gpu_utils/device_stream.h"
+#include "gromacs/gpu_utils/devicebuffer.h"
+#include "gromacs/gpu_utils/devicebuffer_sycl.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
@@ -71,9 +72,10 @@ class DeviceContext;
 #include <cstddef>
 #pragma clang diagnostic ignored "-Wsuggest-override" // can be removed when support for 2022.0 is dropped
 #pragma clang diagnostic ignored "-Wundefined-func-template"
+#include <mkl_version.h>
+
 #include <oneapi/mkl/dfti.hpp>
 #include <oneapi/mkl/exceptions.hpp>
-#include <mkl_version.h>
 
 // oneAPI 2021.2.0 to 2021.4.0 have issues with backward out-of-place transform.
 // The issue is fixed in 2022.0.1 (20220000).
@@ -97,28 +99,28 @@ Gpu3dFft::ImplSyclMkl::Descriptor Gpu3dFft::ImplSyclMkl::initDescriptor(const iv
     }
 }
 
-Gpu3dFft::ImplSyclMkl::ImplSyclMkl(bool allocateGrids,
+Gpu3dFft::ImplSyclMkl::ImplSyclMkl(bool allocateRealGrid,
                                    MPI_Comm /*comm*/,
                                    ArrayRef<const int> gridSizesInXForEachRank,
                                    ArrayRef<const int> gridSizesInYForEachRank,
                                    int /*nz*/,
-                                   const bool performOutOfPlaceFFT,
-                                   const DeviceContext& /*context*/,
+                                   const bool           performOutOfPlaceFFT,
+                                   const DeviceContext& context,
                                    const DeviceStream&  pmeStream,
                                    ivec                 realGridSize,
                                    ivec                 realGridSizePadded,
                                    ivec                 complexGridSizePadded,
                                    DeviceBuffer<float>* realGrid,
                                    DeviceBuffer<float>* complexGrid) :
+    Gpu3dFft::Impl::Impl(performOutOfPlaceFFT),
     realGrid_(*realGrid->buffer_),
-    complexGrid_(*complexGrid->buffer_),
     queue_(pmeStream.stream()),
     r2cDescriptor_(initDescriptor(realGridSize)),
     c2rDescriptor_(initDescriptor(realGridSize))
 {
-    GMX_RELEASE_ASSERT(!allocateGrids, "Grids needs to be pre-allocated");
+    GMX_RELEASE_ASSERT(!allocateRealGrid, "Grids needs to be pre-allocated");
     GMX_RELEASE_ASSERT(gridSizesInXForEachRank.size() == 1 && gridSizesInYForEachRank.size() == 1,
-                       "Multi-rank FFT decomposition not implemented with SYCL MKL backend");
+                       "Multi-rank FFT decomposition not implemented with the SYCL MKL backend");
 
     GMX_RELEASE_ASSERT(!(sc_mklHasBuggyOutOfPlaceFFT && performOutOfPlaceFFT),
                        "The version of MKL used does not properly support out-of-place FFTs");
@@ -127,18 +129,23 @@ Gpu3dFft::ImplSyclMkl::ImplSyclMkl(bool allocateGrids,
                                  realGridSizePadded[XX] * realGridSizePadded[YY] * realGridSizePadded[ZZ]),
                "Real grid buffer is too small for the declared padded size");
 
+    allocateComplexGrid(complexGridSizePadded, realGrid, complexGrid, context);
+
     GMX_ASSERT(checkDeviceBuffer(*complexGrid,
                                  complexGridSizePadded[XX] * complexGridSizePadded[YY]
                                          * complexGridSizePadded[ZZ] * 2),
                "Complex grid buffer is too small for the declared padded size");
 
+    // GROMACS doesn't use ILP64 for non-GPU interfaces (BLAS, FFT). The GPU/oneAPI interface assumes it.
+    // With LP64 on Windows MKL_LONG is 32-bit. Therefore we need to use int64_t and not MKL_LONG.
+
     // MKL expects row-major
-    const std::array<MKL_LONG, 4> realGridStrides = {
-        0, static_cast<MKL_LONG>(realGridSizePadded[YY] * realGridSizePadded[ZZ]), realGridSizePadded[ZZ], 1
+    const std::array<int64_t, 4> realGridStrides = {
+        0, static_cast<int64_t>(realGridSizePadded[YY] * realGridSizePadded[ZZ]), realGridSizePadded[ZZ], 1
     };
-    const std::array<MKL_LONG, 4> complexGridStrides = {
+    const std::array<int64_t, 4> complexGridStrides = {
         0,
-        static_cast<MKL_LONG>(complexGridSizePadded[YY] * complexGridSizePadded[ZZ]),
+        static_cast<int64_t>(complexGridSizePadded[YY] * complexGridSizePadded[ZZ]),
         complexGridSizePadded[ZZ],
         1
     };
@@ -176,16 +183,20 @@ Gpu3dFft::ImplSyclMkl::ImplSyclMkl(bool allocateGrids,
     }
 }
 
-Gpu3dFft::ImplSyclMkl::~ImplSyclMkl() = default;
+Gpu3dFft::ImplSyclMkl::~ImplSyclMkl()
+{
+    deallocateComplexGrid();
+}
 
 void Gpu3dFft::ImplSyclMkl::perform3dFft(gmx_fft_direction dir, CommandEvent* /*timingEvent*/)
 {
+    float* complexGrid = *complexGrid_.buffer_;
     switch (dir)
     {
         case GMX_FFT_REAL_TO_COMPLEX:
             try
             {
-                oneapi::mkl::dft::compute_forward(r2cDescriptor_, realGrid_, complexGrid_);
+                oneapi::mkl::dft::compute_forward(r2cDescriptor_, realGrid_, complexGrid);
             }
             catch (oneapi::mkl::exception& exc)
             {
@@ -196,7 +207,7 @@ void Gpu3dFft::ImplSyclMkl::perform3dFft(gmx_fft_direction dir, CommandEvent* /*
         case GMX_FFT_COMPLEX_TO_REAL:
             try
             {
-                oneapi::mkl::dft::compute_backward(c2rDescriptor_, complexGrid_, realGrid_);
+                oneapi::mkl::dft::compute_backward(c2rDescriptor_, complexGrid, realGrid_);
             }
             catch (oneapi::mkl::exception& exc)
             {

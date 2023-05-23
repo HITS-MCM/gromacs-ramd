@@ -48,7 +48,12 @@ if (GMX_GPU_CUDA)
         add_library(testutils STATIC ${TESTUTILS_SOURCES})
         target_link_libraries(testutils PRIVATE ${GMX_CUDA_CLANG_LINK_LIBS})
     endif()
-    target_link_libraries(testutils PRIVATE ${CUDA_CUFFT_LIBRARIES})
+    #we cannot link with both cufftmp and cufft
+    if(GMX_USE_cuFFTMp)
+        target_link_libraries(testutils PRIVATE ${cuFFTMp_LIBRARY})
+    else()
+        target_link_libraries(testutils PRIVATE ${CUDA_CUFFT_LIBRARIES})
+    endif()
 else()
     add_library(testutils STATIC ${UNITTEST_TARGET_OPTIONS})
 endif()
@@ -83,6 +88,7 @@ target_sources(testutils PRIVATE
                testmatchers.cpp
                testoptions.cpp
                textblockmatchers.cpp
+               topologyhelpers.cpp
                tprfilegenerator.cpp
                trajectoryreader.cpp
                xvgtest.cpp
@@ -109,12 +115,15 @@ endif()
 gmx_target_compile_options(testutils)
 target_compile_definitions(testutils PRIVATE HAVE_CONFIG_H)
 target_include_directories(testutils SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+target_compile_definitions(testutils PRIVATE TMPI_USE_VISIBILITY)
 target_link_libraries(testutils PRIVATE libgromacs ${GMX_COMMON_LIBRARIES} gmock)
 target_link_libraries(testutils PUBLIC common)
 
 # GROMACS module dependencies.
 # Note that testutils conveys transitive dependencies on some modules.
-# TODO: Explicitly link specific modules with minimal exposure.
+# TODO: Remove `legacy_modules` once specific modules are explicitly linked.
 target_link_libraries(testutils PUBLIC legacy_modules)
+target_link_libraries(testutils PUBLIC utility)
+target_link_libraries(testutils PRIVATE topology)
 
 add_subdirectory(tests)

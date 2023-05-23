@@ -35,8 +35,9 @@
 #ifndef GMX_FILEIO_MATIO_H
 #define GMX_FILEIO_MATIO_H
 
-#include <stdio.h>
+#include <cstdio>
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -124,16 +125,16 @@ struct t_matrix
 t_matelmt searchcmap(gmx::ArrayRef<const t_mapping> map, t_xpmelmt c);
 
 //! Read the mapping table from fn, return number of entries
-std::vector<t_mapping> readcmap(const char* fn);
+std::vector<t_mapping> readcmap(const std::filesystem::path& fn);
 
 void printcmap(FILE* out, int n, t_mapping map[]);
 /* print mapping table to out */
 
-void writecmap(const char* fn, int n, t_mapping map[]);
+void writecmap(const std::filesystem::path& fn, int n, t_mapping map[]);
 /* print mapping table to fn */
 
 //! Reads and returns a number of matrices from .xpm file \c fnm.
-std::vector<t_matrix> read_xpm_matrix(const char* fnm);
+std::vector<t_matrix> read_xpm_matrix(const std::filesystem::path& fnm);
 
 real** matrix2real(t_matrix* in, real** out);
 /* Converts an matrix in a t_matrix struct to a matrix of reals

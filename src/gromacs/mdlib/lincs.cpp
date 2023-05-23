@@ -71,7 +71,9 @@
 #include "gromacs/simd/simd.h"
 #include "gromacs/simd/simd_math.h"
 #include "gromacs/simd/vector_operations.h"
+#include "gromacs/timing/wallcycle.h"
 #include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/topology.h"
 #include "gromacs/utility/alignedallocator.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
@@ -83,10 +85,11 @@
 #include "gromacs/utility/listoflists.h"
 #include "gromacs/utility/pleasecite.h"
 
-namespace gmx
+namespace
 {
 
-//! \internal Indices of the two atoms involved in a single constraint
+//! \internal \brief Indices of the two atoms involved in a single constraint
+//! \warning Not to be confused with gmx::AtomPair used in other translation units.
 struct AtomPair
 {
     //! \brief Constructor, does not initialize to catch bugs and faster construction
@@ -115,13 +118,18 @@ struct Task
     std::vector<int> updateConstraintIndices1;
     //! Constraint indices for updating atom data, second group.
     std::vector<int> updateConstraintIndices2;
-    //! Temporay constraint indices for setting up updating of atom data.
+    //! Temporary constraint indices for setting up updating of atom data.
     std::vector<int> updateConstraintIndicesRest;
     //! Temporary variable for virial calculation.
     tensor vir_r_m_dr = { { 0 } };
     //! Temporary variable for lambda derivative.
     real dhdlambda;
 };
+
+} // namespace
+
+namespace gmx
+{
 
 /*! \brief Data for LINCS algorithm.
  */
@@ -295,7 +303,7 @@ static void lincs_matrix_expand(const Lincs&              lincsd,
         /* Perform an extra nrec recursions for only the constraints
          * involved in rigid triangles.
          * In this way their accuracy should come close to those of the other
-         * constraints, since traingles of constraints can produce eigenvalues
+         * constraints, since triangles of constraints can produce eigenvalues
          * around 0.7, while the effective eigenvalue for bond constraints
          * is around 0.4 (and 0.7*0.7=0.5).
          */
@@ -486,7 +494,7 @@ static void lincs_update_atoms(Lincs*                         li,
         if (!li->task[li->ntask].updateConstraintIndices1.empty())
         {
             /* Update the constraints that operate on atoms
-             * in multiple thread atom blocks on the master thread.
+             * in multiple thread atom blocks on the main thread.
              */
 #pragma omp barrier
 #pragma omp master
@@ -499,7 +507,46 @@ static void lincs_update_atoms(Lincs*                         li,
 }
 
 #if GMX_SIMD_HAVE_REAL
-//! Helper function so that we can run TSAN with SIMD support (where implemented).
+/*! Helper function so that we can run TSAN with SIMD support (where implemented).
+ *
+ * The production version of this function uses the GROMACS standard
+ * form of SIMD gather that loads whole SIMD cache lines and
+ * transposes them using shuffle operations. When the division between
+ * constraint groups assigned to threads does not align with
+ * cache-line boundaries, more than one thread can read and update the
+ * coordinates in such a cache line. That makes it possible for the
+ * data to race, where one thread updates its coordinate values after
+ * another thread has read the cache line in order to use distinct
+ * coordinate values. The race is benign because the values that are
+ * raced upon are never used in computation - each thread imposes
+ * constraints on parts of each cache line it accesses that are
+ * strictly disjoint from parts accessed by other threads.
+ *
+ * When this function is implemented with gatherLoadUTranspose<align>,
+ * TSAN detects this race. This may be because it observes the loaded
+ * values used in the subsequent shuffle operations without doing a
+ * complete analysis of the fact that those shuffled values are then
+ * never used to produce observable results. When implemented with
+ * gatherLoadUTransposeSafe<align> that uses a gather SIMD intrinsic,
+ * TSAN seems to have an easier job observing that the raced-upon
+ * values are unused and does not report a race. However the code is
+ * slightly slower to execute, particularly on older x86 hardware, so
+ * we prefer not to use this gather version in Release builds of
+ * GROMACS for production usage.
+ *
+ * AVX2_256 builds and simulations with LINCS are frequently used in
+ * GROMACS and we would like to test the production version of the
+ * LINCS kernel with TSAN.  However the above situation makes it
+ * impossible. So we use a non-production form of this function, which
+ * is feasible for us to verify manually is free of races, so that all
+ * the rest of the SIMD+threaded code can be checked with TSAN when
+ * such an AVX2_256 build is used in an end-to-end test of GROMACS
+ * that uses LINCS.
+ *
+ * Possible improvements for this situation are to separate the blocks
+ * of constraints accessed by adjacent LINCS threads by enough memory
+ * that they do not share cache lines, or to divide the work between
+ * LINCS threads strictly at cache-line boundaries. */
 template<int align>
 static inline void gmx_simdcall gatherLoadUTransposeTSANSafe(const real*         base,
                                                              const std::int32_t* offset,
@@ -987,7 +1034,8 @@ static void do_lincs(ArrayRefWithPadding<const RVec> xPadded,
                      real                            invdt,
                      ArrayRef<RVec>                  vRef,
                      bool                            bCalcVir,
-                     tensor                          vir_r_m_dr)
+                     tensor                          vir_r_m_dr,
+                     gmx_wallcycle*                  wcycle)
 {
     const rvec*        x  = as_rvec_array(xPadded.paddedArrayRef().data());
     rvec*              xp = as_rvec_array(xpPadded.paddedArrayRef().data());
@@ -1130,7 +1178,9 @@ static void do_lincs(ArrayRefWithPadding<const RVec> xPadded,
                 /* Communicate the corrected non-local coordinates */
                 if (haveDDAtomOrdering(*cr))
                 {
+                    wallcycle_sub_start(wcycle, WallCycleSubCounter::ConstrComm);
                     dd_move_x_constraints(cr->dd, box, xpPadded.unpaddedArrayRef(), ArrayRef<RVec>(), FALSE);
+                    wallcycle_sub_stop(wcycle, WallCycleSubCounter::ConstrComm);
                 }
             }
 #pragma omp barrier
@@ -1672,7 +1722,7 @@ static void lincs_thread_setup(Lincs* li, int natoms)
 
     if (li->bTaskDep)
     {
-        /* Assign the rest constraint to a second thread task or a master test task */
+        /* Assign the rest constraint to a second thread task or a main test task */
 
         /* Clear the atom flags */
         for (gmx_bitmask_t& mask : atf)
@@ -2311,7 +2361,7 @@ static void lincs_warning(gmx_domdec_t*                 dd,
     }
 }
 
-//! Status information about how well LINCS satisified the constraints in this domain
+//! Status information about how well LINCS satisfied the constraints in this domain
 struct LincsDeviations
 {
     //! The maximum over all bonds in this domain of the relative deviation in bond lengths
@@ -2396,7 +2446,8 @@ bool constrain_lincs(bool                            computeRmsd,
                      ConstraintVariable              econq,
                      t_nrnb*                         nrnb,
                      int                             maxwarn,
-                     int*                            warncount)
+                     int*                            warncount,
+                     gmx_wallcycle*                  wcycle)
 {
     bool bOK = TRUE;
 
@@ -2502,7 +2553,8 @@ bool constrain_lincs(bool                            computeRmsd,
                          invdt,
                          v,
                          bCalcVir,
-                         th == 0 ? vir_r_m_dr : lincsd->task[th].vir_r_m_dr);
+                         th == 0 ? vir_r_m_dr : lincsd->task[th].vir_r_m_dr,
+                         wcycle);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }

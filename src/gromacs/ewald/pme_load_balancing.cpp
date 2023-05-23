@@ -42,7 +42,6 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/utility/enumerationhelpers.h"
 #include "pme_load_balancing.h"
 
 #include <cassert>
@@ -75,6 +74,7 @@
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/timing/walltime_accounting.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/logger.h"
@@ -157,7 +157,7 @@ static const char* enumValueToString(PmeLoadBalancingLimit enumValue)
     constexpr gmx::EnumerationArray<PmeLoadBalancingLimit, const char*> pmeLoadBalancingLimitNames = {
         "no",
         "box size",
-        "domain decompostion",
+        "domain decomposition",
         "PME grid restriction",
         "maximum allowed grid scaling"
     };
@@ -195,7 +195,7 @@ struct pme_load_balancing_t
 
     int    cycles_n;  /**< step cycle counter cumulative count */
     double cycles_c;  /**< step cycle counter cumulative cycles */
-    double startTime; /**< time stamp when the balancing was started on the master rank (relative to the UNIX epoch start).*/
+    double startTime; /**< time stamp when the balancing was started on the main rank (relative to the UNIX epoch start).*/
 };
 
 /* TODO The code in this file should call this getter, rather than
@@ -220,11 +220,11 @@ void pme_loadbal_init(pme_load_balancing_t**     pme_lb_p,
     pme_load_balancing_t* pme_lb;
 
     // Note that we don't (yet) support PME load balancing with LJ-PME only.
-    GMX_RELEASE_ASSERT(EEL_PME(ir.coulombtype),
+    GMX_RELEASE_ASSERT(usingPme(ir.coulombtype),
                        "pme_loadbal_init called without PME electrostatics");
     // To avoid complexity, we require a single cut-off with PME for q+LJ.
     // This is checked by grompp, but it doesn't hurt to check again.
-    GMX_RELEASE_ASSERT(!(EEL_PME(ir.coulombtype) && EVDW_PME(ir.vdwtype) && ir.rcoulomb != ir.rvdw),
+    GMX_RELEASE_ASSERT(!(usingPme(ir.coulombtype) && usingLJPme(ir.vdwtype) && ir.rcoulomb != ir.rvdw),
                        "With Coulomb and LJ PME, rcoulomb should be equal to rvdw");
 
     pme_lb = new pme_load_balancing_t;
@@ -292,8 +292,8 @@ void pme_loadbal_init(pme_load_balancing_t**     pme_lb_p,
 
     pme_lb->cycles_n = 0;
     pme_lb->cycles_c = 0;
-    // only master ranks do timing
-    if (!PAR(cr) || (haveDDAtomOrdering(*cr) && DDMASTER(cr->dd)))
+    // only main ranks do timing
+    if (!PAR(cr) || (haveDDAtomOrdering(*cr) && DDMAIN(cr->dd)))
     {
         pme_lb->startTime = gmx_gettime();
     }
@@ -833,7 +833,7 @@ static void pme_load_balance(pme_load_balancing_t*          pme_lb,
         GMX_RELEASE_ASSERT(ic->rcoulomb != 0, "Cutoff radius cannot be zero");
         ic->sh_ewald = std::erfc(ic->ewaldcoeff_q * ic->rcoulomb) / ic->rcoulomb;
     }
-    if (EVDW_PME(ic->vdwtype))
+    if (usingLJPme(ic->vdwtype))
     {
         /* We have PME for both Coulomb and VdW, set rvdw equal to rcoulomb */
         ic->rvdw          = set->rcut_coulomb;
@@ -867,11 +867,16 @@ static void pme_load_balance(pme_load_balancing_t*          pme_lb,
         if ((pme_lb->setup[pme_lb->cur].pmedata == nullptr)
             || pme_gpu_task_enabled(pme_lb->setup[pme_lb->cur].pmedata))
         {
-            /* Generate a new PME data structure,
-             * copying part of the old pointers.
-             */
+            gmx_pme_t* newPmeData;
+            // Generate a new PME data structure, copying part of the old pointers.
             gmx_pme_reinit(
-                    &set->pmedata, cr, pme_lb->setup[0].pmedata, &ir, set->grid, set->ewaldcoeff_q, set->ewaldcoeff_lj);
+                    &newPmeData, cr, pme_lb->setup[0].pmedata, &ir, set->grid, set->ewaldcoeff_q, set->ewaldcoeff_lj);
+            // Destroy the old structure. Must be done after gmx_pme_reinit in case pme_lb->cur is 0.
+            if (set->pmedata != nullptr)
+            {
+                gmx_pme_destroy(set->pmedata, false);
+            }
+            set->pmedata = newPmeData;
         }
         *pmedata = set->pmedata;
     }
@@ -950,7 +955,7 @@ void pme_loadbal_do(pme_load_balancing_t*          pme_lb,
      * We also want to skip a number of steps and seconds while
      * the CPU and GPU, when used, performance stabilizes.
      */
-    if (!PAR(cr) || (haveDDAtomOrdering(*cr) && DDMASTER(cr->dd)))
+    if (!PAR(cr) || (haveDDAtomOrdering(*cr) && DDMAIN(cr->dd)))
     {
         pme_lb->startupTimeDelayElapsed = (gmx_gettime() - pme_lb->startTime < c_startupTimeDelay);
     }
@@ -988,7 +993,7 @@ void pme_loadbal_do(pme_load_balancing_t*          pme_lb,
         else if (step_rel >= c_numFirstTuningIntervalSkipWithSepPme * ir.nstlist)
         {
             GMX_ASSERT(haveDDAtomOrdering(*cr), "Domain decomposition should be active here");
-            if (DDMASTER(cr->dd))
+            if (DDMAIN(cr->dd))
             {
                 /* If PME rank load is too high, start tuning. If
                    PME-PP direct GPU communication is active,
@@ -1179,6 +1184,14 @@ void pme_loadbal_done(pme_load_balancing_t* pme_lb, FILE* fplog, const gmx::MDLo
     if (fplog != nullptr && (pme_lb->cur > 0 || pme_lb->elimited != PmeLoadBalancingLimit::No))
     {
         print_pme_loadbal_settings(pme_lb, fplog, mdlog, bNonBondedOnGPU);
+    }
+    for (int i = 0; i < gmx::ssize(pme_lb->setup); i++)
+    {
+        // current element is stored in forcerec and free'd in Mdrunner::mdruner, together with shared data
+        if (i != pme_lb->cur)
+        {
+            gmx_pme_destroy(pme_lb->setup[i].pmedata, false);
+        }
     }
 
     delete pme_lb;

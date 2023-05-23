@@ -99,7 +99,9 @@ struct t_inpfile
  * \param[out] wi              Handler for context-sensitive warnings.
  * \throws     std::bad_alloc  If out of memory.
  * \throws     Anything the stream underlying \c reader can throw. */
-std::vector<t_inpfile> read_inpfile(gmx::TextInputStream* stream, const char* fn, warninp_t wi);
+std::vector<t_inpfile> read_inpfile(gmx::TextInputStream*        stream,
+                                    const std::filesystem::path& fn,
+                                    WarningHandler*              wi);
 
 gmx::KeyValueTreeObject flatKeyValueTreeFromInpFile(gmx::ArrayRef<const t_inpfile> inp);
 
@@ -119,12 +121,12 @@ enum class WriteMdpHeader
  * \param[out] wi              Handler for context-sensitive warnings.
  * \throws     std::bad_alloc  If out of memory.
  * \throws     Anything the stream underlying \c writer can throw. */
-void write_inpfile(gmx::TextOutputStream*  stream,
-                   const char*             fn,
-                   std::vector<t_inpfile>* inp,
-                   gmx_bool                bHaltOnUnknown,
-                   WriteMdpHeader          writeHeader,
-                   warninp_t               wi);
+void write_inpfile(gmx::TextOutputStream*       stream,
+                   const std::filesystem::path& fn,
+                   std::vector<t_inpfile>*      inp,
+                   gmx_bool                     bHaltOnUnknown,
+                   WriteMdpHeader               writeHeader,
+                   WarningHandler*              wi);
 /* Write inp to fn, warning (and perhaps halting) if any fields are
  * unknown. The helpful header contains irreproducible content, so
  * its writing can be suppressed to make testing more useful. */
@@ -137,24 +139,24 @@ int search_einp(gmx::ArrayRef<const t_inpfile> inp, const char* name);
 
 void mark_einp_set(gmx::ArrayRef<t_inpfile> inp, const char* name);
 
-int get_eint(std::vector<t_inpfile>* inp, const char* name, int def, warninp_t wi);
-int get_eint(std::vector<t_inpfile>* inp, const std::string& name, int def, warninp_t wi);
+int get_eint(std::vector<t_inpfile>* inp, const char* name, int def, WarningHandler* wi);
+int get_eint(std::vector<t_inpfile>* inp, const std::string& name, int def, WarningHandler* wi);
 
-int64_t get_eint64(std::vector<t_inpfile>* inp, const char* name, int64_t def, warninp_t wi);
-int64_t get_eint64(std::vector<t_inpfile>* inp, const std::string& name, int64_t def, warninp_t wi);
+int64_t get_eint64(std::vector<t_inpfile>* inp, const char* name, int64_t def, WarningHandler* wi);
+int64_t get_eint64(std::vector<t_inpfile>* inp, const std::string& name, int64_t def, WarningHandler* wi);
 
-double get_ereal(std::vector<t_inpfile>* inp, const char* name, double def, warninp_t wi);
-double get_ereal(std::vector<t_inpfile>* inp, const std::string& name, double def, warninp_t wi);
+double get_ereal(std::vector<t_inpfile>* inp, const char* name, double def, WarningHandler* wi);
+double get_ereal(std::vector<t_inpfile>* inp, const std::string& name, double def, WarningHandler* wi);
 
 const char* get_estr(std::vector<t_inpfile>* inp, const char* name, const char* def);
 const char* get_estr(std::vector<t_inpfile>* inp, const std::string& name, const char* def);
 
-int get_eeenum(std::vector<t_inpfile>* inp, const char* name, const char** defs, warninp_t wi);
+int get_eeenum(std::vector<t_inpfile>* inp, const char* name, const char* const* defs, WarningHandler* wi);
 /* defs must be NULL terminated */
-int get_eeenum(std::vector<t_inpfile>* inp, const std::string& name, const char** defs, warninp_t wi);
+int get_eeenum(std::vector<t_inpfile>* inp, const std::string& name, const char* const* defs, WarningHandler* wi);
 /* defs must be NULL terminated */
 
-int get_eenum(std::vector<t_inpfile>* inp, const char* name, const char** defs);
+int get_eenum(std::vector<t_inpfile>* inp, const char* name, const char* const* defs);
 /* defs must be NULL terminated */
 
 //! Get index of option `name`. Exposed here so that `getEnum` can access it.
@@ -172,7 +174,7 @@ int get_einp(std::vector<t_inpfile>* inp, const char* name);
  * \return  Enum value corresponding to read input
  */
 template<typename EnumType>
-EnumType getEnum(std::vector<t_inpfile>* inp, const char* name, warninp* wi)
+EnumType getEnum(std::vector<t_inpfile>* inp, const char* name, WarningHandler* wi)
 {
     // If there's no valid option, we'll use the EnumType::Default.
     // Note, this assumes the enum is zero based, which is also assumed by
@@ -214,7 +216,7 @@ EnumType getEnum(std::vector<t_inpfile>* inp, const char* name, warninp* wi)
     }
     if (wi != nullptr)
     {
-        warning_error(wi, errorMessage);
+        wi->addError(errorMessage);
     }
     else
     {

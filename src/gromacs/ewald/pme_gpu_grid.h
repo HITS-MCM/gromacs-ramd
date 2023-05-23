@@ -42,7 +42,10 @@
 #ifndef GMX_EWALD_PME_GPU_GRID_H
 #define GMX_EWALD_PME_GPU_GRID_H
 
+#include "gromacs/gpu_utils/devicebuffer_datatype.h"
+
 struct PmeGpu;
+struct gmx_wallcycle;
 typedef struct gmx_parallel_3dfft* gmx_parallel_3dfft_t;
 
 /*! \libinternal \brief
@@ -50,42 +53,71 @@ typedef struct gmx_parallel_3dfft* gmx_parallel_3dfft_t;
  * ToDo: Current implementation transfers halo region from/to only immediate neighbours
  * And, expects that overlapSize <= local grid width.
  * Implement exchange with multiple neighbors to remove this limitation
+ * ToDo: Current implementation synchronizes pmeStream to make sure data is ready on GPU after
+ * spread. Consider using events for this synchnozation.
  *
  * \param[in]  pmeGpu                 The PME GPU structure.
+ * \param[in]  wcycle                 The wallclock counter.
  */
-void pmeGpuGridHaloExchange(const PmeGpu* pmeGpu);
+void pmeGpuGridHaloExchange(const PmeGpu* pmeGpu, gmx_wallcycle* wcycle);
 
 /*! \libinternal \brief
  * Grid reverse Halo exchange before PME gather
  * ToDo: Current implementation transfers halo region from/to only immediate neighbours
  * And, expects that overlapSize <= local grid width.
  * Implement exchange with multiple neighbors to remove this limitation
+ * ToDo: Current implementation synchronizes pmeStream to make sure data is ready on GPU after FFT
+ * to PME grid conversion. Consider using events for this synchnozation.
  *
  * \param[in]  pmeGpu                 The PME GPU structure.
+ * \param[in]  wcycle                 The wallclock counter.
  */
-void pmeGpuGridHaloExchangeReverse(const PmeGpu* pmeGpu);
+void pmeGpuGridHaloExchangeReverse(const PmeGpu* pmeGpu, gmx_wallcycle* wcycle);
 
 /*! \libinternal \brief
- * Copy PME Grid with overlap region to FFT grid and vice-versa
+ * Copy PME Grid with overlap region to host FFT grid and vice-versa. Used in mixed mode PME decomposition
  *
  * \param[in]  pmeGpu                 The PME GPU structure.
- * \param[in]  h_grid                 FFT grid on host
+ * \param[in]  h_fftRealGrid          FFT grid on host
  * \param[in]  fftSetup               Host FFT setup structure
  * \param[in]  gridIndex              Grid index which is to be converted
  *
  * \tparam  pmeToFft                  A boolean which tells if this is conversion from PME grid to FFT grid or reverse
  */
 template<bool pmetofft>
-void convertPmeGridToFftGrid(const PmeGpu* pmeGpu, float* h_grid, gmx_parallel_3dfft_t* fftSetup, int gridIndex);
+void convertPmeGridToFftGrid(const PmeGpu*         pmeGpu,
+                             float*                h_fftRealGrid,
+                             gmx_parallel_3dfft_t* fftSetup,
+                             int                   gridIndex);
+
+/*! \libinternal \brief
+ * Copy PME Grid with overlap region to device FFT grid and vice-versa. Used in full GPU PME decomposition
+ *
+ * \param[in]  pmeGpu                 The PME GPU structure.
+ * \param[in]  d_fftRealGrid          FFT grid on device
+ * \param[in]  gridIndex              Grid index which is to be converted
+ *
+ * \tparam  pmeToFft                  A boolean which tells if this is conversion from PME grid to FFT grid or reverse
+ */
+template<bool pmetofft>
+void convertPmeGridToFftGrid(const PmeGpu* pmeGpu, DeviceBuffer<float>* d_fftRealGrid, int gridIndex);
 
 extern template void convertPmeGridToFftGrid<true>(const PmeGpu* /*pmeGpu*/,
-                                                   float* /*h_grid*/,
+                                                   float* /*h_fftRealGrid*/,
                                                    gmx_parallel_3dfft_t* /*fftSetup*/,
                                                    int /*gridIndex*/);
 
 extern template void convertPmeGridToFftGrid<false>(const PmeGpu* /*pmeGpu*/,
-                                                    float* /*h_grid*/,
+                                                    float* /*h_fftRealGrid*/,
                                                     gmx_parallel_3dfft_t* /*fftSetup*/,
+                                                    int /*gridIndex*/);
+
+extern template void convertPmeGridToFftGrid<true>(const PmeGpu* /*pmeGpu*/,
+                                                   DeviceBuffer<float>* /*d_fftRealGrid*/,
+                                                   int /*gridIndex*/);
+
+extern template void convertPmeGridToFftGrid<false>(const PmeGpu* /*pmeGpu*/,
+                                                    DeviceBuffer<float>* /*d_fftRealGrid*/,
                                                     int /*gridIndex*/);
 
 #endif

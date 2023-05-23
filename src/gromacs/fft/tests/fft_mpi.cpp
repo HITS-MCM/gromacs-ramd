@@ -40,27 +40,27 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/fft/fft.h"
-
 #include "config.h"
 
 #include <algorithm>
-#include <vector>
 #include <random>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "gromacs/fft/fft.h"
 #include "gromacs/fft/gpu_3dfft.h"
 #include "gromacs/gpu_utils/clfftinitializer.h"
 #if GMX_GPU
 #    include "gromacs/gpu_utils/devicebuffer.h"
 #endif
 #include "gromacs/utility/arrayref.h"
+#include "gromacs/utility/mpiinfo.h"
 #include "gromacs/utility/stringutil.h"
 
-#include "testutils/refdata.h"
 #include "testutils/mpitest.h"
+#include "testutils/refdata.h"
 #include "testutils/test_hardware_environment.h"
 #include "testutils/testasserts.h"
 #include "testutils/testmatchers.h"
@@ -69,10 +69,30 @@ namespace gmx
 {
 namespace test
 {
-using GpuFftTestParams = std::tuple<IVec, // size of grid
-                                    int,  // domains in x
-                                    int,  // domains in y
+using GpuFftTestParams = std::tuple<std::tuple<IVec, // size of grid
+                                               int,  // domains in x
+                                               int>, // domains in y
                                     FftBackend>;
+
+using GpuFftTestGridParams = std::tuple_element<0, GpuFftTestParams>::type;
+
+static GpuAwareMpiStatus getGpuAwareMpiStatusForFftBackend(const FftBackend fftBackend)
+{
+    /* This is not a 100%-reliable test. In SYCL, we check that the MPI is supported
+     * by the FFT library, not by the devices. E.g., we can have OpenCL Intel GPUs, which are
+     * not supported by GPU-aware Intel MPI (LevelZero backend is required). Or even NVIDIA or AMD
+     * GPUs in the same build. We do handle some common cases, however.
+     * This will be improved later in scope of #4638 */
+    switch (fftBackend)
+    {
+        case FftBackend::CuFFTMp:
+        case FftBackend::HeFFTe_CUDA:
+        case FftBackend::HeFFTe_Sycl_cuFFT: return checkMpiCudaAwareSupport();
+        case FftBackend::HeFFTe_Sycl_Rocfft: return checkMpiHipAwareSupport();
+        case FftBackend::HeFFTe_Sycl_OneMkl: return checkMpiZEAwareSupport();
+        default: return GpuAwareMpiStatus::NotSupported;
+    }
+}
 
 /*! \brief Check that the real grid after forward and backward
  * 3D transforms matches the input real grid. */
@@ -114,21 +134,35 @@ public:
     {
         const auto& deviceList = getTestHardwareEnvironment()->getTestDeviceList();
 
+        if (deviceList.empty())
+        {
+            GTEST_SKIP() << "No compatible GPUs detected";
+        }
+
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
         const auto& testDevice = deviceList[rank % deviceList.size()];
+        testDevice->activate();
 
         const DeviceContext& deviceContext = testDevice->deviceContext();
-        setActiveDevice(testDevice->deviceInfo());
-        const DeviceStream& deviceStream = testDevice->deviceStream();
+        const DeviceStream&  deviceStream  = testDevice->deviceStream();
 
         FftBackend backend;
 
-        int  numDomainsX;
-        int  numDomainsY;
-        IVec realGridSizeFull;
-        std::tie(realGridSizeFull, numDomainsX, numDomainsY, backend) = param;
+        int                  numDomainsX;
+        int                  numDomainsY;
+        IVec                 realGridSizeFull;
+        GpuFftTestGridParams gridParams;
+        std::tie(gridParams, backend)                        = param;
+        std::tie(realGridSizeFull, numDomainsX, numDomainsY) = gridParams;
+
+        const GpuAwareMpiStatus gpuAwareMpiStatus = getGpuAwareMpiStatusForFftBackend(backend);
+        if (gpuAwareMpiStatus != GpuAwareMpiStatus::Supported
+            && gpuAwareMpiStatus != GpuAwareMpiStatus::Forced)
+        {
+            GTEST_SKIP() << "Test requires GPU-aware MPI library";
+        }
 
         // define local grid sizes - this follows same logic as GROMACS implementation
         std::vector<int> localGridSizesX(numDomainsX);
@@ -154,10 +188,12 @@ public:
         // Allocate the device buffers
         DeviceBuffer<float> realGrid, complexGrid;
 
-        const bool     performOutOfPlaceFFT = true;
-        const MPI_Comm comm                 = MPI_COMM_WORLD;
-        const bool     allocateGrid         = true;
-        const int      nz                   = realGridSizeFull[ZZ];
+        const bool performOutOfPlaceFFT =
+                (backend != FftBackend::CuFFTMp); // CuFFTMp backend supports only in-place transform
+
+        const MPI_Comm comm         = MPI_COMM_WORLD;
+        const bool     allocateGrid = true;
+        const int      nz           = realGridSizeFull[ZZ];
         Gpu3dFft       gpu3dFft(backend,
                           allocateGrid,
                           comm,
@@ -175,7 +211,7 @@ public:
 
         int sizeInReals = realGridSizePadded[0] * realGridSizePadded[1] * realGridSizePadded[2];
 
-        // initialze random input data
+        // initialize random input data
         std::vector<real>                in(sizeInReals);
         std::uniform_real_distribution<> dis(-10.0f, 10.0f);
         std::minstd_rand                 gen(time(NULL) + rank);
@@ -194,7 +230,10 @@ public:
 
         // clear real grid after the forward FFT, so that we know the
         // final grid is one produced by the complex FFT, not just leftovers
-        clearDeviceBufferAsync(&realGrid, 0, sizeInReals, deviceStream);
+        if (performOutOfPlaceFFT)
+        {
+            clearDeviceBufferAsync(&realGrid, 0, sizeInReals, deviceStream);
+        }
 
         // Do the back transform
         gpu3dFft.perform3dFft(GMX_FFT_COMPLEX_TO_REAL, timingEvent);
@@ -221,12 +260,35 @@ TEST_P(GpuFftTest3D, GpuFftDecomposition)
     runTest(params);
 }
 
-std::vector<GpuFftTestParams> const inputs{
-    { IVec{ 5, 6, 9 }, 4, 1, FftBackend::HeFFTe_CUDA }, // slab decomposition
-    { IVec{ 5, 6, 9 }, 2, 2, FftBackend::HeFFTe_CUDA }  // pencil decomposition
+std::vector<GpuFftTestGridParams> const inputGrids{ { IVec{ 5, 6, 9 }, 4, 1 },
+                                                    { IVec{ 5, 6, 9 }, 2, 2 },
+                                                    { IVec{ 5, 5, 10 }, 4, 1 },
+                                                    { IVec{ 5, 5, 10 }, 2, 2 } };
+std::vector<FftBackend> const           inputBackends
+{
+#if GMX_USE_Heffte
+#    if GMX_GPU_CUDA
+    FftBackend::HeFFTe_CUDA,
+#    endif
+#    if GMX_GPU_SYCL && GMX_GPU_FFT_MKL
+            FftBackend::HeFFTe_Sycl_OneMkl,
+#    endif
+#    if GMX_GPU_SYCL && GMX_GPU_FFT_ROCFFT
+            FftBackend::HeFFTe_Sycl_Rocfft,
+#    endif
+#    if GMX_GPU_SYCL && GMX_GPU_FFT_CUFFT
+            FftBackend::HeFFTe_Sycl_cuFFT,
+#    endif
+#endif
+#if GMX_USE_cuFFTMp
+            FftBackend::CuFFTMp,
+#endif
 };
 
-INSTANTIATE_TEST_SUITE_P(GpuFft, GpuFftTest3D, ::testing::ValuesIn(inputs));
+INSTANTIATE_TEST_SUITE_P(GpuFft,
+                         GpuFftTest3D,
+                         ::testing::Combine(::testing::ValuesIn(inputGrids),
+                                            ::testing::ValuesIn(inputBackends)));
 
 } // namespace test
 } // namespace gmx

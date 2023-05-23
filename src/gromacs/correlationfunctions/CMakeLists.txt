@@ -53,18 +53,13 @@ target_include_directories(correlationfunctions INTERFACE
 #target_link_libraries(correlationfunctions PUBLIC
 target_link_libraries(correlationfunctions INTERFACE
                       legacy_api
+                      fft
                       )
 
 # TODO: when fileio is an OBJECT target
 #target_link_libraries(correlationfunctions PUBLIC legacy_api)
 #target_link_libraries(correlationfunctions PRIVATE common)
 
-# Module dependencies
-# This module convey transitive dependence on these modules.
-#target_link_libraries(correlationfunctions PUBLIC
-target_link_libraries(correlationfunctions INTERFACE
-                      #                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(correlationfunctions PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

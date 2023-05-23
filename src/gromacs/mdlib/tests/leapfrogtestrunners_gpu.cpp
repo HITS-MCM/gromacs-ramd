@@ -63,9 +63,9 @@ namespace test
 
 void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numSteps)
 {
+    testDevice_.activate();
     const DeviceContext& deviceContext = testDevice_.deviceContext();
     const DeviceStream&  deviceStream  = testDevice_.deviceStream();
-    setActiveDevice(testDevice_.deviceInfo());
 
     int numAtoms = testData->numAtoms_;
 
@@ -89,15 +89,16 @@ void LeapFrogDeviceTestRunner::integrate(LeapFrogTestData* testData, int numStep
     auto integrator =
             std::make_unique<LeapFrogGpu>(deviceContext, deviceStream, testData->numTCoupleGroups_);
 
-    integrator->set(testData->numAtoms_, testData->inverseMasses_.data(), testData->mdAtoms_.cTC);
+    integrator->set(numAtoms, testData->inverseMasses_, testData->mdAtoms_.cTC);
 
     bool doTempCouple = testData->numTCoupleGroups_ > 0;
     for (int step = 0; step < numSteps; step++)
     {
         // This follows the logic of the CPU-based implementation
-        bool doPressureCouple = testData->doPressureCouple_
-                                && do_per_step(step + testData->inputRecord_.nstpcouple - 1,
-                                               testData->inputRecord_.nstpcouple);
+        bool doPressureCouple =
+                testData->doPressureCouple_
+                && do_per_step(step + testData->inputRecord_.pressureCouplingOptions.nstpcouple - 1,
+                               testData->inputRecord_.pressureCouplingOptions.nstpcouple);
         integrator->integrate(d_x,
                               d_xp,
                               d_v,

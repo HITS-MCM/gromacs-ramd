@@ -47,16 +47,16 @@
 namespace Nbnxm
 {
 
-#ifndef GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY
-//! \brief Default for the prune kernel's j4 processing concurrency.
-#    define GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY 4
+#ifndef GMX_NBNXN_PRUNE_KERNEL_JPACKED_CONCURRENCY
+//! \brief Default for the prune kernel's jPacked processing concurrency.
+#    define GMX_NBNXN_PRUNE_KERNEL_JPACKED_CONCURRENCY 4
 #endif
 
-/*! \brief Prune kernel's j4 processing concurrency.
+/*! \brief Prune kernel's jPacked processing concurrency.
  *
- *  The \c GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY macro allows compile-time override.
+ *  The \c GMX_NBNXN_PRUNE_KERNEL_JPACKED_CONCURRENCY macro allows compile-time override.
  */
-static constexpr int c_syclPruneKernelJ4Concurrency = GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY;
+static constexpr int c_syclPruneKernelJPackedConcurrency = GMX_NBNXN_PRUNE_KERNEL_JPACKED_CONCURRENCY;
 
 /* Convenience constants */
 /*! \cond */
@@ -76,6 +76,22 @@ static constexpr float c_oneSixth = 0.16666667F;
 // 1/12, same value as in other NB kernels.
 static constexpr float c_oneTwelfth = 0.08333333F;
 /*! \endcond */
+
+/*! \brief Explicit uniform load across the warp
+ *
+ *  Uses the readfirstlane intrinsic to ensure that uniform loads use
+ *  scalar registers and subsequent operations on the results generate
+ *  scalar instructions.
+ *
+ *  Note that some ROCm versions' compilers can figure out that the nbnxm
+ *  exclusion indices and imasks are uniform and generate the right instructions,
+ *  but others (like 4.5 and 5.0.2) do not.
+ */
+#if defined(__SYCL_DEVICE_ONLY__) && defined(__AMDGCN__) && GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT
+#    define UNIFORM_LOAD_CLUSTER_PAIR_DATA(x) (__builtin_amdgcn_readfirstlane(x))
+#else
+#    define UNIFORM_LOAD_CLUSTER_PAIR_DATA(x) (x)
+#endif
 
 } // namespace Nbnxm
 

@@ -45,7 +45,9 @@
 #include "gromacs/options/filenameoption.h"
 #include "gromacs/options/ioptionscontainer.h"
 #include "gromacs/selection/selectionoptionbehavior.h"
+#include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/topology.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/fileredirector.h"
 #include "gromacs/utility/filestream.h"
@@ -122,10 +124,10 @@ void writeParameterInformation(TextWriter* writer, const t_inputrec& ir, bool wr
         writer->writeLine(formatString("Temperature coupling was done with the %s algorithm.",
                                        enumValueToString(ir.etc)));
     }
-    if (ir.epc != PressureCoupling::No)
+    if (ir.pressureCouplingOptions.epc != PressureCoupling::No)
     {
         writer->writeLine(formatString("Pressure coupling was done with the %s algorithm.",
-                                       enumValueToString(ir.epc)));
+                                       enumValueToString(ir.pressureCouplingOptions.epc)));
     }
     writer->ensureEmptyLine();
 }
@@ -179,7 +181,7 @@ private:
 void ReportMethods::initOptions(IOptionsContainer* options, ICommandLineOptionsModuleSettings* settings)
 {
     const char* const desc[] = { "[THISMODULE] reports basic system information for the run input",
-                                 "file specfied with [TT]-s[tt] either to the",
+                                 "file specified with [TT]-s[tt] either to the",
                                  "terminal, to a LaTeX formatted output file if run with",
                                  "the [TT]-m[tt] option or to an unformatted file with",
                                  "the [TT]-o[tt] option.",

@@ -5,9 +5,9 @@ clang-tidy:configure-mr:
     - .gromacs:base:configure
     - .use-clang:base
     - .rules:merge-requests
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     COMPILER_MAJOR_VERSION: 11
     BUILD_DIR: build-clang-tidy
     CMAKE_EXTRA_OPTIONS: -DCLANG_TIDY=clang-tidy-$COMPILER_MAJOR_VERSION -DGMX_CLANG_TIDY=ON -DGMX_COMPILER_WARNINGS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -16,10 +16,10 @@ clang-tidy:configure-schedule:
   extends:
     - .gromacs:base:configure
     - .use-clang:base
-    - .rules:nightly-not-for-release
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+    - .rules:post-merge-acceptance
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     COMPILER_MAJOR_VERSION: 11
     BUILD_DIR: build-clang-tidy
     CMAKE_EXTRA_OPTIONS: -DCLANG_TIDY=clang-tidy-$COMPILER_MAJOR_VERSION -DGMX_CLANG_TIDY=ON -DGMX_COMPILER_WARNINGS=ON
@@ -29,8 +29,8 @@ clang-tidy:configure-schedule-cuda:
     - .gromacs:base:configure
     - .use-clang:base
     - .use-cuda
-    - .rules:nightly-not-for-release
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+    - .rules:post-merge-acceptance
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   variables:
     CMAKE: cmake
     COMPILER_MAJOR_VERSION: 11
@@ -42,13 +42,13 @@ clang-tidy:build:
     - .gromacs:base:build
     - .use-ccache
     - .variables:default
-    - .rules:nightly-not-for-release
+    - .rules:post-merge-acceptance
   stage: source-check
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   needs:
     - job: clang-tidy:configure-schedule
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     BUILD_DIR: build-clang-tidy
 
 clang-tidy:build-cuda:
@@ -56,9 +56,9 @@ clang-tidy:build-cuda:
     - .gromacs:base:build
     - .use-ccache
     - .variables:default
-    - .rules:nightly-not-for-release
+    - .rules:post-merge-acceptance
   stage: source-check
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   needs:
     - job: clang-tidy:configure-schedule-cuda
   variables:
@@ -70,22 +70,23 @@ clang-tidy:test:
     - .gromacs:base:build
     - .variables:default
     - .rules:merge-requests
+  allow_failure: true
   stage: source-check
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   needs:
     - job: clang-tidy:configure-mr
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     COMPILER_MAJOR_VERSION: 11
     BUILD_DIR: build-clang-tidy
-    EXTRA_INSTALLS: clang-tidy-$COMPILER_MAJOR_VERSION
     KUBERNETES_CPU_LIMIT: 4
     KUBERNETES_CPU_REQUEST: 2
     KUBERNETES_MEMORY_REQUEST: 4Gi
   script:
     # Make sure that a Python interpreter can be found for `/bin/env python`
     - test -x /usr/bin/python || update-alternatives --install /usr/bin/python python /usr/bin/python3 1
-    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2022 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
+    - TARGET_BRANCH=${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-release-2023}
+    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git $TARGET_BRANCH && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
     - HEAD_REV=$(git show -s --pretty=format:"%h" HEAD)
     - if [[ "$REV" == "$HEAD_REV" ]] ; then
         REV="HEAD~1" ;
@@ -107,18 +108,18 @@ clang-format:
     - .rules:merge-requests
   cache: {}
   stage: pre-build
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   variables:
     COMPILER_MAJOR_VERSION: 11
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
     KUBERNETES_MEMORY_REQUEST: 2Gi
-    EXTRA_INSTALLS: clang-format-$COMPILER_MAJOR_VERSION
   script:
-    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2022 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
+    - TARGET_BRANCH=${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-release-2023}
+    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git $TARGET_BRANCH && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
     - HEAD_REV=$(git show -s --pretty=format:"%h" HEAD)
     - if [[ "$REV" == "$HEAD_REV" ]] ; then
-        REV="HEAD~1" ;
+      REV="HEAD~1" ;
       fi
     - echo "Revision used for branch point is $REV"
     - git show -s $REV
@@ -131,19 +132,41 @@ clang-format:
       - clang-format.log
       - formatting.txt
 
+python-format:
+  extends:
+    - .variables:default
+    - .rules:merge-requests
+  cache: {}
+  stage: pre-build
+  image: ${CI_REGISTRY_IMAGE}/ci-ubuntu-20.04-llvm-9-docs
+  variables:
+    COMPILER_MAJOR_VERSION: 9
+    KUBERNETES_CPU_LIMIT: 1
+    KUBERNETES_CPU_REQUEST: 1
+    KUBERNETES_MEMORY_REQUEST: 2Gi
+  script:
+    - BLACK="/root/venv/py3.9/bin/python -m black --config .black.toml -W $KUBERNETES_CPU_LIMIT "
+    - echo "Using 'black' version " $($BLACK --version)
+    - $BLACK --check --verbose --diff . > black-format.log
+    - if [ -s black-format.log ] ; then echo "Python formatter found issues (see black-format.log)"; exit 1; fi
+  artifacts:
+    when: on_failure
+    paths:
+      - black-format.log
+
 copyright-check:
   extends:
     - .variables:default
     - .rules:merge-requests
   cache: {}
   stage: pre-build
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-11-cuda-11.4.1
   variables:
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
     KUBERNETES_MEMORY_REQUEST: 2Gi
   script:
-    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2022 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
+    - REV=$(git fetch -q https://gitlab.com/gromacs/gromacs.git release-2023 && git show -s --pretty=format:"%h" `git merge-base FETCH_HEAD HEAD`)
     - HEAD_REV=$(git show -s --pretty=format:"%h" HEAD)
     - if [[ "$REV" == "$HEAD_REV" ]] ; then
         REV="HEAD~1" ;

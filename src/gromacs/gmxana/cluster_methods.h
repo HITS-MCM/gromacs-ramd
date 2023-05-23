@@ -35,9 +35,8 @@
 #ifndef GMX_GMXANA_CLUSTER_METHODS_H
 #define GMX_GMXANA_CLUSTER_METHODS_H
 
-#include <stdio.h>
+#include <cstdio>
 
-#include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
 struct gmx_output_env_t;

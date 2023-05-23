@@ -40,37 +40,21 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/topology/mtop_util.h"
-
 #include <gtest/gtest.h>
 
 #include "gromacs/topology/ifunc.h"
+#include "gromacs/topology/mtop_atomloops.h"
+#include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/topology.h"
+
+#include "testutils/topologyhelpers.h"
 
 namespace gmx
 {
+namespace test
+{
 namespace
 {
-
-/*! \brief Adds 2 water molecules with settles */
-void addTwoWaterMolecules(gmx_mtop_t* mtop)
-{
-    gmx_moltype_t moltype;
-    moltype.atoms.nr             = NRAL(F_SETTLE);
-    std::vector<int>& iatoms     = moltype.ilist[F_SETTLE].iatoms;
-    const int         settleType = 0;
-    iatoms.push_back(settleType);
-    iatoms.push_back(0);
-    iatoms.push_back(1);
-    iatoms.push_back(2);
-    int moleculeTypeIndex = mtop->moltype.size();
-    mtop->moltype.push_back(std::move(moltype));
-
-    const int numWaterMolecules = 2;
-    mtop->molblock.emplace_back(gmx_molblock_t{});
-    mtop->molblock.back().type = moleculeTypeIndex;
-    mtop->molblock.back().nmol = numWaterMolecules;
-    mtop->natoms               = mtop->moltype.back().atoms.nr * mtop->molblock.back().nmol;
-}
 
 /*! \brief
  * Creates dummy topology with two differently sized residues.
@@ -127,7 +111,7 @@ void addIntermolecularInteractionBonds(gmx_mtop_t* mtop)
 TEST(MtopTest, RangeBasedLoop)
 {
     gmx_mtop_t mtop;
-    addTwoWaterMolecules(&mtop);
+    addNWaterMolecules(&mtop, 2);
     mtop.finalize();
     int count = 0;
     for (const AtomProxy atomP : AtomRange(mtop))
@@ -136,12 +120,13 @@ TEST(MtopTest, RangeBasedLoop)
         ++count;
     }
     EXPECT_EQ(count, 6);
+    done_atom(&mtop.moltype[0].atoms);
 }
 
 TEST(MtopTest, Operators)
 {
     gmx_mtop_t mtop;
-    addTwoWaterMolecules(&mtop);
+    addNWaterMolecules(&mtop, 2);
     mtop.finalize();
     AtomIterator it(mtop);
     AtomIterator otherIt(mtop);
@@ -155,6 +140,7 @@ TEST(MtopTest, Operators)
     EXPECT_EQ(it->globalAtomNumber(), 2);
     EXPECT_TRUE(it != otherIt);
     EXPECT_FALSE(it == otherIt);
+    done_atom(&mtop.moltype[0].atoms);
 }
 
 TEST(MtopTest, CanFindResidueStartAndEndAtoms)
@@ -181,71 +167,6 @@ TEST(MtopTest, CanFindResidueStartAndEndAtoms)
             referenceRangeIt++;
         }
         rangeIndex++;
-    }
-}
-
-TEST(MtopTest, AtomHasPerturbedChargeIn14Interaction)
-{
-    gmx_moltype_t molt;
-    molt.atoms.nr   = 0;
-    molt.atoms.atom = nullptr;
-    EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt)) << "empty moltype has none";
-
-    {
-        SCOPED_TRACE("Use a moltype that has no perturbed charges at all");
-        const int numAtoms = 4;
-        init_t_atoms(&molt.atoms, numAtoms, false);
-        for (int i = 0; i != numAtoms; ++i)
-        {
-            molt.atoms.atom[i].q  = 1.0;
-            molt.atoms.atom[i].qB = 1.0;
-        }
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
-    }
-
-    {
-        SCOPED_TRACE("Use a moltype that has a perturbed charge, but no interactions");
-        molt.atoms.atom[1].q  = 1.0;
-        molt.atoms.atom[1].qB = -1.0;
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
-    }
-
-    {
-        SCOPED_TRACE("Use a moltype that has a perturbed charge but no 1-4 interactions");
-        std::array<int, 2> bondAtoms = { 0, 1 };
-        molt.ilist[F_BONDS].push_back(0, bondAtoms);
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
-    }
-
-    {
-        SCOPED_TRACE(
-                "Use a moltype that has a perturbed charge, but not on an atom with a 1-4 "
-                "interaction");
-        std::array<int, 2> pairAtoms = { 2, 3 };
-        molt.ilist[F_LJ14].push_back(0, pairAtoms);
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(1, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
-    }
-
-    {
-        SCOPED_TRACE("Use a moltype that has a perturbed charge on an atom with a 1-4 interaction");
-        std::array<int, 2> perturbedPairAtoms = { 1, 2 };
-        molt.ilist[F_LJ14].push_back(0, perturbedPairAtoms);
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(0, molt));
-        EXPECT_TRUE(atomHasPerturbedChargeIn14Interaction(1, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(2, molt));
-        EXPECT_FALSE(atomHasPerturbedChargeIn14Interaction(3, molt));
     }
 }
 
@@ -394,7 +315,7 @@ TEST(MtopTest, CanSortPerturbedInteractionsCorrectly)
 TEST(IListRangeTest, RangeBasedLoopWorks)
 {
     gmx_mtop_t mtop;
-    addTwoWaterMolecules(&mtop);
+    addNWaterMolecules(&mtop, 2);
     mtop.finalize();
 
     int count = 0;
@@ -411,12 +332,13 @@ TEST(IListRangeTest, RangeBasedLoopWorks)
     EXPECT_EQ(gmx_mtop_ftype_count(mtop, F_SETTLE), 2);
     EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_BOND), 0);
     EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_CONSTRAINT), 2);
+    done_atom(&mtop.moltype[0].atoms);
 }
 
 TEST(IListRangeTest, RangeBasedLoopWithIntermolecularInteraction)
 {
     gmx_mtop_t mtop;
-    addTwoWaterMolecules(&mtop);
+    addNWaterMolecules(&mtop, 2);
     addIntermolecularInteractionBonds(&mtop);
     mtop.finalize();
 
@@ -444,8 +366,11 @@ TEST(IListRangeTest, RangeBasedLoopWithIntermolecularInteraction)
     EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_BOND), 3);
     EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_CONSTRAINT), 2);
     EXPECT_EQ(gmx_mtop_interaction_count(mtop, IF_BOND | IF_CONSTRAINT), 0);
+    done_atom(&mtop.moltype[0].atoms);
 }
 
 } // namespace
+
+} // namespace test
 
 } // namespace gmx

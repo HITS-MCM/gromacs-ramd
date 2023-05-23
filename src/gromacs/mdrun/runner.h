@@ -77,9 +77,6 @@ class RestraintManager;
 class SimulationContext;
 class StopHandlerBuilder;
 
-//! Work-around for GCC bug 58265 still present in CentOS 7 devtoolset-7
-constexpr bool BUGFREE_NOEXCEPT_STRING = std::is_nothrow_move_assignable<std::string>::value;
-
 /*! \libinternal \brief Runner object for supporting setup and execution of mdrun.
  *
  * This class has responsibility for the lifetime of data structures
@@ -102,7 +99,7 @@ constexpr bool BUGFREE_NOEXCEPT_STRING = std::is_nothrow_move_assignable<std::st
  * \todo Preparing logging and MPI contexts could probably be a
  * higher-level responsibility, so that an Mdrunner would get made
  * without needing to re-initialize these components (as currently
- * happens always for the master rank, and differently for the spawned
+ * happens always for the main rank, and differently for the spawned
  * ranks with thread-MPI).
  *
  * \ingroup module_mdrun
@@ -145,8 +142,7 @@ public:
      * \{
      */
     Mdrunner(Mdrunner&& handle) noexcept;
-    //NOLINTNEXTLINE(performance-noexcept-move-constructor) working around GCC bug 58265 in CentOS 7
-    Mdrunner& operator=(Mdrunner&& handle) noexcept(BUGFREE_NOEXCEPT_STRING);
+    Mdrunner& operator=(Mdrunner&& handle) noexcept;
     /* \} */
 
     /*! \brief Driver routine, that calls the different simulation methods. */
@@ -178,9 +174,9 @@ public:
      * in turn calls mdrunner() for each thread. */
     void spawnThreads(int numThreadsToLaunch);
 
-    /*! \brief Initializes a new Mdrunner from the master.
+    /*! \brief Initializes a new Mdrunner from the main.
      *
-     * Run this method in a new thread from a master runner to get additional
+     * Run this method in a new thread from a main runner to get additional
      * workers on spawned threads.
      *
      * \returns New Mdrunner instance suitable for thread-MPI work on new ranks.
@@ -217,7 +213,7 @@ private:
     //! Options for the domain decomposition.
     DomdecOptions domdecOptions;
 
-    /*! \brief Target short-range interations for "cpu", "gpu", or "auto". Default is "auto".
+    /*! \brief Target short-range interactions for "cpu", "gpu", or "auto". Default is "auto".
      *
      * \internal
      * \todo replace with string or enum class and initialize with sensible value.
@@ -238,7 +234,7 @@ private:
      */
     const char* pme_fft_opt = nullptr;
 
-    /*! \brief Target bonded interations for "cpu", "gpu", or "auto". Default is "auto".
+    /*! \brief Target bonded interactions for "cpu", "gpu", or "auto". Default is "auto".
      *
      * \internal
      * \todo replace with string or enum class and initialize with sensible value.

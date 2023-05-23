@@ -35,10 +35,7 @@
 
 #include "angle_correction.h"
 
-#include <algorithm>
-
 #include "gromacs/math/units.h"
-#include "gromacs/math/vec.h"
 
 real correctRadianAngleRange(const real angle)
 {

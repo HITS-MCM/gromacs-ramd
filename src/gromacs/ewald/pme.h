@@ -212,8 +212,17 @@ void gmx_pme_reinit(gmx_pme_t**       pmedata,
                     real              ewaldcoeff_q,
                     real              ewaldcoeff_lj);
 
-/*! \brief Destroys the PME data structure.*/
+/*! \brief Destroys the PME data structure (including shared data). */
 void gmx_pme_destroy(gmx_pme_t* pme);
+
+/*! \brief Destroys the PME data structure.
+ *
+ * \param pme               The data structure to destroy.
+ * \param destroySharedData Set to \c false if \p pme is a copy created by \ref gmx_pme_reinit,
+ * and only it should be destroyed, while shared data should be preserved. If \c true, the shared
+ * data will be destroyed, like in \c gmx_pme_destroy(gmx_pme_t* pme).
+ * */
+void gmx_pme_destroy(gmx_pme_t* pme, bool destroySharedData);
 
 /*! \brief Do a PME calculation on a CPU for the long range electrostatics and/or LJ.
  *
@@ -289,15 +298,6 @@ void gmx_pme_reinit_atoms(gmx_pme_t*                pme,
  * \returns true if PME can run on GPU on this build, false otherwise.
  */
 bool pme_gpu_supports_build(std::string* error);
-
-/*! \brief Checks whether the detected (GPU) hardware allows to run PME on GPU.
- *
- * \param[in]  hwinfo  Information about the detected hardware
- * \param[out] error   If non-null, the error message when PME is not supported on GPU.
- *
- * \returns true if PME can run on GPU on this build, false otherwise.
- */
-bool pme_gpu_supports_hardware(const gmx_hw_info_t& hwinfo, std::string* error);
 
 /*! \brief Checks whether the input system allows to run PME on GPU.
  * TODO: this partly duplicates an internal PME assert function
@@ -495,10 +495,12 @@ GPU_FUNC_QUALIFIER void pme_gpu_wait_and_reduce(gmx_pme_t*               GPU_FUN
  * \todo Rename this function to *clear* -- it clearly only does output resetting
  * and we should be clear about what the function does..
  *
- * \param[in] pme            The PME data structure.
- * \param[in] wcycle         The wallclock counter.
+ * \param[in] pme              The PME data structure.
+ * \param[in] useMdGpuGraph    Whether MD GPU Graph is in use.
+ * \param[in] wcycle           The wallclock counter.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_reinit_computation(const gmx_pme_t* GPU_FUNC_ARGUMENT(pme),
+                                                   bool           GPU_FUNC_ARGUMENT(useMdGpuGraph),
                                                    gmx_wallcycle* GPU_FUNC_ARGUMENT(wcycle)) GPU_FUNC_TERM;
 
 /*! \brief Set pointer to device copy of coordinate data.

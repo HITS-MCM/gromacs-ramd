@@ -56,6 +56,7 @@
 
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/gpu_utils/hostallocator.h"
+#include "gromacs/math/matrix.h"
 #include "gromacs/utility/arrayref.h"
 
 class DeviceContext;
@@ -79,17 +80,21 @@ enum class NumTempScaleValues
     Count    = 3  //!< Number of valid values
 };
 
-/*! \brief Different variants of the Parrinello-Rahman velocity scaling
+// Avoid check-source warnings about the duplicate class enum
+#ifndef DOXYGEN
+/*! \brief Describes the properties of the Parrinello-Rahman pressure
+ * scaling matrix
  *
- *  This is needed to template the kernel
- *  \todo Unify with similar enum in CPU update module
+ * This is needed to template the kernel
  */
-enum class VelocityScalingType
+enum class ParrinelloRahmanVelocityScaling
 {
-    None     = 0, //!< Do not apply velocity scaling (not a PR-coupling run or step)
-    Diagonal = 1, //!< Apply velocity scaling using a diagonal matrix
-    Count    = 2  //!< Number of valid values
+    No,          //!< Do not apply velocity scaling (not a PR-coupling run or step)
+    Diagonal,    //!< Apply velocity scaling using a diagonal matrix
+    Anisotropic, //!< Apply velocity scaling using a matrix with off-diagonal elements
+    Count        //!< Number of valid values
 };
+#endif
 
 class LeapFrogGpu
 {
@@ -129,7 +134,7 @@ public:
                    gmx::ArrayRef<const t_grp_tcstat> tcstat,
                    bool                              doParrinelloRahman,
                    float                             dtPressureCouple,
-                   const matrix                      prVelocityScalingMatrix);
+                   const Matrix3x3&                  prVelocityScalingMatrix);
 
     /*! \brief Set the integrator
      *
@@ -141,7 +146,7 @@ public:
      * \param[in] inverseMasses   Inverse masses of atoms.
      * \param[in] tempScaleGroups Maps the atom index to temperature scale value.
      */
-    void set(int numAtoms, const real* inverseMasses, const unsigned short* tempScaleGroups);
+    void set(int numAtoms, ArrayRef<const real> inverseMasses, ArrayRef<const unsigned short> tempScaleGroups);
 
     /*! \brief Class with hardware-specific interfaces and implementations.*/
     class Impl;

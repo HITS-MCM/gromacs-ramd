@@ -63,11 +63,11 @@ namespace Nbnxm
  *
  */
 template<bool haveFreshList>
-auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
-                          DeviceAccessor<Float4, mode::read>            a_xq,
-                          DeviceAccessor<Float3, mode::read>            a_shiftVec,
-                          DeviceAccessor<nbnxn_cj4_t, mode::read_write> a_plistCJ4,
-                          DeviceAccessor<nbnxn_sci_t, mode::read>       a_plistSci,
+auto nbnxmKernelPruneOnly(sycl::handler&                                      cgh,
+                          DeviceAccessor<Float4, mode::read>                  a_xq,
+                          DeviceAccessor<Float3, mode::read>                  a_shiftVec,
+                          DeviceAccessor<nbnxn_cj_packed_t, mode::read_write> a_plistCJPacked,
+                          DeviceAccessor<nbnxn_sci_t, mode::read>             a_plistSci,
                           DeviceAccessor<unsigned int, haveFreshList ? mode::write : mode::read> a_plistIMask,
                           const float rlistOuterSq,
                           const float rlistInnerSq,
@@ -76,7 +76,7 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
 {
     a_xq.bind(cgh);
     a_shiftVec.bind(cgh);
-    a_plistCJ4.bind(cgh);
+    a_plistCJPacked.bind(cgh);
     a_plistSci.bind(cgh);
     a_plistIMask.bind(cgh);
 
@@ -84,7 +84,7 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
     sycl_2020::local_accessor<Float4, 1> sm_xq(
             sycl::range<1>(c_nbnxnGpuNumClusterPerSupercluster * c_clSize), cgh);
 
-    constexpr int warpSize = c_clSize * c_clSize / 2;
+    constexpr int warpSize = c_clSize * c_splitClSize;
 
     /* Somewhat weird behavior inherited from OpenCL.
      * With clSize == 4, we use sub_group size of 16 (not enforced in OpenCL implementation, but chosen
@@ -111,10 +111,10 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
         const unsigned        widx = tidx / warpSize;
 
         // my i super-cluster's index = sciOffset + current bidx * numParts + part
-        const nbnxn_sci_t nbSci     = a_plistSci[bidx * numParts + part];
-        const int         sci       = nbSci.sci;           /* super-cluster */
-        const int         cij4Start = nbSci.cj4_ind_start; /* first ...*/
-        const int         cij4End   = nbSci.cj4_ind_end;   /* and last index of j clusters */
+        const nbnxn_sci_t nbSci          = a_plistSci[bidx * numParts + part];
+        const int         sci            = nbSci.sci;           /* super-cluster */
+        const int         cijPackedBegin = nbSci.cjPackedBegin; /* first ...*/
+        const int         cijPackedEnd   = nbSci.cjPackedEnd;   /* and last index of j clusters */
 
         // We may need only a subset of threads active for preloading i-atoms
         // depending on the super-cluster and cluster / thread-block size.
@@ -138,16 +138,17 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
         itemIdx.barrier(fence_space::local_space);
 
         /* loop over the j clusters = seen by any of the atoms in the current super-cluster.
-         * The loop stride c_syclPruneKernelJ4Concurrency ensures that consecutive warps-pairs are
-         * assigned consecutive j4's entries. */
-        for (int j4 = cij4Start + tidxz; j4 < cij4End; j4 += c_syclPruneKernelJ4Concurrency)
+         * The loop stride c_syclPruneKernelJPackedConcurrency ensures that consecutive warps-pairs
+         * are assigned consecutive jPacked's entries. */
+        for (int jPacked = cijPackedBegin + tidxz; jPacked < cijPackedEnd;
+             jPacked += c_syclPruneKernelJPackedConcurrency)
         {
             unsigned imaskFull, imaskCheck, imaskNew;
 
             if constexpr (haveFreshList)
             {
                 /* Read the mask from the list transferred from the CPU */
-                imaskFull = a_plistCJ4[j4].imei[widx].imask;
+                imaskFull = UNIFORM_LOAD_CLUSTER_PAIR_DATA(a_plistCJPacked[jPacked].imei[widx].imask);
                 /* We attempt to prune all pairs present in the original list */
                 imaskCheck = imaskFull;
                 imaskNew   = 0;
@@ -155,9 +156,10 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
             else
             {
                 /* Read the mask from the "warp-pruned" by rlistOuter mask array */
-                imaskFull = a_plistIMask[j4 * c_nbnxnGpuClusterpairSplit + widx];
+                imaskFull = UNIFORM_LOAD_CLUSTER_PAIR_DATA(
+                        a_plistIMask[jPacked * c_nbnxnGpuClusterpairSplit + widx]);
                 /* Read the old rolling pruned mask, use as a base for new */
-                imaskNew = a_plistCJ4[j4].imei[widx].imask;
+                imaskNew = UNIFORM_LOAD_CLUSTER_PAIR_DATA(a_plistCJPacked[jPacked].imei[widx].imask);
                 /* We only need to check pairs with different mask */
                 imaskCheck = (imaskNew ^ imaskFull);
             }
@@ -170,7 +172,7 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
                     {
                         unsigned mask_ji = (1U << (jm * c_nbnxnGpuNumClusterPerSupercluster));
                         // SYCL-TODO: Reevaluate prefetching methods
-                        const int cj = a_plistCJ4[j4].cj[jm];
+                        const int cj = a_plistCJPacked[jPacked].cj[jm];
                         const int aj = cj * c_clSize + tidxj;
 
                         /* load j atom data */
@@ -211,18 +213,18 @@ auto nbnxmKernelPruneOnly(sycl::handler&                                cgh,
                 if constexpr (haveFreshList)
                 {
                     /* copy the list pruned to rlistOuter to a separate buffer */
-                    a_plistIMask[j4 * c_nbnxnGpuClusterpairSplit + widx] = imaskFull;
+                    a_plistIMask[jPacked * c_nbnxnGpuClusterpairSplit + widx] = imaskFull;
                 }
                 /* update the imask with only the pairs up to rlistInner */
-                a_plistCJ4[j4].imei[widx].imask = imaskNew;
+                a_plistCJPacked[jPacked].imei[widx].imask = imaskNew;
             } // (imaskCheck)
-        } // for (int j4 = cij4_start + tidxz; j4 < cij4_end; j4 += c_syclPruneKernelJ4Concurrency)
+        } // for (int jPacked = cijPackedBegin + tidxz; jPacked < cijPackedEnd; jPacked += c_syclPruneKernelJPackedConcurrency)
     };
 }
 
 //! \brief Leap Frog SYCL prune-only kernel launch code.
 template<bool haveFreshList, class... Args>
-sycl::event launchNbnxmKernelPruneOnly(const DeviceStream& deviceStream, const int numSciInPart, Args&&... args)
+void launchNbnxmKernelPruneOnly(const DeviceStream& deviceStream, const int numSciInPart, Args&&... args)
 {
     using kernelNameType = NbnxmKernelPruneOnly<haveFreshList>;
 
@@ -232,27 +234,25 @@ sycl::event launchNbnxmKernelPruneOnly(const DeviceStream& deviceStream, const i
      * - The 1D block-grid contains as many blocks as super-clusters.
      */
     const unsigned long     numBlocks = numSciInPart;
-    const sycl::range<3>    blockSize{ c_syclPruneKernelJ4Concurrency, c_clSize, c_clSize };
+    const sycl::range<3>    blockSize{ c_syclPruneKernelJPackedConcurrency, c_clSize, c_clSize };
     const sycl::range<3>    globalSize{ numBlocks * blockSize[0], blockSize[1], blockSize[2] };
     const sycl::nd_range<3> range{ globalSize, blockSize };
 
     sycl::queue q = deviceStream.stream();
 
-    sycl::event e = q.submit([&](sycl::handler& cgh) {
+    q.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel = nbnxmKernelPruneOnly<haveFreshList>(cgh, std::forward<Args>(args)...);
         cgh.parallel_for<kernelNameType>(range, kernel);
     });
-
-    return e;
 }
 
 //! \brief Select templated kernel and launch it.
 template<class... Args>
-sycl::event chooseAndLaunchNbnxmKernelPruneOnly(bool haveFreshList, Args&&... args)
+void chooseAndLaunchNbnxmKernelPruneOnly(bool haveFreshList, Args&&... args)
 {
-    return gmx::dispatchTemplatedFunction(
+    gmx::dispatchTemplatedFunction(
             [&](auto haveFreshList_) {
-                return launchNbnxmKernelPruneOnly<haveFreshList_>(std::forward<Args>(args)...);
+                launchNbnxmKernelPruneOnly<haveFreshList_>(std::forward<Args>(args)...);
             },
             haveFreshList);
 }
@@ -269,18 +269,18 @@ void launchNbnxmKernelPruneOnly(NbnxmGpu*                 nb,
     const bool          haveFreshList = plist->haveFreshList;
     const DeviceStream& deviceStream  = *nb->deviceStreams[iloc];
 
-    sycl::event e = chooseAndLaunchNbnxmKernelPruneOnly(haveFreshList,
-                                                        deviceStream,
-                                                        numSciInPart,
-                                                        adat->xq,
-                                                        adat->shiftVec,
-                                                        plist->cj4,
-                                                        plist->sci,
-                                                        plist->imask,
-                                                        nbp->rlistOuter_sq,
-                                                        nbp->rlistInner_sq,
-                                                        numParts,
-                                                        part);
+    chooseAndLaunchNbnxmKernelPruneOnly(haveFreshList,
+                                        deviceStream,
+                                        numSciInPart,
+                                        adat->xq,
+                                        adat->shiftVec,
+                                        plist->cjPacked,
+                                        plist->sci,
+                                        plist->imask,
+                                        nbp->rlistOuter_sq,
+                                        nbp->rlistInner_sq,
+                                        numParts,
+                                        part);
 }
 
 } // namespace Nbnxm

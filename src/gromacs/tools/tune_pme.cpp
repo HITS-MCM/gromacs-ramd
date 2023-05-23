@@ -941,7 +941,7 @@ static void make_benchmark_tprs(const char* fn_sim_tpr,  /* READ : User-provided
     read_tpx_state(fn_sim_tpr, ir, &state, &mtop);
 
     /* Check if some kind of PME was chosen */
-    if (EEL_PME(ir->coulombtype) == FALSE)
+    if (!usingPme(ir->coulombtype))
     {
         gmx_fatal(FARGS,
                   "Can only do optimizations for simulations with %s electrostatics.",
@@ -1138,9 +1138,10 @@ static void make_benchmark_tprs(const char* fn_sim_tpr,  /* READ : User-provided
         info->fsz[j]      = fac * fourierspacing;
 
         /* Write the benchmark tpr file */
-        fn_bench_tprs[j] = gmx_strdup(
-                gmx::Path::concatenateBeforeExtension(fn_sim_tpr, gmx::formatString("_bench%.2d", j))
-                        .c_str());
+        fn_bench_tprs[j] =
+                gmx_strdup(gmx::concatenateBeforeExtension(fn_sim_tpr, gmx::formatString("_bench%.2d", j))
+                                   .u8string()
+                                   .c_str());
 
         fprintf(stdout, "Writing benchmark tpr %s with nsteps=", fn_bench_tprs[j]);
         fprintf(stdout, "%" PRId64, ir->nsteps);

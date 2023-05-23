@@ -111,7 +111,18 @@ static const char* modeToVerb(char mode)
 }
 #endif
 
-void gmx_tng_open(const char* filename, char mode, gmx_tng_trajectory_t* gmx_tng)
+#if !GMX_USE_TNG && defined(__clang__)
+/* gmx_tng_open will not return when the build configuration did not
+ * support TNG at all. That leads to warnings that suggest using
+ * [[noreturn]]. But that attribute also has to be used in the header
+ * file, and we do not want the header file to depend on the build
+ * configuration. So we suppress the warning that gives the
+ * suggestion. */
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wmissing-noreturn"
+#endif
+
+void gmx_tng_open(const std::filesystem::path& filename, char mode, gmx_tng_trajectory_t* gmx_tng)
 {
 #if GMX_USE_TNG
     /* First check whether we have to make a backup,
@@ -131,12 +142,12 @@ void gmx_tng_open(const char* filename, char mode, gmx_tng_trajectory_t* gmx_tng
     /* tng must not be pointing at already allocated memory.
      * Memory will be allocated by tng_util_trajectory_open() and must
      * later on be freed by tng_util_trajectory_close(). */
-    if (TNG_SUCCESS != tng_util_trajectory_open(filename, mode, tng))
+    if (TNG_SUCCESS != tng_util_trajectory_open(filename.u8string().c_str(), mode, tng))
     {
         /* TNG does return more than one degree of error, but there is
            no use case for GROMACS handling the non-fatal errors
            gracefully. */
-        gmx_fatal(FARGS, "File I/O error while opening %s for %s", filename, modeToVerb(mode));
+        gmx_fatal(FARGS, "File I/O error while opening %s for %s", filename.u8string().c_str(), modeToVerb(mode));
     }
 
     if (mode == 'w' || mode == 'a')
@@ -188,6 +199,10 @@ void gmx_tng_open(const char* filename, char mode, gmx_tng_trajectory_t* gmx_tng
     GMX_UNUSED_VALUE(gmx_tng);
 #endif
 }
+
+#if !GMX_USE_TNG && defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
 
 void gmx_tng_close(gmx_tng_trajectory_t* gmx_tng)
 {
@@ -1011,14 +1026,14 @@ float gmx_tng_get_time_of_final_frame(gmx_tng_trajectory_t gmx_tng)
 #endif
 }
 
-void gmx_prepare_tng_writing(const char*              filename,
-                             char                     mode,
-                             gmx_tng_trajectory_t*    gmx_tng_input,
-                             gmx_tng_trajectory_t*    gmx_tng_output,
-                             int                      nAtoms,
-                             const gmx_mtop_t*        mtop,
-                             gmx::ArrayRef<const int> index,
-                             const char*              indexGroupName)
+void gmx_prepare_tng_writing(const std::filesystem::path& filename,
+                             char                         mode,
+                             gmx_tng_trajectory_t*        gmx_tng_input,
+                             gmx_tng_trajectory_t*        gmx_tng_output,
+                             int                          nAtoms,
+                             const gmx_mtop_t*            mtop,
+                             gmx::ArrayRef<const int>     index,
+                             const char*                  indexGroupName)
 {
 #if GMX_USE_TNG
     tng_trajectory_t* input = (gmx_tng_input && *gmx_tng_input) ? &(*gmx_tng_input)->tng : nullptr;
@@ -1438,8 +1453,19 @@ gmx_bool gmx_read_next_tng_frame(gmx_tng_trajectory_t gmx_tng_input,
     }
     fr->natoms = numberOfAtoms;
 
+    /* If the current (last read/written) TNG step is recorded use that. Otherwise retrieve it from the frame data. */
+    std::int64_t step;
+    if (gmx_tng_input->lastStepDataIsValid)
+    {
+        step = gmx_tng_input->lastStep;
+    }
+    else
+    {
+        step = fr->step;
+    }
+
     bool nextFrameExists = gmx_get_tng_data_block_types_of_next_frame(
-            gmx_tng_input, fr->step, numRequestedIds, requestedIds, &frameNumber, &nBlocks, &blockIds);
+            gmx_tng_input, step, numRequestedIds, requestedIds, &frameNumber, &nBlocks, &blockIds);
     gmx::unique_cptr<int64_t, gmx::free_wrapper> blockIdsGuard(blockIds);
     if (!nextFrameExists)
     {
@@ -1563,6 +1589,12 @@ gmx_bool gmx_read_next_tng_frame(gmx_tng_trajectory_t gmx_tng_input,
     // Convert the time to ps
     fr->time  = frameTime / gmx::c_pico;
     fr->bTime = (frameTime > 0);
+
+    /* Update the data in the wrapper */
+    gmx_tng_input->lastStepDataIsValid = true;
+    gmx_tng_input->lastStep            = frameNumber;
+    gmx_tng_input->lastTimeDataIsValid = true;
+    gmx_tng_input->lastTime            = frameTime;
 
     // TODO This does not leak, but is not exception safe.
     /* values must be freed before leaving this function */

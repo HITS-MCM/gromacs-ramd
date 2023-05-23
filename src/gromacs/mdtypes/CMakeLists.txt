@@ -37,6 +37,7 @@ add_library(mdtypes INTERFACE)
 file(GLOB MDTYPES_SOURCES
     awh_history.cpp
     checkpointdata.cpp
+    commrec.cpp
     df_history.cpp
     energyhistory.cpp
     forcebuffers.cpp
@@ -86,32 +87,21 @@ target_include_directories(mdtypes INTERFACE
 #target_link_libraries(mdtypes PUBLIC
 target_link_libraries(mdtypes INTERFACE
                       legacy_api
+                      gpu_utils
+                      math
                       )
+# Interface conveys transitive dependence on other interface(s)
+target_link_libraries(mdtypes INTERFACE utility)
 
 # TODO: when fileio is an OBJECT target
 #target_link_libraries(mdtypes PUBLIC legacy_api)
 #target_link_libraries(mdtypes PRIVATE common)
 
-# Module dependencies
-# fileio interfaces convey transitive dependence on these modules.
-#target_link_libraries(mdtypes PUBLIC
-target_link_libraries(mdtypes INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(mdtypes PRIVATE tng_io)
-# TODO: Explicitly link specific modules.
-#target_link_libraries(mdtypes PRIVATE legacy_modules)
 
 if (BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${MDTYPES_SOURCES} PARENT_SCOPE)
-
-if(GMX_INSTALL_LEGACY_API)
-  install(FILES
-          inputrec.h
-          md_enums.h
-          DESTINATION include/gromacs/mdtypes)
-endif()

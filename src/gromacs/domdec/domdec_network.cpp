@@ -55,8 +55,8 @@
 #include "domdec_internal.h"
 
 
-/*! \brief Returns the MPI rank of the domain decomposition master rank */
-#define DDMASTERRANK(dd) ((dd)->masterrank)
+/*! \brief Returns the MPI rank of the domain decomposition main rank */
+#define DDMAINRANK(dd) ((dd)->mainrank)
 
 
 /*! \brief Move data of type \p T in the communication region one cell along
@@ -66,13 +66,13 @@
  * (direction=dddirFoward) or backward (direction=dddirBackward).
  */
 template<typename T>
-void ddSendrecv(const struct gmx_domdec_t* dd,
-                int                        ddDimensionIndex,
-                int                        direction,
-                T*                         sendBuffer,
-                int                        numElementsToSend,
-                T*                         receiveBuffer,
-                int                        numElementsToReceive)
+static void ddSendrecv(const struct gmx_domdec_t* dd,
+                       int                        ddDimensionIndex,
+                       int                        direction,
+                       T*                         sendBuffer,
+                       int                        numElementsToSend,
+                       T*                         receiveBuffer,
+                       int                        numElementsToReceive)
 {
 #if GMX_MPI
     int sendRank    = dd->neighbor[ddDimensionIndex][direction == dddirForward ? 0 : 1];
@@ -113,13 +113,6 @@ void ddSendrecv(const struct gmx_domdec_t* dd,
     GMX_UNUSED_VALUE(numElementsToReceive);
 #endif // GMX_MPI
 }
-
-//! Specialization of extern template for int
-template void ddSendrecv(const gmx_domdec_t*, int, int, int*, int, int*, int);
-//! Specialization of extern template for real
-template void ddSendrecv(const gmx_domdec_t*, int, int, real*, int, real*, int);
-//! Specialization of extern template for gmx::RVec
-template void ddSendrecv(const gmx_domdec_t*, int, int, rvec*, int, rvec*, int);
 
 template<typename T>
 void ddSendrecv(const gmx_domdec_t* dd,
@@ -235,21 +228,7 @@ void dd_bcast(const gmx_domdec_t gmx_unused* dd, int gmx_unused nbytes, void gmx
 #if GMX_MPI
     if (dd->nnodes > 1)
     {
-        MPI_Bcast(data, nbytes, MPI_BYTE, DDMASTERRANK(dd), dd->mpi_comm_all);
-    }
-#endif
-}
-
-void dd_bcastc(const gmx_domdec_t* dd, int nbytes, void* src, void* dest)
-{
-    if (DDMASTER(dd) || dd->nnodes == 1)
-    {
-        memcpy(dest, src, nbytes);
-    }
-#if GMX_MPI
-    if (dd->nnodes > 1)
-    {
-        MPI_Bcast(dest, nbytes, MPI_BYTE, DDMASTERRANK(dd), dd->mpi_comm_all);
+        MPI_Bcast(data, nbytes, MPI_BYTE, DDMAINRANK(dd), dd->mpi_comm_all);
     }
 #endif
 }
@@ -260,7 +239,7 @@ void dd_scatter(const gmx_domdec_t gmx_unused* dd, int gmx_unused nbytes, const 
     if (dd->nnodes > 1)
     {
         /* Some MPI implementions don't specify const */
-        MPI_Scatter(const_cast<void*>(src), nbytes, MPI_BYTE, dest, nbytes, MPI_BYTE, DDMASTERRANK(dd), dd->mpi_comm_all);
+        MPI_Scatter(const_cast<void*>(src), nbytes, MPI_BYTE, dest, nbytes, MPI_BYTE, DDMAINRANK(dd), dd->mpi_comm_all);
     }
     else
 #endif
@@ -282,7 +261,7 @@ void dd_gather(const gmx_domdec_t gmx_unused* dd,
     if (dd->nnodes > 1)
     {
         /* Some MPI implementions don't specify const */
-        MPI_Gather(const_cast<void*>(src), nbytes, MPI_BYTE, dest, nbytes, MPI_BYTE, DDMASTERRANK(dd), dd->mpi_comm_all);
+        MPI_Gather(const_cast<void*>(src), nbytes, MPI_BYTE, dest, nbytes, MPI_BYTE, DDMAINRANK(dd), dd->mpi_comm_all);
     }
     else
 #endif
@@ -291,15 +270,20 @@ void dd_gather(const gmx_domdec_t gmx_unused* dd,
     }
 }
 
-void dd_scatterv(const gmx_domdec_t gmx_unused* dd,
-                 int gmx_unused* scounts,
-                 int gmx_unused* disps,
-                 const void*     sbuf,
-                 int             rcount,
-                 void*           rbuf)
+template<typename T>
+void dd_scatterv(const gmx_domdec_t gmx_unused*      dd,
+                 gmx::ArrayRef<const int> gmx_unused scounts,
+                 gmx::ArrayRef<const int> gmx_unused disps,
+                 const T*                            sbuf,
+                 int                                 rcount,
+                 T*                                  rbuf)
 {
 #if GMX_MPI
-    int dum = 0;
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, gmx::RVec>,
+                  "Currently only supports int and rvec equivalent");
+    MPI_Datatype mpiDatatype = (std::is_same_v<T, int> ? MPI_INT : dd->comm->mpiRVec);
+
+    T dum;
 
     if (dd->nnodes > 1)
     {
@@ -308,9 +292,16 @@ void dd_scatterv(const gmx_domdec_t gmx_unused* dd,
             /* MPI does not allow NULL pointers */
             rbuf = &dum;
         }
-        /* Some MPI implementions don't specify const */
-        MPI_Scatterv(
-                const_cast<void*>(sbuf), scounts, disps, MPI_BYTE, rbuf, rcount, MPI_BYTE, DDMASTERRANK(dd), dd->mpi_comm_all);
+        /* Some MPI implementations don't specify const */
+        MPI_Scatterv(const_cast<T*>(sbuf),
+                     const_cast<int*>(scounts.data()),
+                     const_cast<int*>(disps.data()),
+                     mpiDatatype,
+                     rbuf,
+                     rcount,
+                     mpiDatatype,
+                     DDMAINRANK(dd),
+                     dd->mpi_comm_all);
     }
     else
 #endif
@@ -318,35 +309,75 @@ void dd_scatterv(const gmx_domdec_t gmx_unused* dd,
         /* 1 rank, either we copy everything, or rbuf=sbuf: nothing to do */
         if (rbuf != sbuf)
         {
-            memcpy(rbuf, sbuf, rcount);
+            memcpy(rbuf, sbuf, rcount * sizeof(T));
         }
     }
 }
 
+template void dd_scatterv(const gmx_domdec_t*      dd,
+                          gmx::ArrayRef<const int> scounts,
+                          gmx::ArrayRef<const int> disps,
+                          const int*               sbuf,
+                          int                      rcount,
+                          int*                     rbuf);
+
+template void dd_scatterv(const gmx_domdec_t*      dd,
+                          gmx::ArrayRef<const int> scounts,
+                          gmx::ArrayRef<const int> disps,
+                          const gmx::RVec*         sbuf,
+                          int                      rcount,
+                          gmx::RVec*               rbuf);
+
+template<typename T>
 void dd_gatherv(const gmx_domdec_t gmx_unused* dd,
                 int gmx_unused                 scount,
-                const void gmx_unused* sbuf,
-                int gmx_unused* rcounts,
-                int gmx_unused* disps,
-                void gmx_unused* rbuf)
+                const T gmx_unused*                 sbuf,
+                gmx::ArrayRef<const int> gmx_unused rcounts,
+                gmx::ArrayRef<const int> gmx_unused disps,
+                T gmx_unused* rbuf)
 {
 #if GMX_MPI
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, gmx::RVec>,
+                  "Currently only support int and rvec equivalent");
+    MPI_Datatype mpiDatatype = (std::is_same_v<T, int> ? MPI_INT : dd->comm->mpiRVec);
+
     if (dd->nnodes > 1)
     {
-        int dum;
+        T dum;
 
         if (scount == 0)
         {
             /* MPI does not allow NULL pointers */
             sbuf = &dum;
         }
-        /* Some MPI implementions don't specify const */
-        MPI_Gatherv(
-                const_cast<void*>(sbuf), scount, MPI_BYTE, rbuf, rcounts, disps, MPI_BYTE, DDMASTERRANK(dd), dd->mpi_comm_all);
+        /* Some MPI implementations don't specify const */
+        MPI_Gatherv(const_cast<T*>(sbuf),
+                    scount,
+                    mpiDatatype,
+                    rbuf,
+                    const_cast<int*>(rcounts.data()),
+                    const_cast<int*>(disps.data()),
+                    mpiDatatype,
+                    DDMAINRANK(dd),
+                    dd->mpi_comm_all);
     }
     else
 #endif
     {
-        memcpy(rbuf, sbuf, rcounts[0]);
+        memcpy(rbuf, sbuf, rcounts[0] * sizeof(T));
     }
 }
+
+template void dd_gatherv(const gmx_domdec_t*      dd,
+                         int                      scount,
+                         const int*               sbuf,
+                         gmx::ArrayRef<const int> rcounts,
+                         gmx::ArrayRef<const int> disps,
+                         int*                     rbuf);
+
+template void dd_gatherv(const gmx_domdec_t*      dd,
+                         int                      scount,
+                         const gmx::RVec*         sbuf,
+                         gmx::ArrayRef<const int> rcounts,
+                         gmx::ArrayRef<const int> disps,
+                         gmx::RVec*               rbuf);

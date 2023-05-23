@@ -70,24 +70,22 @@ public:
      *
      * \throws InternalError  If any of the required resources could not be initialized.
      */
-    Impl(const DeviceInformation& deviceInfo,
-         bool                     havePpDomainDecomposition,
-         SimulationWorkload       simulationWork,
-         bool                     useTiming);
+    Impl(const DeviceInformation& deviceInfo, SimulationWorkload simulationWork, bool useTiming);
     ~Impl();
 
     //! Device context.
     DeviceContext context_;
     //! GPU command streams.
     EnumerationArray<DeviceStreamType, std::unique_ptr<DeviceStream>> streams_;
+    //! Whether PP domain decomposition is active
+    const bool havePpDomainDecomposition_ = false;
 };
 
 // DeviceStreamManager::Impl
 DeviceStreamManager::Impl::Impl(const DeviceInformation& deviceInfo,
-                                const bool               havePpDomainDecomposition,
                                 const SimulationWorkload simulationWork,
                                 const bool               useTiming) :
-    context_(deviceInfo)
+    context_(deviceInfo), havePpDomainDecomposition_(simulationWork.havePpDomainDecomposition)
 {
     try
     {
@@ -104,7 +102,7 @@ DeviceStreamManager::Impl::Impl(const DeviceInformation& deviceInfo,
                     std::make_unique<DeviceStream>(context_, DeviceStreamPriority::High, useTiming);
         }
 
-        if (havePpDomainDecomposition)
+        if (simulationWork.havePpDomainDecomposition)
         {
             streams_[DeviceStreamType::NonBondedNonLocal] =
                     std::make_unique<DeviceStream>(context_, DeviceStreamPriority::High, useTiming);
@@ -124,14 +122,23 @@ DeviceStreamManager::Impl::Impl(const DeviceInformation& deviceInfo,
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
 }
 
-DeviceStreamManager::Impl::~Impl() = default;
+DeviceStreamManager::Impl::~Impl()
+{
+    // Wait for all the tasks to complete before destroying the streams. See #4519.
+    for (const auto& stream : streams_)
+    {
+        if (stream)
+        {
+            stream->synchronize();
+        }
+    }
+}
 
 // DeviceStreamManager
 DeviceStreamManager::DeviceStreamManager(const DeviceInformation& deviceInfo,
-                                         const bool               havePpDomainDecomposition,
                                          const SimulationWorkload simulationWork,
                                          const bool               useTiming) :
-    impl_(new Impl(deviceInfo, havePpDomainDecomposition, simulationWork, useTiming))
+    impl_(new Impl(deviceInfo, simulationWork, useTiming))
 {
 }
 
@@ -152,9 +159,9 @@ const DeviceStream& DeviceStreamManager::stream(DeviceStreamType streamToGet) co
     return *impl_->streams_[streamToGet];
 }
 
-const DeviceStream& DeviceStreamManager::bondedStream(bool hasPPDomainDecomposition) const
+const DeviceStream& DeviceStreamManager::bondedStream() const
 {
-    if (hasPPDomainDecomposition)
+    if (impl_->havePpDomainDecomposition_)
     {
         GMX_RELEASE_ASSERT(stream(DeviceStreamType::NonBondedNonLocal).isValid(),
                            "GPU non-bonded non-local stream should be valid in order to use GPU "

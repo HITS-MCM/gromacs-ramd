@@ -33,18 +33,22 @@
  */
 #include "gmxpre.h"
 
-#include "atoms.h"
+#include "gromacs/topology/atoms.h"
 
 #include <cstdio>
 #include <cstring>
 
 #include <algorithm>
+#include <type_traits>
 
 #include "gromacs/topology/atomprop.h"
 #include "gromacs/topology/symtab.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/compare.h"
 #include "gromacs/utility/enumerationhelpers.h"
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/iserializer.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/txtdump.h"
 
@@ -56,6 +60,154 @@ const char* enumValueToString(ParticleType enumValue)
     return particleTypeNames[enumValue];
 }
 
+namespace
+{
+
+/*! \brief Serialize unsigned short values.
+ *
+ * \param[in,out] serializer the serializer
+ * \param[in,out] value to be serialized
+ */
+void serializeValue(gmx::ISerializer* serializer, unsigned short* value)
+{
+    serializer->doUShort(value);
+}
+
+/*! \brief Serialize real values.
+ *
+ * \param[in,out] serializer the serializer
+ * \param[in,out] value to be serialized
+ */
+void serializeValue(gmx::ISerializer* serializer, real* value)
+{
+    serializer->doReal(value);
+}
+
+/*! \brief Serialize NameHolder values.
+ *
+ * \param[in,out] serializer the serializer
+ * \param[in,out] value to be serialized
+ */
+void serializeValue(gmx::ISerializer* serializer, NameHolder* value)
+{
+    GMX_ASSERT(!serializer->reading(), "This only works with a writing serializer");
+    GMX_ASSERT(value->has_value(), "Can not access uninitialized element");
+    (*value)->serialize(serializer);
+}
+
+/*! \brief Deserialize NameHolder values.
+ *
+ * \param[in,out] serializer the serializer
+ * \param[in,out] value to be serialized
+ * \param[in] table Handle for symbol table needed.
+ */
+void serializeValue(gmx::ISerializer* serializer, NameHolder* value, const StringTable& table)
+{
+    GMX_ASSERT(serializer->reading(), "This only works with a reading serializer");
+    *value = readStringTableEntry(serializer, table);
+}
+
+
+/*! \brief Serialize FEP state value
+ *
+ * \tparam T type to be serialized
+ * \param[in,out] serializer the serializer to use
+ * \param[in,out] value Object to serialize.
+ */
+template<typename T>
+void serializeFEPStateValue(gmx::ISerializer* serializer, FEPStateValue<T>* value)
+{
+    serializer->doBool(&value->haveBState_);
+    serializeValue(serializer, &value->storage_[0]);
+    if (value->haveBState_)
+    {
+        serializeValue(serializer, &value->storage_[1]);
+    }
+}
+
+/*! \brief Deserialize FEP state value
+ *
+ * This function only works for values that are not name entries.
+ *
+ * \tparam T type to be serialized
+ * \param[in,out] serializer the serializer to use
+ * \param[in,out] value Object to read.
+ */
+template<typename T>
+void deserializeFEPStateValue(gmx::ISerializer* serializer, FEPStateValue<T>* value)
+{
+    static_assert(!std::is_same_v<T, NameHolder>,
+                  "This function can not be used to deserialize NameHolder objects, please use the "
+                  "dedicated function for it");
+    serializer->doBool(&value->haveBState_);
+    serializeValue(serializer, &value->storage_[0]);
+    if (value->haveBState_)
+    {
+        serializeValue(serializer, &value->storage_[1]);
+    }
+}
+
+/*! \brief Deserialize FEP state value
+ *
+ * This function only works for values that are name entries.
+ *
+ * \param[in,out] serializer the serializer to use
+ * \param[in,out] value Object to serialize.
+ * \param[in]     table StringTable to read entries from.
+ */
+void deserializeFEPStateValue(gmx::ISerializer*          serializer,
+                              FEPStateValue<NameHolder>* value,
+                              const StringTable&         table)
+{
+    serializer->doBool(&value->haveBState_);
+    serializeValue(serializer, &value->storage_[0], table);
+    if (value->haveBState_)
+    {
+        serializeValue(serializer, &value->storage_[1], table);
+    }
+}
+
+} // namespace
+
+SimulationParticle::SimulationParticle(gmx::ISerializer* serializer, const StringTable& table)
+{
+    GMX_ASSERT(serializer->reading(), "Can not create particle with writing serializer");
+    deserializeFEPStateValue(serializer, &mass_);
+    deserializeFEPStateValue(serializer, &charge_);
+    deserializeFEPStateValue(serializer, &particleTypeValue_);
+    deserializeFEPStateValue(serializer, &particleTypeName_, table);
+    particleName_ = readStringTableEntry(serializer, table);
+    serializer->doEnumAsInt<ParticleType>(&particleType_);
+    serializer->doInt64(&residueIndex_);
+    serializer->doInt(&atomicNumber_);
+    serializer->doBool(&haveMass_);
+    serializer->doBool(&haveCharge_);
+    serializer->doBool(&haveType_);
+    serializer->doBool(&haveParticleName_);
+    serializer->doBool(&haveParticleTypeName_);
+    haveBStateForAll_ = mass_.haveBState_ && charge_.haveBState_ && particleTypeValue_.haveBState_
+                        && particleTypeName_.haveBState_;
+}
+
+void SimulationParticle::serializeParticle(gmx::ISerializer* serializer)
+{
+    GMX_ASSERT(!serializer->reading(), "Can not write particle with reading serializer");
+    serializeFEPStateValue(serializer, &mass_);
+    serializeFEPStateValue(serializer, &charge_);
+    serializeFEPStateValue(serializer, &particleTypeValue_);
+    serializeFEPStateValue(serializer, &particleTypeName_);
+    particleName_->serialize(serializer);
+    serializer->doEnumAsInt<ParticleType>(&particleType_);
+    serializer->doInt64(&residueIndex_);
+    serializer->doInt(&atomicNumber_);
+    serializer->doBool(&haveMass_);
+    serializer->doBool(&haveCharge_);
+    serializer->doBool(&haveType_);
+    serializer->doBool(&haveParticleName_);
+    serializer->doBool(&haveParticleTypeName_);
+}
+
+// Legacy functions begin here.
 void init_atom(t_atoms* at)
 {
     at->nr          = 0;
@@ -73,12 +225,6 @@ void init_atom(t_atoms* at)
     at->havePdbInfo = FALSE;
 }
 
-void init_atomtypes(t_atomtypes* at)
-{
-    at->nr         = 0;
-    at->atomnumber = nullptr;
-}
-
 void done_atom(t_atoms* at)
 {
     sfree(at->atom);
@@ -94,12 +240,6 @@ void done_and_delete_atoms(t_atoms* atoms)
 {
     done_atom(atoms);
     delete atoms;
-}
-
-void done_atomtypes(t_atomtypes* atype)
-{
-    atype->nr = 0;
-    sfree(atype->atomnumber);
 }
 
 void add_t_atoms(t_atoms* atoms, int natom_extra, int nres_extra)
@@ -318,20 +458,6 @@ void pr_atoms(FILE* fp, int indent, const char* title, const t_atoms* atoms, gmx
         pr_strings(fp, indent, "atom", atoms->atomname, atoms->nr, bShownumbers);
         pr_strings2(fp, indent, "type", atoms->atomtype, atoms->atomtypeB, atoms->nr, bShownumbers);
         pr_resinfo(fp, indent, "residue", atoms->resinfo, atoms->nres, bShownumbers);
-    }
-}
-
-
-void pr_atomtypes(FILE* fp, int indent, const char* title, const t_atomtypes* atomtypes, gmx_bool bShowNumbers)
-{
-    if (available(fp, atomtypes, indent, title))
-    {
-        indent = pr_title(fp, indent, title);
-        for (int i = 0; i < atomtypes->nr; i++)
-        {
-            pr_indent(fp, indent);
-            fprintf(fp, "atomtype[%3d]={atomnumber=%4d}\n", bShowNumbers ? i : -1, atomtypes->atomnumber[i]);
-        }
     }
 }
 

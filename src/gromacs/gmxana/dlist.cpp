@@ -33,7 +33,6 @@
  */
 #include "gmxpre.h"
 
-#include <cstdlib>
 #include <cstring>
 
 #include <vector>

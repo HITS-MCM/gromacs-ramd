@@ -53,7 +53,7 @@
 
 float dd_pme_f_ratio(const gmx_domdec_t* dd)
 {
-    GMX_ASSERT(DDMASTER(dd), "This function should only be called on the master rank");
+    GMX_ASSERT(DDMAIN(dd), "This function should only be called on the main rank");
 
     if (dd->comm->load[0].mdf > 0 && dd->comm->cycl_n[ddCyclPME] > 0)
     {
@@ -136,7 +136,7 @@ gmx_bool dd_dlb_get_should_check_whether_to_turn_dlb_on(gmx_domdec_t* dd)
 
 gmx_bool dd_dlb_is_on(const gmx_domdec_t* dd)
 {
-    return isDlbOn(dd->comm);
+    return isDlbOn(dd->comm->dlbState);
 }
 
 gmx_bool dd_dlb_is_locked(const gmx_domdec_t* dd)

@@ -66,7 +66,7 @@ static void distributeVecSendrecv(gmx_domdec_t*                  dd,
                                   gmx::ArrayRef<const gmx::RVec> globalVec,
                                   gmx::ArrayRef<gmx::RVec>       localVec)
 {
-    if (DDMASTER(dd))
+    if (DDMAIN(dd))
     {
         std::vector<gmx::RVec> buffer;
 
@@ -92,7 +92,7 @@ static void distributeVecSendrecv(gmx_domdec_t*                  dd,
             }
         }
 
-        const auto& domainGroups = dd->ma->domainGroups[dd->masterrank];
+        const auto& domainGroups = dd->ma->domainGroups[dd->mainrank];
         int         localAtom    = 0;
         for (const int& globalAtom : domainGroups.atomGroups)
         {
@@ -106,7 +106,7 @@ static void distributeVecSendrecv(gmx_domdec_t*                  dd,
         MPI_Recv(localVec.data(),
                  numHomeAtoms * sizeof(gmx::RVec),
                  MPI_BYTE,
-                 dd->masterrank,
+                 dd->mainrank,
                  MPI_ANY_TAG,
                  dd->mpi_comm_all,
                  MPI_STATUS_IGNORE);
@@ -118,10 +118,10 @@ static void distributeVecScatterv(gmx_domdec_t*                  dd,
                                   gmx::ArrayRef<const gmx::RVec> globalVec,
                                   gmx::ArrayRef<gmx::RVec>       localVec)
 {
-    int* sendCounts    = nullptr;
-    int* displacements = nullptr;
+    gmx::ArrayRef<const int> sendCounts;
+    gmx::ArrayRef<const int> displacements;
 
-    if (DDMASTER(dd))
+    if (DDMAIN(dd))
     {
         AtomDistribution& ma = *dd->ma;
 
@@ -143,8 +143,8 @@ static void distributeVecScatterv(gmx_domdec_t*                  dd,
     dd_scatterv(dd,
                 sendCounts,
                 displacements,
-                DDMASTER(dd) ? dd->ma->rvecBuffer.data() : nullptr,
-                numHomeAtoms * sizeof(gmx::RVec),
+                DDMAIN(dd) ? dd->ma->rvecBuffer.data() : nullptr,
+                numHomeAtoms,
                 localVec.data());
 }
 
@@ -199,7 +199,7 @@ static void dd_distribute_state(gmx_domdec_t* dd, const t_state* state, t_state*
 {
     int nh = state_local->nhchainlength;
 
-    if (DDMASTER(dd))
+    if (DDMAIN(dd))
     {
         GMX_RELEASE_ASSERT(state->nhchainlength == nh,
                            "The global and local Nose-Hoover chain lengths should match");
@@ -263,15 +263,15 @@ static void dd_distribute_state(gmx_domdec_t* dd, const t_state* state, t_state*
 
     if (state_local->flags & enumValueToBitMask(StateEntry::X))
     {
-        distributeVec(dd, DDMASTER(dd) ? state->x : gmx::ArrayRef<const gmx::RVec>(), state_local->x);
+        distributeVec(dd, DDMAIN(dd) ? state->x : gmx::ArrayRef<const gmx::RVec>(), state_local->x);
     }
     if (state_local->flags & enumValueToBitMask(StateEntry::V))
     {
-        distributeVec(dd, DDMASTER(dd) ? state->v : gmx::ArrayRef<const gmx::RVec>(), state_local->v);
+        distributeVec(dd, DDMAIN(dd) ? state->v : gmx::ArrayRef<const gmx::RVec>(), state_local->v);
     }
     if (state_local->flags & enumValueToBitMask(StateEntry::Cgp))
     {
-        distributeVec(dd, DDMASTER(dd) ? state->cg_p : gmx::ArrayRef<const gmx::RVec>(), state_local->cg_p);
+        distributeVec(dd, DDMAIN(dd) ? state->cg_p : gmx::ArrayRef<const gmx::RVec>(), state_local->cg_p);
     }
 }
 
@@ -395,7 +395,7 @@ static std::vector<std::vector<int>> getAtomGroupDistribution(const gmx::MDLogge
     make_tric_corr_matrix(dd->unitCellInfo.npbcdim, box, triclinicCorrectionMatrix);
 
     ivec       npulse;
-    const auto cellBoundaries = set_dd_cell_sizes_slb(dd, &ddbox, setcellsizeslbMASTER, npulse);
+    const auto cellBoundaries = set_dd_cell_sizes_slb(dd, &ddbox, setcellsizeslbMAIN, npulse);
 
     std::vector<std::vector<int>> indices(dd->nnodes);
 
@@ -484,13 +484,13 @@ static void distributeAtomGroups(const gmx::MDLogger& mdlog,
 {
     AtomDistribution* ma   = dd->ma.get();
     int *             ibuf = nullptr, buf2[2] = { 0, 0 };
-    gmx_bool          bMaster = DDMASTER(dd);
+    gmx_bool          bMain = DDMAIN(dd);
 
     std::vector<std::vector<int>> groupIndices;
 
-    if (bMaster)
+    if (bMain)
     {
-        GMX_ASSERT(box && pos, "box or pos not set on master");
+        GMX_ASSERT(box && pos, "box or pos not set on main");
 
         if (dd->unitCellInfo.haveScrewPBC)
         {
@@ -517,15 +517,15 @@ static void distributeAtomGroups(const gmx::MDLogger& mdlog,
     dd->globalAtomGroupIndices.resize(dd->numHomeAtoms);
     dd->globalAtomIndices.resize(dd->comm->atomRanges.numHomeAtoms());
 
-    if (bMaster)
+    if (bMain)
     {
         ma->atomGroups.clear();
 
         int groupOffset = 0;
         for (int rank = 0; rank < dd->nnodes; rank++)
         {
-            ma->intBuffer[rank]              = groupIndices[rank].size() * sizeof(int);
-            ma->intBuffer[dd->nnodes + rank] = groupOffset * sizeof(int);
+            ma->intBuffer[rank]              = groupIndices[rank].size();
+            ma->intBuffer[dd->nnodes + rank] = groupOffset;
 
             ma->atomGroups.insert(
                     ma->atomGroups.end(), groupIndices[rank].begin(), groupIndices[rank].end());
@@ -538,10 +538,11 @@ static void distributeAtomGroups(const gmx::MDLogger& mdlog,
     }
 
     dd_scatterv(dd,
-                bMaster ? ma->intBuffer.data() : nullptr,
-                bMaster ? ma->intBuffer.data() + dd->nnodes : nullptr,
-                bMaster ? ma->atomGroups.data() : nullptr,
-                dd->numHomeAtoms * sizeof(int),
+                bMain ? gmx::makeArrayRef(ma->intBuffer).subArray(0, dd->nnodes) : gmx::ArrayRef<int>(),
+                bMain ? gmx::makeArrayRef(ma->intBuffer).subArray(dd->nnodes, dd->nnodes)
+                      : gmx::ArrayRef<int>(),
+                bMain ? ma->atomGroups.data() : nullptr,
+                dd->numHomeAtoms,
                 dd->globalAtomGroupIndices.data());
 
     if (debug)
@@ -566,9 +567,9 @@ void distributeState(const gmx::MDLogger& mdlog,
                      const gmx_ddbox_t&   ddbox,
                      t_state*             state_local)
 {
-    rvec* xGlobal = (DDMASTER(dd) ? state_global->x.rvec_array() : nullptr);
+    rvec* xGlobal = (DDMAIN(dd) ? state_global->x.rvec_array() : nullptr);
 
-    distributeAtomGroups(mdlog, dd, mtop, DDMASTER(dd) ? state_global->box : nullptr, &ddbox, xGlobal);
+    distributeAtomGroups(mdlog, dd, mtop, DDMAIN(dd) ? state_global->box : nullptr, &ddbox, xGlobal);
 
     dd_distribute_state(dd, state_global, state_local);
 }

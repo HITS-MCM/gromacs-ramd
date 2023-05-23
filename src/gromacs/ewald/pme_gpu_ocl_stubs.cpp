@@ -41,11 +41,12 @@
  */
 #include "gmxpre.h"
 
-#include "pme_gpu_types_host.h"
-#include "pme_gpu_types.h"
-#include "pme_gpu_types_host_impl.h"
 #include "gromacs/fft/parallel_3dfft.h"
+
 #include "pme_gpu_grid.h"
+#include "pme_gpu_types.h"
+#include "pme_gpu_types_host.h"
+#include "pme_gpu_types_host_impl.h"
 
 // [[noreturn]] attributes must be added in the common headers, so it's easier to silence the warning here
 #if defined(__clang__)
@@ -53,33 +54,47 @@
 #    pragma clang diagnostic ignored "-Wmissing-noreturn"
 #endif // (__clang__)
 
-void pmeGpuGridHaloExchange(const PmeGpu* /*pmeGpu*/)
+void pmeGpuGridHaloExchange(const PmeGpu* /*pmeGpu*/, gmx_wallcycle* /*wcycle*/)
 {
     GMX_THROW(gmx::NotImplementedError("PME decomposition is not implemented in OpenCL"));
 }
 
-void pmeGpuGridHaloExchangeReverse(const PmeGpu* /*pmeGpu*/)
+void pmeGpuGridHaloExchangeReverse(const PmeGpu* /*pmeGpu*/, gmx_wallcycle* /*wcycle*/)
 {
     GMX_THROW(gmx::NotImplementedError("PME decomposition is not implemented in OpenCL"));
 }
 
 template<bool forward>
 void convertPmeGridToFftGrid(const PmeGpu* /*pmeGpu*/,
-                             float* /*h_grid*/,
+                             float* /*h_fftRealGrid*/,
                              gmx_parallel_3dfft_t* /*fftSetup*/,
                              const int /*gridIndex*/)
 {
     GMX_THROW(gmx::NotImplementedError("PME decomposition is not implemented in OpenCL"));
 }
 
+template<bool forward>
+void convertPmeGridToFftGrid(const PmeGpu* /*pmeGpu*/, DeviceBuffer<float>* /*d_fftRealGrid*/, const int /*gridIndex*/)
+{
+    GMX_THROW(gmx::NotImplementedError("PME decomposition is not implemented in OpenCL"));
+}
+
 template void convertPmeGridToFftGrid<true>(const PmeGpu* /*pmeGpu*/,
-                                            float* /*h_grid*/,
+                                            float* /*h_fftRealGrid*/,
                                             gmx_parallel_3dfft_t* /*fftSetup*/,
                                             const int /*gridIndex*/);
 
 template void convertPmeGridToFftGrid<false>(const PmeGpu* /*pmeGpu*/,
-                                             float* /*h_grid*/,
+                                             float* /*h_fftRealGrid*/,
                                              gmx_parallel_3dfft_t* /*fftSetup*/,
+                                             const int /*gridIndex*/);
+
+template void convertPmeGridToFftGrid<true>(const PmeGpu* /*pmeGpu*/,
+                                            DeviceBuffer<float>* /*d_fftRealGrid*/,
+                                            const int /*gridIndex*/);
+
+template void convertPmeGridToFftGrid<false>(const PmeGpu* /*pmeGpu*/,
+                                             DeviceBuffer<float>* /*d_fftRealGrid*/,
                                              const int /*gridIndex*/);
 
 #if defined(__clang__)

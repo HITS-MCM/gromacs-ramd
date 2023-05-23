@@ -82,8 +82,6 @@ public:
                                    gmx::ForceWithShiftForces*     forceWithShiftForces,
                                    bool                           useSimd,
                                    int                            ntype,
-                                   real                           rlist,
-                                   real                           maxAllowedCutoffSquared,
                                    const interaction_const_t&     ic,
                                    gmx::ArrayRef<const gmx::RVec> shiftvec,
                                    gmx::ArrayRef<const real>      nbfp,
@@ -109,4 +107,4 @@ private:
     gmx::ThreadedForceBuffer<gmx::RVec> threadedForeignEnergyBuffer_;
 };
 
-#endif // GMX_NBNXN_FREEENERGYDISPATCH_H
+#endif // GMX_NBNXM_FREEENERGYDISPATCH_H

@@ -39,28 +39,35 @@
  *  \author Andrey Alekseenko <al42and@gmail.com>
  */
 
-#include "gromacs/gpu_utils/gmxsycl.h"
-
 #include "gromacs/gpu_utils/syclutils.h"
 
-#include "pme_grid.h"
 #include "pme_gpu_types_host.h"
+#include "pme_grid.h"
 
 struct PmeGpuGridParams;
 struct PmeGpuAtomParams;
 struct PmeGpuDynamicParams;
+
+struct PmeGpuPipeliningParams
+{
+    int  pipelineAtomStart;
+    int  pipelineAtomEnd;
+    bool usePipeline;
+};
 
 template<int order, bool computeSplines, bool spreadCharges, bool wrapX, bool wrapY, int numGrids, bool writeGlobal, ThreadsPerAtom threadsPerAtom, int subGroupSize>
 class PmeSplineAndSpreadKernel : public ISyclKernelFunctor
 {
 public:
     PmeSplineAndSpreadKernel();
-    void        setArg(size_t argIndex, void* arg) override;
-    sycl::event launch(const KernelLaunchConfig& config, const DeviceStream& deviceStream) override;
+    void setArg(size_t argIndex, void* arg) override;
+    void launch(const KernelLaunchConfig& config, const DeviceStream& deviceStream) override;
 
 private:
-    PmeGpuGridParams*    gridParams_;
-    PmeGpuAtomParams*    atomParams_;
-    PmeGpuDynamicParams* dynamicParams_;
-    void                 reset();
+    PmeGpuGridParams*      gridParams_;
+    PmeGpuAtomParams*      atomParams_;
+    PmeGpuDynamicParams*   dynamicParams_;
+    PmeGpuPipeliningParams pipeliningParams_;
+
+    void reset();
 };

@@ -62,8 +62,10 @@
 #include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/real.h"
 
+class gmx_ekindata_t;
 struct t_inputrec;
 struct t_lambda;
+struct PressureCouplingOptions;
 enum class FreeEnergyPerturbationType;
 
 namespace gmx
@@ -253,7 +255,8 @@ public:
     int fep_state; //!< indicates which of the alchemical states we are in
     gmx::EnumerationArray<FreeEnergyPerturbationCouplingType, real> lambda; //!< Free-energy lambda vector
     matrix                                                          box; //!< Matrix of box vectors
-    matrix              box_rel;        //!< Relative box vectors to preserve box shape
+    //! Relative box vectors characteristic of the box shape, used to to preserve that box shape
+    matrix              box_rel;
     matrix              boxv;           //!< Box velocities for Parrinello-Rahman P-coupling
     matrix              pres_prev;      //!< Pressure of the previous step for pcoupl
     matrix              svir_prev;      //!< Shake virial for previous step for pcoupl
@@ -294,7 +297,6 @@ struct t_extmass
     std::vector<double> Qinv; /* inverse mass of thermostat -- computed from inputs, but a good place to store */
     std::vector<double> QPinv; /* inverse mass of thermostat for barostat -- computed from inputs, but a good place to store */
     double              Winv; /* Pressure mass inverse -- computed, not input, but a good place to store. Need to make a matrix later */
-    tensor              Winvm; /* inverse pressure mass tensor, computed       */
 };
 
 #endif // DOXYGEN
@@ -328,11 +330,15 @@ void set_box_rel(const t_inputrec* ir, t_state* state);
  * preserved, which otherwise might diffuse away due to rounding
  * errors in pressure coupling or the deform option.
  *
- * \param[in]    ir      Input record
+ * \param[in]    pressureCoupling  The pressure-coupling options
+ * \param[in]    deform  The box-deformation tensor
  * \param[in]    box_rel Relative box dimensions
  * \param[inout] box     The corrected actual box dimensions
  */
-void preserve_box_shape(const t_inputrec* ir, matrix box_rel, matrix box);
+void preserveBoxShape(const PressureCouplingOptions& pressureCoupling,
+                      const tensor                   deform,
+                      matrix                         box_rel,
+                      matrix                         box);
 
 /*! \brief Returns an arrayRef to the positions in \p state when \p state!=null
  *
@@ -365,8 +371,9 @@ void printLambdaStateToLog(FILE* fplog, gmx::ArrayRef<const real> lambda, bool i
 
 /*! \brief Fills fep_state and lambda if needed
  *
- * If FEP or simulated tempering is in use,  fills fep_state
- * and lambda on master rank.
+ * If FEP or simulated tempering is in use, fills \p fep_state
+ * and \p lambda on the main rank and sets the reference temperatures
+ * in \p ekind on all ranks.
  *
  * Reports the initial lambda state to the log file. */
 void initialize_lambdas(FILE*                      fplog,
@@ -374,8 +381,8 @@ void initialize_lambdas(FILE*                      fplog,
                         bool                       haveSimulatedTempering,
                         const t_lambda&            fep,
                         gmx::ArrayRef<const real>  simulatedTemperingTemps,
-                        gmx::ArrayRef<real>        ref_t,
-                        bool                       isMaster,
+                        gmx_ekindata_t*            ekind,
+                        bool                       isMain,
                         int*                       fep_state,
                         gmx::ArrayRef<real>        lambda);
 

@@ -1,0 +1,39 @@
+# Test goal: Continuous integration testing for gmxapi clients development branch.
+# (Note: does not yet distinguish branches or cross-check for forward/backward compatibility.)
+# Test intents:
+#   OS: Ubuntu oldest supported
+#   GPU: unspecified
+#   GROMACS: main
+#   GROMACS MPI: thread-MPI
+#   gmxapi: as per GROMACS main
+#   client code:
+#    * sample_restraint as bundled with GROMACS main
+#    * TAF extension example as bundled with GROMACS main
+#   Scope: build, install, test
+# Test implementation choices (free to change as needed):
+#   GROMACS branch: merge request target branch
+#   gmxapi Python package: according to merge request target branch
+#   sample code: according to merge request target branch
+#   compiler: clang-9
+
+sample_taf:tmpi:
+  extends:
+    - .sample_taf
+    - .rules:merge-requests
+  image: ${CI_REGISTRY_IMAGE}/ci-ubuntu-20.04-llvm-9-cuda-11.0.3
+  variables:
+    CMAKE: /usr/local/cmake-3.21.2/bin/cmake
+  needs:
+    - job: gromacs:clang-9:build
+
+sample_restraint:tmpi:
+  extends:
+    - .sample_restraint
+    - .use-clang:base
+    - .rules:merge-requests
+  image: ${CI_REGISTRY_IMAGE}/ci-ubuntu-20.04-llvm-9-cuda-11.0.3
+  variables:
+    VENVPATH: "/root/venv/py3.7"
+  needs:
+    - job: gromacs:clang-9:build
+      artifacts: true

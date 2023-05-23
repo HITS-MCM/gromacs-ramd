@@ -35,8 +35,6 @@
 
 /* This file is completely threadsafe - keep it that way! */
 
-#include "gromacs/fileio/tpxio.h"
-
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -49,6 +47,7 @@
 #include "gromacs/fileio/filetypes.h"
 #include "gromacs/fileio/gmxfio.h"
 #include "gromacs/fileio/gmxfio_xdr.h"
+#include "gromacs/fileio/tpxio.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdtypes/awh_history.h"
@@ -63,6 +62,7 @@
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/block.h"
 #include "gromacs/topology/ifunc.h"
+#include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/symtab.h"
 #include "gromacs/topology/topology.h"
@@ -138,6 +138,8 @@ enum tpxv
     tpxv_SoftcoreGapsys,              /**< Added gapsys softcore function */
     tpxv_ReaddedConstantAcceleration, /**< Re-added support for constant acceleration NEMD. */
     tpxv_RemoveTholeRfac,             /**< Remove unused rfac parameter from thole listed force */
+    tpxv_RemoveAtomtypes,             /**< Remove unused atomtypes parameter from mtop */
+    tpxv_EnsembleTemperature,         /**< Add ensemble temperature settings */
     tpxv_RAMD,                        /**< Add RAMD information */
     tpxv_Count                        /**< the total number of tpxv versions */
 };
@@ -817,9 +819,12 @@ static void do_rotgrp(gmx::ISerializer* serializer, t_rotgrp* rotg)
     serializer->doIntArray(rotg->ind, rotg->nat);
     if (serializer->reading())
     {
-        snew(rotg->x_ref, rotg->nat);
+        rotg->x_ref_original.resize(rotg->nat);
     }
-    serializer->doRvecArray(rotg->x_ref, rotg->nat);
+    for (gmx::RVec& x : rotg->x_ref_original)
+    {
+        serializer->doRvec(as_rvec_array(&x));
+    }
     serializer->doRvec(&rotg->inputVec);
     serializer->doRvec(&rotg->pivot);
     serializer->doReal(&rotg->rate);
@@ -834,18 +839,18 @@ static void do_rotgrp(gmx::ISerializer* serializer, t_rotgrp* rotg)
 
 static void do_rot(gmx::ISerializer* serializer, t_rot* rot)
 {
-    int g;
+    int numGroups = rot->grp.size();
 
-    serializer->doInt(&rot->ngrp);
+    serializer->doInt(&numGroups);
     serializer->doInt(&rot->nstrout);
     serializer->doInt(&rot->nstsout);
     if (serializer->reading())
     {
-        snew(rot->grp, rot->ngrp);
+        rot->grp.resize(numGroups);
     }
-    for (g = 0; g < rot->ngrp; g++)
+    for (auto& grp : rot->grp)
     {
-        do_rotgrp(serializer, &rot->grp[g]);
+        do_rotgrp(serializer, &grp);
     }
 }
 
@@ -1088,6 +1093,12 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
         ir->mtsLevels.clear();
     }
 
+    if (file_version >= tpxv_EnsembleTemperature)
+    {
+        serializer->doEnumAsInt(&ir->ensembleTemperatureSetting);
+        serializer->doReal(&ir->ensembleTemperature);
+    }
+
     if (file_version >= 67)
     {
         serializer->doInt(&ir->nstcalcenergy);
@@ -1307,24 +1318,24 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
     {
         ir->nsttcouple = ir->nstcalcenergy;
     }
-    serializer->doEnumAsInt(&ir->epc);
-    serializer->doEnumAsInt(&ir->epct);
+    serializer->doEnumAsInt(&ir->pressureCouplingOptions.epc);
+    serializer->doEnumAsInt(&ir->pressureCouplingOptions.epct);
     if (file_version >= 71)
     {
-        serializer->doInt(&ir->nstpcouple);
+        serializer->doInt(&ir->pressureCouplingOptions.nstpcouple);
     }
     else
     {
-        ir->nstpcouple = ir->nstcalcenergy;
+        ir->pressureCouplingOptions.nstpcouple = ir->nstcalcenergy;
     }
-    serializer->doReal(&ir->tau_p);
-    serializer->doRvec(&ir->ref_p[XX]);
-    serializer->doRvec(&ir->ref_p[YY]);
-    serializer->doRvec(&ir->ref_p[ZZ]);
-    serializer->doRvec(&ir->compress[XX]);
-    serializer->doRvec(&ir->compress[YY]);
-    serializer->doRvec(&ir->compress[ZZ]);
-    serializer->doEnumAsInt(&ir->refcoord_scaling);
+    serializer->doReal(&ir->pressureCouplingOptions.tau_p);
+    serializer->doRvec(&ir->pressureCouplingOptions.ref_p[XX]);
+    serializer->doRvec(&ir->pressureCouplingOptions.ref_p[YY]);
+    serializer->doRvec(&ir->pressureCouplingOptions.ref_p[ZZ]);
+    serializer->doRvec(&ir->pressureCouplingOptions.compress[XX]);
+    serializer->doRvec(&ir->pressureCouplingOptions.compress[YY]);
+    serializer->doRvec(&ir->pressureCouplingOptions.compress[ZZ]);
+    serializer->doEnumAsInt(&ir->pressureCouplingOptions.refcoord_scaling);
     serializer->doRvec(&ir->posres_com);
     serializer->doRvec(&ir->posres_comB);
 
@@ -1574,9 +1585,9 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
         {
             if (serializer->reading())
             {
-                snew(ir->rot, 1);
+                ir->rot = std::make_unique<t_rot>();
             }
-            do_rot(serializer, ir->rot);
+            do_rot(serializer, ir->rot.get());
         }
     }
     else
@@ -1784,6 +1795,31 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
             GMX_RELEASE_ASSERT(ir->internalParameters != nullptr,
                                "Parameters should be present when writing inputrec");
             gmx::serializeKeyValueTree(*ir->internalParameters, serializer);
+        }
+    }
+
+    if (file_version < tpxv_EnsembleTemperature)
+    {
+        if (doSimulatedAnnealing(*ir) || ir->bSimTemp)
+        {
+            ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::Variable;
+        }
+        else if (integratorHasReferenceTemperature(*ir))
+        {
+            ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::Constant;
+        }
+        else
+        {
+            ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::NotAvailable;
+        }
+
+        if (ir->ensembleTemperatureSetting == EnsembleTemperatureSetting::Constant)
+        {
+            ir->ensembleTemperature = ir->opts.ref_t[0];
+        }
+        else
+        {
+            ir->ensembleTemperature = -1;
         }
     }
 }
@@ -2435,28 +2471,23 @@ static void do_groups(gmx::ISerializer* serializer, SimulationGroups* groups, t_
     }
 }
 
-static void do_atomtypes(gmx::ISerializer* serializer, t_atomtypes* atomtypes, int file_version)
+static void do_atomtypes(gmx::ISerializer* serializer, int file_version)
 {
-    int j;
-
-    serializer->doInt(&atomtypes->nr);
-    j = atomtypes->nr;
-    if (serializer->reading())
-    {
-        snew(atomtypes->atomnumber, j);
-    }
+    int nr;
+    serializer->doInt(&nr);
     if (serializer->reading() && file_version < tpxv_RemoveImplicitSolvation)
     {
-        std::vector<real> dummy(atomtypes->nr, 0);
+        std::vector<real> dummy(nr, 0);
         serializer->doRealArray(dummy.data(), dummy.size());
         serializer->doRealArray(dummy.data(), dummy.size());
         serializer->doRealArray(dummy.data(), dummy.size());
     }
-    serializer->doIntArray(atomtypes->atomnumber, j);
+    std::vector<int> atomnumbers(nr);
+    serializer->doIntArray(atomnumbers.data(), atomnumbers.size());
 
     if (serializer->reading() && file_version >= 60 && file_version < tpxv_RemoveImplicitSolvation)
     {
-        std::vector<real> dummy(atomtypes->nr, 0);
+        std::vector<real> dummy(nr, 0);
         serializer->doRealArray(dummy.data(), dummy.size());
         serializer->doRealArray(dummy.data(), dummy.size());
     }
@@ -2665,7 +2696,11 @@ static void do_mtop(gmx::ISerializer* serializer, gmx_mtop_t* mtop, int file_ver
         mtop->bIntermolecularInteractions = FALSE;
     }
 
-    do_atomtypes(serializer, &(mtop->atomtypes), file_version);
+    if (file_version < tpxv_RemoveAtomtypes)
+    {
+        do_atomtypes(serializer, file_version);
+    }
+
 
     if (file_version >= 65)
     {
@@ -2718,11 +2753,11 @@ static void do_mtop(gmx::ISerializer* serializer, gmx_mtop_t* mtop, int file_ver
  * \param[in,out] fio File handle.
  * \param[in] TopOnlyOK If not reading \p ir is fine or not.
  */
-static void do_tpxheader(gmx::FileIOXdrSerializer* serializer,
-                         TpxFileHeader*            tpx,
-                         const char*               filename,
-                         t_fileio*                 fio,
-                         bool                      TopOnlyOK)
+static void do_tpxheader(gmx::FileIOXdrSerializer*    serializer,
+                         TpxFileHeader*               tpx,
+                         const std::filesystem::path& filename,
+                         t_fileio*                    fio,
+                         bool                         TopOnlyOK)
 {
     int  precision;
     int  idum = 0;
@@ -2742,7 +2777,7 @@ static void do_tpxheader(gmx::FileIOXdrSerializer* serializer,
                     "Can not read file %s,\n"
                     "             this file is from a GROMACS version which is older than 2.0\n"
                     "             Make a new one with grompp or use a gro or pdb file, if possible",
-                    filename);
+                    filename.u8string().c_str());
         }
         // We need to know the precision used to write the TPR file, to match it
         // to the precision of the currently running binary. If the precisions match
@@ -2756,7 +2791,7 @@ static void do_tpxheader(gmx::FileIOXdrSerializer* serializer,
             gmx_fatal(FARGS,
                       "Unknown precision in file %s: real is %d bytes "
                       "instead of %zu or %zu",
-                      filename,
+                      filename.u8string().c_str(),
                       precision,
                       sizeof(float),
                       sizeof(double));
@@ -2764,7 +2799,7 @@ static void do_tpxheader(gmx::FileIOXdrSerializer* serializer,
         gmx_fio_setprecision(fio, tpx->isDouble);
         fprintf(stderr,
                 "Reading file %s, %s (%s precision)\n",
-                filename,
+                filename.u8string().c_str(),
                 buf.c_str(),
                 tpx->isDouble ? "double" : "single");
     }
@@ -2816,7 +2851,7 @@ static void do_tpxheader(gmx::FileIOXdrSerializer* serializer,
                 gmx_fatal(FARGS,
                           "tpx tag/version mismatch: reading tpx file (%s) version %d, tag '%s' "
                           "with program for tpx version %d, tag '%s'",
-                          filename,
+                          filename.u8string().c_str(),
                           tpx->fileVersion,
                           fileTag.c_str(),
                           tpx_version,
@@ -2831,7 +2866,7 @@ static void do_tpxheader(gmx::FileIOXdrSerializer* serializer,
     {
         gmx_fatal(FARGS,
                   "reading tpx file (%s) version %d with version %d program",
-                  filename,
+                  filename.u8string().c_str(),
                   tpx->fileVersion,
                   tpx_version);
     }
@@ -3203,7 +3238,7 @@ static PbcType do_tpx_body(gmx::ISerializer* serializer, TpxFileHeader* tpx, t_i
     return do_tpx_body(serializer, tpx, ir, nullptr, nullptr, nullptr, mtop);
 }
 
-static t_fileio* open_tpx(const char* fn, const char* mode)
+static t_fileio* open_tpx(const std::filesystem::path& fn, const char* mode)
 {
     return gmx_fio_open(fn, mode);
 }
@@ -3313,7 +3348,7 @@ static PartialDeserializedTprFile readTpxBody(TpxFileHeader*    tpx,
     // Update header to system info for communication to nodes.
     // As we only need to communicate the inputrec and mtop to other nodes,
     // we prepare a new char buffer with the information we have already read
-    // in on master.
+    // in on main.
     partialDeserializedTpr.header = populateTpxHeader(*state, ir, mtop);
     // Long-term we should move to use little endian in files to avoid extra byte swapping,
     // but since we just used the default XDR format (which is big endian) for the TPR
@@ -3333,7 +3368,7 @@ static PartialDeserializedTprFile readTpxBody(TpxFileHeader*    tpx,
  *
  ************************************************************/
 
-TpxFileHeader readTpxHeader(const char* fileName, bool canReadTopologyOnly)
+TpxFileHeader readTpxHeader(const std::filesystem::path& fileName, bool canReadTopologyOnly)
 {
     t_fileio* fio;
 
@@ -3346,7 +3381,10 @@ TpxFileHeader readTpxHeader(const char* fileName, bool canReadTopologyOnly)
     return tpx;
 }
 
-void write_tpx_state(const char* fn, const t_inputrec* ir, const t_state* state, const gmx_mtop_t& mtop)
+void write_tpx_state(const std::filesystem::path& fn,
+                     const t_inputrec*            ir,
+                     const t_state*               state,
+                     const gmx_mtop_t&            mtop)
 {
     /* To write a state, we first need to write the state information to a buffer before
      * we append the raw bytes to the file. For this, the header information needs to be
@@ -3408,7 +3446,8 @@ PbcType completeTprDeserialization(PartialDeserializedTprFile* partialDeserializ
     return completeTprDeserialization(partialDeserializedTpr, ir, nullptr, nullptr, nullptr, mtop);
 }
 
-PartialDeserializedTprFile read_tpx_state(const char* fn, t_inputrec* ir, t_state* state, gmx_mtop_t* mtop)
+PartialDeserializedTprFile
+read_tpx_state(const std::filesystem::path& fn, t_inputrec* ir, t_state* state, gmx_mtop_t* mtop)
 {
     t_fileio* fio;
     fio = open_tpx(fn, "r");
@@ -3421,7 +3460,7 @@ PartialDeserializedTprFile read_tpx_state(const char* fn, t_inputrec* ir, t_stat
     return partialDeserializedTpr;
 }
 
-PbcType read_tpx(const char* fn, t_inputrec* ir, matrix box, int* natoms, rvec* x, rvec* v, gmx_mtop_t* mtop)
+PbcType read_tpx(const std::filesystem::path& fn, t_inputrec* ir, matrix box, int* natoms, rvec* x, rvec* v, gmx_mtop_t* mtop)
 {
     t_fileio* fio;
     t_state   state;
@@ -3444,7 +3483,13 @@ PbcType read_tpx(const char* fn, t_inputrec* ir, matrix box, int* natoms, rvec* 
     return partialDeserializedTpr.pbcType;
 }
 
-PbcType read_tpx_top(const char* fn, t_inputrec* ir, matrix box, int* natoms, rvec* x, rvec* v, t_topology* top)
+PbcType read_tpx_top(const std::filesystem::path& fn,
+                     t_inputrec*                  ir,
+                     matrix                       box,
+                     int*                         natoms,
+                     rvec*                        x,
+                     rvec*                        v,
+                     t_topology*                  top)
 {
     gmx_mtop_t mtop;
     PbcType    pbcType;
@@ -3456,7 +3501,7 @@ PbcType read_tpx_top(const char* fn, t_inputrec* ir, matrix box, int* natoms, rv
     return pbcType;
 }
 
-gmx_bool fn2bTPX(const char* file)
+gmx_bool fn2bTPX(const std::filesystem::path& file)
 {
     return (efTPR == fn2ftp(file));
 }

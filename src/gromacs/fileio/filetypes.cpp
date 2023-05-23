@@ -39,6 +39,7 @@
 
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/cstringutil.h"
+#include "gromacs/utility/path.h"
 
 enum
 {
@@ -266,32 +267,40 @@ const char* ftp2defopt(int ftp)
     }
 }
 
-int fn2ftp(const char* fn)
+int fn2ftp(const char* path)
 {
-    int         i, len;
-    const char* feptr;
-    const char* eptr;
-
-    if (!fn)
+    if (path == nullptr)
     {
         return efNR;
-    }
-
-    len = std::strlen(fn);
-    if ((len >= 4) && (fn[len - 4] == '.'))
-    {
-        feptr = &(fn[len - 4]);
     }
     else
     {
+        return fn2ftp(std::filesystem::path{ path });
+    }
+}
+
+int fn2ftp(const std::filesystem::path& fn)
+{
+    if (fn.empty())
+    {
         return efNR;
     }
-
-    for (i = 0; (i < efNR); i++)
+    // We need an extra check if the path is ONLY the extension, or if there is no extension
+    if (!fn.has_extension())
     {
-        if ((eptr = deffile[i].ext) != nullptr)
+        if (!gmx::concatenateBeforeExtension("t", fn.filename().u8string()).has_extension())
         {
-            if (gmx_strcasecmp(feptr, eptr) == 0)
+            return efNR;
+        }
+    }
+    int        i         = 0;
+    const auto pathToUse = fn.has_extension() ? fn.extension() : fn.filename();
+    for (; (i < efNR); i++)
+    {
+        const char* eptr = deffile[i].ext;
+        if (eptr != nullptr)
+        {
+            if (gmx_strcasecmp(pathToUse.string().c_str(), eptr) == 0)
             {
                 break;
             }

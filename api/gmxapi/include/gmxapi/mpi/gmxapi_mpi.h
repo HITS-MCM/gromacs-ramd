@@ -35,15 +35,14 @@
 #ifndef GMXAPI_MPI_H
 #define GMXAPI_MPI_H
 
+#include <mpi.h>
+
 #include <cassert>
 
 #include <memory>
 
-#include <mpi.h>
-
 #include "gmxapi/context.h"
 #include "gmxapi/exceptions.h"
-
 #include "gmxapi/mpi/resourceassignment.h"
 
 /*! \file
@@ -54,12 +53,10 @@
  * functionality.
  *
  * Client software should use the CMake infrastructure to ensure a compatible
- * MPI implementation.
+ * MPI implementation. Use `find_package(MPI COMPONENTS ...)` and
+ * `target_link_libraries(... MPI::MPI_CXX)`
  *
  * Use of an incompatible MPI implementation will produce linking errors.
- *
- * \todo With resolution of #3672, we can include additional checks.
- *
  */
 
 namespace gmxapi

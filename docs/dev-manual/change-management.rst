@@ -5,9 +5,6 @@ Change Management
 This documentation assumes the reader is already familiar with using ``git``
 for managing file revisions.
 
-.. contents::
-   :local:
-
 Getting started
 ===============
 
@@ -23,7 +20,7 @@ repository from gitlab. Otherwise use
 ``git remote add gitlab git@gitlab.com:gromacs/gromacs.git``. 
 
 Using gitlab, new code enters GROMACS by merging git development branches into
-the master branch. 
+the main branch. 
 
 To automatically detect issues in new code, it is tested within continuous
 integration (CI) with a large combination of settings.
@@ -75,14 +72,25 @@ You can also use ``git push`` on the command line directly and create a merge re
 following the link that is output on the command line.
 
 Your repository should be in sync with the GROMACS repository. To ensure this,
-use ``git fetch`` to obtain the newest branches, then merge the master branch
-into your branch with ``git merge master`` while on your branch.
+use ``git fetch`` to obtain the newest branches, then merge the main branch
+into your branch with ``git merge main`` while on your branch.
 
 Naming branches
 ---------------
 
 Good names: documentation_UpdateDevelopersDocsTOGitLab, nbnxm_MakeNbnxmGPUIntoClass, pme_FEPPMEGPU. 
 Bad names: branch1234, mybranch, test, etc
+
+Documentation
+-------------
+
+Contributors and reviewers frequently overlook the effects of changes on the built documentation.
+Contributors and reviewers should note that the build artifacts from the automated test jobs
+are available for download through the GitLab CI web interface (``webpage:build`` job artifacts).
+For earlier review or alternative preferences, consider building and sharing a Docker image
+containing the built documentation. See
+`docs/docs.dockerfile <https://gitlab.com/gromacs/gromacs/-/tree/main/docs/docs.dockerfile>`__
+in the source tree.
 
 Labels
 ======
@@ -179,7 +187,7 @@ If the proposed change still seems important and the next steps are unclear,
 contributors with stale issues *are encouraged...*
 
 - to contact existing reviewers (or potential reviewers),
-- to participate in the developer mailing list, and
+- to participate in the `developer discussion forum`_, and
 - to attend the biweekly teleconference to coordinate.
 
 If the future of the merge request has not become clear within a month
@@ -219,24 +227,24 @@ renames that Git considers. The
 default value is not sufficient,
 for example, if you need to do a
 merge or a cherry-pick from
-a release branch to master.
+a release branch to main.
 
 .. rubric:: Q: How do I use git rebase (also ``git pull --rebase``)?
 
 A: Assume you have a local
 feature branch checked out, that
-it is based on master, and master
+it is based on main, and main
 has gotten new commits. You can
 then do
 
 ::
 
-    git rebase master
+    git rebase main
 
 to move your commits on top of
-the newest commit in master. This
+the newest commit in main. This
 will save each commit you did,
-and replay them on top of master.
+and replay them on top of main.
 If any commit results in
 conflicts, you need to resolve
 them as usual (including marking
@@ -270,7 +278,7 @@ in messy conflicts), you can use
 
 to get back into the state you
 started from (before the
-original git rebase master
+original git rebase main
 invocation). If the rebase is
 already finished, and you realize
 you made a mistake, you can get
@@ -471,8 +479,8 @@ then do
 A: Assume that you have a local
 feature branch checked out, this
 branch has three commits, and
-that it is based on master.
-Further, assume that master has
+that it is based on main.
+Further, assume that main has
 gotten a few more commits after
 you branched off. If you want to
 use ``git rebase -i`` to edit your
@@ -487,12 +495,12 @@ followed by a separate
 
 ::
 
-    git rebase master
+    git rebase main
 
 The first command allows you to
 edit your local branch without
 getting conflicts from changes in
-master. The latter allows you to
+main. The latter allows you to
 resolve those conflicts in a
 separate rebase run. If you feel
 brave enough, you can also do
@@ -500,4 +508,4 @@ both at the same time using
 
 ::
 
-    git rebase -i master
+    git rebase -i main

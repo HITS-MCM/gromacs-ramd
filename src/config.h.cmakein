@@ -64,6 +64,31 @@
 /* Use built in fftpack FFT library */
 #cmakedefine01 GMX_FFT_FFTPACK
 
+/* Use cuFFT library for FFT on GPUs */
+#cmakedefine01 GMX_GPU_FFT_CUFFT
+/* Use clFFT library for FFT on GPUs */
+#cmakedefine01 GMX_GPU_FFT_CLFFT
+/* Use VkFFT library for FFT on GPUs */
+#cmakedefine01 GMX_GPU_FFT_VKFFT
+/* Use MKL library for FFT on GPUs */
+#cmakedefine01 GMX_GPU_FFT_MKL
+/* Use rocFFT library for FFT on GPUs */
+#cmakedefine01 GMX_GPU_FFT_ROCFFT
+/* Use double-batched FFT library for FFT on GPUs */
+#cmakedefine01 GMX_GPU_FFT_DBFFT
+
+/* VKFFT Library version */
+#define vkfft_VERSION "@vkfft_VERSION@"
+
+/* rocFFT version */
+#define rocfft_VERSION "@rocfft_VERSION@"
+
+/* HeFFTe version */
+#define Heffte_VERSION "@Heffte_VERSION@"
+
+/* Double-Batched FFT Library version (still called bbfft in the implementation) */
+#define dbfft_VERSION "@bbfft-sycl_VERSION@"
+
 /* Target platform is x86 or x86_64 */
 #cmakedefine01 GMX_TARGET_X86
 
@@ -179,9 +204,6 @@
 /* Fallback path for VMD plug-ins */
 #define GMX_VMD_PLUGIN_PATH "@GMX_VMD_PLUGIN_PATH@"
 
-/* Default path for DSSP program */
-#define GMX_DSSP_PROGRAM_PATH "@GMX_DSSP_PROGRAM_PATH@"
-
 /* Define when pthreads are used */
 #cmakedefine THREAD_PTHREADS
 
@@ -206,9 +228,6 @@
 /* Define for Linux pthread_setaffinity_np */
 #cmakedefine HAVE_PTHREAD_SETAFFINITY
 
-/* Define for X-Windows */
-#cmakedefine01 GMX_X11
-
 /* Enable x86 gcc inline assembly */
 #cmakedefine01 GMX_X86_GCC_INLINE_ASM
 
@@ -217,6 +236,9 @@
 
 /* Define if CUDA GPU acceleration is compiled */
 #cmakedefine01 GMX_GPU_CUDA
+
+/* Define if CUDA Graphs support is available */
+#cmakedefine01 GMX_HAVE_CUDA_GRAPH_SUPPORT
 
 /* Define if OpenCL GPU acceleration is compiled */
 #cmakedefine01 GMX_GPU_OPENCL
@@ -233,24 +255,42 @@
 // Define if hipSYCL has CUDA target(s)
 #cmakedefine01 GMX_HIPSYCL_HAVE_CUDA_TARGET
 
+// Define if hipSYCL should have AMD RDNA support (32-wide execution)
+#cmakedefine01 GMX_HIPSYCL_ENABLE_AMD_RDNA_SUPPORT
+
 /* Define if Intel's DPC++ is used (default unless hipSYCL is chosen) */
 #define GMX_SYCL_DPCPP (!GMX_SYCL_HIPSYCL && GMX_GPU_SYCL)
-
-/* Define if we wish to use USM (otherwise buffer-accessor mechanism is used) */
-#cmakedefine01 GMX_SYCL_USE_USM
 
 /* Use a single compilation unit when compiling the CUDA (non-bonded) kernels.  */
 #cmakedefine01 GMX_CUDA_NB_SINGLE_COMPILATION_UNIT
 
-/* Use CUDA-aware MPI.  */
+/* Whether MPI can report its GPU-awareness  */
 #cmakedefine01 HAVE_MPI_EXT
 #cmakedefine01 MPI_SUPPORTS_CUDA_AWARE_DETECTION
+#cmakedefine01 MPI_SUPPORTS_HIP_AWARE_DETECTION
+#cmakedefine01 MPI_SUPPORTS_ROCM_AWARE_DETECTION
+#cmakedefine01 MPI_SUPPORTS_ZE_AWARE_DETECTION
 
 /* Define if HeFFTe library found */
-#cmakedefine01 Heffte_FOUND
+#cmakedefine01 GMX_USE_Heffte
 
-/* Cluster size used by nonbonded kernel. Should be 8 for NVIDIA/AMD and 4 for Intel */
+/* Define if cuFFTMp library found */
+#cmakedefine01 GMX_USE_cuFFTMp
+
+// Cluster size used by GPU nonbonded kernel.
 #define GMX_GPU_NB_CLUSTER_SIZE @GMX_GPU_NB_CLUSTER_SIZE@
+
+// Number of clusters along X in a pair-search grid cell for GPU lists.
+#define GMX_GPU_NB_NUM_CLUSTER_PER_CELL_X @GMX_GPU_NB_NUM_CLUSTER_PER_CELL_X@
+
+// Number of clusters along Y in a pair-search grid cell for GPU lists.
+#define GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Y @GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Y@
+
+// Number of clusters along Z in a pair-search grid cell for GPU lists.
+#define GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Z @GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Z@
+
+// Disable nbnxm cluster setup splitting
+#cmakedefine01 GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT
 
 /* Define constants for build types (starting at 1 to make sure undefined values don't match) */
 #define CMAKE_BUILD_TYPE_DEBUG 1
@@ -401,6 +441,12 @@
 
 /* Define if we have MKL available */
 #cmakedefine01 HAVE_LIBMKL
+
+// Describes the origin of BLAS routines
+#define GMX_DESCRIBE_BLAS "@GMX_DESCRIBE_BLAS@"
+
+// Describes the origin of LAPACK routines
+#define GMX_DESCRIBE_LAPACK "@GMX_DESCRIBE_LAPACK@"
 
 /* Define if we have lmfit support */
 #cmakedefine01 HAVE_LMFIT

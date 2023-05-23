@@ -54,7 +54,7 @@ namespace gmx
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 
-Gpu3dFft::ImplSycl::ImplSycl(bool /*allocateGrids*/,
+Gpu3dFft::ImplSycl::ImplSycl(bool /*allocateRealGrid*/,
                              MPI_Comm /*comm*/,
                              ArrayRef<const int> /*gridSizesInXForEachRank*/,
                              ArrayRef<const int> /*gridSizesInYForEachRank*/,

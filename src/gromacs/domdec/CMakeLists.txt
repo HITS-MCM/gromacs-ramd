@@ -34,12 +34,18 @@
 # Set up the module library
 add_library(domdec INTERFACE)
 file(GLOB DOMDEC_SOURCES *.cpp)
+list(FILTER DOMDEC_SOURCES EXCLUDE REGEX ".*/gpuhaloexchange_impl_gpu[a-z_]*\.cpp$")
 
+if(GMX_GPU_SYCL)
+    file(GLOB DOMDEC_GPU_SOURCES gpuhaloexchange_impl_gpu.cpp gpuhaloexchange_impl_gpu_sycl.cpp)
+    _gmx_add_files_to_property(SYCL_SOURCES gpuhaloexchange_impl_gpu.cpp gpuhaloexchange_impl_gpu_sycl.cpp)
+endif()
 if(GMX_GPU_CUDA)
-  file(GLOB DOMDEC_CUDA_SOURCES gpuhaloexchange_impl.cu)
+  file(GLOB DOMDEC_GPU_SOURCES gpuhaloexchange_impl_gpu.cpp gpuhaloexchange_impl_gpu.cu)
+  _gmx_add_files_to_property(CUDA_SOURCES gpuhaloexchange_impl_gpu.cpp)
 endif()
 
-set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${DOMDEC_SOURCES} ${DOMDEC_CUDA_SOURCES} PARENT_SCOPE)
+set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${DOMDEC_SOURCES} ${DOMDEC_GPU_SOURCES} PARENT_SCOPE)
 
 # Source files have the following dependencies on library infrastructure.
 #target_link_libraries(domdec PRIVATE
@@ -54,18 +60,17 @@ target_include_directories(domdec INTERFACE
 #target_link_libraries(domdec PUBLIC
 target_link_libraries(domdec INTERFACE
                       legacy_api
+                      gpu_utils
+                      mdlib
+                      timing
+                      topology
+                      utility
                       )
 
 # TODO: when domdec is an OBJECT target
 #target_link_libraries(domdec PUBLIC legacy_api)
 #target_link_libraries(domdec PRIVATE common)
 
-# Module dependencies
-# domdec interfaces convey transitive dependence on these modules.
-#target_link_libraries(domdec PUBLIC
-target_link_libraries(domdec INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(domdec PRIVATE NOTHING)
 # TODO: Explicitly link specific modules.

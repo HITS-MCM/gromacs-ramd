@@ -161,7 +161,7 @@ static interaction_const_t setupInteractionConst(const KernelBenchOptions& optio
     ic.reactionFieldCoefficient = 0.5 * std::pow(ic.rcoulomb, -3);
     ic.reactionFieldShift = 1 / ic.rcoulomb + ic.reactionFieldCoefficient * ic.rcoulomb * ic.rcoulomb;
 
-    if (EEL_PME_EWALD(ic.eeltype))
+    if (usingPmeOrEwald(ic.eeltype))
     {
         // Ewald coefficients, we ignore the potential shift
         GMX_RELEASE_ASSERT(options.ewaldcoeff_q > 0, "Ewald coefficient should be > 0");
@@ -211,7 +211,7 @@ static std::unique_ptr<nonbonded_verlet_t> setupNbnxmForBenchInstance(const Kern
 
     // Put everything together
     auto nbv = std::make_unique<nonbonded_verlet_t>(
-            std::move(pairlistSets), std::move(pairSearch), std::move(atomData), kernelSetup, nullptr, nullptr);
+            std::move(pairlistSets), std::move(pairSearch), std::move(atomData), kernelSetup, nullptr);
 
     t_nrnb nrnb;
 
@@ -301,7 +301,7 @@ static void setupAndRunInstance(const gmx::BenchmarkSystem& system,
 
     t_nrnb nrnb = { 0 };
 
-    gmx_enerdata_t enerd(1, 0);
+    gmx_enerdata_t enerd(1, nullptr);
 
     gmx::StepWorkload stepWork;
     stepWork.computeForces = true;

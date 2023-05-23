@@ -55,6 +55,7 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/gmxmpi.h"
 #include "gromacs/utility/init.h"
 #include "gromacs/utility/programcontext.h"
 #include "gromacs/utility/smalloc.h"
@@ -77,6 +78,19 @@ std::unique_ptr<CommandLineProgramContext> g_commandLineContext;
 std::unique_ptr<DataFileFinder> g_libFileFinder;
 
 /*! \brief
+ * Broadcasts given data from rank zero to all other ranks.
+ */
+void broadcastWorld(int size, void* buffer)
+{
+#if GMX_MPI
+    MPI_Bcast(buffer, size, MPI_BYTE, 0, MPI_COMM_WORLD);
+#else
+    GMX_UNUSED_VALUE(size);
+    GMX_UNUSED_VALUE(buffer);
+#endif
+}
+
+/*! \brief
  * Broadcasts command-line arguments to all ranks.
  *
  * MPI does not ensure that command-line arguments would be passed on any
@@ -89,26 +103,26 @@ void broadcastArguments(int* argc, char*** argv)
     {
         return;
     }
-    gmx_broadcast_world(sizeof(*argc), argc);
+    broadcastWorld(sizeof(*argc), argc);
 
-    const bool isMaster = (gmx_node_rank() == 0);
-    if (!isMaster)
+    const bool isMain = (gmx_node_rank() == 0);
+    if (!isMain)
     {
         snew(*argv, *argc + 1);
     }
     for (int i = 0; i < *argc; i++)
     {
         int len;
-        if (isMaster)
+        if (isMain)
         {
             len = std::strlen((*argv)[i]) + 1;
         }
-        gmx_broadcast_world(sizeof(len), &len);
-        if (!isMaster)
+        broadcastWorld(sizeof(len), &len);
+        if (!isMain)
         {
             snew((*argv)[i], len);
         }
-        gmx_broadcast_world(len, (*argv)[i]);
+        broadcastWorld(len, (*argv)[i]);
     }
 }
 

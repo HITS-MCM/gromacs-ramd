@@ -38,14 +38,14 @@
  * Routines for Filters and convolutions
  */
 
-#include "dens_filter.h"
-
 #include <cmath>
 
 #include "gromacs/math/vec.h"
 #include "gromacs/utility/smalloc.h"
 
-gmx_bool convolution(int dataSize, real* x, int kernelSize, const real* kernel)
+#include "dens_filter.h"
+
+bool convolution(int dataSize, real* x, int kernelSize, const real* kernel)
 {
     int   i, j, k;
     real* out;
@@ -53,11 +53,11 @@ gmx_bool convolution(int dataSize, real* x, int kernelSize, const real* kernel)
     /* check validity of params */
     if (!x || !kernel)
     {
-        return FALSE;
+        return false;
     }
     if (dataSize <= 0 || kernelSize <= 0)
     {
-        return FALSE;
+        return false;
     }
 
     /* start convolution from out[kernelSize-1] to out[dataSize-1] (last) */
@@ -83,23 +83,23 @@ gmx_bool convolution(int dataSize, real* x, int kernelSize, const real* kernel)
         x[i] = out[i];
     }
     sfree(out);
-    return TRUE;
+    return true;
 }
 
 /* Assuming kernel is shorter than x */
 
-gmx_bool periodic_convolution(int datasize, real* x, int kernelsize, const real* kernel)
+bool periodic_convolution(int datasize, real* x, int kernelsize, const real* kernel)
 {
     int   i, j, idx;
     real* filtered;
 
     if (!x || !kernel)
     {
-        return FALSE;
+        return false;
     }
     if (kernelsize <= 0 || datasize <= 0 || kernelsize > datasize)
     {
-        return FALSE;
+        return false;
     }
 
     snew(filtered, datasize);
@@ -119,7 +119,7 @@ gmx_bool periodic_convolution(int datasize, real* x, int kernelsize, const real*
     }
     sfree(filtered);
 
-    return TRUE;
+    return true;
 }
 
 

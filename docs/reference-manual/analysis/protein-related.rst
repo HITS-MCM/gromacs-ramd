@@ -1,26 +1,25 @@
 Protein-related items
 ---------------------
 
-| :ref:`gmx do_dssp <gmx do_dssp>`, :ref:`gmx rama <gmx rama>`,
+| :ref:`gmx dssp <gmx dssp>`, :ref:`gmx rama <gmx rama>`,
   :ref:`gmx wheel <gmx wheel>`
 | To analyze structural changes of a protein, you can calculate the
   radius of gyration or the minimum residue distances over time (see
   sec. :ref:`rg`), or calculate the RMSD (sec. :ref:`rmsd`).
 
-You can also look at the changing of *secondary structure elements*
-during your run. For this, you can use the program 
-:ref:`gmx do_dssp <gmx do_dssp>`, which is an interface for the
-commercial program ``DSSP``  :ref:`176 <refKabsch83>`. For
-further information, see the ``DSSP`` manual. A typical
-output plot of :ref:`gmx do_dssp <gmx do_dssp>` is given in
-:numref:`Fig. %s <fig-dssp>`.
-
-.. _fig-dssp: 
-
-.. figure:: plots/dssp.*
-   :width: 12.00000cm
-
-   Analysis of the secondary structure elements of a peptide in time.
+To analyze the secondary structure of a protein (not only for static
+structures, but also for trajectories), you can use the program
+:ref:`gmx dssp <gmx dssp>`, which is a native implementation of DSSP
+algorithm :ref:`176 <refKabsch83>`, but also is based on the (`DSSP
+V.4 algorithm <https://github.com/PDB-REDO/dssp>`__) with some additional
+features. For example, you can take into account native hydrogens from
+the structure (``-hmode gromacs``, set by default), while in the original
+algorithm, hydrogen atoms are set as pseudo-atoms with coordinates based
+on the coordinates of the MainChain atoms (``-hmode dssp``). Also, it is
+possible to conduct a fast search for neighboring residues using
+Neighbor Search (``-nb``, default), instead of the slow enumeration of
+protein residues among themselves according to the "each with each"
+principle implemented in the original algorithm (``-nonb``).
 
 One other important analysis of proteins is the so-called *Ramachandran
 plot*. This is the projection of the structure on the two dihedral

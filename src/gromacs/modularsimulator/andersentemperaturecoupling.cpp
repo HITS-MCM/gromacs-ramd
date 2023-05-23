@@ -38,6 +38,8 @@
  * \ingroup module_modularsimulator
  */
 
+#include "gmxpre.h"
+
 #include "andersentemperaturecoupling.h"
 
 #include <vector>
@@ -48,10 +50,10 @@
 #include "gromacs/mdlib/constr.h"
 #include "gromacs/mdlib/mdatoms.h"
 #include "gromacs/mdlib/stat.h"
+#include "gromacs/mdrun/isimulator.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/mdatom.h"
-#include "gromacs/mdrun/isimulator.h"
 #include "gromacs/random/tabulatednormaldistribution.h"
 #include "gromacs/random/threefry.h"
 #include "gromacs/random/uniformrealdistribution.h"
@@ -105,7 +107,7 @@ void AndersenTemperatureCoupling::apply(Step step)
 
     for (int atomIdx = 0; atomIdx < mdAtoms_->homenr; ++atomIdx)
     {
-        const int temperatureGroup = mdAtoms_->cTC ? mdAtoms_->cTC[atomIdx] : 0;
+        const int temperatureGroup = !mdAtoms_->cTC.empty() ? mdAtoms_->cTC[atomIdx] : 0;
         if (referenceTemperature_[temperatureGroup] <= 0 || couplingTime_[temperatureGroup] <= 0)
         {
             continue;
@@ -199,7 +201,7 @@ ISimulatorElement* AndersenTemperatureCoupling::getElementPointerImpl(
                 statePropagatorData,
                 energyData,
                 freeEnergyPerturbationData,
-                MASTER(legacySimulatorData->cr),
+                MAIN(legacySimulatorData->cr),
                 legacySimulatorData->fplog,
                 legacySimulatorData->inputrec,
                 legacySimulatorData->mdAtoms->mdatoms());

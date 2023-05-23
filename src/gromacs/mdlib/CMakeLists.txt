@@ -60,6 +60,7 @@ if(GMX_GPU_CUDA)
        settle_gpu_internal.cu
        update_constrain_gpu_impl.cpp
        update_constrain_gpu_internal.cu
+       mdgraph_gpu_impl.cu
        )
     _gmx_add_files_to_property(CUDA_SOURCES
        gpuforcereduction_impl.cpp
@@ -113,18 +114,16 @@ target_include_directories(mdlib INTERFACE
 #target_link_libraries(mdlib PUBLIC
 target_link_libraries(mdlib INTERFACE
                       legacy_api
+                      pbcutil
+                      pulling
+                      topology
+                      timing
                       )
 
 # TODO: when mdlib is an OBJECT target
 #target_link_libraries(mdlib PUBLIC legacy_api)
 #target_link_libraries(mdlib PRIVATE common)
 
-# Module dependencies
-# mdlib interfaces convey transitive dependence on these modules.
-#target_link_libraries(mdlib PUBLIC
-target_link_libraries(mdlib INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(mdlib PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

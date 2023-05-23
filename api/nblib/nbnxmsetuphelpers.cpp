@@ -39,9 +39,11 @@
  * \author Prashanth Kanduri <kanduri@cscs.ch>
  * \author Sebastian Keller <keller@cscs.ch>
  */
+#include "nblib/nbnxmsetuphelpers.h"
+
 #include "gromacs/ewald/ewald_utils.h"
-#include "gromacs/gpu_utils/device_stream_manager.h"
 #include "gromacs/gmxlib/nrnb.h"
+#include "gromacs/gpu_utils/device_stream_manager.h"
 #include "gromacs/mdlib/forcerec.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/rf_util.h"
@@ -50,8 +52,8 @@
 #include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/nbnxm/atomdata.h"
 #include "gromacs/nbnxm/gpu_data_mgmt.h"
-#include "gromacs/nbnxm/nbnxm_gpu.h"
 #include "gromacs/nbnxm/nbnxm.h"
+#include "gromacs/nbnxm/nbnxm_gpu.h"
 #include "gromacs/nbnxm/nbnxm_simd.h"
 #include "gromacs/nbnxm/pairlistset.h"
 #include "gromacs/nbnxm/pairlistsets.h"
@@ -59,11 +61,10 @@
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/utility/logger.h"
 #include "gromacs/utility/smalloc.h"
+
 #include "nblib/exception.h"
 #include "nblib/kerneloptions.h"
 #include "nblib/particletype.h"
-
-#include "nbnxmsetuphelpers.h"
 
 namespace nblib
 {
@@ -207,7 +208,7 @@ gmx::SimulationWorkload createSimulationWorkloadGpu()
 std::shared_ptr<gmx::DeviceStreamManager> createDeviceStreamManager(const DeviceInformation& deviceInfo,
                                                                     const gmx::SimulationWorkload& simulationWorkload)
 {
-    return std::make_shared<gmx::DeviceStreamManager>(deviceInfo, false, simulationWorkload, false);
+    return std::make_shared<gmx::DeviceStreamManager>(deviceInfo, simulationWorkload, false);
 }
 
 real ewaldCoeff(const real ewald_rtol, const real pairlistCutoff)
@@ -261,7 +262,7 @@ interaction_const_t createInteractionConst(const NBKernelOptions& options)
                &interactionConst.reactionFieldShift);
 
 
-    if (EEL_PME_EWALD(interactionConst.eeltype))
+    if (usingPmeOrEwald(interactionConst.eeltype))
     {
         // Ewald coefficients, we ignore the potential shift
         interactionConst.ewaldcoeff_q = ewaldCoeff(1e-5, options.pairlistCutoff);
@@ -306,7 +307,7 @@ std::unique_ptr<nonbonded_verlet_t> createNbnxmCPU(const size_t              num
 
     // Put everything together
     auto nbv = std::make_unique<nonbonded_verlet_t>(
-            std::move(pairlistSets), std::move(pairSearch), std::move(atomData), kernelSetup, nullptr, nullptr);
+            std::move(pairlistSets), std::move(pairSearch), std::move(atomData), kernelSetup, nullptr);
 
     return nbv;
 }
@@ -350,7 +351,7 @@ std::unique_ptr<nonbonded_verlet_t> createNbnxmGPU(const size_t               nu
 
     // Put everything together
     auto nbv = std::make_unique<nonbonded_verlet_t>(
-            std::move(pairlistSets), std::move(pairSearch), std::move(atomData), kernelSetup, nbnxmGpu, nullptr);
+            std::move(pairlistSets), std::move(pairSearch), std::move(atomData), kernelSetup, nbnxmGpu);
 
     // Some paramters must be copied to NbnxmGpu to have a fully constructed nonbonded_verlet_t
     Nbnxm::gpu_init_atomdata(nbv->gpu_nbv, nbv->nbat.get());

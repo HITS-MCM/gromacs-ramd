@@ -40,8 +40,6 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/hardware/hardwaretopology.h"
-
 #include "config.h"
 
 #include <algorithm>
@@ -53,6 +51,8 @@
 
 #include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
+
+#include "gromacs/hardware/hardwaretopology.h"
 
 #include "testutils/refdata.h"
 #include "testutils/testasserts.h"
@@ -281,7 +281,7 @@ TEST_P(MockHardwareTopologyTest, DetectsHardware)
     }
 
     HardwareTopology hwTopFromMap(checkCpus ? allowedProcessorIdMap : logicalProcessorIdMap,
-                                  TestFileManager::getInputFilePath(filePath));
+                                  TestFileManager::getInputFilePath(filePath).u8string());
     runTest(hwTopFromMap);
 }
 
@@ -347,7 +347,7 @@ TEST_P(MockHardwareTopologySpecialSystemTest, DetectsHardware)
     std::vector<int> allowedCpus(systemSize);
     std::iota(allowedCpus.begin(), allowedCpus.end(), firstAvailableCpu);
 
-    HardwareTopology hwTopFromSysFs(TestFileManager::getInputFilePath(filePath), allowedCpus);
+    HardwareTopology hwTopFromSysFs(TestFileManager::getInputFilePath(filePath).u8string(), allowedCpus);
     runTest(hwTopFromSysFs);
 };
 

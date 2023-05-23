@@ -34,6 +34,8 @@
 
 #include "gmxpre.h"
 
+#include "kernels_reference/kernel_gpu_ref.h"
+
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdlib/enerdata_utils.h"
@@ -62,7 +64,6 @@
 #include "nbnxm_simd.h"
 #include "pairlistset.h"
 #include "pairlistsets.h"
-#include "kernels_reference/kernel_gpu_ref.h"
 #define INCLUDE_KERNELFUNCTION_TABLES
 #include "kernels_reference/kernel_ref.h"
 #ifdef GMX_NBNXN_SIMD_2XNN
@@ -136,7 +137,7 @@ CoulombKernelType getCoulombKernelType(const Nbnxm::EwaldExclusionType ewaldExcl
                                        const bool                      haveEqualCoulombVwdRadii)
 {
 
-    if (EEL_RF(coulombInteractionType) || coulombInteractionType == CoulombInteractionType::Cut)
+    if (usingRF(coulombInteractionType) || coulombInteractionType == CoulombInteractionType::Cut)
     {
         return CoulombKernelType::ReactionField;
     }
@@ -394,7 +395,7 @@ static void accountFlops(t_nrnb*                    nrnb,
     const bool usingGpuKernels = nbv.useGpu();
 
     int enr_nbnxn_kernel_ljc = eNRNB;
-    if (EEL_RF(ic.eeltype) || ic.eeltype == CoulombInteractionType::Cut)
+    if (usingRF(ic.eeltype) || ic.eeltype == CoulombInteractionType::Cut)
     {
         enr_nbnxn_kernel_ljc = eNR_NBNXN_LJ_RF;
     }

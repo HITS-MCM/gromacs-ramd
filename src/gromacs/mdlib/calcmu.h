@@ -34,7 +34,7 @@
 #ifndef GMX_MDLIB_CALCMU_H
 #define GMX_MDLIB_CALCMU_H
 
-#include <stdio.h>
+#include <cstdio>
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/utility/basedefinitions.h"
@@ -53,8 +53,5 @@ void calc_mu(int                            start,
              bool                           havePerturbedCharges,
              dvec                           mu,
              dvec                           mu_B);
-
-gmx_bool read_mu(FILE* fp, rvec mu, real* vol);
-/* Return true on succes */
 
 #endif

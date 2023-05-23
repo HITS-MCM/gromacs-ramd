@@ -47,6 +47,7 @@
 #include <memory>
 #include <vector>
 
+#include "gromacs/libgromacs_export.h"
 #include "gromacs/simd/simd.h"
 #include "gromacs/tables/tableinput.h"
 #include "gromacs/utility/alignedallocator.h"
@@ -54,7 +55,6 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/real.h"
-#include "gromacs/libgromacs_export.h"
 
 namespace gmx
 {

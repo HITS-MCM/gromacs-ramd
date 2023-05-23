@@ -11,7 +11,7 @@
 #   Build type: RelWithAssert
 #   Compiler: Clang 13
 #   MPI: OpenMPI 3.1
-#   SIMD: AVX2_256
+#   SIMD: AVX_512
 #   FFT: FFTW3
 #   Parallelism np/ntomp: 4/2
 
@@ -21,13 +21,14 @@ gromacs:clang-13:release:configure:
     - .use-clang:base
     - .use-mpi
     - .rules:nightly-only-for-release
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     COMPILER_MAJOR_VERSION: 13
     RELEASE_BUILD_DIR: release-builds-clang
     CMAKE_PRECISION_OPTIONS: "-DGMX_DOUBLE=ON"
     CMAKE_BUILD_TYPE_OPTIONS: "-DCMAKE_BUILD_TYPE=RelWithAssert"
+    CMAKE_SIMD_OPTIONS: "-DGMX_SIMD=AVX_512"
   dependencies:
     - archive:package
     - regressiontests:package
@@ -42,9 +43,9 @@ gromacs:clang-13:release:build:
     - .rules:nightly-only-for-release
   stage: release-build
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     BUILD_DIR: release-builds-clang
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13
   needs:
     - job: gromacs:clang-13:release:configure
 
@@ -53,9 +54,9 @@ gromacs:clang-13:release:test:
     - .gromacs:base:test
     - .rules:nightly-only-for-release
   stage: release-tests
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     BUILD_DIR: release-builds-clang
   needs:
     - job: gromacs:clang-13:release:configure
@@ -66,9 +67,9 @@ gromacs:clang-13:release:regressiontest:
     - .gromacs:base:regressiontest
     - .rules:nightly-only-for-release
   stage: release-tests
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-llvm-13
   variables:
-    CMAKE: /usr/local/cmake-3.16.3/bin/cmake
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     BUILD_DIR: release-builds-clang
     REGRESSIONTEST_DOUBLE: "-double"
     REGRESSIONTEST_PARALLEL: "-np"

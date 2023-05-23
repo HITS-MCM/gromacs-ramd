@@ -54,9 +54,10 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/pbcutil/mshift.h"
 #include "gromacs/pbcutil/pbc.h"
+#include "gromacs/topology/mtop_util.h"
+#include "gromacs/topology/topology.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/logger.h"
-#include "gromacs/topology/mtop_util.h"
 
 using gmx::ArrayRef;
 using gmx::DDBondedChecking;

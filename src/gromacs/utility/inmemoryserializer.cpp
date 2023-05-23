@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "inmemoryserializer.h"
+#include "gromacs/utility/inmemoryserializer.h"
 
 #include "config.h"
 
@@ -223,17 +223,17 @@ void InMemorySerializer::doReal(real* value)
 
 void InMemorySerializer::doRvec(rvec* value)
 {
-    for (int d = 0; d < DIM; d++)
+    for (real& v : *value)
     {
-        doReal(&(*value)[d]);
+        doReal(&v);
     }
 }
 
 void InMemorySerializer::doIvec(ivec* value)
 {
-    for (int d = 0; d < DIM; d++)
+    for (int& v : *value)
     {
-        doInt(&(*value)[d]);
+        doInt(&v);
     }
 }
 
@@ -371,17 +371,17 @@ void InMemoryDeserializer::doReal(real* value)
 
 void InMemoryDeserializer::doRvec(rvec* value)
 {
-    for (int d = 0; d < DIM; d++)
+    for (real& v : *value)
     {
-        doReal(&(*value)[d]);
+        doReal(&v);
     }
 }
 
 void InMemoryDeserializer::doIvec(ivec* value)
 {
-    for (int d = 0; d < DIM; d++)
+    for (int& v : *value)
     {
-        doInt(&(*value)[d]);
+        doInt(&v);
     }
 }
 

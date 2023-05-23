@@ -43,6 +43,7 @@
 #include "parrinellorahmanbarostat.h"
 
 #include "gromacs/domdec/domdec_network.h"
+#include "gromacs/math/boxmatrix.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/coupling.h"
@@ -64,16 +65,16 @@ namespace gmx
 
 ParrinelloRahmanBarostat::ParrinelloRahmanBarostat(int                  nstpcouple,
                                                    int                  offset,
-                                                   real                 couplingTimeStep,
+                                                   real                 couplingTimePeriod,
                                                    Step                 initStep,
                                                    StatePropagatorData* statePropagatorData,
                                                    EnergyData*          energyData,
-                                                   FILE*                fplog,
+                                                   const MDLogger&      mdlog,
                                                    const t_inputrec*    inputrec,
                                                    const MDAtoms*       mdAtoms) :
     nstpcouple_(nstpcouple),
     offset_(offset),
-    couplingTimeStep_(couplingTimeStep),
+    couplingTimePeriod_(couplingTimePeriod),
     initStep_(initStep),
     mu_{ { 0 } },
     boxRel_{ { 0 } },
@@ -81,7 +82,7 @@ ParrinelloRahmanBarostat::ParrinelloRahmanBarostat(int                  nstpcoup
     statePropagatorData_(statePropagatorData),
     energyData_(energyData),
     nextEnergyCalculationStep_(-1),
-    fplog_(fplog),
+    mdlog_(mdlog),
     inputrec_(inputrec),
     mdAtoms_(mdAtoms)
 {
@@ -136,19 +137,19 @@ void ParrinelloRahmanBarostat::scheduleTask(Step                       step,
 void ParrinelloRahmanBarostat::integrateBoxVelocityEquations(Step step)
 {
     const auto* box = statePropagatorData_->constBox();
-    parrinellorahman_pcoupl(fplog_,
+    parrinellorahman_pcoupl(mdlog_,
                             step,
-                            inputrec_,
-                            couplingTimeStep_,
+                            inputrec_->pressureCouplingOptions,
+                            inputrec_->deform,
+                            couplingTimePeriod_,
                             energyData_->pressure(step),
                             box,
                             boxRel_,
                             boxVelocity_,
-                            scalingTensor_.data(),
-                            mu_,
-                            false);
+                            scalingTensor_,
+                            &mu_);
     // multiply matrix by the coupling time step to avoid having the propagator needing to know about that
-    msmul(scalingTensor_.data(), couplingTimeStep_, scalingTensor_.data());
+    (*scalingTensor_) = (*scalingTensor_) * couplingTimePeriod_;
 }
 
 void ParrinelloRahmanBarostat::scaleBoxAndPositions()
@@ -159,36 +160,36 @@ void ParrinelloRahmanBarostat::scaleBoxAndPositions()
     {
         for (int m = 0; m <= i; m++)
         {
-            box[i][m] += couplingTimeStep_ * boxVelocity_[i][m];
+            box[i][m] += couplingTimePeriod_ * boxVelocity_[i][m];
         }
     }
-    preserve_box_shape(inputrec_, boxRel_, box);
+    preserveBoxShape(inputrec_->pressureCouplingOptions, inputrec_->deform, boxRel_, box);
 
     // Scale the coordinates
-    const int start  = 0;
-    const int homenr = mdAtoms_->mdatoms()->homenr;
-    auto*     x      = as_rvec_array(statePropagatorData_->positionsView().paddedArrayRef().data());
-    ivec*     nFreeze = inputrec_->opts.nFreeze;
+    const int      start   = 0;
+    const int      homenr  = mdAtoms_->mdatoms()->homenr;
+    ArrayRef<RVec> x       = statePropagatorData_->positionsView().paddedArrayRef();
+    ivec*          nFreeze = inputrec_->opts.nFreeze;
     for (int n = start; n < start + homenr; n++)
     {
-        if (mdAtoms_->mdatoms()->cFREEZE == nullptr)
+        if (mdAtoms_->mdatoms()->cFREEZE.empty())
         {
-            tmvmul_ur0(mu_, x[n], x[n]);
+            x[n] = multiplyVectorByTransposeOfBoxMatrix(mu_, x[n]);
         }
         else
         {
             int g = mdAtoms_->mdatoms()->cFREEZE[n];
             if (!nFreeze[g][XX])
             {
-                x[n][XX] = mu_[XX][XX] * x[n][XX] + mu_[YY][XX] * x[n][YY] + mu_[ZZ][XX] * x[n][ZZ];
+                x[n][XX] = mu_(XX, XX) * x[n][XX] + mu_(YY, XX) * x[n][YY] + mu_(ZZ, XX) * x[n][ZZ];
             }
             if (!nFreeze[g][YY])
             {
-                x[n][YY] = mu_[YY][YY] * x[n][YY] + mu_[ZZ][YY] * x[n][ZZ];
+                x[n][YY] = mu_(YY, YY) * x[n][YY] + mu_(ZZ, YY) * x[n][ZZ];
             }
             if (!nFreeze[g][ZZ])
             {
-                x[n][ZZ] = mu_[ZZ][ZZ] * x[n][ZZ];
+                x[n][ZZ] = mu_(ZZ, ZZ) * x[n][ZZ];
             }
         }
     }
@@ -196,7 +197,7 @@ void ParrinelloRahmanBarostat::scaleBoxAndPositions()
 
 void ParrinelloRahmanBarostat::elementSetup()
 {
-    if (!propagatorCallback_ || scalingTensor_.empty())
+    if (!propagatorCallback_ || scalingTensor_ == nullptr || scalingTensor_->asConstView().rank() == 0)
     {
         throw MissingElementConnectionError(
                 "Parrinello-Rahman barostat was not connected to a propagator.\n"
@@ -206,38 +207,32 @@ void ParrinelloRahmanBarostat::elementSetup()
                 "object.");
     }
 
-    if (inputrecPreserveShape(inputrec_))
+    if (shouldPreserveBoxShape(inputrec_->pressureCouplingOptions, inputrec_->deform))
     {
-        auto*     box  = statePropagatorData_->box();
-        const int ndim = inputrec_->epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
+        auto*     box = statePropagatorData_->box();
+        const int ndim =
+                inputrec_->pressureCouplingOptions.epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
         do_box_rel(ndim, inputrec_->deform, boxRel_, box, true);
     }
 
     const bool scaleOnInitStep = do_per_step(initStep_ + nstpcouple_ + offset_, nstpcouple_);
     if (scaleOnInitStep)
     {
-        // If we need to scale on the first step, we need to set the scaling matrix using the current
-        // box velocity. If this is a fresh start, we will hence not move the box (this does currently
-        // never happen as the offset is set to -1 in all cases). If this is a restart, we will use
-        // the saved box velocity which we would have updated right before checkpointing.
-        // Setting bFirstStep = true in parrinellorahman_pcoupl (last argument) makes sure that only
-        // the scaling matrix is calculated, without updating the box velocities.
-        // The call to parrinellorahman_pcoupl is using nullptr for fplog (since we don't expect any
-        // output here) and for the pressure (since it might not be calculated yet, and we don't need it).
+        // If we need to scale on the first step, we need to set the scaling matrix using the
+        // current box velocity. If this is a fresh start, we will hence not move the box (this does
+        // currently never happen as the offset is set to -1 in all cases). If this is a restart, we
+        // will use the saved box velocity which we would have updated right before checkpointing.
         const auto* box = statePropagatorData_->constBox();
-        parrinellorahman_pcoupl(nullptr,
-                                initStep_,
-                                inputrec_,
-                                couplingTimeStep_,
-                                nullptr,
-                                box,
-                                boxRel_,
-                                boxVelocity_,
-                                scalingTensor_.data(),
-                                mu_,
-                                true);
+        init_parrinellorahman(inputrec_->pressureCouplingOptions,
+                              inputrec_->deform,
+                              couplingTimePeriod_,
+                              box,
+                              boxRel_,
+                              boxVelocity_,
+                              scalingTensor_,
+                              &mu_);
         // multiply matrix by the coupling time step to avoid having the propagator needing to know about that
-        msmul(scalingTensor_.data(), couplingTimeStep_, scalingTensor_.data());
+        (*scalingTensor_) = (*scalingTensor_) * couplingTimePeriod_;
 
         propagatorCallback_(initStep_);
     }
@@ -260,8 +255,10 @@ real ParrinelloRahmanBarostat::conservedEnergyContribution() const
     {
         for (int j = 0; j <= i; j++)
         {
-            real invMass = c_presfac * (4 * M_PI * M_PI * inputrec_->compress[i][j])
-                           / (3 * inputrec_->tau_p * inputrec_->tau_p * maxBoxLength);
+            real invMass = c_presfac
+                           * (4 * M_PI * M_PI * inputrec_->pressureCouplingOptions.compress[i][j])
+                           / (3 * inputrec_->pressureCouplingOptions.tau_p
+                              * inputrec_->pressureCouplingOptions.tau_p * maxBoxLength);
             if (invMass > 0)
             {
                 energy += 0.5 * boxVelocity_[i][j] * boxVelocity_[i][j] / invMass;
@@ -276,7 +273,7 @@ real ParrinelloRahmanBarostat::conservedEnergyContribution() const
      * track of unwrapped box diagonal elements. This case is
      * excluded in integratorHasConservedEnergyQuantity().
      */
-    energy += volume * trace(inputrec_->ref_p) / (DIM * c_presfac);
+    energy += volume * ::trace(inputrec_->pressureCouplingOptions.ref_p) / (DIM * c_presfac);
 
     return energy;
 }
@@ -309,7 +306,7 @@ void ParrinelloRahmanBarostat::doCheckpointData(CheckpointData<operation>* check
 void ParrinelloRahmanBarostat::saveCheckpointState(std::optional<WriteCheckpointData> checkpointData,
                                                    const t_commrec*                   cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Write>(&checkpointData.value());
     }
@@ -318,7 +315,7 @@ void ParrinelloRahmanBarostat::saveCheckpointState(std::optional<WriteCheckpoint
 void ParrinelloRahmanBarostat::restoreCheckpointState(std::optional<ReadCheckpointData> checkpointData,
                                                       const t_commrec*                  cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Read>(&checkpointData.value());
     }
@@ -355,13 +352,14 @@ ISimulatorElement* ParrinelloRahmanBarostat::getElementPointerImpl(
         const PropagatorTag& propagatorTag)
 {
     auto* element  = builderHelper->storeElement(std::make_unique<ParrinelloRahmanBarostat>(
-            legacySimulatorData->inputrec->nstpcouple,
+            legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple,
             offset,
-            legacySimulatorData->inputrec->delta_t * legacySimulatorData->inputrec->nstpcouple,
+            legacySimulatorData->inputrec->delta_t
+                    * legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple,
             legacySimulatorData->inputrec->init_step,
             statePropagatorData,
             energyData,
-            legacySimulatorData->fplog,
+            legacySimulatorData->mdlog,
             legacySimulatorData->inputrec,
             legacySimulatorData->mdAtoms));
     auto* barostat = static_cast<ParrinelloRahmanBarostat*>(element);

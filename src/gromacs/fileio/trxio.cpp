@@ -87,8 +87,7 @@ struct t_trxstatus
     t_fileio*            fio;
     gmx_tng_trajectory_t tng;
     int                  natoms;
-    double               DT, BOX[3];
-    gmx_bool             bReadBox;
+    double               BOX[3];
     char*                persistent_line; /* Persistent line for reading g96 trajectories */
 #if GMX_USE_PLUGINS
     gmx_vmdplugin_t* vmdplugin;
@@ -119,11 +118,14 @@ int check_times2(real t, real t0, gmx_bool bDouble)
     bDouble = FALSE;
 #endif
 
-    r = -1;
-    if ((!bTimeSet(TimeControl::Begin) || (t >= rTimeValue(TimeControl::Begin)))
-        && (!bTimeSet(TimeControl::End) || (t <= rTimeValue(TimeControl::End))))
+    r              = -1;
+    auto startTime = timeValue(TimeControl::Begin);
+    auto endTime   = timeValue(TimeControl::End);
+    auto deltaTime = timeValue(TimeControl::Delta);
+    if ((!startTime.has_value() || (t >= startTime.value()))
+        && (!endTime.has_value() || (t <= endTime.value())))
     {
-        if (bTimeSet(TimeControl::Delta) && !bRmod_fd(t, t0, rTimeValue(TimeControl::Delta), bDouble))
+        if (deltaTime.has_value() && !bRmod_fd(t, t0, deltaTime.value(), bDouble))
         {
             r = -1;
         }
@@ -132,7 +134,7 @@ int check_times2(real t, real t0, gmx_bool bDouble)
             r = 0;
         }
     }
-    else if (bTimeSet(TimeControl::End) && (t >= rTimeValue(TimeControl::End)))
+    else if (endTime.has_value() && (t >= endTime.value()))
     {
         r = 1;
     }
@@ -142,9 +144,9 @@ int check_times2(real t, real t0, gmx_bool bDouble)
                 "t=%g, t0=%g, b=%g, e=%g, dt=%g: r=%d\n",
                 t,
                 t0,
-                rTimeValue(TimeControl::Begin),
-                rTimeValue(TimeControl::End),
-                rTimeValue(TimeControl::Delta),
+                startTime.value_or(0),
+                endTime.value_or(0),
+                deltaTime.value_or(0),
                 r);
     }
     return r;
@@ -468,14 +470,14 @@ int write_trxframe_indexed(t_trxstatus* status, const t_trxframe* fr, int nind, 
     return 0;
 }
 
-t_trxstatus* trjtools_gmx_prepare_tng_writing(const char*              filename,
-                                              char                     filemode,
-                                              t_trxstatus*             in,
-                                              const char*              infile,
-                                              const int                natoms,
-                                              const gmx_mtop_t*        mtop,
-                                              gmx::ArrayRef<const int> index,
-                                              const char*              index_group_name)
+t_trxstatus* trjtools_gmx_prepare_tng_writing(const std::filesystem::path& filename,
+                                              char                         filemode,
+                                              t_trxstatus*                 in,
+                                              const std::filesystem::path& infile,
+                                              const int                    natoms,
+                                              const gmx_mtop_t*            mtop,
+                                              gmx::ArrayRef<const int>     index,
+                                              const char*                  index_group_name)
 {
     if (filemode != 'w' && filemode != 'a')
     {
@@ -490,7 +492,7 @@ t_trxstatus* trjtools_gmx_prepare_tng_writing(const char*              filename,
         gmx_prepare_tng_writing(
                 filename, filemode, &in->tng, &out->tng, natoms, mtop, index, index_group_name);
     }
-    else if ((infile) && (efTNG == fn2ftp(infile)))
+    else if (fn2ftp(infile) == efTNG)
     {
         gmx_tng_trajectory_t tng_in;
         gmx_tng_open(infile, 'r', &tng_in);
@@ -660,7 +662,7 @@ void done_trx_xframe(t_trxstatus* status)
     sfree(status->xframe);
 }
 
-t_trxstatus* open_trx(const char* outfile, const char* filemode)
+t_trxstatus* open_trx(const std::filesystem::path& outfile, const char* filemode)
 {
     t_trxstatus* stat;
     if (filemode[0] != 'w' && filemode[0] != 'a' && filemode[1] != '+')
@@ -839,6 +841,7 @@ bool read_next_frame(const gmx_output_env_t* oenv, t_trxstatus* status, t_trxfra
         {
             ftp = gmx_fio_getftp(status->fio);
         }
+        auto startTime = timeValue(TimeControl::Begin);
         switch (ftp)
         {
             case efTRR: bRet = gmx_next_frame(status, fr); break;
@@ -848,19 +851,19 @@ bool read_next_frame(const gmx_output_env_t* oenv, t_trxstatus* status, t_trxfra
             case efG96:
             {
                 t_symtab* symtab = nullptr;
-                read_g96_conf(gmx_fio_getfp(status->fio), nullptr, nullptr, fr, symtab, status->persistent_line);
+                read_g96_conf(gmx_fio_getfp(status->fio), {}, nullptr, fr, symtab, status->persistent_line);
                 bRet = (fr->natoms > 0);
                 break;
             }
             case efXTC:
-                if (bTimeSet(TimeControl::Begin) && (status->tf < rTimeValue(TimeControl::Begin)))
+                if (startTime.has_value() && (status->tf < startTime.value()))
                 {
-                    if (xtc_seek_time(status->fio, rTimeValue(TimeControl::Begin), fr->natoms, TRUE))
+                    if (xtc_seek_time(status->fio, startTime.value(), fr->natoms, TRUE))
                     {
                         gmx_fatal(FARGS,
                                   "Specified frame (time %f) doesn't exist or file "
                                   "corrupt/inconsistent.",
-                                  rTimeValue(TimeControl::Begin));
+                                  startTime.value());
                     }
                     initcount(status);
                 }
@@ -889,7 +892,7 @@ bool read_next_frame(const gmx_output_env_t* oenv, t_trxstatus* status, t_trxfra
                 gmx_fatal(FARGS,
                           "DEATH HORROR in read_next_frame ftp=%s,status=%s",
                           ftp2ext(gmx_fio_getftp(status->fio)),
-                          gmx_fio_getname(status->fio));
+                          gmx_fio_getname(status->fio).u8string().c_str());
 #endif
         }
         status->tf = fr->time;
@@ -933,7 +936,11 @@ bool read_next_frame(const gmx_output_env_t* oenv, t_trxstatus* status, t_trxfra
     return bRet;
 }
 
-bool read_first_frame(const gmx_output_env_t* oenv, t_trxstatus** status, const char* fn, t_trxframe* fr, int flags)
+bool read_first_frame(const gmx_output_env_t*      oenv,
+                      t_trxstatus**                status,
+                      const std::filesystem::path& fn,
+                      t_trxframe*                  fr,
+                      int                          flags)
 {
     t_fileio* fio = nullptr;
     gmx_bool  bFirst, bOK;
@@ -1064,7 +1071,7 @@ bool read_first_frame(const gmx_output_env_t* oenv, t_trxstatus** status, const 
                       "non-GROMACS trajectory formats using the VMD plug-ins.\n"
                       "Please compile with plug-in support if you want to read non-GROMACS "
                       "trajectory formats.\n",
-                      fn);
+                      fn.u8string().c_str());
 #endif
     }
     (*status)->tf = fr->time;
@@ -1096,7 +1103,12 @@ bool read_first_frame(const gmx_output_env_t* oenv, t_trxstatus** status, const 
 
 /***** C O O R D I N A T E   S T U F F *****/
 
-int read_first_x(const gmx_output_env_t* oenv, t_trxstatus** status, const char* fn, real* t, rvec** x, matrix box)
+int read_first_x(const gmx_output_env_t*      oenv,
+                 t_trxstatus**                status,
+                 const std::filesystem::path& fn,
+                 real*                        t,
+                 rvec**                       x,
+                 matrix                       box)
 {
     t_trxframe fr;
 
@@ -1133,7 +1145,7 @@ void rewind_trj(t_trxstatus* status)
 
 /***** T O P O L O G Y   S T U F F ******/
 
-t_topology* read_top(const char* fn, PbcType* pbcType)
+t_topology* read_top(const std::filesystem::path& fn, PbcType* pbcType)
 {
     int         natoms;
     PbcType     pbcTypeFile;

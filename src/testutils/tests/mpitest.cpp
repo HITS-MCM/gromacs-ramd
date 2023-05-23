@@ -46,8 +46,8 @@
 
 #include <vector>
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include "gromacs/utility/basenetwork.h"
 #include "gromacs/utility/gmxmpi.h"
@@ -74,7 +74,7 @@ TEST_F(MpiSelfTest, Runs)
         reached_.resize(getNumberOfTestMpiRanks(), 0);
     }
     // Needed for thread-MPI so that we resize the buffer before we
-    // fill it on non-master ranks.
+    // fill it on non-main ranks.
     MPI_Barrier(MPI_COMM_WORLD);
     int value = 1;
     MPI_Gather(&value, 1, MPI_INT, reached_.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);

@@ -11,7 +11,7 @@
  * Contains a lot of boiler plate that is being generalized and migrate out of this file, but other
  * pair restraints can be implemented by following the example in this and ``ensemblepotential.cpp``.
  * The ``CMakeLists.txt`` file will need to be updated if you add additional source files, and
- * ``src/pythonmodule/export_plugin.cpp`` will need to be updated if you add or change the name of
+ * ``gmxapi/pythonmodule/export_plugin.cpp`` will need to be updated if you add or change the name of
  * potentials.
  *
  * \author M. Eric Irrgang <ericirrgang@gmail.com>
@@ -22,13 +22,13 @@
 #include <mutex>
 #include <vector>
 
-#include "gmxapi/gromacsfwd.h"
-#include "gmxapi/session.h"
-#include "gmxapi/md/mdmodule.h"
-
 #include "gromacs/restraint/restraintpotential.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
+
+#include "gmxapi/gromacsfwd.h"
+#include "gmxapi/md/mdmodule.h"
+#include "gmxapi/session.h"
 
 #include "sessionresources.h"
 
@@ -156,7 +156,8 @@ public:
     gmx::PotentialPointData calculate(gmx::Vector v, gmx::Vector v0, gmx_unused double t);
 
     /*!
-     * \brief An update function to be called on the simulation master rank/thread periodically by the Restraint framework.
+     * \brief An update function to be called on the simulation main rank/thread
+     * periodically by the Restraint framework.
      *
      * Defining this function in a plugin potential is optional. If the function is defined,
      * the restraint framework calls this function (on the first rank only in a parallel simulation) before calling calculate().
@@ -250,7 +251,8 @@ public:
     };
 
     /*!
-     * \brief An update function to be called on the simulation master rank/thread periodically by the Restraint framework.
+     * \brief An update function to be called on the simulation main rank/thread
+     * periodically by the Restraint framework.
      *
      * Implements optional override of gmx::IRestraintPotential::update
      *

@@ -38,7 +38,6 @@
 #include "gromacs/fileio/matio.h"
 #include "gromacs/fileio/xvgr.h"
 #include "gromacs/gmxana/cmat.h"
-#include "gromacs/linearalgebra/eigensolver.h"
 #include "gromacs/random/threefry.h"
 #include "gromacs/random/uniformintdistribution.h"
 #include "gromacs/random/uniformrealdistribution.h"
@@ -219,7 +218,7 @@ void gather(t_mat* m, real cutoff, t_clusters* clust)
     }
     if (k != nn)
     {
-        gmx_incons("gather algortihm");
+        gmx_incons("gather algorithm");
     }
     std::sort(d, d + nn, rms_dist_comp);
 

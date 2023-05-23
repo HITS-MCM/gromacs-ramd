@@ -32,7 +32,7 @@
  * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \internal \file
- * \brief Declares GPU implementation class for CUDA bonded
+ * \brief Declares GPU implementation class for GPU bonded
  * interactions.
  *
  * This header file is needed to include from both the device-side
@@ -47,14 +47,17 @@
 #ifndef GMX_LISTED_FORCES_LISTED_FORCES_GPU_IMPL_H
 #define GMX_LISTED_FORCES_LISTED_FORCES_GPU_IMPL_H
 
-#include "gromacs/gpu_utils/device_context.h"
-#include "gromacs/gpu_utils/gputraits.cuh"
+#include "gromacs/gpu_utils/gputraits.h"
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/listed_forces/listed_forces_gpu.h"
 #include "gromacs/pbcutil/pbc_aiuc.h"
 
+#if GMX_GPU_SYCL
+#    include "gromacs/gpu_utils/syclutils.h"
+#endif
+
 struct gmx_ffparams_t;
-struct t_forcerec;
+class DeviceContext;
 
 namespace gmx
 {
@@ -75,7 +78,7 @@ struct HostInteractionList
  * to the GPU as a single structure.
  *
  */
-struct BondedCudaKernelParameters
+struct BondedGpuKernelParameters
 {
     //! Periodic boundary data
     PbcAiuc pbcAiuc;
@@ -83,32 +86,27 @@ struct BondedCudaKernelParameters
     float electrostaticsScaleFactor;
     //! The bonded types on GPU
     int fTypesOnGpu[numFTypesOnGpu];
-    //! The number of interaction atom (iatom) elements for every function type
-    int numFTypeIAtoms[numFTypesOnGpu];
     //! The number of bonds for every function type
     int numFTypeBonds[numFTypesOnGpu];
     //! The start index in the range of each interaction type
     int fTypeRangeStart[numFTypesOnGpu];
     //! The end index in the range of each interaction type
     int fTypeRangeEnd[numFTypesOnGpu];
-
-    //! Force parameters (on GPU)
-    t_iparams* d_forceParams;
-    //! Total Energy (on GPU)
-    float* d_vTot;
-    //! Interaction list atoms (on GPU)
-    t_iatom* d_iatoms[numFTypesOnGpu];
-
-    BondedCudaKernelParameters()
+    BondedGpuKernelParameters()
     {
         matrix boxDummy = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
-
         setPbcAiuc(0, boxDummy, &pbcAiuc);
-
-        electrostaticsScaleFactor = 1.0;
-        d_forceParams             = nullptr;
-        d_vTot                    = nullptr;
+        electrostaticsScaleFactor = 1.0F;
     }
+};
+struct BondedGpuKernelBuffers
+{
+    //! Force parameters (on GPU)
+    DeviceBuffer<t_iparams> d_forceParams = nullptr;
+    //! Total Energy (on GPU)
+    DeviceBuffer<float> d_vTot = nullptr;
+    //! Interaction list atoms (on GPU)
+    DeviceBuffer<t_iatom> d_iatoms[numFTypesOnGpu];
 };
 
 /*! \internal \brief Implements GPU bondeds */
@@ -116,13 +114,13 @@ class ListedForcesGpu::Impl
 {
 public:
     //! Constructor
-    Impl(const gmx_ffparams_t& ffparams,
-         float                 electrostaticsScaleFactor,
-         const DeviceContext&  deviceContext,
-         const DeviceStream&   deviceStream,
-         gmx_wallcycle*        wcycle);
-    /*! \brief Destructor, non-default needed for freeing
-     * device-side buffers */
+    Impl(const gmx_ffparams_t&    ffparams,
+         float                    electrostaticsScaleFactor,
+         const DeviceInformation& deviceInfo,
+         const DeviceContext&     deviceContext,
+         const DeviceStream&      deviceStream,
+         gmx_wallcycle*           wcycle);
+    //! \brief Destructor, non-default needed for freeing device-side buffers
     ~Impl();
     /*! \brief Update lists of interactions from idef suitable for the GPU,
      * using the data structures prepared for PP work.
@@ -133,9 +131,9 @@ public:
      * may have been updated after search. */
     void updateInteractionListsAndDeviceBuffers(ArrayRef<const int>           nbnxnAtomOrder,
                                                 const InteractionDefinitions& idef,
-                                                void*                         xqDevice,
-                                                DeviceBuffer<RVec>            forceDevice,
-                                                DeviceBuffer<RVec>            fshiftDevice);
+                                                DeviceBuffer<Float4>          d_xqPtr,
+                                                DeviceBuffer<RVec>            d_fPtr,
+                                                DeviceBuffer<RVec>            d_fShiftPtr);
     /*! \brief
      * Update PBC data.
      *
@@ -170,27 +168,33 @@ private:
     //! Tells whether there are any interaction in iLists.
     bool haveInteractions_;
     //! Interaction lists on the device.
-    t_ilist d_iLists_[F_NRE] = {};
+    std::array<DeviceBuffer<t_iatom>, F_NRE> d_iAtoms_      = {};
+    std::array<int, F_NRE>                   d_iAtomsAlloc_ = {};
     //! Bonded parameters for device-side use.
-    t_iparams* d_forceParams_ = nullptr;
+    DeviceBuffer<t_iparams> d_forceParams_ = nullptr;
     //! Position-charge vector on the device.
-    const float4* d_xq_ = nullptr;
+    DeviceBuffer<Float4> d_xq_ = nullptr;
     //! Force vector on the device.
-    float3* d_f_ = nullptr;
+    DeviceBuffer<Float3> d_f_ = nullptr;
     //! Shift force vector on the device.
-    float3* d_fShift_ = nullptr;
+    DeviceBuffer<Float3> d_fShift_ = nullptr;
     //! \brief Host-side virial buffer
     HostVector<float> vTot_ = { {}, gmx::HostAllocationPolicy(gmx::PinningPolicy::PinnedIfSupported) };
     //! \brief Device-side total virial
-    float* d_vTot_ = nullptr;
+    DeviceBuffer<float> d_vTot_ = nullptr;
 
     //! GPU context object
     const DeviceContext& deviceContext_;
     //! \brief Bonded GPU stream, not owned by this module
     const DeviceStream& deviceStream_;
 
-    //! Parameters and pointers, passed to the CUDA kernel
-    BondedCudaKernelParameters kernelParams_;
+    //! Parameters, passed to the GPU kernel
+    BondedGpuKernelParameters kernelParams_;
+    //! Buffers, used in the GPU kernel
+    BondedGpuKernelBuffers kernelBuffers_;
+
+    //! Device sub-group/warp size
+    int deviceSubGroupSize_;
 
     //! GPU kernel launch configuration
     KernelLaunchConfig kernelLaunchConfig_;

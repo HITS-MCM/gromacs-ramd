@@ -35,9 +35,6 @@
 
 #include "binsearch.h"
 
-#include <cstdio>
-
-#include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/real.h"
 
 /*Make range-array (Permutation identity) for sorting */
@@ -151,38 +148,4 @@ int start_binsearch(real* array, int* perm, int low, int high, real key, int dir
 {
     insertionSort(array, perm, low, high, direction);
     return BinarySearch(array, low, high, key, direction);
-}
-
-int LinearSearch(const double* array, int startindx, int stopindx, double key, int* count, int direction)
-{
-    /*Iterative implementation - assume elements sorted*/
-    int i;
-    int keyindex;
-
-    if (direction >= 0)
-    {
-        for (i = startindx; i <= stopindx; i++)
-        {
-            (*count)++;
-            if (array[i] > key)
-            {
-                keyindex = i - 1;
-                return keyindex;
-            }
-        }
-    }
-    else
-    {
-        for (i = stopindx; i >= startindx; i--)
-        {
-            (*count)++;
-            if (array[i] > key)
-            {
-                keyindex = i + 1;
-                return keyindex;
-            }
-        }
-    }
-
-    return -1;
 }

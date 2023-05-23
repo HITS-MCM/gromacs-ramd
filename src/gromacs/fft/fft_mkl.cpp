@@ -33,11 +33,11 @@
  */
 #include "gmxpre.h"
 
-#include <errno.h>
-#include <stdlib.h>
-
 #include <mkl_dfti.h>
 #include <mkl_service.h>
+
+#include <cerrno>
+#include <cstdlib>
 
 #include "gromacs/fft/fft.h"
 #include "gromacs/utility/fatalerror.h"
@@ -120,7 +120,7 @@ int gmx_fft_init_1d(gmx_fft_t* pfft, int nxInt, gmx_fft_flag gmx_unused flags)
     }
     *pfft = nullptr;
 
-    if ((fft = reinterpret_cast<gmx_fft_t>(malloc(sizeof(struct gmx_fft)))) == nullptr)
+    if ((fft = reinterpret_cast<gmx_fft_t>(std::malloc(sizeof(struct gmx_fft)))) == nullptr)
     {
         return ENOMEM;
     }
@@ -191,7 +191,7 @@ int gmx_fft_init_1d_real(gmx_fft_t* pfft, int nxInt, gmx_fft_flag gmx_unused fla
     }
     *pfft = nullptr;
 
-    if ((fft = reinterpret_cast<gmx_fft_t>(malloc(sizeof(struct gmx_fft)))) == nullptr)
+    if ((fft = reinterpret_cast<gmx_fft_t>(std::malloc(sizeof(struct gmx_fft)))) == nullptr)
     {
         return ENOMEM;
     }
@@ -269,7 +269,7 @@ int gmx_fft_init_2d_real(gmx_fft_t* pfft, int nxInt, int nyInt, gmx_fft_flag gmx
     }
     *pfft = nullptr;
 
-    if ((fft = reinterpret_cast<gmx_fft_t>(malloc(sizeof(struct gmx_fft)))) == nullptr)
+    if ((fft = reinterpret_cast<gmx_fft_t>(std::malloc(sizeof(struct gmx_fft)))) == nullptr)
     {
         return ENOMEM;
     }
@@ -348,6 +348,8 @@ int gmx_fft_init_2d_real(gmx_fft_t* pfft, int nxInt, int nyInt, gmx_fft_flag gmx
         stride[1] = 1;
 
         status = (DftiSetValue(fft->inplace[1], DFTI_PLACEMENT, DFTI_INPLACE)
+                  || DftiSetValue(fft->inplace[1], DFTI_CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_REAL)
+                  || DftiSetValue(fft->inplace[1], DFTI_PACKED_FORMAT, DFTI_CCS_FORMAT)
                   || DftiSetValue(fft->inplace[1], DFTI_NUMBER_OF_TRANSFORMS, nx)
                   || DftiSetValue(fft->inplace[1], DFTI_INPUT_DISTANCE, 2 * nyc)
                   || DftiSetValue(fft->inplace[1], DFTI_INPUT_STRIDES, stride)
@@ -369,6 +371,8 @@ int gmx_fft_init_2d_real(gmx_fft_t* pfft, int nxInt, int nyInt, gmx_fft_flag gmx
         stride[1] = 1;
 
         status = (DftiSetValue(fft->ooplace[1], DFTI_PLACEMENT, DFTI_NOT_INPLACE)
+                  || DftiSetValue(fft->ooplace[1], DFTI_CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_REAL)
+                  || DftiSetValue(fft->ooplace[1], DFTI_PACKED_FORMAT, DFTI_CCS_FORMAT)
                   || DftiSetValue(fft->ooplace[1], DFTI_NUMBER_OF_TRANSFORMS, nx)
                   || DftiSetValue(fft->ooplace[1], DFTI_INPUT_DISTANCE, ny)
                   || DftiSetValue(fft->ooplace[1], DFTI_INPUT_STRIDES, stride)
@@ -390,6 +394,8 @@ int gmx_fft_init_2d_real(gmx_fft_t* pfft, int nxInt, int nyInt, gmx_fft_flag gmx
         stride[1] = 1;
 
         status = (DftiSetValue(fft->ooplace[2], DFTI_PLACEMENT, DFTI_NOT_INPLACE)
+                  || DftiSetValue(fft->ooplace[2], DFTI_CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_REAL)
+                  || DftiSetValue(fft->ooplace[2], DFTI_PACKED_FORMAT, DFTI_CCS_FORMAT)
                   || DftiSetValue(fft->ooplace[2], DFTI_NUMBER_OF_TRANSFORMS, nx)
                   || DftiSetValue(fft->ooplace[2], DFTI_INPUT_DISTANCE, 2 * nyc)
                   || DftiSetValue(fft->ooplace[2], DFTI_INPUT_STRIDES, stride)
@@ -401,7 +407,7 @@ int gmx_fft_init_2d_real(gmx_fft_t* pfft, int nxInt, int nyInt, gmx_fft_flag gmx
 
     if (status == 0)
     {
-        void* memory = malloc(sizeof(t_complex) * (nx * (ny / 2 + 1)));
+        void* memory = std::malloc(sizeof(t_complex) * (nx * (ny / 2 + 1)));
         if (nullptr == memory)
         {
             status = ENOMEM;
@@ -583,9 +589,9 @@ void gmx_fft_destroy(gmx_fft_t fft)
         }
         if (fft->work != nullptr)
         {
-            free(fft->work);
+            std::free(fft->work);
         }
-        free(fft);
+        std::free(fft);
     }
 }
 

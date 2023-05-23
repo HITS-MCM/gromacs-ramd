@@ -41,16 +41,18 @@
 #ifndef GMX_FFT_GPU_3DFFT_HEFFTE_H
 #define GMX_FFT_GPU_3DFFT_HEFFTE_H
 
+#include <heffte.h>
+
 #include <memory>
 
 #include "gromacs/fft/fft.h"
+#include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
-#include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/gpu_utils/gputraits.h"
+#include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/utility/gmxmpi.h"
-#include "gpu_3dfft_impl.h"
 
-#include <heffte.h>
+#include "gpu_3dfft_impl.h"
 
 class DeviceContext;
 class DeviceStream;
@@ -59,14 +61,14 @@ namespace gmx
 {
 
 /*! \internal \brief
- * A 3D FFT wrapper class for performing R2C/C2R transforms using clFFT
+ * A 3D FFT wrapper class for performing R2C/C2R transforms using heffte
  */
 template<typename backend_tag>
 class Gpu3dFft::ImplHeFfte : public Gpu3dFft::Impl
 {
 public:
     //! \copydoc Gpu3dFft::Impl::Impl
-    ImplHeFfte(bool                 allocateGrids,
+    ImplHeFfte(bool                 allocateRealGrid,
                MPI_Comm             comm,
                ArrayRef<const int>  gridSizesInXForEachRank,
                ArrayRef<const int>  gridSizesInYForEachRank,
@@ -81,7 +83,7 @@ public:
                DeviceBuffer<float>* complexGrid);
 
     /*! \brief Destroys the FFT plans. */
-    ~ImplHeFfte() override = default;
+    ~ImplHeFfte() override;
 
     /*! \brief Performs the FFT transform in given direction
      *
@@ -91,11 +93,30 @@ public:
     void perform3dFft(gmx_fft_direction dir, CommandEvent* timingEvent) override;
 
 private:
-    heffte::gpu::vector<float>               localRealGrid_;
-    heffte::gpu::vector<std::complex<float>> localComplexGrid_;
     heffte::gpu::vector<std::complex<float>> workspace_;
 
     std::unique_ptr<heffte::fft3d_r2c<backend_tag, int>> fftPlan_;
+
+#if GMX_GPU_CUDA
+    //! Raw stream for PME operations
+    cudaStream_t pmeRawStream_;
+    //! Local real grid
+    heffte::gpu::vector<float> localRealGrid_;
+    //! Local complex grid
+    heffte::gpu::vector<std::complex<float>> localComplexGrid_;
+#elif GMX_GPU_SYCL
+    /*! \brief Raw stream for PME operations
+     *
+     * HeFFTe takes a std::reference_wrapper of the sycl::queue,
+     * so we cannot pass the temporary value returned by
+     * DeviceStream::stream().  Instead we keep a local copy to
+     * pass to HeFFTe. */
+    sycl::queue pmeRawStream_;
+    //! Local real grid
+    DeviceBuffer<float> localRealGrid_;
+    //! Local complex grid
+    DeviceBuffer<float> localComplexGrid_;
+#endif
 };
 
 } // namespace gmx

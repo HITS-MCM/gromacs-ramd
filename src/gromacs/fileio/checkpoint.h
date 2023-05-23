@@ -122,14 +122,12 @@ extern template void writeKvtCheckpointValue(const real&               value,
                                              KeyValueTreeObjectBuilder kvtBuilder);
 
 /*! \libinternal
- * \brief Provides the MDModules with the checkpointed data on the master rank.
+ * \brief Provides the MDModules with the checkpointed data on the main rank.
  */
-struct MDModulesCheckpointReadingDataOnMaster
+struct MDModulesCheckpointReadingDataOnMain
 {
     //! The data of the MDModules that is stored in the checkpoint file
     const KeyValueTreeObject& checkpointedData_;
-    //! The version of the read ceckpoint file
-    CheckPointVersion checkpointFileVersion_;
 };
 
 /*! \libinternal
@@ -141,8 +139,6 @@ struct MDModulesCheckpointReadingBroadcast
     MPI_Comm communicator_;
     //! Whether the run is executed in parallel
     bool isParallelRun_;
-    //! The version of the read file version
-    CheckPointVersion checkpointFileVersion_;
 };
 
 /*! \libinternal \brief Writing the MDModules data to a checkpoint file.
@@ -151,8 +147,6 @@ struct MDModulesWriteCheckpointData
 {
     //! Builder for the Key-Value-Tree to store the MDModule checkpoint data
     KeyValueTreeObjectBuilder builder_;
-    //! The version of the read file version
-    CheckPointVersion checkpointFileVersion_;
 };
 
 } // namespace gmx
@@ -220,6 +214,8 @@ enum class CheckPointVersion : int
     MDModules,
     //! Added checkpointing for modular simulator.
     ModularSimulator,
+    //! Added local (per walker) weight contribution to each point in AWH.
+    AwhLocalWeightSum,
     //! The total number of checkpoint versions.
     Count,
     //! Current version
@@ -319,12 +315,12 @@ void write_checkpoint_data(t_fileio*                         fp,
 
 /* Loads a checkpoint from fn for run continuation.
  * Generates a fatal error on system size mismatch.
- * The master node reads the file
+ * The main node reads the file
  * and communicates all the modified number of steps,
  * but not the state itself.
  * With reproducibilityRequested warns about version, build, #ranks differences.
  */
-void load_checkpoint(const char*                    fn,
+void load_checkpoint(const std::filesystem::path&   fn,
                      t_fileio*                      logfio,
                      const t_commrec*               cr,
                      const ivec                     dd_nc,
@@ -340,7 +336,7 @@ void load_checkpoint(const char*                    fn,
 void read_checkpoint_trxframe(struct t_fileio* fp, t_trxframe* fr);
 
 /* Print the complete contents of checkpoint file fn to out */
-void list_checkpoint(const char* fn, FILE* out);
+void list_checkpoint(const std::filesystem::path& fn, FILE* out);
 
 /*!\brief Read simulation step and part from a checkpoint file
  *
@@ -352,7 +348,7 @@ void list_checkpoint(const char* fn, FILE* out);
  *
  * The output variables will both contain 0 if filename is NULL, the file
  * does not exist, or is not readable. */
-void read_checkpoint_part_and_step(const char* filename, int* simulation_part, int64_t* step);
+void read_checkpoint_part_and_step(const std::filesystem::path& filename, int* simulation_part, int64_t* step);
 
 /*!\brief Return header information from an open checkpoint file.
  *

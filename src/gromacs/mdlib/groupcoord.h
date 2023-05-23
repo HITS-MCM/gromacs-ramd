@@ -44,7 +44,7 @@
  * \inlibraryapi
  */
 
-#include <stdio.h>
+#include <cstdio>
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/utility/basedefinitions.h"
@@ -148,7 +148,7 @@ extern void communicate_group_positions(const t_commrec* cr,
  * \param[out]  center       The (weighted) center of the positions.
  *
  */
-extern void get_center(rvec x[], real weight[], int nr, rvec center);
+extern void get_center(const rvec x[], real weight[], int nr, rvec center);
 
 
 /*! \brief Calculates the sum of the positions x locally.
@@ -164,7 +164,7 @@ extern void get_center(rvec x[], real weight[], int nr, rvec center);
  * \return Sum of weights.
  *
  */
-extern double get_sum_of_positions(rvec x[], real weight[], int nr, dvec dsumvec);
+extern double get_sum_of_positions(const rvec x[], real weight[], int nr, dvec dsumvec);
 
 
 /*! \brief Calculates the global center of all local arrays x.

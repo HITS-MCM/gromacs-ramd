@@ -43,7 +43,6 @@
 
 #include "gmxpre.h"
 
-#include "gromacs/utility/arrayref.h"
 #include "position_restraints.h"
 
 #include <cassert>
@@ -60,6 +59,7 @@
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/timing/wallcycle.h"
 #include "gromacs/topology/idef.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/fatalerror.h"
 
@@ -483,7 +483,7 @@ void posres_wrapper_lambda(struct gmx_wallcycle*         wcycle,
                                      fr->pbcType,
                                      fr->posres_com,
                                      fr->posres_comB);
-        foreignTerms.accumulate(i, v, dvdl);
+        foreignTerms.accumulate(i, FreeEnergyPerturbationCouplingType::Restraint, v, dvdl);
     }
     wallcycle_sub_stop(wcycle, WallCycleSubCounter::Restraints);
 }

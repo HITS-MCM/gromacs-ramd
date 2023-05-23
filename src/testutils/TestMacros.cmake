@@ -68,7 +68,11 @@ function (gmx_add_unit_test_library NAME)
         gmx_target_compile_options(${NAME})
         target_compile_definitions(${NAME} PRIVATE HAVE_CONFIG_H)
         target_include_directories(${NAME} SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+        target_compile_definitions(${NAME} PRIVATE TMPI_USE_VISIBILITY)
         target_link_libraries(${NAME} PRIVATE testutils gmock)
+        if (GMX_BUILD_FOR_COVERAGE)
+            target_link_libraries(${NAME} PRIVATE gcov)
+        endif()
         if(GMX_CLANG_TIDY)
             set_target_properties(${NAME} PROPERTIES CXX_CLANG_TIDY
                 "${CLANG_TIDY_EXE};-warnings-as-errors=*;-header-filter=.*")
@@ -196,6 +200,7 @@ function (gmx_add_gtest_executable EXENAME)
         gmx_target_compile_options(${EXENAME})
         target_compile_definitions(${EXENAME} PRIVATE HAVE_CONFIG_H ${EXTRA_COMPILE_DEFINITIONS})
         target_include_directories(${EXENAME} SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+        target_compile_definitions(${EXENAME} PRIVATE TMPI_USE_VISIBILITY)
         # Permit GROMACS code to include externally developed headers,
         # such as the functionality from the nonstd project that we
         # use for gmx::compat::optional. These are included as system
@@ -210,6 +215,9 @@ function (gmx_add_gtest_executable EXENAME)
         target_link_libraries(${EXENAME} PRIVATE
             testutils common libgromacs gmock
             ${GMX_COMMON_LIBRARIES} ${GMX_EXE_LINKER_FLAGS})
+        if (GMX_BUILD_FOR_COVERAGE)
+            target_link_libraries(${EXENAME} PRIVATE gcov)
+        endif()
 
         if(GMX_CLANG_TIDY)
             set_target_properties(${EXENAME} PROPERTIES CXX_CLANG_TIDY
@@ -241,13 +249,15 @@ endfunction()
 #   IGNORE_LEAKS          Skip some memory safety checks.
 #   QUICK_GPU_TEST        marks tests that use GPUs and are fast (< 10 seconds on a desktop GPU in Release build);
 #                         currently this label is used to select tests for CUDA Compute Sanitizer runs.
+#   SLOW_GPU_TEST         marks all other tests that should run on a GPU, used to make sure GPU CI only runs GPU
+#                         tests and doesn't waste time on others.
 #
 # TODO When a test case needs it, generalize the MPI_RANKS mechanism so
 # that ctest can run the test binary over a range of numbers of MPI
 # ranks.
 function (gmx_register_gtest_test NAME EXENAME)
     if (GMX_BUILD_UNITTESTS AND BUILD_TESTING)
-        set(_options INTEGRATION_TEST SLOW_TEST IGNORE_LEAKS QUICK_GPU_TEST)
+        set(_options INTEGRATION_TEST SLOW_TEST IGNORE_LEAKS QUICK_GPU_TEST SLOW_GPU_TEST)
         set(_one_value_args MPI_RANKS OPENMP_THREADS)
         cmake_parse_arguments(ARG "${_options}" "${_one_value_args}" "" ${ARGN})
         set(_xml_path ${CMAKE_BINARY_DIR}/Testing/Temporary/${NAME}.xml)
@@ -298,6 +308,9 @@ function (gmx_register_gtest_test NAME EXENAME)
         endif()
         if (ARG_QUICK_GPU_TEST)
             list(APPEND _labels QuickGpuTest)
+        endif()
+        if (ARG_SLOW_GPU_TEST)
+            list(APPEND _labels SlowGpuTest)
         endif()
         add_test(NAME ${NAME}
                  COMMAND ${_cmd} --gtest_output=xml:${_xml_path})

@@ -41,8 +41,7 @@
 
 #include "leapfrogtestdata.h"
 
-#include <assert.h>
-
+#include <cassert>
 #include <cmath>
 
 #include <algorithm>
@@ -82,7 +81,11 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
     f_(numAtoms),
     inverseMasses_(numAtoms),
     inverseMassesPerDim_(numAtoms),
-    kineticEnergyData_(numTCoupleGroups == 0 ? 1 : numTCoupleGroups, 0.0, 1),
+    kineticEnergyData_(std::vector<real>(numTCoupleGroups == 0 ? 1 : numTCoupleGroups, 0),
+                       EnsembleTemperatureSetting::NotAvailable,
+                       0.0,
+                       0.0,
+                       1),
     numTCoupleGroups_(numTCoupleGroups)
 {
     mdAtoms_.nr = numAtoms_;
@@ -112,11 +115,11 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
             inverseMassesPerDim_[i][d] = inverseMasses_[i];
         }
     }
-    mdAtoms_.invmass       = inverseMasses_.data();
-    mdAtoms_.invMassPerDim = as_rvec_array(inverseMassesPerDim_.data());
+    mdAtoms_.invmass       = inverseMasses_;
+    mdAtoms_.invMassPerDim = inverseMassesPerDim_;
 
     // Temperature coupling
-    snew(mdAtoms_.cTC, numAtoms_);
+    mdAtoms_.cTC.resize(numAtoms_);
 
     // To do temperature coupling at each step
     inputRecord_.nsttcouple = 1;
@@ -168,55 +171,48 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
     mdAtoms_.homenr                   = numAtoms_;
     mdAtoms_.haveVsites               = false;
     mdAtoms_.havePartiallyFrozenAtoms = false;
-    mdAtoms_.cFREEZE                  = nullptr;
-    mdAtoms_.ptype                    = nullptr;
 
-    update_ = std::make_unique<Update>(inputRecord_, nullptr);
+    update_ = std::make_unique<Update>(inputRecord_, kineticEnergyData_, nullptr);
     update_->updateAfterPartition(numAtoms,
                                   gmx::ArrayRef<const unsigned short>(),
-                                  gmx::arrayRefFromArray(mdAtoms_.cTC, mdAtoms_.nr),
+                                  mdAtoms_.cTC,
                                   gmx::ArrayRef<const unsigned short>());
 
     doPressureCouple_ = (nstpcouple != 0);
 
     if (doPressureCouple_)
     {
-        inputRecord_.epc        = PressureCoupling::ParrinelloRahman;
-        inputRecord_.nstpcouple = nstpcouple;
-        dtPressureCouple_       = inputRecord_.nstpcouple * inputRecord_.delta_t;
+        inputRecord_.pressureCouplingOptions.epc        = PressureCoupling::ParrinelloRahman;
+        inputRecord_.pressureCouplingOptions.nstpcouple = nstpcouple;
+        dtPressureCouple_ = inputRecord_.pressureCouplingOptions.nstpcouple * inputRecord_.delta_t;
 
-        velocityScalingMatrix_[XX][XX] = 1.2;
-        velocityScalingMatrix_[XX][YY] = 0.0;
-        velocityScalingMatrix_[XX][ZZ] = 0.0;
+        velocityScalingMatrix_(XX, XX) = 1.2;
+        velocityScalingMatrix_(XX, YY) = 0.0;
+        velocityScalingMatrix_(XX, ZZ) = 0.0;
 
-        velocityScalingMatrix_[YY][XX] = 0.0;
-        velocityScalingMatrix_[YY][YY] = 0.8;
-        velocityScalingMatrix_[YY][ZZ] = 0.0;
+        velocityScalingMatrix_(YY, XX) = 0.0;
+        velocityScalingMatrix_(YY, YY) = 0.8;
+        velocityScalingMatrix_(YY, ZZ) = 0.0;
 
-        velocityScalingMatrix_[ZZ][XX] = 0.0;
-        velocityScalingMatrix_[ZZ][YY] = 0.0;
-        velocityScalingMatrix_[ZZ][ZZ] = 0.9;
+        velocityScalingMatrix_(ZZ, XX) = 0.0;
+        velocityScalingMatrix_(ZZ, YY) = 0.0;
+        velocityScalingMatrix_(ZZ, ZZ) = 0.9;
     }
     else
     {
-        inputRecord_.epc               = PressureCoupling::No;
-        velocityScalingMatrix_[XX][XX] = 1.0;
-        velocityScalingMatrix_[XX][YY] = 0.0;
-        velocityScalingMatrix_[XX][ZZ] = 0.0;
+        inputRecord_.pressureCouplingOptions.epc = PressureCoupling::No;
+        velocityScalingMatrix_(XX, XX)           = 1.0;
+        velocityScalingMatrix_(XX, YY)           = 0.0;
+        velocityScalingMatrix_(XX, ZZ)           = 0.0;
 
-        velocityScalingMatrix_[YY][XX] = 0.0;
-        velocityScalingMatrix_[YY][YY] = 1.0;
-        velocityScalingMatrix_[YY][ZZ] = 0.0;
+        velocityScalingMatrix_(YY, XX) = 0.0;
+        velocityScalingMatrix_(YY, YY) = 1.0;
+        velocityScalingMatrix_(YY, ZZ) = 0.0;
 
-        velocityScalingMatrix_[ZZ][XX] = 0.0;
-        velocityScalingMatrix_[ZZ][YY] = 0.0;
-        velocityScalingMatrix_[ZZ][ZZ] = 1.0;
+        velocityScalingMatrix_(ZZ, XX) = 0.0;
+        velocityScalingMatrix_(ZZ, YY) = 0.0;
+        velocityScalingMatrix_(ZZ, ZZ) = 1.0;
     }
-}
-
-LeapFrogTestData::~LeapFrogTestData()
-{
-    sfree(mdAtoms_.cTC);
 }
 
 } // namespace test

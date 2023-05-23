@@ -48,6 +48,7 @@
 #include <algorithm>
 
 #include "gromacs/domdec/domdec.h"
+#include "gromacs/ewald/pme_coordinate_receiver_gpu.h"
 #include "gromacs/ewald/pme_gather.h"
 #include "gromacs/ewald/pme_gpu_calculate_splines.h"
 #include "gromacs/ewald/pme_gpu_constants.h"
@@ -60,8 +61,7 @@
 #include "gromacs/ewald/pme_spread.h"
 #include "gromacs/fft/parallel_3dfft.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/hardware/device_management.h"
-#include "gromacs/math/invertmatrix.h"
+#include "gromacs/math/boxmatrix.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/topology/topology.h"
@@ -69,7 +69,6 @@
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/logger.h"
 #include "gromacs/utility/stringutil.h"
-#include "gromacs/ewald/pme_coordinate_receiver_gpu.h"
 
 #include "testutils/test_hardware_environment.h"
 #include "testutils/testasserts.h"
@@ -91,9 +90,7 @@ const std::map<std::string, Matrix3x3> c_inputBoxes = {
 //! Valid PME orders for testing
 std::vector<int> c_inputPmeOrders{ 3, 4, 5 };
 
-MessageStringCollector getSkipMessagesIfNecessary(const gmx_hw_info_t& hwinfo,
-                                                  const t_inputrec&    inputRec,
-                                                  const CodePath       codePath)
+MessageStringCollector getSkipMessagesIfNecessary(const t_inputrec& inputRec, const CodePath codePath)
 {
     // Note that we can't call GTEST_SKIP() from within this method,
     // because it only returns from the current function. So we
@@ -111,7 +108,6 @@ MessageStringCollector getSkipMessagesIfNecessary(const gmx_hw_info_t& hwinfo,
 
     std::string errorMessage;
     messages.appendIf(!pme_gpu_supports_build(&errorMessage), errorMessage);
-    messages.appendIf(!pme_gpu_supports_hardware(hwinfo, &errorMessage), errorMessage);
     messages.appendIf(!pme_gpu_supports_input(inputRec, &errorMessage), errorMessage);
     return messages;
 }
@@ -136,9 +132,9 @@ PmeSafePointer pmeInitWrapper(const t_inputrec*    inputRec,
                               const real           ewaldCoeff_lj)
 {
     const MDLogger dummyLogger;
-    const matrix   dummyBox      = { { 0 } };
-    const auto     runMode       = (mode == CodePath::CPU) ? PmeRunMode::CPU : PmeRunMode::Mixed;
-    t_commrec      dummyCommrec  = { 0 };
+    const matrix   dummyBox = { { 0 } };
+    const auto     runMode  = (mode == CodePath::CPU) ? PmeRunMode::CPU : PmeRunMode::Mixed;
+    t_commrec      dummyCommrec;
     NumPmeDomains  numPmeDomains = { 1, 1 };
     // TODO: Need to use proper value when GPU PME decomposition code path is tested
     const real     haloExtentForAtomDisplacement = 1.0;
@@ -299,11 +295,7 @@ static void pmeGetGridAndSizesInternal(const gmx_pme_t* /*unused*/,
                                        CodePath /*unused*/,
                                        ValueType*& /*unused*/, //NOLINT(google-runtime-references)
                                        IVec& /*unused*/,       //NOLINT(google-runtime-references)
-                                       IVec& /*unused*/)       //NOLINT(google-runtime-references)
-{
-    GMX_THROW(InternalError("Deleted function call"));
-    // explicitly deleting general template does not compile in clang, see https://llvm.org/bugs/show_bug.cgi?id=17537
-}
+                                       IVec& /*unused*/) = delete; //NOLINT(google-runtime-references)
 
 //! Getting the PME real grid memory buffer and its sizes
 template<>
@@ -377,7 +369,8 @@ void pmePerformSplineAndSpread(gmx_pme_t* pme,
                            spreadCharges,
                            lambdaQ,
                            useGpuDirectComm,
-                           pmeCoordinateReceiverGpu);
+                           pmeCoordinateReceiverGpu,
+                           nullptr);
         }
         break;
 #endif
@@ -499,7 +492,7 @@ void pmePerformGather(gmx_pme_t* pme, CodePath mode, ForcesVector& forces)
             PmeOutput  output = pme_gpu_getOutput(*pme, computeEnergyAndVirial, lambdaQ);
             GMX_ASSERT(forces.size() == output.forces_.size(),
                        "Size of force buffers did not match");
-            pme_gpu_gather(pme->gpu, fftgrid, pme->pfft_setup, lambdaQ);
+            pme_gpu_gather(pme->gpu, fftgrid, pme->pfft_setup, lambdaQ, nullptr);
             std::copy(std::begin(output.forces_), std::end(output.forces_), std::begin(forces));
         }
         break;
@@ -587,15 +580,6 @@ static int getSplineParamFullIndex(int order, int splineIndex, int dimIndex, int
     return result;
 }
 
-/*!\brief Return the number of atoms per warp */
-static int pme_gpu_get_atoms_per_warp(const PmeGpu* pmeGpu)
-{
-    const int order = pmeGpu->common->pme_order;
-    const int threadsPerAtom =
-            (pmeGpu->settings.threadsPerAtom == ThreadsPerAtom::Order ? order : order * order);
-    return pmeGpu->programHandle_->warpSize() / threadsPerAtom;
-}
-
 /*! \brief Rearranges the atom spline data between the GPU and host layouts.
  * Only used for test purposes so far, likely to be horribly slow.
  *
@@ -620,7 +604,8 @@ static void pme_gpu_transform_spline_atom_data(const PmeGpu*      pmeGpu,
     const uintmax_t threadIndex  = 0;
     const auto      atomCount    = atc->numAtoms();
     const auto      atomsPerWarp = pme_gpu_get_atoms_per_warp(pmeGpu);
-    const auto      pmeOrder     = pmeGpu->common->pme_order;
+    GMX_RELEASE_ASSERT(atomsPerWarp > 0, "Can not get GPU warp size");
+    const auto pmeOrder = pmeGpu->common->pme_order;
     GMX_ASSERT(pmeOrder == c_pmeGpuOrder, "Only PME order 4 is implemented");
 
     real*  cpuSplineBuffer;
@@ -990,7 +975,7 @@ PmeTestHardwareContext::PmeTestHardwareContext() : codePath_(CodePath::CPU) {}
 PmeTestHardwareContext::PmeTestHardwareContext(TestDevice* testDevice) :
     codePath_(CodePath::GPU), testDevice_(testDevice)
 {
-    setActiveDevice(testDevice_->deviceInfo());
+    testDevice_->activate();
     pmeGpuProgram_ = buildPmeGpuProgram(testDevice_->deviceContext());
 }
 
@@ -1019,7 +1004,7 @@ void PmeTestHardwareContext::activate() const
 {
     if (codePath_ == CodePath::GPU)
     {
-        setActiveDevice(testDevice_->deviceInfo());
+        testDevice_->activate();
     }
 }
 

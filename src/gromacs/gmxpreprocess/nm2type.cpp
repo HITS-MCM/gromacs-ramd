@@ -57,7 +57,7 @@
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
 
-static void rd_nm2type_file(const std::string& filename, int* nnm, t_nm2type** nmp)
+static void rd_nm2type_file(const std::filesystem::path& filename, int* nnm, t_nm2type** nmp)
 {
     FILE*      fp;
     bool       bCont;
@@ -71,7 +71,7 @@ static void rd_nm2type_file(const std::string& filename, int* nnm, t_nm2type** n
     fp = fflib_open(filename);
     if (nullptr == fp)
     {
-        gmx_fatal(FARGS, "Can not find %s in library directory", filename.c_str());
+        gmx_fatal(FARGS, "Can not find %s in library directory", filename.u8string().c_str());
     }
 
     nnnm = *nnm;
@@ -128,11 +128,11 @@ static void rd_nm2type_file(const std::string& filename, int* nnm, t_nm2type** n
     *nmp = nm2t;
 }
 
-t_nm2type* rd_nm2type(const char* ffdir, int* nnm)
+t_nm2type* rd_nm2type(const std::filesystem::path& ffdir, int* nnm)
 {
-    std::vector<std::string> ff = fflib_search_file_end(ffdir, ".n2t", FALSE);
-    *nnm                        = 0;
-    t_nm2type* nm               = nullptr;
+    auto ff       = fflib_search_file_end(ffdir, ".n2t", FALSE);
+    *nnm          = 0;
+    t_nm2type* nm = nullptr;
     for (const auto& filename : ff)
     {
         rd_nm2type_file(filename, nnm, &nm);
@@ -189,13 +189,7 @@ static int match_str(const char* atom, const char* template_string)
     }
 }
 
-int nm2type(int                     nnm,
-            t_nm2type               nm2t[],
-            t_symtab*               tab,
-            t_atoms*                atoms,
-            PreprocessingAtomTypes* atype,
-            int*                    nbonds,
-            InteractionsOfType*     bonds)
+int nm2type(int nnm, t_nm2type nm2t[], t_atoms* atoms, PreprocessingAtomTypes* atype, int* nbonds, InteractionsOfType* bonds)
 {
     int cur = 0;
 #define prev (1 - cur)
@@ -337,7 +331,7 @@ int nm2type(int                     nnm,
                 atoms->atom[i].qB = alpha;
                 atoms->atom[i].m = atoms->atom[i].mB = mm;
                 k                                    = atype->addType(
-                        tab, atoms->atom[i], type, InteractionOfType({}, {}), atoms->atom[i].type, atomnr);
+                        atoms->atom[i], type, InteractionOfType({}, {}), atoms->atom[i].type, atomnr);
             }
             else
             {

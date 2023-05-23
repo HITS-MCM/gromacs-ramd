@@ -33,7 +33,7 @@
  */
 #include "gmxpre.h"
 
-#include "md_enums.h"
+#include "gromacs/mdtypes/md_enums.h"
 
 #include "gromacs/utility/enumerationhelpers.h"
 
@@ -122,6 +122,14 @@ const char* enumValueToString(InteractionModifiers enumValue)
         "Potential-switch",       "Exact-cutoff",    "Force-switch"
     };
     return interactionModifierNames[enumValue];
+}
+
+const char* enumValueToString(EnsembleTemperatureSetting enumValue)
+{
+    static constexpr gmx::EnumerationArray<EnsembleTemperatureSetting, const char*> ensembleTemperatureSettingNames = {
+        "not available", "constant", "variable", "auto"
+    };
+    return ensembleTemperatureSettingNames[enumValue];
 }
 
 const char* enumValueToString(TemperatureCoupling enumValue)

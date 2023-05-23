@@ -67,10 +67,9 @@
 #ifndef GMX_LISTED_FORCES_LISTED_FORCES_H
 #define GMX_LISTED_FORCES_LISTED_FORCES_H
 
+#include <bitset>
 #include <memory>
 #include <vector>
-
-#include <bitset>
 
 #include "gromacs/math/vectypes.h"
 #include "gromacs/topology/idef.h"
@@ -81,18 +80,13 @@ struct bonded_threading_t;
 struct gmx_enerdata_t;
 struct gmx_ffparams_t;
 struct gmx_grppairener_t;
-struct gmx_localtop_t;
 struct gmx_multisim_t;
 class history_t;
 struct t_commrec;
 struct t_fcdata;
 struct t_forcerec;
 struct t_lambda;
-struct t_mdatoms;
 struct t_nrnb;
-class t_state;
-struct t_disresdata;
-struct t_oriresdata;
 
 namespace gmx
 {
@@ -103,25 +97,6 @@ class ArrayRef;
 template<typename>
 class ArrayRefWithPadding;
 } // namespace gmx
-
-//! Type of CPU function to compute a bonded interaction.
-using BondedFunction = real (*)(int                 nbonds,
-                                const t_iatom       iatoms[],
-                                const t_iparams     iparams[],
-                                const rvec          x[],
-                                rvec4               f[],
-                                rvec                fshift[],
-                                const t_pbc*        pbc,
-                                real                lambda,
-                                gmx::ArrayRef<real> dvdlambda,
-                                const t_mdatoms*    md,
-                                t_fcdata*           fcd,
-                                t_disresdata*       disresdata,
-                                t_oriresdata*       oriresdata,
-                                int*                ddgatindex);
-
-//! Getter for finding a callable CPU function to compute an \c ftype interaction.
-BondedFunction bondedFunction(int ftype);
 
 /*! \libinternal
  * \brief Class for calculating listed interactions, uses OpenMP parallelization
@@ -201,7 +176,11 @@ public:
                    gmx_enerdata_t*                           enerd,
                    t_nrnb*                                   nrnb,
                    gmx::ArrayRef<const real>                 lambda,
-                   const t_mdatoms*                          md,
+                   gmx::ArrayRef<const real>                 chargeA,
+                   gmx::ArrayRef<const real>                 chargeB,
+                   gmx::ArrayRef<const bool>                 atomIsPerturbed,
+                   gmx::ArrayRef<const unsigned short>       cENER,
+                   int                                       nPerturbed,
                    int*                                      global_atom_index,
                    const gmx::StepWorkload&                  stepWork);
 
@@ -221,7 +200,7 @@ public:
 private:
     //! Pointer to the interaction definitions
     InteractionDefinitions const* idef_ = nullptr;
-    //! Interaction defintions used for storing selections
+    //! Interaction definitions used for storing selections
     InteractionDefinitions idefSelection_;
     //! Thread parallelization setup, unique_ptr to avoid declaring bonded_threading_t
     std::unique_ptr<bonded_threading_t> threading_;

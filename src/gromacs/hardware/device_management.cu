@@ -47,7 +47,7 @@
 
 #include "device_management.h"
 
-#include <assert.h>
+#include <cassert>
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/device_context.h"
@@ -288,6 +288,9 @@ std::vector<std::unique_ptr<DeviceInformation>> findDevices()
         deviceInfoList[i]->id           = i;
         deviceInfoList[i]->prop         = prop;
         deviceInfoList[i]->deviceVendor = DeviceVendor::Nvidia;
+
+        deviceInfoList[i]->supportedSubGroupSizesSize    = 1;
+        deviceInfoList[i]->supportedSubGroupSizesData[0] = 32;
 
         const DeviceStatus checkResult = (stat != cudaSuccess) ? DeviceStatus::NonFunctional
                                                                : checkDeviceStatus(*deviceInfoList[i]);

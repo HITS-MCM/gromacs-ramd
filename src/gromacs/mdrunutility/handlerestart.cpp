@@ -52,12 +52,15 @@
 
 #include "config.h"
 
+#include <fcntl.h>
+
 #include <cerrno>
 #include <cstring>
 
-#include <fcntl.h>
+#include <filesystem>
 #if GMX_NATIVE_WINDOWS
 #    include <io.h>
+
 #    include <sys/locking.h>
 #endif
 
@@ -89,7 +92,7 @@ namespace
 /*! \brief Search for \p fnm_cp in fnm and return true iff found
  *
  * \todo This could be implemented sanely with a for loop. */
-gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
+gmx_bool exist_output_file(const std::filesystem::path& fnm_cp, int nfile, const t_filenm fnm[])
 {
     int i;
 
@@ -97,7 +100,7 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
      * is one of the output file names of mdrun.
      */
     i = 0;
-    while (i < nfile && !(is_output(&fnm[i]) && strcmp(fnm_cp, fnm[i].filenames[0].c_str()) == 0))
+    while (i < nfile && !(is_output(&fnm[i]) && fnm_cp == fnm[i].filenames[0]))
     {
         i++;
     }
@@ -111,7 +114,7 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
  * file was found (so it is not the first part of a new run), but we are still missing
  * some or all checkpoint files. In this case we issue a fatal error since there are
  * so many special cases we cannot keep track of, and better safe than sorry. */
-[[noreturn]] void throwBecauseOfMissingOutputFiles(const char* checkpointFilename,
+[[noreturn]] void throwBecauseOfMissingOutputFiles(const std::filesystem::path& checkpointFilename,
                                                    ArrayRef<const gmx_file_position_t> outputfiles,
                                                    int                                 nfile,
                                                    const t_filenm                      fnm[],
@@ -122,7 +125,7 @@ gmx_bool exist_output_file(const char* fnm_cp, int nfile, const t_filenm fnm[])
     writer.writeLineFormatted(
             "Some output files listed in the checkpoint file %s are not present or not named "
             "as the output files by the current program:)",
-            checkpointFilename);
+            checkpointFilename.c_str());
     auto& settings  = writer.wrapperSettings();
     auto  oldIndent = settings.indent(), newIndent = 2;
 
@@ -211,7 +214,7 @@ public:
      *
      * \param[in]  ms      Multi-sim handler.
      *
-     * May only be called from the master rank of each simulation.
+     * May only be called from the main rank of each simulation.
      *
      * \throws InconsistentInputError if either simulations restart
      * differently, or from checkpoints from different simulation parts.
@@ -291,8 +294,8 @@ StartingBehaviorHandler chooseStartingBehavior(const AppendingBehavior appending
     GMX_RELEASE_ASSERT(!outputFiles.empty(),
                        "The checkpoint file or its reading is broken, as no output "
                        "file information is stored in it");
-    const char* logFilename = outputFiles[0].filename;
-    GMX_RELEASE_ASSERT(Path::extensionMatches(logFilename, ftp2ext(efLOG)),
+    const auto& logFilename = outputFiles[0].filename;
+    GMX_RELEASE_ASSERT(fn2ftp(logFilename) == efLOG,
                        formatString("The checkpoint file or its reading is broken, the first "
                                     "output file '%s' must be a log file with extension '%s'",
                                     logFilename,
@@ -435,7 +438,7 @@ void checkOutputFile(t_fileio* fileToCheck, const gmx_file_position_t& outputfil
  *
  * This wil prevent e.g. other mdrun instances from changing it while
  * we attempt to restart with appending. */
-void lockLogFile(t_fileio* logfio, const char* logFilename)
+void lockLogFile(t_fileio* logfio, const std::filesystem::path& logFilename)
 {
     /* Note that there are systems where the lock operation
      * will succeed, but a second process can also lock the file.
@@ -470,12 +473,13 @@ void lockLogFile(t_fileio* logfio, const char* logFilename)
             auto message = formatString(
                     "Failed to lock: %s. Already running "
                     "simulation?",
-                    logFilename);
+                    logFilename.u8string().c_str());
             GMX_THROW(FileIOError(message));
         }
         else
         {
-            auto message = formatString("Failed to lock: %s. %s.", logFilename, std::strerror(errno));
+            auto message = formatString(
+                    "Failed to lock: %s. %s.", logFilename.u8string().c_str(), std::strerror(errno));
             GMX_THROW(FileIOError(message));
         }
     }
@@ -519,12 +523,6 @@ void prepareForAppending(const ArrayRef<const gmx_file_position_t> outputFiles, 
         t_fileio* fileToCheck = gmx_fio_open(outputFile.filename, "r+");
         checkOutputFile(fileToCheck, outputFile);
         gmx_fio_close(fileToCheck);
-
-        if (GMX_NATIVE_WINDOWS)
-        {
-            // Can't truncate output files on this platform
-            continue;
-        }
 
         if (gmx_truncate(outputFile.filename, outputFile.offset) != 0)
         {
@@ -638,7 +636,7 @@ std::optional<int> StartingBehaviorHandler::makeIndexOfNextPart(const AppendingB
 
 } // namespace
 
-std::tuple<StartingBehavior, LogFilePtr> handleRestart(const bool              isSimulationMaster,
+std::tuple<StartingBehavior, LogFilePtr> handleRestart(const bool              isSimulationMain,
                                                        MPI_Comm                communicator,
                                                        const gmx_multisim_t*   ms,
                                                        const AppendingBehavior appendingBehavior,
@@ -653,10 +651,10 @@ std::tuple<StartingBehavior, LogFilePtr> handleRestart(const bool              i
     int                numErrorsFound = 0;
     std::exception_ptr exceptionPtr;
 
-    // Only the master rank of each simulation can do anything with
+    // Only the main rank of each simulation can do anything with
     // output files, so it is the only one that needs to consider
     // whether a restart might take place, and how to implement it.
-    if (isSimulationMaster)
+    if (isSimulationMain)
     {
         try
         {
@@ -690,7 +688,7 @@ std::tuple<StartingBehavior, LogFilePtr> handleRestart(const bool              i
             numErrorsFound = 1;
         }
     }
-    // Since the master rank (perhaps of only one simulation) may have
+    // Since the main rank (perhaps of only one simulation) may have
     // found an error condition, we now coordinate the behavior across
     // all ranks. However, only the applicable ranks will throw a
     // non-default exception.

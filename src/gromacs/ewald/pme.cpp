@@ -86,8 +86,8 @@
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/hardware/hw_info.h"
+#include "gromacs/math/boxmatrix.h"
 #include "gromacs/math/gmxcomplex.h"
-#include "gromacs/math/invertmatrix.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vectypes.h"
@@ -108,9 +108,9 @@
 #include "gromacs/utility/gmxmpi.h"
 #include "gromacs/utility/gmxomp.h"
 #include "gromacs/utility/logger.h"
+#include "gromacs/utility/message_string_collector.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/utility/smalloc.h"
-#include "gromacs/utility/message_string_collector.h"
 #include "gromacs/utility/unique_cptr.h"
 
 #include "calculate_spline_moduli.h"
@@ -129,23 +129,15 @@ bool pme_gpu_supports_build(std::string* error)
     // Before changing the prefix string, make sure that it is not searched for in regression tests.
     errorReasons.startContext("PME GPU does not support:");
     errorReasons.appendIf(GMX_DOUBLE, "Double-precision build of GROMACS.");
-    errorReasons.appendIf(!GMX_GPU, "Non-GPU build of GROMACS.");
-    errorReasons.finishContext();
-    if (error != nullptr)
-    {
-        *error = errorReasons.toString();
-    }
-    return errorReasons.isEmpty();
-}
-
-bool pme_gpu_supports_hardware(const gmx_hw_info_t gmx_unused& hwinfo, std::string* error)
-{
-    gmx::MessageStringCollector errorReasons;
-    // Before changing the prefix string, make sure that it is not searched for in regression tests.
-    errorReasons.startContext("PME GPU does not support:");
 #ifdef __APPLE__
-    errorReasons.appendIf(GMX_GPU_OPENCL, "Apple OS X operating system");
+#    if defined(__aarch64__)
+    // OpenCL compiler silently fails on macOS when using clFFT backend.
+    errorReasons.appendIf(GMX_GPU_OPENCL && !GMX_GPU_FFT_VKFFT, "macOS build using clFFT.");
+#    else
+    errorReasons.appendIf(true, "macOS build for x86 architecture.");
+#    endif
 #endif
+    errorReasons.appendIf(!GMX_GPU, "Non-GPU build of GROMACS.");
     errorReasons.finishContext();
     if (error != nullptr)
     {
@@ -159,10 +151,10 @@ bool pme_gpu_supports_input(const t_inputrec& ir, std::string* error)
     gmx::MessageStringCollector errorReasons;
     // Before changing the prefix string, make sure that it is not searched for in regression tests.
     errorReasons.startContext("PME GPU does not support:");
-    errorReasons.appendIf(!EEL_PME(ir.coulombtype),
+    errorReasons.appendIf(!usingPme(ir.coulombtype),
                           "Systems that do not use PME for electrostatics.");
     errorReasons.appendIf((ir.pme_order != 4), "Interpolation orders other than 4.");
-    errorReasons.appendIf(EVDW_PME(ir.vdwtype), "Lennard-Jones PME.");
+    errorReasons.appendIf(usingLJPme(ir.vdwtype), "Lennard-Jones PME.");
     errorReasons.appendIf(!EI_DYNAMICS(ir.eI), "Non-dynamical integrator (use md, sd, etc).");
     errorReasons.finishContext();
     if (error != nullptr)
@@ -243,8 +235,8 @@ static void setup_coordinate_communication(PmeAtomComm* atc)
     n = 0;
     for (i = 1; i <= nslab / 2; i++)
     {
-        fw = (atc->nodeid + i) % nslab;
-        bw = (atc->nodeid - i + nslab) % nslab;
+        fw = (atc->slabIndex + i) % nslab;
+        bw = (atc->slabIndex - i + nslab) % nslab;
         if (n < nslab - 1)
         {
             atc->slabCommSetup[n].node_dest = fw;
@@ -297,19 +289,22 @@ PmeAtomComm::PmeAtomComm(MPI_Comm   PmeMpiCommunicator,
     {
         mpi_comm = PmeMpiCommunicator;
 #    if GMX_MPI
+        // The MPI ranks are indentical to the slab indices
         MPI_Comm_size(mpi_comm, &nslab);
-        MPI_Comm_rank(mpi_comm, &nodeid);
+        MPI_Comm_rank(mpi_comm, &slabIndex);
 #    endif
     }
     if (debug)
     {
-        fprintf(debug, "For PME atom communication in dimind %d: nslab %d rank %d\n", dimind, nslab, nodeid);
+        fprintf(debug, "For PME atom communication in dimind %d: nslab %d rank %d\n", dimind, nslab, slabIndex);
     }
 
     if (nslab > 1)
     {
         slabCommSetup.resize(nslab);
         setup_coordinate_communication(this);
+
+        bufferIndices.resize(nslab);
 
         count_thread.resize(nthread);
         for (auto& countThread : count_thread)
@@ -327,7 +322,7 @@ PmeAtomComm::PmeAtomComm(MPI_Comm   PmeMpiCommunicator,
         {
             try
             {
-                /* Allocate buffer with padding to avoid cache polution */
+                /* Allocate buffer with padding to avoid cache pollution */
                 threadMap[thread].nBuffer.resize(nthread + 2 * gmxCacheLineSize);
                 threadMap[thread].n = threadMap[thread].nBuffer.data() + gmxCacheLineSize;
             }
@@ -719,8 +714,8 @@ gmx_pme_t* gmx_pme_init(const t_commrec*     cr,
      * not calculating free-energy for Coulomb and/or LJ while gmx_pme_init()
      * configures with free-energy, but that has never been tested.
      */
-    pme->doCoulomb = EEL_PME(ir->coulombtype);
-    pme->doLJ      = EVDW_PME(ir->vdwtype);
+    pme->doCoulomb = usingPme(ir->coulombtype);
+    pme->doLJ      = usingLJPme(ir->vdwtype);
     pme->bFEP_q    = ((ir->efep != FreeEnergyPerturbationType::No) && bFreeEnergy_q);
     pme->bFEP_lj   = ((ir->efep != FreeEnergyPerturbationType::No) && bFreeEnergy_lj);
     pme->bFEP      = (pme->bFEP_q || pme->bFEP_lj);
@@ -987,7 +982,8 @@ gmx_pme_t* gmx_pme_init(const t_commrec*     cr,
         {
             GMX_THROW(gmx::NotImplementedError(errorString));
         }
-        pme_gpu_reinit(pme.get(), deviceContext, deviceStream, pmeGpuProgram);
+        const bool useMdGpuGraph = false; // This will be reset later after PP communication
+        pme_gpu_reinit(pme.get(), deviceContext, deviceStream, pmeGpuProgram, useMdGpuGraph);
     }
     else
     {
@@ -1422,7 +1418,7 @@ int gmx_pme_do(struct gmx_pme_t*              pme,
 
         if (computeEnergyAndVirial)
         {
-            /* This should only be called on the master thread
+            /* This should only be called on the main thread
              * and after the threads have synchronized.
              */
             if (grid_index < 2)
@@ -1592,7 +1588,7 @@ int gmx_pme_do(struct gmx_pme_t*              pme,
 
             if (computeEnergyAndVirial)
             {
-                /* This should only be called on the master thread and
+                /* This should only be called on the main thread and
                  * after the threads have synchronized.
                  */
                 get_pme_ener_vir_lj(pme->solve_work, pme->nthread, &output[fep_state]);
@@ -1762,6 +1758,11 @@ int gmx_pme_do(struct gmx_pme_t*              pme,
 
 void gmx_pme_destroy(gmx_pme_t* pme)
 {
+    gmx_pme_destroy(pme, true);
+}
+
+void gmx_pme_destroy(gmx_pme_t* pme, bool destroySharedData)
+{
     if (!pme)
     {
         return;
@@ -1774,9 +1775,12 @@ void gmx_pme_destroy(gmx_pme_t* pme)
     sfree(pme->fshy);
     sfree(pme->fshz);
 
-    for (int i = 0; i < pme->ngrids; ++i)
+    if (destroySharedData)
     {
-        pmegrids_destroy(&pme->pmegrid[i]);
+        for (int i = 0; i < pme->ngrids; ++i)
+        {
+            pmegrids_destroy(&pme->pmegrid[i]);
+        }
     }
     if (pme->pfft_setup)
     {
@@ -1804,7 +1808,7 @@ void gmx_pme_destroy(gmx_pme_t* pme)
 
     destroy_pme_spline_work(pme->spline_work);
 
-    if (pme->gpu != nullptr)
+    if (pme->gpu != nullptr && destroySharedData)
     {
         pme_gpu_destroy(pme->gpu);
     }

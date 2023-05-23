@@ -41,11 +41,13 @@
 
 #include "gpu_utils.h"
 
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "config.h"
 
 #include <cuda_profiler_api.h>
+
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/device_context.h"
@@ -63,8 +65,10 @@
 #include "gromacs/utility/snprintf.h"
 #include "gromacs/utility/stringutil.h"
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static bool cudaProfilerRun = ((getenv("NVPROF_ID") != nullptr));
+// Set profiler run flag true if nvprof, Nsight Systems, or Nsight Compute tools have been detected.
+static const bool cudaProfilerRun =
+        ((std::getenv("NVPROF_ID") != nullptr) || (std::getenv("NSYS_PROFILING_SESSION_ID") != nullptr)
+         || (std::getenv("NV_NSIGHT_INJECTION_TRANSPORT_TYPE") != nullptr));
 
 bool isHostMemoryPinned(const void* h_ptr)
 {
@@ -103,9 +107,9 @@ bool isHostMemoryPinned(const void* h_ptr)
 
 void startGpuProfiler()
 {
-    /* The NVPROF_ID environment variable is set by nvprof and indicates that
+    /* An environment variable set by the CUDA tool in use indicates that
        mdrun is executed in the CUDA profiler.
-       If nvprof was run is with "--profile-from-start off", the profiler will
+       With the profiler runtime flag "--profile-from-start off", the profiler will
        be started here. This way we can avoid tracing the CUDA events from the
        first part of the run. Starting the profiler again does nothing.
      */
@@ -258,4 +262,11 @@ void setupGpuDevicePeerAccess(const std::vector<int>& gpuIdsToUse, const gmx::MD
     {
         GMX_LOG(mdlog.info).asParagraph().appendTextFormatted("%s", message.c_str());
     }
+}
+
+void checkPendingDeviceErrorBetweenSteps()
+{
+    std::string errorPrefix =
+            "An unhandled error from a CUDA operation during the current MD step was detected:";
+    gmx::checkDeviceError(cudaGetLastError(), errorPrefix);
 }

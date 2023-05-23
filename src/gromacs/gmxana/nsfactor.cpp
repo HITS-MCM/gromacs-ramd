@@ -38,7 +38,6 @@
 #include "config.h"
 
 #include <cmath>
-#include <cstring>
 
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"

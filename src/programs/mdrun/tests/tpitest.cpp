@@ -76,7 +76,7 @@ void TpiTest::runTest()
     auto        rerunFileName = gmx::test::TestFileManager::getInputFilePath("spc216.gro");
     CommandLine commandLine;
     commandLine.append("-rerun");
-    commandLine.append(rerunFileName);
+    commandLine.append(rerunFileName.u8string());
     ASSERT_EQ(0, runner_.callMdrun(commandLine));
 
     const std::string logFileContexts = TextReader::readFileToString(runner_.logFileName_);
@@ -113,12 +113,11 @@ TEST_P(TpiTest, ReproducesOutput)
     const std::string mdpFileContents = formatString(R"(
         integrator               = tpi
         ld-seed                  = %d
-        rtpi                     = 0.05
+        rtpi                     = 0.2
         nstlog                   = 0
         nstenergy                = 0
         cutoff-scheme            = Verlet
         nstlist                  = 10
-        ns_type                  = grid
         rlist                    = 0.9
         coulombtype              = reaction-field
         rcoulomb                 = 0.9

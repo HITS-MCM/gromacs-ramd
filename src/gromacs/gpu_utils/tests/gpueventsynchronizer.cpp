@@ -40,9 +40,9 @@
  */
 #include "gmxpre.h"
 
-#include "config.h"
-
 #include "gromacs/gpu_utils/gpueventsynchronizer.h"
+
+#include "config.h"
 
 #include <gtest/gtest.h>
 
@@ -67,11 +67,10 @@ TEST(GpuEventSynchronizerTest, BasicFunctionality)
     const auto& testDeviceList = getTestHardwareEnvironment()->getTestDeviceList();
     for (const auto& testDevice : testDeviceList)
     {
-        const DeviceInformation& deviceInfo = testDevice->deviceInfo();
-        setActiveDevice(deviceInfo);
-        DeviceContext context(deviceInfo);
-        DeviceStream  streamA(context, DeviceStreamPriority::Normal, false);
-        DeviceStream  streamB(context, DeviceStreamPriority::Normal, false);
+        testDevice->activate();
+        const DeviceContext& context = testDevice->deviceContext();
+        DeviceStream         streamA(context, DeviceStreamPriority::Normal, false);
+        DeviceStream         streamB(context, DeviceStreamPriority::Normal, false);
 
         {
             SCOPED_TRACE("Constructor");

@@ -35,11 +35,11 @@
 
 #include "ter_db.h"
 
-#include <array>
 #include <cctype>
 #include <cstring>
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -160,7 +160,7 @@ static void read_atom(char* line, bool bAdd, std::string* nname, t_atom* a, Prep
 
 static void print_atom(FILE* out, const t_atom& a, PreprocessingAtomTypes* atype)
 {
-    fprintf(out, "\t%s\t%g\t%g\n", *atype->atomNameFromAtomType(a.type), a.m, a.q);
+    fprintf(out, "\t%s\t%g\t%g\n", atype->atomNameFromAtomType(a.type)->c_str(), a.m, a.q);
 }
 
 static void print_ter_db(const char*                                ff,
@@ -240,20 +240,14 @@ static void print_ter_db(const char*                                ff,
     gmx_fio_fclose(out);
 }
 
-static void read_ter_db_file(const char*                         fn,
+static void read_ter_db_file(const std::filesystem::path&        fn,
                              std::vector<MoleculePatchDatabase>* tbptr,
                              PreprocessingAtomTypes*             atype)
 {
-    char filebase[STRLEN];
     char header[STRLEN], buf[STRLEN], line[STRLEN];
 
-    fflib_filename_base(fn, filebase, STRLEN);
-    /* Remove the C/N termini extension */
-    char* ptr = strrchr(filebase, '.');
-    if (ptr != nullptr)
-    {
-        ptr[0] = '\0';
-    }
+    auto filebase = fflib_filename_base(fn);
+    filebase.replace_extension();
 
     FILE* in = fflib_open(fn);
 
@@ -275,7 +269,7 @@ static void read_ter_db_file(const char*                         fn,
                 block = &tbptr->back();
                 clearModificationBlock(block);
                 block->name     = header;
-                block->filebase = filebase;
+                block->filebase = filebase.u8string();
             }
         }
         else
@@ -305,7 +299,7 @@ static void read_ter_db_file(const char*                         fn,
                         gmx_fatal(FARGS,
                                   "Reading Termini Database '%s': "
                                   "expected atom name on line\n%s",
-                                  fn,
+                                  fn.u8string().c_str(),
                                   line);
                     }
                     hack->oname = buf;
@@ -340,7 +334,7 @@ static void read_ter_db_file(const char*                         fn,
                             gmx_fatal(FARGS,
                                       "Reading Termini Database '%s': don't know which name the "
                                       "new atom should have on line\n%s",
-                                      fn,
+                                      fn.u8string().c_str(),
                                       line);
                         }
                     }
@@ -364,7 +358,7 @@ static void read_ter_db_file(const char*                         fn,
                         gmx_fatal(FARGS,
                                   "Reading Termini Database '%s': expected %d atom names (found "
                                   "%d) on line\n%s",
-                                  fn,
+                                  fn.u8string().c_str(),
                                   enumValueToNumIAtoms(*btkw),
                                   j - 1,
                                   line);
@@ -389,18 +383,21 @@ static void read_ter_db_file(const char*                         fn,
     gmx_ffclose(in);
 }
 
-int read_ter_db(const char* ffdir, char ter, std::vector<MoleculePatchDatabase>* tbptr, PreprocessingAtomTypes* atype)
+int read_ter_db(const std::filesystem::path&        ffdir,
+                char                                ter,
+                std::vector<MoleculePatchDatabase>* tbptr,
+                PreprocessingAtomTypes*             atype)
 {
     std::string ext = gmx::formatString(".%c.tdb", ter);
 
     /* Search for termini database files.
      * Do not generate an error when none are found.
      */
-    std::vector<std::string> tdbf = fflib_search_file_end(ffdir, ext.c_str(), FALSE);
+    auto tdbf = fflib_search_file_end(ffdir, ext.c_str(), FALSE);
     tbptr->clear();
     for (const auto& filename : tdbf)
     {
-        read_ter_db_file(filename.c_str(), tbptr, atype);
+        read_ter_db_file(filename, tbptr, atype);
     }
 
     if (debug)

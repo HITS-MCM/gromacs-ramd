@@ -19,7 +19,7 @@ set -e
 
 # Build and install gmxapi python package from local source.
 # Note that tool chain may be provided differently across GROMACS versions.
-python -m pip install --no-build-isolation --no-cache-dir --no-deps --no-index python_packaging/src
+python -m pip install --no-build-isolation --no-cache-dir --no-deps --no-index python_packaging/gmxapi
 
 pushd python_packaging/sample_restraint
   rm -rf build
@@ -27,7 +27,7 @@ pushd python_packaging/sample_restraint
   pushd build
     # TODO: Update with respect to https://gitlab.com/gromacs/gromacs/-/issues/3133
     cmake .. \
-      -C $GROMACS_ROOT/share/cmake/gromacs/gromacs-hints.cmake \
+      -C $GROMACS_ROOT/share/cmake/gromacs${GMX_SUFFIX}/gromacs-hints${GMX_SUFFIX}.cmake \
       -DPYTHON_EXECUTABLE=`which python` \
       -DGMXAPI_EXTENSION_DOWNLOAD_PYBIND=ON
     make -j4 tests
@@ -37,7 +37,7 @@ pushd python_packaging/sample_restraint
     make install
   popd
 
-  python -m pytest $PWD/tests --junitxml=$PLUGIN_TEST_XML --threads=2
+  python -m pytest $PWD/tests --junitxml=$PLUGIN_TEST_XML --threads=${KUBERNETES_CPU_REQUEST}
 
   # Note: Multiple pytest processes getting --junitxml output file argument
   # may cause problems, so we set the option on only one of the launched processes.
@@ -54,7 +54,7 @@ pushd python_packaging/sample_restraint
         -x OMP_NUM_THREADS=1 \
         --mca opal_warn_on_missing_libcuda 0 \
         --mca orte_base_help_aggregate 0 \
-        -n 1 ${PROGRAM[@]} --junitxml=$PLUGIN_MPI_TEST_XML : \
-        -n 1 ${PROGRAM[@]}
+        -n $((KUBERNETES_CPU_REQUEST/2)) ${PROGRAM[@]} --junitxml=$PLUGIN_MPI_TEST_XML : \
+        -n $((KUBERNETES_CPU_REQUEST/2)) ${PROGRAM[@]}
   fi
 popd

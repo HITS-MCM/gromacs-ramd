@@ -36,7 +36,7 @@
  *
  *  The test sets up the rank topology and performs a coordinate halo
  *  exchange (for both CPU and GPU codepaths) for several 1D and 2D
- *  pulse configirations. Each pulse involves a few non-contiguous
+ *  pulse configurations. Each pulse involves a few non-contiguous
  *  indices. The sending rank, atom number and spatial 3D index are
  *  encoded in the x values, to allow correctness checking following
  *  the halo exchange.
@@ -129,7 +129,7 @@ void gpuHalo(gmx_domdec_t* dd, matrix box, HostVector<RVec>* h_x, int numAtomsTo
     int         numDevices = getTestHardwareEnvironment()->getTestDeviceList().size();
     const auto& testDevice = getTestHardwareEnvironment()->getTestDeviceList()[rank % numDevices];
     const auto& deviceContext = testDevice->deviceContext();
-    setActiveDevice(testDevice->deviceInfo());
+    testDevice->activate();
     DeviceStream deviceStream(deviceContext, DeviceStreamPriority::Normal, false);
 
     // Set up GPU buffer and copy input data from host
@@ -144,8 +144,8 @@ void gpuHalo(gmx_domdec_t* dd, matrix box, HostVector<RVec>* h_x, int numAtomsTo
             dd->comm->cd.begin(), dd->comm->cd.end(), 0, [](const int a, const auto& b) {
                 return a + b.numPulses();
             });
-    const int numExtraConsumptions = GMX_THREAD_MPI ? 1 : 0;
-    // Will be consumed once for each pulse, and, with tMPI, once more for dim=0,pulse=0 case
+    const int numExtraConsumptions = GMX_THREAD_MPI ? dd->ndim : 0;
+    // Will be consumed once for each pulse, and, with tMPI, once more for each dim on the first pulse
     GpuEventSynchronizer coordinatesReadyOnDeviceEvent(numPulses + numExtraConsumptions,
                                                        numPulses + numExtraConsumptions);
     coordinatesReadyOnDeviceEvent.markEvent(deviceStream);
@@ -531,9 +531,8 @@ TEST(HaloExchangeTest, Coordinates1dHaloWith1Pulse)
     // Set up dd
     t_inputrec   ir;
     gmx_domdec_t dd(ir);
-    dd.mpi_comm_all = MPI_COMM_WORLD;
-    gmx_domdec_comm_t comm;
-    dd.comm                      = &comm;
+    dd.mpi_comm_all              = MPI_COMM_WORLD;
+    dd.comm                      = std::make_unique<gmx_domdec_comm_t>();
     dd.unitCellInfo.haveScrewPBC = false;
 
     DDAtomRanges atomRanges;
@@ -587,9 +586,8 @@ TEST(HaloExchangeTest, Coordinates1dHaloWith2Pulses)
     // Set up dd
     t_inputrec   ir;
     gmx_domdec_t dd(ir);
-    dd.mpi_comm_all = MPI_COMM_WORLD;
-    gmx_domdec_comm_t comm;
-    dd.comm                      = &comm;
+    dd.mpi_comm_all              = MPI_COMM_WORLD;
+    dd.comm                      = std::make_unique<gmx_domdec_comm_t>();
     dd.unitCellInfo.haveScrewPBC = false;
 
     DDAtomRanges atomRanges;
@@ -644,9 +642,8 @@ TEST(HaloExchangeTest, Coordinates2dHaloWith1PulseInEachDim)
     // Set up dd
     t_inputrec   ir;
     gmx_domdec_t dd(ir);
-    dd.mpi_comm_all = MPI_COMM_WORLD;
-    gmx_domdec_comm_t comm;
-    dd.comm                      = &comm;
+    dd.mpi_comm_all              = MPI_COMM_WORLD;
+    dd.comm                      = std::make_unique<gmx_domdec_comm_t>();
     dd.unitCellInfo.haveScrewPBC = false;
 
     DDAtomRanges atomRanges;
@@ -700,9 +697,8 @@ TEST(HaloExchangeTest, Coordinates2dHaloWith2PulsesInDim1)
     // Set up dd
     t_inputrec   ir;
     gmx_domdec_t dd(ir);
-    dd.mpi_comm_all = MPI_COMM_WORLD;
-    gmx_domdec_comm_t comm;
-    dd.comm                      = &comm;
+    dd.mpi_comm_all              = MPI_COMM_WORLD;
+    dd.comm                      = std::make_unique<gmx_domdec_comm_t>();
     dd.unitCellInfo.haveScrewPBC = false;
 
     DDAtomRanges atomRanges;

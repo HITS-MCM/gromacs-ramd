@@ -48,8 +48,8 @@
 #include "gromacs/gpu_utils/syclutils.h"
 
 #include "pme_gpu_calculate_splines_sycl.h"
-#include "pme_grid.h"
 #include "pme_gpu_types_host.h"
+#include "pme_grid.h"
 
 /*! \brief
  * Charge spreading onto the grid.
@@ -193,7 +193,8 @@ auto pmeSplineAndSpreadKernel(
         const gmx::IVec                                                     realGridSizePadded,
         const gmx::RVec                                                     currentRecipBox0,
         const gmx::RVec                                                     currentRecipBox1,
-        const gmx::RVec                                                     currentRecipBox2)
+        const gmx::RVec                                                     currentRecipBox2,
+        const PmeGpuPipeliningParams                                        pipeliningParams)
 {
     constexpr int threadsPerAtomValue = (threadsPerAtom == ThreadsPerAtom::Order) ? order : order * order;
     constexpr int spreadMaxThreadsPerBlock = c_spreadMaxWarpsPerBlock * subGroupSize;
@@ -250,8 +251,12 @@ auto pmeSplineAndSpreadKernel(
 
     return [=](sycl::nd_item<3> itemIdx) [[intel::reqd_sub_group_size(subGroupSize)]]
     {
+        if constexpr (skipKernelCompilation<subGroupSize>())
+        {
+            return;
+        }
         const int blockIndex      = itemIdx.get_group_linear_id();
-        const int atomIndexOffset = blockIndex * atomsPerBlock;
+        const int atomIndexOffset = blockIndex * atomsPerBlock + pipeliningParams.pipelineAtomStart;
 
         /* Thread index w.r.t. block */
         const int threadLocalId = itemIdx.get_local_linear_id();
@@ -274,7 +279,9 @@ auto pmeSplineAndSpreadKernel(
 
         /* Charges, required for both spline and spread */
         pmeGpuStageAtomData<float, atomsPerBlock, 1>(
-                sm_coefficients.get_pointer(), a_coefficients_0.get_pointer(), itemIdx);
+                sm_coefficients.get_pointer(),
+                a_coefficients_0.get_pointer() + pipeliningParams.pipelineAtomStart,
+                itemIdx);
         itemIdx.barrier(fence_space::local_space);
         const float atomCharge = sm_coefficients[atomIndexLocal];
 
@@ -320,33 +327,43 @@ auto pmeSplineAndSpreadKernel(
         }
 
         /* Spreading */
-        if constexpr (spreadCharges)
+        if (spreadCharges && atomIndexGlobal < nAtoms)
         {
-            spread_charges<order, wrapX, wrapY, threadsPerAtom, subGroupSize>(
-                    atomCharge,
-                    realGridSize,
-                    realGridSizePadded,
-                    a_realGrid_0.get_pointer(),
-                    sm_gridlineIndices.get_pointer(),
-                    sm_theta.get_pointer(),
-                    itemIdx);
+            if (!pipeliningParams.usePipeline || (atomIndexGlobal < pipeliningParams.pipelineAtomEnd))
+            {
+                spread_charges<order, wrapX, wrapY, threadsPerAtom, subGroupSize>(
+                        atomCharge,
+                        realGridSize,
+                        realGridSizePadded,
+                        a_realGrid_0.get_pointer(),
+                        sm_gridlineIndices.get_pointer(),
+                        sm_theta.get_pointer(),
+                        itemIdx);
+            }
         }
         if constexpr (numGrids == 2 && spreadCharges)
         {
             itemIdx.barrier(fence_space::local_space);
             pmeGpuStageAtomData<float, atomsPerBlock, 1>(
-                    sm_coefficients.get_pointer(), a_coefficients_1.get_pointer(), itemIdx);
+                    sm_coefficients.get_pointer(),
+                    a_coefficients_1.get_pointer() + pipeliningParams.pipelineAtomStart,
+                    itemIdx);
             itemIdx.barrier(fence_space::local_space);
             const float atomCharge = sm_coefficients[atomIndexLocal];
-
-            spread_charges<order, wrapX, wrapY, threadsPerAtom, subGroupSize>(
-                    atomCharge,
-                    realGridSize,
-                    realGridSizePadded,
-                    a_realGrid_1.get_pointer(),
-                    sm_gridlineIndices.get_pointer(),
-                    sm_theta.get_pointer(),
-                    itemIdx);
+            if (atomIndexGlobal < nAtoms)
+            {
+                if (!pipeliningParams.usePipeline || (atomIndexGlobal < pipeliningParams.pipelineAtomEnd))
+                {
+                    spread_charges<order, wrapX, wrapY, threadsPerAtom, subGroupSize>(
+                            atomCharge,
+                            realGridSize,
+                            realGridSizePadded,
+                            a_realGrid_1.get_pointer(),
+                            sm_gridlineIndices.get_pointer(),
+                            sm_theta.get_pointer(),
+                            itemIdx);
+                }
+            }
         }
     };
 }
@@ -368,6 +385,7 @@ void PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY
         gridParams_    = &params->grid;
         atomParams_    = &params->atoms;
         dynamicParams_ = &params->current;
+        pipeliningParams_ = { params->pipelineAtomStart, params->pipelineAtomEnd, params->usePipeline != 0 };
     }
     else
     {
@@ -377,8 +395,7 @@ void PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY
 
 
 template<int order, bool computeSplines, bool spreadCharges, bool wrapX, bool wrapY, int numGrids, bool writeGlobal, ThreadsPerAtom threadsPerAtom, int subGroupSize>
-sycl::event
-PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY, numGrids, writeGlobal, threadsPerAtom, subGroupSize>::launch(
+void PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY, numGrids, writeGlobal, threadsPerAtom, subGroupSize>::launch(
         const KernelLaunchConfig& config,
         const DeviceStream&       deviceStream)
 {
@@ -396,8 +413,7 @@ PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY, num
 
     sycl::queue q = deviceStream.stream();
 
-
-    sycl::event e = q.submit([&](sycl::handler& cgh) {
+    q.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel =
                 pmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY, numGrids, writeGlobal, threadsPerAtom, subGroupSize>(
                         cgh,
@@ -418,14 +434,13 @@ PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY, num
                         gridParams_->realGridSizePadded,
                         dynamicParams_->recipBox[0],
                         dynamicParams_->recipBox[1],
-                        dynamicParams_->recipBox[2]);
+                        dynamicParams_->recipBox[2],
+                        pipeliningParams_);
         cgh.parallel_for<kernelNameType>(range, kernel);
     });
 
     // Delete set args, so we don't forget to set them before the next launch.
     reset();
-
-    return e;
 }
 
 
@@ -465,11 +480,9 @@ void PmeSplineAndSpreadKernel<order, computeSplines, spreadCharges, wrapX, wrapY
 
 #if GMX_SYCL_DPCPP
 INSTANTIATE(4, 16); // TODO: Choose best value, Issue #4153.
-INSTANTIATE(4, 32);
-#elif GMX_SYCL_HIPSYCL
+#endif
 INSTANTIATE(4, 32);
 INSTANTIATE(4, 64);
-#endif
 
 #ifdef __clang__
 #    pragma clang diagnostic pop

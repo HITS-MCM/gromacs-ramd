@@ -43,18 +43,17 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/hardware/device_information.h"
 #include "gromacs/gpu_utils/gmxsycl.h"
 #include "gromacs/gpu_utils/syclutils.h"
+#include "gromacs/hardware/device_information.h"
 
-#include "pme_gpu_program_impl.h"
 #include "pme_gather_sycl.h"
-#include "pme_solve_sycl.h"
-#include "pme_spread_sycl.h"
-
 #include "pme_gpu_constants.h"
 #include "pme_gpu_internal.h" // for GridOrdering enum
+#include "pme_gpu_program_impl.h"
 #include "pme_gpu_types_host.h"
+#include "pme_solve_sycl.h"
+#include "pme_spread_sycl.h"
 
 // PME interpolation order
 constexpr int c_pmeOrder = 4;
@@ -65,14 +64,26 @@ constexpr bool c_wrapY = true;
 constexpr int c_stateA = 0;
 constexpr int c_stateB = 1;
 
-static int subGroupSizeFromVendor(const DeviceInformation& deviceInfo)
+static int chooseSubGroupSizeForDevice(const DeviceInformation& deviceInfo)
 {
-    switch (deviceInfo.deviceVendor)
+    if (deviceInfo.supportedSubGroupSizesSize == 1)
     {
-        case DeviceVendor::Amd: return 64;   // Handle RDNA2 devices, Issue #3972.
-        case DeviceVendor::Intel: return 16; // TODO: Choose best value, Issue #4153.
-        case DeviceVendor::Nvidia: return 32;
-        default: GMX_RELEASE_ASSERT(false, "Unknown device vendor"); return 0;
+        return deviceInfo.supportedSubGroupSizesData[0];
+    }
+    else if (deviceInfo.supportedSubGroupSizesSize > 1)
+    {
+        switch (deviceInfo.deviceVendor)
+        {
+            case DeviceVendor::Intel: return 16; // TODO: Choose best value, Issue #4153.
+            default:
+                GMX_RELEASE_ASSERT(false, "Flexible sub-groups only supported for Intel GPUs");
+                return 0;
+        }
+    }
+    else
+    {
+        GMX_RELEASE_ASSERT(false, "Device has no known supported sub-group sizes");
+        return 0;
     }
 }
 
@@ -116,11 +127,9 @@ static int subGroupSizeFromVendor(const DeviceInformation& deviceInfo)
 
 #if GMX_SYCL_DPCPP
 INSTANTIATE(4, 16);
-INSTANTIATE(4, 32);
-#elif GMX_SYCL_HIPSYCL
+#endif
 INSTANTIATE(4, 32);
 INSTANTIATE(4, 64);
-#endif
 
 //! Helper function to set proper kernel functor pointers
 template<int subGroupSize>
@@ -200,7 +209,13 @@ PmeGpuProgramImpl::PmeGpuProgramImpl(const DeviceContext& deviceContext) :
     deviceContext_(deviceContext)
 {
     // kernel parameters
-    warpSize_             = subGroupSizeFromVendor(deviceContext.deviceInfo());
+    const DeviceInformation& deviceInfo = deviceContext.deviceInfo();
+    warpSize_                           = chooseSubGroupSizeForDevice(deviceInfo);
+    GMX_RELEASE_ASSERT(std::find(deviceInfo.supportedSubGroupSizes().begin(),
+                                 deviceInfo.supportedSubGroupSizes().end(),
+                                 warpSize_)
+                               != deviceInfo.supportedSubGroupSizes().end(),
+                       "Device does not support selected sub-group size");
     spreadWorkGroupSize   = c_spreadMaxWarpsPerBlock * warpSize_;
     solveMaxWorkGroupSize = c_solveMaxWarpsPerBlock * warpSize_;
     gatherWorkGroupSize   = c_gatherMaxWarpsPerBlock * warpSize_;
@@ -209,11 +224,9 @@ PmeGpuProgramImpl::PmeGpuProgramImpl(const DeviceContext& deviceContext) :
     {
 #if GMX_SYCL_DPCPP
         case 16: setKernelPointers<16>(this); break;
-        case 32: setKernelPointers<32>(this); break;
-#elif GMX_SYCL_HIPSYCL
+#endif
         case 32: setKernelPointers<32>(this); break;
         case 64: setKernelPointers<64>(this); break;
-#endif
         default: GMX_RELEASE_ASSERT(false, "Invalid sub group size");
     }
 }

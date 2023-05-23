@@ -31,6 +31,10 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out https://www.gromacs.org.
 
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+    message(FATAL_ERROR "CMake called with the wrong directory; please use the top GROMACS directory (${CMAKE_CURRENT_SOURCE_DIR}/../../)")
+endif()
+
 set(LIBGROMACS_SOURCES)
 
 if (GMX_CLANG_CUDA)
@@ -143,15 +147,6 @@ if (WIN32)
 endif()
 list(APPEND libgromacs_object_library_dependencies thread_mpi)
 
-if(GMX_INSTALL_LEGACY_API)
-  install(FILES
-	  analysisdata.h
-	  options.h
-	  selection.h
-	  trajectoryanalysis.h
-          DESTINATION include/gromacs)
-endif()
-
 # This code is here instead of utility/CMakeLists.txt, because CMake
 # custom commands and source file properties can only be set in the directory
 # that contains the target that uses them.
@@ -175,6 +170,10 @@ if (GMX_GPU_CUDA)
 endif()
 
 if (GMX_GPU_CUDA)
+    if(GMX_USE_cuFFTMp)
+        # needed as we need to include cufftmp include path before CUDA include path
+        cuda_include_directories(${cuFFTMp_INCLUDE_DIR})
+    endif()
     # Work around FindCUDA that prevents using target_link_libraries()
     # with keywords otherwise...
     set(CUDA_LIBRARIES PRIVATE ${CUDA_LIBRARIES})
@@ -183,7 +182,13 @@ if (GMX_GPU_CUDA)
     else()
         add_library(libgromacs ${LIBGROMACS_SOURCES})
     endif()
-    target_link_libraries(libgromacs PRIVATE ${CUDA_CUFFT_LIBRARIES})
+
+    #we cannot link with both cufftmp and cufft
+    if(GMX_USE_cuFFTMp)
+        target_link_libraries(libgromacs PRIVATE ${cuFFTMp_LIBRARY})
+    else()
+        target_link_libraries(libgromacs PRIVATE ${CUDA_CUFFT_LIBRARIES})
+    endif()
 else()
     add_library(libgromacs ${LIBGROMACS_SOURCES})
 endif()
@@ -192,7 +197,10 @@ if (TARGET Heffte::Heffte)
     target_link_libraries(libgromacs PRIVATE Heffte::Heffte)
 endif()
 
-if (GMX_SYCL_HIPSYCL AND GMX_HIPSYCL_HAVE_HIP_TARGET)
+if(GMX_GPU_FFT_VKFFT)
+    target_link_libraries(libgromacs PRIVATE VkFFT)
+endif()
+if(GMX_GPU_FFT_ROCFFT)
     target_link_libraries(libgromacs PUBLIC roc::rocfft)
 endif()
 
@@ -218,6 +226,7 @@ foreach(object_library ${libgromacs_object_library_dependencies})
         set_target_properties(${object_library} PROPERTIES POSITION_INDEPENDENT_CODE true)
     endif()
     target_include_directories(${object_library} SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+    target_compile_definitions(${object_library} PRIVATE TMPI_USE_VISIBILITY)
     target_link_libraries(${object_library} PRIVATE common)
 
     # Add the sources from the object libraries to the main library.
@@ -230,7 +239,10 @@ target_compile_definitions(libgromacs PRIVATE HAVE_CONFIG_H
 
 target_include_directories(libgromacs SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
 
-if (GMX_GPU_OPENCL)
+if (GMX_GPU_FFT_CLFFT)
+    if (NOT GMX_GPU_OPENCL)
+        message(FATAL_ERROR "clFFT is only supported in OpenCL builds")
+    endif()
     option(GMX_EXTERNAL_CLFFT "True if an external clFFT is required to be used" FALSE)
     mark_as_advanced(GMX_EXTERNAL_CLFFT)
 
@@ -252,8 +264,9 @@ requires clFFT, which was not found on your system. GROMACS does bundle
 clFFT to help with building for OpenCL, but that clFFT has not yet been
 ported to the more recent versions of that compiler that GROMACS itself
 requires. Thus for now, OpenCL is not available with MSVC and the internal
-build of clFFT in GROMACS 2019. Either change compiler, try installing
-a clFFT package, or use the latest GROMACS 2018 point release.")
+build of clFFT in GROMACS 2019 and newer. Either change compiler, try
+installing a clFFT package, use VkFFT by setting -DGMX_GPU_FFT_LIBRARY=VkFFT,
+or use GROMACS 2018.8 release (no longer maintained).")
         endif()
 
         # Fall back on the internal version
@@ -332,7 +345,7 @@ target_link_libraries(libgromacs
                       PUBLIC
                       ${GMX_PUBLIC_LIBRARIES}
                       )
-target_link_libraries(libgromacs PUBLIC legacy_api)
+target_link_libraries(libgromacs PRIVATE legacy_api)
 # Dependencies from libgromacs to the modules are set up here, but
 # once the add_subdirectory() commands are re-ordered then
 # responsibility for setting this up will move to the respective
@@ -389,6 +402,9 @@ target_link_libraries(libgromacs PRIVATE
 if (GMX_OPENMP)
     target_link_libraries(libgromacs PUBLIC OpenMP::OpenMP_CXX)
 endif()
+if(CXX_FILESYSTEM_HAVE_FS)
+    target_link_libraries(libgromacs PUBLIC std::filesystem)
+endif()
 set_target_properties(libgromacs PROPERTIES
                       OUTPUT_NAME "gromacs${GMX_LIBS_SUFFIX}"
                       SOVERSION ${LIBRARY_SOVERSION_MAJOR}
@@ -433,13 +449,6 @@ endif()
 if (GMX_CLANG_TIDY)
    set_target_properties(libgromacs PROPERTIES CXX_CLANG_TIDY
        "${CLANG_TIDY_EXE};-warnings-as-errors=*")
-endif()
-
-# clang-3.6 warns about a number of issues that are not reported by more modern compilers
-# and we know they are not real issues. So we only check that it can compile without error
-# but ignore all warnings.
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION MATCHES "^3\.6")
-    target_compile_options(libgromacs PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-w>)
 endif()
 
 # TODO: Stop installing libgromacs. Possibly allow installation during deprecation period with GMX_INSTALL_LEGACY_API.

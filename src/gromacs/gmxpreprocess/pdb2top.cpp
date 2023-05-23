@@ -63,7 +63,6 @@
 #include "gromacs/topology/symtab.h"
 #include "gromacs/utility/binaryinformation.h"
 #include "gromacs/utility/cstringutil.h"
-#include "gromacs/utility/dir_separator.h"
 #include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
@@ -141,30 +140,19 @@ bool is_int(double x)
     return (fabs(x - ix) < tol);
 }
 
-static void choose_ff_impl(const char*          ffsel,
-                           char*                forcefield,
-                           int                  ff_maxlen,
-                           char*                ffdir,
-                           int                  ffdir_maxlen,
-                           const gmx::MDLogger& logger)
+static std::filesystem::path
+choose_ff_impl(const char* ffsel, char* forcefield, int ff_maxlen, const gmx::MDLogger& logger)
 {
     std::vector<gmx::DataFileInfo> ffdirs = fflib_enumerate_forcefields();
     const int                      nff    = ssize(ffdirs);
-
-    /* Replace with unix path separators */
-#if DIR_SEPARATOR != '/'
-    for (int i = 0; i < nff; ++i)
-    {
-        std::replace(ffdirs[i].dir.begin(), ffdirs[i].dir.end(), DIR_SEPARATOR, '/');
-    }
-#endif
 
     /* Store the force field names in ffs */
     std::vector<std::string> ffs;
     ffs.reserve(ffdirs.size());
     for (int i = 0; i < nff; ++i)
     {
-        ffs.push_back(gmx::stripSuffixIfPresent(ffdirs[i].name, fflib_forcefield_dir_ext()));
+        ffs.push_back(gmx::stripSuffixIfPresent(ffdirs[i].name.u8string(),
+                                                fflib_forcefield_dir_ext().u8string().c_str()));
     }
 
     int sel;
@@ -233,7 +221,9 @@ static void choose_ff_impl(const char*          ffsel,
         desc.reserve(ffdirs.size());
         for (int i = 0; i < nff; ++i)
         {
-            std::string docFileName(gmx::Path::join(ffdirs[i].dir, ffdirs[i].name, fflib_forcefield_doc()));
+            auto docFileName = std::filesystem::path(ffdirs[i].dir)
+                                       .append(ffdirs[i].name.string())
+                                       .append(fflib_forcefield_doc().string());
             // TODO: Just try to open the file with a method that does not
             // throw/bail out with a fatal error instead of multiple checks.
             if (gmx::File::exists(docFileName, gmx::File::returnFalseOnError))
@@ -285,7 +275,7 @@ static void choose_ff_impl(const char*          ffsel,
                 {
                     GMX_LOG(logger.info)
                             .asParagraph()
-                            .appendTextFormatted("From '%s':", ffdirs[i].dir.c_str());
+                            .appendTextFormatted("From '%s':", ffdirs[i].dir.u8string().c_str());
                 }
             }
             GMX_LOG(logger.info).asParagraph().appendTextFormatted("%2d: %s", i + 1, desc[i].c_str());
@@ -324,7 +314,7 @@ static void choose_ff_impl(const char*          ffsel,
                         "rename or move the force field directory present "
                         "in the current working directory.",
                         ffs[sel].c_str(),
-                        fflib_forcefield_dir_ext());
+                        fflib_forcefield_dir_ext().u8string().c_str());
                 GMX_THROW(gmx::NotImplementedError(message));
             }
         }
@@ -343,35 +333,31 @@ static void choose_ff_impl(const char*          ffsel,
     }
     strcpy(forcefield, ffs[sel].c_str());
 
-    std::string ffpath;
+    std::filesystem::path ffpath;
     if (ffdirs[sel].bFromDefaultDir)
     {
         ffpath = ffdirs[sel].name;
     }
     else
     {
-        ffpath = gmx::Path::join(ffdirs[sel].dir, ffdirs[sel].name);
+        ffpath = std::filesystem::path(ffdirs[sel].dir).append(ffdirs[sel].name.string());
     }
-    if (ffpath.length() >= static_cast<size_t>(ffdir_maxlen))
-    {
-        std::string message = gmx::formatString("Length of force field dir (%d) >= maxlen (%d)",
-                                                static_cast<int>(ffpath.length()),
-                                                ffdir_maxlen);
-        GMX_THROW(gmx::InvalidInputError(message));
-    }
-    strcpy(ffdir, ffpath.c_str());
+    return ffpath;
 }
 
-void choose_ff(const char* ffsel, char* forcefield, int ff_maxlen, char* ffdir, int ffdir_maxlen, const gmx::MDLogger& logger)
+std::filesystem::path choose_ff(const char* ffsel, char* forcefield, int ff_maxlen, const gmx::MDLogger& logger)
 {
     try
     {
-        choose_ff_impl(ffsel, forcefield, ff_maxlen, ffdir, ffdir_maxlen, logger);
+        return choose_ff_impl(ffsel, forcefield, ff_maxlen, logger);
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
 }
 
-void choose_watermodel(const char* wmsel, const char* ffdir, char** watermodel, const gmx::MDLogger& logger)
+void choose_watermodel(const char*                  wmsel,
+                       const std::filesystem::path& ffdir,
+                       char**                       watermodel,
+                       const gmx::MDLogger&         logger)
 {
     const char* fn_watermodels = "watermodels.dat";
     FILE*       fp;
@@ -393,7 +379,7 @@ void choose_watermodel(const char* wmsel, const char* ffdir, char** watermodel, 
         return;
     }
 
-    std::string filename = gmx::Path::join(ffdir, fn_watermodels);
+    auto filename = std::filesystem::path(ffdir).append(fn_watermodels);
     if (!fflib_fexist(filename))
     {
         GMX_LOG(logger.warning)
@@ -548,15 +534,12 @@ static void print_top_heavy_H(FILE* out, real mHmult)
     }
 }
 
-void print_top_comment(FILE* out, const char* filename, const char* ffdir, bool bITP)
+void print_top_comment(FILE* out, const std::filesystem::path& filename, const std::filesystem::path& ffdir, bool bITP)
 {
-    char  ffdir_parent[STRLEN];
-    char* p;
-
     try
     {
         gmx::TextWriter writer(out);
-        gmx::niceHeader(&writer, filename, ';');
+        gmx::niceHeader(&writer, filename.string().c_str(), ';');
         writer.writeLine(gmx::formatString(";\tThis is a %s topology file", bITP ? "include" : "standalone"));
         writer.writeLine(";");
 
@@ -567,24 +550,24 @@ void print_top_comment(FILE* out, const char* filename, const char* ffdir, bool 
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
 
-    if (strchr(ffdir, '/') == nullptr)
+    if (!ffdir.has_root_path())
     {
-        fprintf(out, ";\tForce field was read from the standard GROMACS share directory.\n;\n\n");
-    }
-    else if (ffdir[0] == '.')
-    {
-        fprintf(out,
-                ";\tForce field was read from current directory or a relative path - path "
-                "added.\n;\n\n");
+        if (!ffdir.has_parent_path())
+        {
+            fprintf(out,
+                    ";\tForce field was read from the standard GROMACS share directory.\n;\n\n");
+        }
+        else
+        {
+            fprintf(out,
+                    ";\tForce field was read from current directory or a relative path - path "
+                    "added.\n;\n\n");
+        }
     }
     else
     {
-        strncpy(ffdir_parent, ffdir, STRLEN - 1);
-        ffdir_parent[STRLEN - 1] = '\0'; /*make sure it is 0-terminated even for long string*/
-        p                        = strrchr(ffdir_parent, '/');
-
-        *p = '\0';
-
+        // Absolute path - forcefield found through GMXLIB
+        auto ffdir_parent = ffdir.parent_path();
         fprintf(out,
                 ";\tForce field data was read from:\n"
                 ";\t%s\n"
@@ -595,43 +578,42 @@ void print_top_comment(FILE* out, const char* filename, const char* ffdir, bool 
                 ";\tforce field must either be present in the current directory, or the location\n"
                 ";\tspecified in the GMXLIB path variable or with the 'include' mdp file "
                 "option.\n;\n\n",
-                ffdir_parent);
+                ffdir_parent.u8string().c_str());
     }
 }
 
-void print_top_header(FILE* out, const char* filename, bool bITP, const char* ffdir, real mHmult)
+void print_top_header(FILE*                        out,
+                      const std::filesystem::path& filename,
+                      bool                         bITP,
+                      const std::filesystem::path& ffdir,
+                      real                         mHmult)
 {
-    const char* p;
-
     print_top_comment(out, filename, ffdir, bITP);
 
     print_top_heavy_H(out, mHmult);
     fprintf(out, "; Include forcefield parameters\n");
 
-    p = strrchr(ffdir, '/');
-    p = (ffdir[0] == '.' || p == nullptr) ? ffdir : p + 1;
-
-    fprintf(out, "#include \"%s/%s\"\n\n", p, fflib_forcefield_itp());
+    fprintf(out,
+            "#include \"%s/%s\"\n\n",
+            ffdir.u8string().c_str(),
+            fflib_forcefield_itp().generic_u8string().c_str());
 }
 
-static void print_top_posre(FILE* out, const char* pr)
+static void print_top_posre(FILE* out, const std::filesystem::path& pr)
 {
     fprintf(out, "; Include Position restraint file\n");
     fprintf(out, "#ifdef POSRES\n");
-    fprintf(out, "#include \"%s\"\n", pr);
+    fprintf(out, "#include \"%s\"\n", pr.generic_u8string().c_str());
     fprintf(out, "#endif\n\n");
 }
 
-static void print_top_water(FILE* out, const char* ffdir, const char* water)
+static void print_top_water(FILE* out, const std::filesystem::path& ffdir, const char* water)
 {
-    const char* p;
-    char        buf[STRLEN];
-
     fprintf(out, "; Include water topology\n");
 
-    p = strrchr(ffdir, '/');
-    p = (ffdir[0] == '.' || p == nullptr) ? ffdir : p + 1;
-    fprintf(out, "#include \"%s/%s.itp\"\n", p, water);
+    auto waterPath = ffdir;
+    waterPath.append(water).replace_extension("itp");
+    fprintf(out, "#include \"%s\"\n", waterPath.generic_u8string().c_str());
 
     fprintf(out, "\n");
     fprintf(out, "#ifdef POSRES_WATER\n");
@@ -642,12 +624,13 @@ static void print_top_water(FILE* out, const char* ffdir, const char* water)
     fprintf(out, "#endif\n");
     fprintf(out, "\n");
 
-    sprintf(buf, "%s/ions.itp", p);
+    auto ionPath = ffdir;
+    ionPath.append("ions.itp");
 
-    if (fflib_fexist(buf))
+    if (fflib_fexist(ionPath))
     {
         fprintf(out, "; Include topology for ions\n");
-        fprintf(out, "#include \"%s\"\n", buf);
+        fprintf(out, "#include \"%s\"\n", ionPath.generic_u8string().c_str());
         fprintf(out, "\n");
     }
 }
@@ -659,12 +642,12 @@ static void print_top_system(FILE* out, const char* title)
     fprintf(out, "%s\n\n", title[0] ? title : "Protein");
 }
 
-void print_top_mols(FILE*                            out,
-                    const char*                      title,
-                    const char*                      ffdir,
-                    const char*                      water,
-                    gmx::ArrayRef<const std::string> incls,
-                    gmx::ArrayRef<const t_mols>      mols)
+void print_top_mols(FILE*                                      out,
+                    const char*                                title,
+                    const std::filesystem::path&               ffdir,
+                    const char*                                water,
+                    gmx::ArrayRef<const std::filesystem::path> incls,
+                    gmx::ArrayRef<const t_mols>                mols)
 {
 
     if (!incls.empty())
@@ -672,7 +655,7 @@ void print_top_mols(FILE*                            out,
         fprintf(out, "; Include chain topologies\n");
         for (const auto& incl : incls)
         {
-            fprintf(out, "#include \"%s\"\n", gmx::Path::getFilename(incl).c_str());
+            fprintf(out, "#include \"%s\"\n", incl.filename().generic_u8string().c_str());
         }
         fprintf(out, "\n");
     }
@@ -695,7 +678,7 @@ void print_top_mols(FILE*                            out,
 }
 
 void write_top(FILE*                                   out,
-               const char*                             pr,
+               const std::filesystem::path&            pr,
                const char*                             molname,
                t_atoms*                                at,
                bool                                    bRTPresname,
@@ -745,7 +728,7 @@ void write_top(FILE*                                   out,
         print_bondeds(out, at->nr, Directive::d_vsites4, F_VSITE4FD, 0, plist);
         print_bondeds(out, at->nr, Directive::d_vsites4, F_VSITE4FDN, 0, plist);
 
-        if (pr)
+        if (!pr.empty())
         {
             print_top_posre(out, pr);
         }
@@ -1530,7 +1513,7 @@ static void scrub_charge_groups(int* cgnr, int natoms)
 
 
 void pdb2top(FILE*                                  top_file,
-             const char*                            posre_fn,
+             const std::filesystem::path&           posre_fn,
              const char*                            molname,
              t_atoms*                               atoms,
              std::vector<gmx::RVec>*                x,
@@ -1542,7 +1525,7 @@ void pdb2top(FILE*                                  top_file,
              bool                                   bAllowMissing,
              bool                                   bVsites,
              bool                                   bVsiteAromatics,
-             const char*                            ffdir,
+             const std::filesystem::path&           ffdir,
              real                                   mHmult,
              gmx::ArrayRef<const DisulfideBond>     ssbonds,
              real                                   long_bond_dist,

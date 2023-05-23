@@ -33,17 +33,16 @@
  */
 #include "gmxpre.h"
 
-#include "smalloc.h"
+#include "gromacs/utility/smalloc.h"
 
 #include "config.h"
 
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include <mutex>
-
-#include <cstring>
 
 #include "gromacs/utility/alignedallocator.h"
 #include "gromacs/utility/fatalerror.h"

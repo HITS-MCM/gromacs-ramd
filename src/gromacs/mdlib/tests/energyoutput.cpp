@@ -59,6 +59,7 @@
 #include "gromacs/mdlib/ebin.h"
 #include "gromacs/mdlib/makeconstraints.h"
 #include "gromacs/mdrunutility/handlerestart.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/fcdata.h"
 #include "gromacs/mdtypes/group.h"
@@ -67,7 +68,6 @@
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/cstringutil.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/stringutil.h"
 #include "gromacs/utility/textreader.h"
 #include "gromacs/utility/unique_cptr.h"
@@ -137,8 +137,9 @@ const EnergyOutputTestParameters parametersSets[] = {
  */
 class EnergyOutputTest : public ::testing::TestWithParam<EnergyOutputTestParameters>
 {
-    int  numTempCouplingGroups_ = 3;
-    real cosAccel_              = 1.0;
+    static constexpr int                                      numTempCouplingGroups_ = 3;
+    static constexpr std::array<real, numTempCouplingGroups_> tcgInit_{ 0.0_real, 0.0_real, 0.0_real };
+    static constexpr real                                     cosAccel_ = 1.0;
 
 public:
     //! File manager
@@ -191,9 +192,9 @@ public:
     TestReferenceChecker checker_;
 
     EnergyOutputTest() :
-        ekindata_(numTempCouplingGroups_, cosAccel_, 1),
-        logFilename_(fileManager_.getTemporaryFilePath(".log")),
-        edrFilename_(fileManager_.getTemporaryFilePath(".edr")),
+        ekindata_(tcgInit_, EnsembleTemperatureSetting::NotAvailable, -1.0_real, cosAccel_, 1),
+        logFilename_(fileManager_.getTemporaryFilePath(".log").u8string()),
+        edrFilename_(fileManager_.getTemporaryFilePath(".edr").u8string()),
         log_(std::fopen(logFilename_.c_str(), "w")),
         logFileGuard_(log_),
         checker_(refData_.rootChecker())
@@ -223,9 +224,9 @@ public:
         inputrec_.bRot      = true;
 
         // F_ECONSERVED
-        inputrec_.ref_p[YY][XX] = 0.0;
-        inputrec_.ref_p[ZZ][XX] = 0.0;
-        inputrec_.ref_p[ZZ][YY] = 0.0;
+        inputrec_.pressureCouplingOptions.ref_p[YY][XX] = 0.0;
+        inputrec_.pressureCouplingOptions.ref_p[ZZ][XX] = 0.0;
+        inputrec_.pressureCouplingOptions.ref_p[ZZ][YY] = 0.0;
 
         // Dipole (mu)
         inputrec_.ewald_geometry = EwaldGeometry::ThreeDC;
@@ -332,7 +333,7 @@ public:
 
         // Group pairs
         enerdata_ = std::make_unique<gmx_enerdata_t>(
-                mtop_.groups.groups[SimulationAtomGroupType::EnergyOutput].size(), 0);
+                mtop_.groups.groups[SimulationAtomGroupType::EnergyOutput].size(), nullptr);
 
         // Kinetic energy and related data
         ekindata_.tcstat.resize(mtop_.groups.groups[SimulationAtomGroupType::TemperatureCoupling].size());
@@ -342,7 +343,6 @@ public:
 
         // Group options for annealing output
         inputrec_.opts.ngtc = numTempCouplingGroups_;
-        snew(inputrec_.opts.ref_t, inputrec_.opts.ngtc);
         snew(inputrec_.opts.annealing, inputrec_.opts.ngtc);
         inputrec_.opts.annealing[0] = SimulatedAnnealing::No;
         inputrec_.opts.annealing[1] = SimulatedAnnealing::Single;
@@ -361,7 +361,7 @@ public:
         // TODO This object will always return zero as RMSD value.
         //      It is more relevant to have non-zero value for testing.
         constraints_ = makeConstraints(
-                mtop_, inputrec_, nullptr, false, nullptr, &cr_, false, nullptr, nullptr, nullptr, false, nullptr);
+                mtop_, inputrec_, nullptr, false, false, nullptr, &cr_, false, nullptr, nullptr, nullptr, false, nullptr);
     }
 
     /*! \brief Helper function to generate synthetic data to output
@@ -493,7 +493,8 @@ public:
 
         for (int i = 0; i < inputrec_.opts.ngtc; i++)
         {
-            inputrec_.opts.ref_t[i] = (*testValue += 0.1);
+            *testValue += 0.1;
+            ekindata_.setCurrentReferenceTemperature(i, *testValue);
         }
 
         for (index k = 0; k < ssize(mtop_.groups.groups[SimulationAtomGroupType::TemperatureCoupling])
@@ -583,12 +584,12 @@ TEST_P(EnergyOutputTest, CheckOutput)
 
     EnergyOutputTestParameters parameters = GetParam();
     inputrec_.etc                         = parameters.temperatureCouplingScheme;
-    inputrec_.epc                         = parameters.pressureCouplingScheme;
+    inputrec_.pressureCouplingOptions.epc = parameters.pressureCouplingScheme;
     inputrec_.eI                          = parameters.integrator;
 
     if (parameters.isBoxTriclinic)
     {
-        inputrec_.ref_p[YY][XX] = 1.0;
+        inputrec_.pressureCouplingOptions.ref_p[YY][XX] = 1.0;
     }
 
     MDModulesNotifiers            mdModulesNotifiers;
@@ -627,13 +628,13 @@ TEST_P(EnergyOutputTest, CheckOutput)
                                           muTotal_,
                                           constraints_.get());
 
-        energyOutput->printAnnealingTemperatures(log_, &mtop_.groups, &inputrec_.opts);
+        energyOutput->printAnnealingTemperatures(log_, mtop_.groups, inputrec_.opts, ekindata_);
         energyOutput->printStepToEnergyFile(
                 energyFile_, true, false, false, log_, 100 * frame, time_, nullptr, nullptr);
         time_ += 1.0;
     }
 
-    energyOutput->printAnnealingTemperatures(log_, &mtop_.groups, &inputrec_.opts);
+    energyOutput->printAnnealingTemperatures(log_, mtop_.groups, inputrec_.opts, ekindata_);
     energyOutput->printAverages(log_, &mtop_.groups);
 
     // We need to close the file before the contents are available.

@@ -229,7 +229,8 @@ void NoseHooverChainsData::build(NhcUsage                                nhcUsag
                 NoseHooverChainsData::dataID(nhcUsage),
                 NoseHooverChainsData(
                         numTemperatureGroups,
-                        legacySimulatorData->inputrec->delta_t * legacySimulatorData->inputrec->nstpcouple,
+                        legacySimulatorData->inputrec->delta_t
+                                * legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple,
                         legacySimulatorData->inputrec->opts.nhchainlength,
                         constArrayRefFromArray(legacySimulatorData->inputrec->opts.ref_t, 1),
                         constArrayRefFromArray(legacySimulatorData->inputrec->opts.tau_t, 1),
@@ -413,7 +414,7 @@ void NoseHooverGroup::broadcastCheckpointValues(const gmx_domdec_t* dd)
 void NoseHooverChainsData::saveCheckpointState(std::optional<WriteCheckpointData> checkpointData,
                                                const t_commrec*                   cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Write>(&checkpointData.value());
     }
@@ -422,7 +423,7 @@ void NoseHooverChainsData::saveCheckpointState(std::optional<WriteCheckpointData
 void NoseHooverChainsData::restoreCheckpointState(std::optional<ReadCheckpointData> checkpointData,
                                                   const t_commrec*                  cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Read>(&checkpointData.value());
     }
@@ -582,11 +583,11 @@ inline real NoseHooverChainsElement::currentKineticEnergy(const t_grp_tcstat& tc
     {
         if (useFullStepKE_ == UseFullStepKE::Yes)
         {
-            return trace(tcstat.ekinf) * tcstat.ekinscalef_nhc;
+            return ::trace(tcstat.ekinf) * tcstat.ekinscalef_nhc;
         }
         else
         {
-            return trace(tcstat.ekinh) * tcstat.ekinscaleh_nhc;
+            return ::trace(tcstat.ekinh) * tcstat.ekinscaleh_nhc;
         }
     }
     else if (nhcUsage_ == NhcUsage::Barostat)

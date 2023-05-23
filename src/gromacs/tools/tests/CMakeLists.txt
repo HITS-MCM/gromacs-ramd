@@ -35,8 +35,10 @@ gmx_add_gtest_executable(tool-test
     CPP_SOURCE_FILES
         dump.cpp
         helpwriting.cpp
+        make_ndx.cpp
         report_methods.cpp
         trjconv.cpp
         convert-tpr.cpp
         )
 gmx_register_gtest_test(ToolUnitTests tool-test SLOW_TEST)
+target_link_libraries(tool-test PRIVATE math)

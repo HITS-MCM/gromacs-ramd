@@ -31,6 +31,10 @@
 # To help us fund GROMACS development, we humbly ask that you cite
 # the research papers on the package. Check out https://www.gromacs.org.
 
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+    message(FATAL_ERROR "CMake called with the wrong directory; please use the top GROMACS directory (${CMAKE_CURRENT_SOURCE_DIR}/../)")
+endif()
+
 ######################################
 # Output compiler and CFLAGS used
 ######################################
@@ -58,6 +62,7 @@ file(GENERATE
 ####
 
 option(GMX_CLANG_TIDY "Use clang-tidy" OFF)
+mark_as_advanced(GMX_CLANG_TIDY)
 if (GMX_CLANG_TIDY)
    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
    elseif("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithAssert")

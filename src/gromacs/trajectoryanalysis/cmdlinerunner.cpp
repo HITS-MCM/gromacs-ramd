@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "cmdlinerunner.h"
+#include "gromacs/trajectoryanalysis/cmdlinerunner.h"
 
 #include "gromacs/analysisdata/paralleloptions.h"
 #include "gromacs/commandline/cmdlinemodulemanager.h"
@@ -54,9 +54,7 @@
 #include "gromacs/trajectoryanalysis/analysismodule.h"
 #include "gromacs/trajectoryanalysis/analysissettings.h"
 #include "gromacs/trajectoryanalysis/topologyinformation.h"
-#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/filestream.h"
-#include "gromacs/utility/gmxassert.h"
 
 #include "runnercommon.h"
 

@@ -40,34 +40,16 @@
  */
 #include "gmxpre.h"
 
-#include "invertmatrix.h"
+#include "gromacs/math/invertmatrix.h"
 
 #include <cmath>
 
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 
 namespace gmx
 {
-
-void invertBoxMatrix(const matrix src, matrix dest)
-{
-    double tmp = src[XX][XX] * src[YY][YY] * src[ZZ][ZZ];
-    if (std::fabs(tmp) <= 100 * GMX_REAL_MIN)
-    {
-        gmx_fatal(FARGS, "Can not invert matrix, determinant is zero");
-    }
-
-    dest[XX][XX] = 1 / src[XX][XX];
-    dest[YY][YY] = 1 / src[YY][YY];
-    dest[ZZ][ZZ] = 1 / src[ZZ][ZZ];
-    dest[ZZ][XX] = (src[YY][XX] * src[ZZ][YY] * dest[YY][YY] - src[ZZ][XX]) * dest[XX][XX] * dest[ZZ][ZZ];
-    dest[YY][XX] = -src[YY][XX] * dest[XX][XX] * dest[YY][YY];
-    dest[ZZ][YY] = -src[ZZ][YY] * dest[YY][YY] * dest[ZZ][ZZ];
-    dest[XX][YY] = 0.0;
-    dest[XX][ZZ] = 0.0;
-    dest[YY][ZZ] = 0.0;
-}
 
 void invertMatrix(const matrix src, matrix dest)
 {

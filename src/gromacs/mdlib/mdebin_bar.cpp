@@ -33,7 +33,6 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/utility/arrayref.h"
 #include "mdebin_bar.h"
 
 #include <cassert>
@@ -49,6 +48,7 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/trajectory/energyframe.h"
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
@@ -367,9 +367,11 @@ t_mde_delta_h_coll::t_mde_delta_h_coll(const t_inputrec& inputrec)
     int       ndhmax = inputrec.nstenergy / inputrec.nstcalcenergy;
     t_lambda* fep    = inputrec.fepvals.get();
 
-    temperature    = inputrec.opts.ref_t[0]; /* only store system temperature */
-    start_time     = 0.;
-    delta_time     = inputrec.delta_t * inputrec.fepvals->nstdhdl;
+    /* only store system temperature */
+    temperature = (haveConstantEnsembleTemperature(inputrec) ? constantEnsembleTemperature(inputrec)
+                                                             : 0.0_real);
+    start_time  = 0.;
+    delta_time  = inputrec.delta_t * inputrec.fepvals->nstdhdl;
     start_time_set = FALSE;
 
     /* this is the compatibility lambda value. If it is >=0, it is valid,
@@ -469,7 +471,7 @@ t_mde_delta_h_coll::t_mde_delta_h_coll(const t_inputrec& inputrec)
                 ndh += 1;
                 bEnergy = TRUE;
             }
-            if (inputrec.epc > PressureCoupling::No)
+            if (inputrec.pressureCouplingOptions.epc > PressureCoupling::No)
             {
                 ndh += 1; /* include pressure-volume work */
                 bPV = TRUE;

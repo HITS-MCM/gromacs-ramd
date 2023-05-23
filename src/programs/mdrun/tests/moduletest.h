@@ -46,9 +46,9 @@
 #ifndef GMX_MDRUN_TESTS_MODULETEST_H
 #define GMX_MDRUN_TESTS_MODULETEST_H
 
-#include <gtest/gtest.h>
-
 #include <memory>
+
+#include <gtest/gtest.h>
 
 #include "gromacs/utility/classhelpers.h"
 #include "gromacs/utility/gmxmpi.h"
@@ -250,6 +250,14 @@ class ParameterizedMdrunTestFixture :
     public ::testing::WithParamInterface<const char*>
 {
 };
+
+/*! \internal
+ * \brief
+ * Returns the number of OpenMP threads to use.
+ *
+ * \returns the number specified using \c -ntomp option, or the default.
+ */
+int getNumberOfTestOpenMPThreads();
 
 } // namespace test
 } // namespace gmx

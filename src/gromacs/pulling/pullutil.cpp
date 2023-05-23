@@ -51,14 +51,13 @@
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/pulling/pull.h"
+#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/futil.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/utility/smalloc.h"
-
-#include "pull_internal.h"
 
 using gmx::ArrayRef;
 using gmx::RVec;
@@ -349,22 +348,6 @@ static void make_cyl_refgrps(const t_commrec*     cr,
             {
                 spatialData.ffrad[m] = (buffer[6 + m] + buffer[3 + m] * spatialData.cyl_dev) / wmass;
             }
-
-            if (debug)
-            {
-                fprintf(debug,
-                        "Pull cylinder group %d:%8.3f%8.3f%8.3f m:%8.3f\n",
-                        pcrd.params.coordIndex,
-                        dynamicGroup0.x[0],
-                        dynamicGroup0.x[1],
-                        dynamicGroup0.x[2],
-                        1.0 / dynamicGroup0.invtm);
-                fprintf(debug,
-                        "ffrad %8.3f %8.3f %8.3f\n",
-                        spatialData.ffrad[XX],
-                        spatialData.ffrad[YY],
-                        spatialData.ffrad[ZZ]);
-            }
         }
     }
 }
@@ -633,21 +616,21 @@ void pull_calc_coms(const t_commrec*     cr,
                 {
                     const int numThreads = pgrp->numThreads();
 #pragma omp parallel for num_threads(numThreads) schedule(static)
-                    for (int t = 0; t < numThreads; t++)
+                    for (int thread = 0; thread < numThreads; thread++)
                     {
-                        int ind_start = (pgrp->atomSet.numAtomsLocal() * (t + 0)) / numThreads;
-                        int ind_end   = (pgrp->atomSet.numAtomsLocal() * (t + 1)) / numThreads;
+                        int ind_start = (pgrp->atomSet.numAtomsLocal() * (thread + 0)) / numThreads;
+                        int ind_end   = (pgrp->atomSet.numAtomsLocal() * (thread + 1)) / numThreads;
                         sum_com_part(
-                                pgrp, ind_start, ind_end, x, xp, masses, pbc, x_pbc, &pull->comSums[t]);
+                                pgrp, ind_start, ind_end, x, xp, masses, pbc, x_pbc, &pull->comSums[thread]);
                     }
 
                     /* Reduce the thread contributions to sum_com[0] */
-                    for (int t = 1; t < numThreads; t++)
+                    for (int thread = 1; thread < numThreads; thread++)
                     {
-                        comSumsTotal.sum_wm += pull->comSums[t].sum_wm;
-                        comSumsTotal.sum_wwm += pull->comSums[t].sum_wwm;
-                        dvec_inc(comSumsTotal.sum_wmx, pull->comSums[t].sum_wmx);
-                        dvec_inc(comSumsTotal.sum_wmxp, pull->comSums[t].sum_wmxp);
+                        comSumsTotal.sum_wm += pull->comSums[thread].sum_wm;
+                        comSumsTotal.sum_wwm += pull->comSums[thread].sum_wwm;
+                        dvec_inc(comSumsTotal.sum_wmx, pull->comSums[thread].sum_wmx);
+                        dvec_inc(comSumsTotal.sum_wmxp, pull->comSums[thread].sum_wmxp);
                     }
                 }
 
@@ -673,25 +656,25 @@ void pull_calc_coms(const t_commrec*     cr,
                  */
                 const int numThreads = pgrp->numThreads();
 #pragma omp parallel for num_threads(numThreads) schedule(static)
-                for (int t = 0; t < numThreads; t++)
+                for (int thread = 0; thread < numThreads; thread++)
                 {
-                    int ind_start = (pgrp->atomSet.numAtomsLocal() * (t + 0)) / numThreads;
-                    int ind_end   = (pgrp->atomSet.numAtomsLocal() * (t + 1)) / numThreads;
+                    int ind_start = (pgrp->atomSet.numAtomsLocal() * (thread + 0)) / numThreads;
+                    int ind_end   = (pgrp->atomSet.numAtomsLocal() * (thread + 1)) / numThreads;
                     sum_com_part_cosweight(
-                            pgrp, ind_start, ind_end, pull->cosdim, twopi_box, x, xp, masses, &pull->comSums[t]);
+                            pgrp, ind_start, ind_end, pull->cosdim, twopi_box, x, xp, masses, &pull->comSums[thread]);
                 }
 
                 /* Reduce the thread contributions to comSums[0] */
                 ComSums& comSumsTotal = pull->comSums[0];
-                for (int t = 1; t < numThreads; t++)
+                for (int thread = 1; thread < numThreads; thread++)
                 {
-                    comSumsTotal.sum_cm += pull->comSums[t].sum_cm;
-                    comSumsTotal.sum_sm += pull->comSums[t].sum_sm;
-                    comSumsTotal.sum_ccm += pull->comSums[t].sum_ccm;
-                    comSumsTotal.sum_csm += pull->comSums[t].sum_csm;
-                    comSumsTotal.sum_ssm += pull->comSums[t].sum_ssm;
-                    comSumsTotal.sum_cmp += pull->comSums[t].sum_cmp;
-                    comSumsTotal.sum_smp += pull->comSums[t].sum_smp;
+                    comSumsTotal.sum_cm += pull->comSums[thread].sum_cm;
+                    comSumsTotal.sum_sm += pull->comSums[thread].sum_sm;
+                    comSumsTotal.sum_ccm += pull->comSums[thread].sum_ccm;
+                    comSumsTotal.sum_csm += pull->comSums[thread].sum_csm;
+                    comSumsTotal.sum_ssm += pull->comSums[thread].sum_ssm;
+                    comSumsTotal.sum_cmp += pull->comSums[thread].sum_cmp;
+                    comSumsTotal.sum_smp += pull->comSums[thread].sum_smp;
                 }
 
                 /* Copy local sums to a buffer for global summing */
@@ -799,10 +782,6 @@ void pull_calc_coms(const t_commrec*     cr,
                     snw                    = comBuffer[2][1];
                     pgrp->xp[pull->cosdim] = atan2_0_2pi(snw, csw) / twopi_box;
                 }
-            }
-            if (debug)
-            {
-                fprintf(debug, "Pull group %zu wmass %f invtm %f\n", g, 1.0 / pgrp->mwscale, pgrp->invtm);
             }
         }
     }
@@ -1120,16 +1099,6 @@ void initPullComFromPrevStep(const t_commrec*     cr,
             RVec x_pbc = { 0, 0, 0 };
             copy_rvec(comm->pbcAtomBuffer[g], x_pbc);
 
-            if (debug)
-            {
-                fprintf(debug, "Initialising prev step COM of pull group %zu. x_pbc =", g);
-                for (int m = 0; m < DIM; m++)
-                {
-                    fprintf(debug, " %f", x_pbc[m]);
-                }
-                fprintf(debug, "\n");
-            }
-
             /* The following is to a large extent similar to pull_calc_coms() */
 
             /* The final sums should end up in sum_com[0] */
@@ -1207,16 +1176,6 @@ void initPullComFromPrevStep(const t_commrec*     cr,
                 {
                     pgrp->x[m] = localSums[0][m] * pgrp->mwscale;
                     pgrp->x[m] += comm->pbcAtomBuffer[g][m];
-                }
-                if (debug)
-                {
-                    fprintf(debug, "Pull group %zu wmass %f invtm %f\n", g, 1.0 / pgrp->mwscale, pgrp->invtm);
-                    fprintf(debug, "Initialising prev step COM of pull group %zu to", g);
-                    for (int m = 0; m < DIM; m++)
-                    {
-                        fprintf(debug, " %f", pgrp->x[m]);
-                    }
-                    fprintf(debug, "\n");
                 }
                 copy_dvec(pgrp->x, pgrp->x_prev_step);
             }

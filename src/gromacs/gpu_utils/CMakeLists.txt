@@ -42,12 +42,13 @@ gmx_add_libgromacs_sources(
         device_stream_manager.cpp
         hostallocator.cpp
         gpu_utils.cpp
+        gpueventsynchronizer_helpers.cpp
         )
 if(GMX_GPU_OPENCL)
     gmx_add_libgromacs_sources(
         device_context_ocl.cpp
         device_stream_ocl.cpp
-        pmalloc_ocl.cpp
+        pmalloc.cpp
         ocl_compiler.cpp
         ocl_caching.cpp
         oclutils.cpp
@@ -57,7 +58,6 @@ elseif(GMX_GPU_CUDA)
         device_context.cpp
         device_stream.cu
         gpu_utils.cu
-        pinning.cu
         pmalloc.cu
         )
     _gmx_add_files_to_property(CUDA_SOURCES
@@ -82,6 +82,7 @@ else()
     gmx_add_libgromacs_sources(
         device_context.cpp
         device_stream.cpp
+        pmalloc.cpp
     )
 endif()
 
@@ -100,18 +101,13 @@ target_include_directories(gpu_utils INTERFACE
 #target_link_libraries(gpu_utils PUBLIC
 target_link_libraries(gpu_utils INTERFACE
                       legacy_api
+                      math
                       )
 
 # TODO: when gpu_utils is an OBJECT target
 #target_link_libraries(gpu_utils PUBLIC legacy_api)
 #target_link_libraries(gpu_utils PRIVATE common)
 
-# Module dependencies
-# gpu_utils interfaces convey transitive dependence on these modules.
-#target_link_libraries(gpu_utils PUBLIC
-target_link_libraries(gpu_utils INTERFACE
-#                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(gpu_utils PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

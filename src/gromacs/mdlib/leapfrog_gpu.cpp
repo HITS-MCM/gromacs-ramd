@@ -46,11 +46,11 @@
 
 #include "leapfrog_gpu.h"
 
-#include <assert.h>
-#include <stdio.h>
+#include <cassert>
+#include <cmath>
+#include <cstdio>
 
 #include <algorithm>
-#include <cmath>
 
 #include "gromacs/gpu_utils/devicebuffer.h"
 #include "gromacs/math/vec.h"
@@ -71,7 +71,7 @@ void LeapFrogGpu::integrate(DeviceBuffer<Float3>              d_x,
                             gmx::ArrayRef<const t_grp_tcstat> tcstat,
                             const bool                        doParrinelloRahman,
                             const float                       dtPressureCouple,
-                            const matrix                      prVelocityScalingMatrix)
+                            const gmx::Matrix3x3&             prVelocityScalingMatrix)
 {
     GMX_ASSERT(numAtoms_ > 0, "The number of atoms needs to be >0.");
 
@@ -100,18 +100,18 @@ void LeapFrogGpu::integrate(DeviceBuffer<Float3>              d_x,
                            GpuApiCallBehavior::Async,
                            nullptr);
     }
-    VelocityScalingType prVelocityScalingType = VelocityScalingType::None;
+    auto parrinelloRahmanVelocityScaling = ParrinelloRahmanVelocityScaling::No;
     if (doParrinelloRahman)
     {
-        prVelocityScalingType = VelocityScalingType::Diagonal;
-        GMX_ASSERT(prVelocityScalingMatrix[YY][XX] == 0 && prVelocityScalingMatrix[ZZ][XX] == 0
-                           && prVelocityScalingMatrix[ZZ][YY] == 0 && prVelocityScalingMatrix[XX][YY] == 0
-                           && prVelocityScalingMatrix[XX][ZZ] == 0 && prVelocityScalingMatrix[YY][ZZ] == 0,
+        parrinelloRahmanVelocityScaling = ParrinelloRahmanVelocityScaling::Diagonal;
+        GMX_ASSERT(prVelocityScalingMatrix(YY, XX) == 0 && prVelocityScalingMatrix(ZZ, XX) == 0
+                           && prVelocityScalingMatrix(ZZ, YY) == 0 && prVelocityScalingMatrix(XX, YY) == 0
+                           && prVelocityScalingMatrix(XX, ZZ) == 0 && prVelocityScalingMatrix(YY, ZZ) == 0,
                    "Fully anisotropic Parrinello-Rahman pressure coupling is not yet supported "
                    "in GPU version of Leap-Frog integrator.");
-        prVelocityScalingMatrixDiagonal_ = Float3{ dtPressureCouple * prVelocityScalingMatrix[XX][XX],
-                                                   dtPressureCouple * prVelocityScalingMatrix[YY][YY],
-                                                   dtPressureCouple * prVelocityScalingMatrix[ZZ][ZZ] };
+        prVelocityScalingMatrixDiagonal_ = Float3{ dtPressureCouple * prVelocityScalingMatrix(XX, XX),
+                                                   dtPressureCouple * prVelocityScalingMatrix(YY, YY),
+                                                   dtPressureCouple * prVelocityScalingMatrix(ZZ, ZZ) };
     }
 
     launchLeapFrogKernel(numAtoms_,
@@ -125,7 +125,7 @@ void LeapFrogGpu::integrate(DeviceBuffer<Float3>              d_x,
                          numTempScaleValues_,
                          d_tempScaleGroups_,
                          d_lambdas_,
-                         prVelocityScalingType,
+                         parrinelloRahmanVelocityScaling,
                          prVelocityScalingMatrixDiagonal_,
                          deviceStream_);
 }
@@ -150,25 +150,34 @@ LeapFrogGpu::LeapFrogGpu(const DeviceContext& deviceContext,
 
 LeapFrogGpu::~LeapFrogGpu()
 {
+    // Wait for all the tasks to complete before freeing the memory. See #4519.
+    deviceStream_.synchronize();
     freeDeviceBuffer(&d_inverseMasses_);
 }
 
-void LeapFrogGpu::set(const int numAtoms, const real* inverseMasses, const unsigned short* tempScaleGroups)
+void LeapFrogGpu::set(const int                            numAtoms,
+                      const ArrayRef<const real>           inverseMasses,
+                      const ArrayRef<const unsigned short> tempScaleGroups)
 {
     numAtoms_ = numAtoms;
 
     reallocateDeviceBuffer(
             &d_inverseMasses_, numAtoms_, &numInverseMasses_, &numInverseMassesAlloc_, deviceContext_);
     copyToDeviceBuffer(
-            &d_inverseMasses_, inverseMasses, 0, numAtoms_, deviceStream_, GpuApiCallBehavior::Sync, nullptr);
+            &d_inverseMasses_, inverseMasses.data(), 0, numAtoms_, deviceStream_, GpuApiCallBehavior::Sync, nullptr);
 
     // Temperature scale group map only used if there are more than one group
     if (numTempScaleValues_ > 1)
     {
         reallocateDeviceBuffer(
                 &d_tempScaleGroups_, numAtoms_, &numTempScaleGroups_, &numTempScaleGroupsAlloc_, deviceContext_);
-        copyToDeviceBuffer(
-                &d_tempScaleGroups_, tempScaleGroups, 0, numAtoms_, deviceStream_, GpuApiCallBehavior::Sync, nullptr);
+        copyToDeviceBuffer(&d_tempScaleGroups_,
+                           tempScaleGroups.data(),
+                           0,
+                           numAtoms_,
+                           deviceStream_,
+                           GpuApiCallBehavior::Sync,
+                           nullptr);
     }
 }
 

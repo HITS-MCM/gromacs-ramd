@@ -1,4 +1,4 @@
-# Test goal: GCC build with CP2K
+# Test goal: GCC build with CP2K v8.2
 # Test intents (should change rarely and conservatively):
 #   OS: Ubuntu oldest supported
 #   Compiler: GCC
@@ -13,14 +13,15 @@
 #   FFT: FFTW3
 #   Parallelism nt/ntomp: 1/4
 
-gromacs-cp2k:gcc-9-nightly:configure:
+gromacs-cp2k-8.2:gcc-9-nightly:configure:
   extends:
     - .variables:default
     - .use-gcc:base
     - .rules:nightly-not-for-release
   stage: configure-build
   cache: {}
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-9-cp2k-8.2:release-2022
+  # Dockefile generated with /admin/containers/scripted_gmx_docker_builds.py
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-9-cp2k-8.2
   variables:
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
@@ -49,14 +50,14 @@ gromacs-cp2k:gcc-9-nightly:configure:
     expire_in: 1 week
 
 # Build and test jobs for CP2K builds are joined because of huge build artifacts size
-gromacs-cp2k:gcc-9-nightly:build-test:
+gromacs-cp2k-8.2:gcc-9-nightly:build-test:
   extends:
     - .variables:default
     - .use-gcc:base
     - .rules:nightly-not-for-release
     - .use-ccache
   stage: build
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-9-cp2k-8.2:release-2022
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-20.04-gcc-9-cp2k-8.2
   variables:
     KUBERNETES_CPU_LIMIT: 4
     KUBERNETES_CPU_REQUEST: 4
@@ -65,7 +66,7 @@ gromacs-cp2k:gcc-9-nightly:build-test:
     COMPILER_MAJOR_VERSION: 9
     CTEST_RUN_MODE: "ExperimentalTest"
   needs:
-    - job: gromacs-cp2k:gcc-9-nightly:configure
+    - job: gromacs-cp2k-8.2:gcc-9-nightly:configure
   script:
     # Call build script (default)
     - bash -x admin/ci-scripts/gromacs-base-build.sh

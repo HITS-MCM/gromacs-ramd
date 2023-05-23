@@ -78,7 +78,8 @@ const TestHardwareEnvironment* getTestHardwareEnvironment()
 }
 
 TestHardwareEnvironment::TestHardwareEnvironment() :
-    hardwareInfo_(gmx_detect_hardware(PhysicalNodeCommunicator{ MPI_COMM_WORLD, gmx_physicalnode_id_hash() }))
+    hardwareInfo_(gmx_detect_hardware(PhysicalNodeCommunicator{ MPI_COMM_WORLD, gmx_physicalnode_id_hash() },
+                                      MPI_COMM_WORLD))
 {
     // Following the ::testing::Environment protocol
     this->SetUp();
@@ -108,6 +109,7 @@ void TestHardwareEnvironment::gmxTearDown()
         return;
     }
     s_testHardwareEnvironment->testDeviceList_.clear();
+    s_testHardwareEnvironment->hardwareInfo_.reset();
 }
 
 } // namespace test

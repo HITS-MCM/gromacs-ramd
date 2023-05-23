@@ -61,7 +61,7 @@ namespace
 /*! \brief Test fixture base for two integration schemes
  *
  * This test ensures that integration with(out) different multiple time stepping
- * scheems (called via different mdp options) yield near identical energies,
+ * schemes (called via different mdp options) yield near identical energies,
  * forces and virial at step 0 and similar energies and virial after 4 steps.
  */
 using MtsComparisonTestParams = std::tuple<std::string, std::string>;
@@ -179,32 +179,36 @@ TEST_P(MtsComparisonTest, WithinTolerances)
     auto simulator2EdrFileName        = fileManager_.getTemporaryFilePath("sim2.edr");
 
     // Run grompp
-    runner_.tprFileName_ = fileManager_.getTemporaryFilePath("sim.tpr");
+    runner_.tprFileName_ = fileManager_.getTemporaryFilePath("sim.tpr").u8string();
     runner_.useTopGroAndNdxFromDatabase(simulationName);
     runner_.useStringAsMdpFile(refMdpOptions);
     runGrompp(&runner_);
 
     // Do first mdrun
-    runner_.fullPrecisionTrajectoryFileName_ = simulator1TrajectoryFileName;
-    runner_.edrFileName_                     = simulator1EdrFileName;
+    runner_.fullPrecisionTrajectoryFileName_ = simulator1TrajectoryFileName.u8string();
+    runner_.edrFileName_                     = simulator1EdrFileName.u8string();
     runMdrun(&runner_);
 
     runner_.useStringAsMdpFile(mtsMdpOptions);
     runGrompp(&runner_);
 
     // Do second mdrun
-    runner_.fullPrecisionTrajectoryFileName_ = simulator2TrajectoryFileName;
-    runner_.edrFileName_                     = simulator2EdrFileName;
+    runner_.fullPrecisionTrajectoryFileName_ = simulator2TrajectoryFileName.u8string();
+    runner_.edrFileName_                     = simulator2EdrFileName.u8string();
     runMdrun(&runner_);
 
-    // Compare simulation results at step 0, which should be indentical
-    compareEnergies(
-            simulator1EdrFileName, simulator2EdrFileName, energyTermsToCompareStep0, MaxNumFrames(1));
-    compareTrajectories(simulator1TrajectoryFileName, simulator2TrajectoryFileName, trajectoryComparison);
+    // Compare simulation results at step 0, which should be identical
+    compareEnergies(simulator1EdrFileName.u8string(),
+                    simulator2EdrFileName.u8string(),
+                    energyTermsToCompareStep0,
+                    MaxNumFrames(1));
+    compareTrajectories(simulator1TrajectoryFileName.u8string(),
+                        simulator2TrajectoryFileName.u8string(),
+                        trajectoryComparison);
 
     // Compare energies at the last step (and step 0 again) with lower tolerance
-    compareEnergies(simulator1EdrFileName,
-                    simulator2EdrFileName,
+    compareEnergies(simulator1EdrFileName.u8string(),
+                    simulator2EdrFileName.u8string(),
                     energyTermsToCompareAllSteps,
                     MaxNumFrames::compareAllFrames());
 }

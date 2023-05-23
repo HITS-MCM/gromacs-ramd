@@ -60,13 +60,11 @@
 
 #include "gpu_3dfft_sycl_rocfft.h"
 
-#include "gromacs/utility/enumerationhelpers.h"
-#include "gromacs/utility/exceptions.h"
-
 #include <vector>
 
 #include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/devicebuffer.h"
+#include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 
@@ -336,7 +334,7 @@ class Gpu3dFft::ImplSyclRocfft::Impl
 {
 public:
     //! \copydoc Gpu3dFft::Impl::Impl
-    Impl(bool                 allocateGrids,
+    Impl(bool                 allocateRealGrid,
          MPI_Comm             comm,
          ArrayRef<const int>  gridSizesInXForEachRank,
          ArrayRef<const int>  gridSizesInYForEachRank,
@@ -349,6 +347,7 @@ public:
          ivec                 complexGridSizePadded,
          DeviceBuffer<float>* realGrid,
          DeviceBuffer<float>* complexGrid);
+
     /*! \brief Handle initializing the rocFFT library
      *
      * Make sure the library is initialized before the plans, etc. and
@@ -356,17 +355,9 @@ public:
     RocfftInitializer init_;
     //! Data for 3D FFT plans and execution
     EnumerationArray<FftDirection, RocfftPlan> plans_;
-#if GMX_SYCL_USE_USM
     //! Handle to the real grid buffer
     float* realGrid_;
-    //! Handle to the complex grid buffer
     float* complexGrid_;
-#else
-    //! Handle to the real grid buffer
-    sycl::buffer<float, 1> realGrid_;
-    //! Handle to the complex grid buffer
-    sycl::buffer<float, 1> complexGrid_;
-#endif
     /*! \brief Copy of PME stream
      *
      * This copy is guaranteed by the SYCL standard to work as if
@@ -374,7 +365,7 @@ public:
     sycl::queue queue_;
 };
 
-Gpu3dFft::ImplSyclRocfft::Impl::Impl(bool allocateGrids,
+Gpu3dFft::ImplSyclRocfft::Impl::Impl(bool allocateRealGrid,
                                      MPI_Comm /*comm*/,
                                      ArrayRef<const int> gridSizesInXForEachRank,
                                      ArrayRef<const int> gridSizesInYForEachRank,
@@ -386,7 +377,7 @@ Gpu3dFft::ImplSyclRocfft::Impl::Impl(bool allocateGrids,
                                      ivec                 realGridSizePadded,
                                      ivec                 complexGridSizePadded,
                                      DeviceBuffer<float>* realGrid,
-                                     DeviceBuffer<float>* complexGrid) :
+                                     DeviceBuffer<float>* /*complexGrid*/) :
     plans_{
         makePlan("real-to-complex",
                  rocfft_transform_type_real_forward,
@@ -424,13 +415,12 @@ Gpu3dFft::ImplSyclRocfft::Impl::Impl(bool allocateGrids,
                  pmeStream),
     },
     realGrid_(*realGrid->buffer_.get()),
-    complexGrid_(*complexGrid->buffer_.get()),
     queue_(pmeStream.stream())
 {
     GMX_RELEASE_ASSERT(performOutOfPlaceFFT, "Only out-of-place FFT is implemented in hipSYCL");
-    GMX_RELEASE_ASSERT(allocateGrids == false, "Grids need to be pre-allocated");
+    GMX_RELEASE_ASSERT(allocateRealGrid == false, "Grids need to be pre-allocated");
     GMX_RELEASE_ASSERT(gridSizesInXForEachRank.size() == 1 && gridSizesInYForEachRank.size() == 1,
-                       "FFT decomposition not implemented with SYCL backend");
+                       "FFT decomposition not implemented with the SYCL rocFFT backend");
 }
 
 void Gpu3dFft::ImplSyclRocfft::perform3dFft(gmx_fft_direction dir, CommandEvent* /*timingEvent*/)
@@ -438,11 +428,8 @@ void Gpu3dFft::ImplSyclRocfft::perform3dFft(gmx_fft_direction dir, CommandEvent*
     GMX_RELEASE_ASSERT((dir == GMX_FFT_REAL_TO_COMPLEX) || (dir == GMX_FFT_COMPLEX_TO_REAL),
                        "Only real-to-complex and complex-to-real FFTs are implemented in hipSYCL");
     FftDirection direction;
-#if GMX_SYCL_USE_USM
-    float **inputGrid = nullptr, **outputGrid = nullptr;
-#else
-    sycl::buffer<float, 1>*inputGrid = nullptr, *outputGrid = nullptr;
-#endif
+    float **     inputGrid = nullptr, **outputGrid = nullptr;
+    impl_->complexGrid_ = *complexGrid_.buffer_.get();
     if (dir == GMX_FFT_REAL_TO_COMPLEX)
     {
         direction  = FftDirection::RealToComplex;
@@ -456,22 +443,13 @@ void Gpu3dFft::ImplSyclRocfft::perform3dFft(gmx_fft_direction dir, CommandEvent*
         outputGrid = &impl_->realGrid_;
     }
     // Enqueue the 3D FFT work
-    impl_->queue_.submit([&](sycl::handler& cgh) {
-#if !GMX_SYCL_USE_USM
-        auto inputGridAccessor  = inputGrid->get_access(cgh, sycl::read_only);
-        auto outputGridAccessor = outputGrid->get_access(cgh, sycl::write_only, sycl::no_init);
-#endif
+    impl_->queue_.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         // Use a hipSYCL custom operation to access the native buffers
         // needed to call rocFFT
         cgh.hipSYCL_enqueue_custom_operation([=](sycl::interop_handle& gmx_unused h) {
-#if GMX_SYCL_USE_USM
-            void* d_inputGrid  = reinterpret_cast<void*>(*inputGrid);
-            void* d_outputGrid = reinterpret_cast<void*>(*outputGrid);
-#else
-            void* d_inputGrid  = h.get_native_mem<sycl::backend::hip>(inputGridAccessor);
-            void* d_outputGrid = h.get_native_mem<sycl::backend::hip>(outputGridAccessor);
-#endif
-            hipStream_t stream = h.get_native_queue<sycl::backend::hip>();
+            void*       d_inputGrid  = reinterpret_cast<void*>(*inputGrid);
+            void*       d_outputGrid = reinterpret_cast<void*>(*outputGrid);
+            hipStream_t stream       = h.get_native_queue<sycl::backend::hip>();
             rocfft_execution_info_set_stream(impl_->plans_[direction].info, stream);
             // Don't check results generated asynchronously,
             // because we don't know what to do with them
@@ -483,7 +461,7 @@ void Gpu3dFft::ImplSyclRocfft::perform3dFft(gmx_fft_direction dir, CommandEvent*
     });
 }
 
-Gpu3dFft::ImplSyclRocfft::ImplSyclRocfft(bool                 allocateGrids,
+Gpu3dFft::ImplSyclRocfft::ImplSyclRocfft(bool                 allocateRealGrid,
                                          MPI_Comm             comm,
                                          ArrayRef<const int>  gridSizesInXForEachRank,
                                          ArrayRef<const int>  gridSizesInYForEachRank,
@@ -496,7 +474,8 @@ Gpu3dFft::ImplSyclRocfft::ImplSyclRocfft(bool                 allocateGrids,
                                          ivec                 complexGridSizePadded,
                                          DeviceBuffer<float>* realGrid,
                                          DeviceBuffer<float>* complexGrid) :
-    impl_(std::make_unique<Impl>(allocateGrids,
+    Gpu3dFft::Impl::Impl(performOutOfPlaceFFT),
+    impl_(std::make_unique<Impl>(allocateRealGrid,
                                  comm,
                                  gridSizesInXForEachRank,
                                  gridSizesInYForEachRank,
@@ -510,8 +489,12 @@ Gpu3dFft::ImplSyclRocfft::ImplSyclRocfft(bool                 allocateGrids,
                                  realGrid,
                                  complexGrid))
 {
+    allocateComplexGrid(complexGridSizePadded, realGrid, complexGrid, context);
 }
 
-Gpu3dFft::ImplSyclRocfft::~ImplSyclRocfft() = default;
+Gpu3dFft::ImplSyclRocfft::~ImplSyclRocfft()
+{
+    deallocateComplexGrid();
+}
 
 } // namespace gmx

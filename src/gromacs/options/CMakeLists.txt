@@ -32,9 +32,7 @@
 # the research papers on the package. Check out https://www.gromacs.org.
 
 # Set up the module library
-add_library(options INTERFACE)
-
-gmx_add_libgromacs_sources(
+add_library(options OBJECT
     abstractoption.cpp
     abstractsection.cpp
     basicoptions.cpp
@@ -49,47 +47,27 @@ gmx_add_libgromacs_sources(
     treesupport.cpp
     )
 
-if(GMX_INSTALL_LEGACY_API)
-    install(FILES
-	    abstractoption.h
-	    basicoptions.h
-	    filenameoption.h
-	    filenameoptionmanager.h
-	    ioptionsbehavior.h
-	    ioptionscontainer.h
-	    ioptionscontainerwithsections.h
-	    ivaluestore.h
-	    optionfiletype.h
-	    optionflags.h
-	    options.h
-	    timeunitmanager.h
-            DESTINATION include/gromacs/options)
-endif()
+gmx_target_compile_options(options)
+target_compile_definitions(options PRIVATE HAVE_CONFIG_H)
 
 # Source files have the following private module dependencies.
 target_link_libraries(options PRIVATE
-		)
+                legacy_api
+                legacy_modules
+                utility
+                )
 
 # Public interface for modules, including dependencies and interfaces
-#target_include_directories(options PUBLIC
-target_include_directories(options INTERFACE
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-#target_link_libraries(options PUBLIC
-target_link_libraries(options INTERFACE
-		legacy_api
-		)
+target_include_directories(options PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
-# TODO: when options is an OBJECT target
-#target_link_libraries(options PUBLIC legacy_api)
-#target_link_libraries(options PRIVATE common)
+target_link_libraries(options PRIVATE common)
 
-# Module dependencies
-# options interfaces convey transitive dependence on these modules.
-#target_link_libraries(options PUBLIC
-target_link_libraries(options INTERFACE
-                      utility
-		)
+if (BUILD_SHARED_LIBS)  
+    set_target_properties(options PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 if (BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+

@@ -60,9 +60,9 @@
 #include "gromacs/domdec/localtopologychecker.h"
 #include "gromacs/domdec/options.h"
 #include "gromacs/domdec/partition.h"
+#include "gromacs/domdec/reversetopology.h"
 #include "gromacs/domdec/utility.h"
 #include "gromacs/ewald/pme.h"
-#include "gromacs/domdec/reversetopology.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/gpu_utils/device_stream_manager.h"
@@ -77,6 +77,7 @@
 #include "gromacs/mdlib/vcm.h"
 #include "gromacs/mdlib/vsite.h"
 #include "gromacs/mdrun/mdmodules.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/forceoutput.h"
 #include "gromacs/mdtypes/forcerec.h"
@@ -90,6 +91,7 @@
 #include "gromacs/topology/block.h"
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/ifunc.h"
+#include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
@@ -101,9 +103,7 @@
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/gmxmpi.h"
 #include "gromacs/utility/logger.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/real.h"
-#include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strconvert.h"
 #include "gromacs/utility/stringstream.h"
 #include "gromacs/utility/stringutil.h"
@@ -116,6 +116,7 @@
 #include "domdec_constraints.h"
 #include "domdec_internal.h"
 #include "domdec_setup.h"
+#include "domdec_specatomcomm.h"
 #include "domdec_vsite.h"
 #include "redistribute.h"
 #include "utility.h"
@@ -126,22 +127,6 @@ using gmx::DdRankOrder;
 using gmx::DlbOption;
 using gmx::DomdecOptions;
 using gmx::RangePartitioning;
-
-/*! \brief Computes and returns the number of halo communication pulses along the three dimensions
- *
- * The number of pulses includes some margin on the box for pressure scaling.
- *
- * \param[in] numDomains             The number of DD domains along the three Cartesian dimensions
- * \param[in] ir                     The input record
- * \param[in] box                    The unit cell
- * \param[in] x                      The coordinates of the whole system
- * \param[in] communicationDistance  The halo communication distance
- */
-static gmx::IVec getNumCommunicationPulses(const ivec&                    numDomains,
-                                           const t_inputrec&              ir,
-                                           const matrix                   box,
-                                           gmx::ArrayRef<const gmx::RVec> x,
-                                           real                           communicationDistance);
 
 static const char* enumValueToString(DlbState enumValue)
 {
@@ -166,6 +151,9 @@ static const int ddNonbondedZonePairRanges[DD_MAXIZONE][3] = { { 0, 0, 8 },
                                                                { 1, 3, 6 },
                                                                { 2, 5, 6 },
                                                                { 3, 5, 7 } };
+
+//! The minimum step interval for DD algorithms requiring global communication
+static constexpr int sc_minimumGCStepInterval = 100;
 
 static void ddindex2xyz(const ivec nc, int ind, ivec xyz)
 {
@@ -278,7 +266,7 @@ void dd_move_x(gmx_domdec_t* dd, const matrix box, gmx::ArrayRef<gmx::RVec> x, g
 
     rvec shift = { 0, 0, 0 };
 
-    gmx_domdec_comm_t* comm = dd->comm;
+    gmx_domdec_comm_t* comm = dd->comm.get();
 
     int nzone   = 1;
     int nat_tot = comm->atomRanges.numHomeAtoms();
@@ -473,127 +461,6 @@ void dd_move_f(gmx_domdec_t* dd, gmx::ForceWithShiftForces* forceWithShiftForces
         nzone /= 2;
     }
     wallcycle_stop(wcycle, WallCycleCounter::MoveF);
-}
-
-/* Convenience function for extracting a real buffer from an rvec buffer
- *
- * To reduce the number of temporary communication buffers and avoid
- * cache polution, we reuse gmx::RVec buffers for storing reals.
- * This functions return a real buffer reference with the same number
- * of elements as the gmx::RVec buffer (so 1/3 of the size in bytes).
- */
-static gmx::ArrayRef<real> realArrayRefFromRvecArrayRef(gmx::ArrayRef<gmx::RVec> arrayRef)
-{
-    return gmx::arrayRefFromArray(as_rvec_array(arrayRef.data())[0], arrayRef.size());
-}
-
-void dd_atom_spread_real(gmx_domdec_t* dd, real v[])
-{
-    gmx_domdec_comm_t* comm = dd->comm;
-
-    int nzone   = 1;
-    int nat_tot = comm->atomRanges.numHomeAtoms();
-    for (int d = 0; d < dd->ndim; d++)
-    {
-        gmx_domdec_comm_dim_t* cd = &comm->cd[d];
-        for (const gmx_domdec_ind_t& ind : cd->ind)
-        {
-            /* Note: We provision for RVec instead of real, so a factor of 3
-             * more than needed. The buffer actually already has this size
-             * and we pass a plain pointer below, so this does not matter.
-             */
-            DDBufferAccess<gmx::RVec> sendBufferAccess(comm->rvecBuffer, ind.nsend[nzone + 1]);
-            gmx::ArrayRef<real> sendBuffer = realArrayRefFromRvecArrayRef(sendBufferAccess.buffer);
-            int                 n          = 0;
-            for (int j : ind.index)
-            {
-                sendBuffer[n++] = v[j];
-            }
-
-            DDBufferAccess<gmx::RVec> receiveBufferAccess(
-                    comm->rvecBuffer2, cd->receiveInPlace ? 0 : ind.nrecv[nzone + 1]);
-
-            gmx::ArrayRef<real> receiveBuffer;
-            if (cd->receiveInPlace)
-            {
-                receiveBuffer = gmx::arrayRefFromArray(v + nat_tot, ind.nrecv[nzone + 1]);
-            }
-            else
-            {
-                receiveBuffer = realArrayRefFromRvecArrayRef(receiveBufferAccess.buffer);
-            }
-            /* Send and receive the data */
-            ddSendrecv(dd, d, dddirBackward, sendBuffer, receiveBuffer);
-            if (!cd->receiveInPlace)
-            {
-                int j = 0;
-                for (int zone = 0; zone < nzone; zone++)
-                {
-                    for (int i = ind.cell2at0[zone]; i < ind.cell2at1[zone]; i++)
-                    {
-                        v[i] = receiveBuffer[j++];
-                    }
-                }
-            }
-            nat_tot += ind.nrecv[nzone + 1];
-        }
-        nzone += nzone;
-    }
-}
-
-void dd_atom_sum_real(gmx_domdec_t* dd, real v[])
-{
-    gmx_domdec_comm_t* comm = dd->comm;
-
-    int nzone   = comm->zones.n / 2;
-    int nat_tot = comm->atomRanges.end(DDAtomRanges::Type::Zones);
-    for (int d = dd->ndim - 1; d >= 0; d--)
-    {
-        gmx_domdec_comm_dim_t* cd = &comm->cd[d];
-        for (int p = cd->numPulses() - 1; p >= 0; p--)
-        {
-            const gmx_domdec_ind_t& ind = cd->ind[p];
-
-            /* Note: We provision for RVec instead of real, so a factor of 3
-             * more than needed. The buffer actually already has this size
-             * and we typecast, so this works as intended.
-             */
-            DDBufferAccess<gmx::RVec> receiveBufferAccess(comm->rvecBuffer, ind.nsend[nzone + 1]);
-            gmx::ArrayRef<real> receiveBuffer = realArrayRefFromRvecArrayRef(receiveBufferAccess.buffer);
-            nat_tot -= ind.nrecv[nzone + 1];
-
-            DDBufferAccess<gmx::RVec> sendBufferAccess(
-                    comm->rvecBuffer2, cd->receiveInPlace ? 0 : ind.nrecv[nzone + 1]);
-
-            gmx::ArrayRef<real> sendBuffer;
-            if (cd->receiveInPlace)
-            {
-                sendBuffer = gmx::arrayRefFromArray(v + nat_tot, ind.nrecv[nzone + 1]);
-            }
-            else
-            {
-                sendBuffer = realArrayRefFromRvecArrayRef(sendBufferAccess.buffer);
-                int j      = 0;
-                for (int zone = 0; zone < nzone; zone++)
-                {
-                    for (int i = ind.cell2at0[zone]; i < ind.cell2at1[zone]; i++)
-                    {
-                        sendBuffer[j++] = v[i];
-                    }
-                }
-            }
-            /* Communicate the forces */
-            ddSendrecv(dd, d, dddirForward, sendBuffer, receiveBuffer);
-            /* Add the received forces */
-            int n = 0;
-            for (int j : ind.index)
-            {
-                v[j] += receiveBuffer[n];
-                n++;
-            }
-        }
-        nzone /= 2;
-    }
 }
 
 real dd_cutoff_multibody(const gmx_domdec_t* dd)
@@ -891,24 +758,25 @@ static gmx_bool receive_vir_ener(const gmx_domdec_t* dd, gmx::ArrayRef<const int
     return bReceive;
 }
 
-static void set_slb_pme_dim_f(gmx_domdec_t* dd, int dim, real** dim_f)
+static std::vector<real> set_slb_pme_dim_f(gmx_domdec_t* dd, int dim)
 {
-    gmx_domdec_comm_t* comm = dd->comm;
+    gmx_domdec_comm_t* comm = dd->comm.get();
 
-    snew(*dim_f, dd->numCells[dim] + 1);
-    (*dim_f)[0] = 0;
+    std::vector<real> dim_f(dd->numCells[dim] + 1);
+    dim_f[0] = 0;
     for (int i = 1; i < dd->numCells[dim]; i++)
     {
-        if (comm->slb_frac[dim])
+        if (!comm->slb_frac[dim].empty())
         {
-            (*dim_f)[i] = (*dim_f)[i - 1] + comm->slb_frac[dim][i - 1];
+            dim_f[i] = dim_f[i - 1] + comm->slb_frac[dim][i - 1];
         }
         else
         {
-            (*dim_f)[i] = static_cast<real>(i) / static_cast<real>(dd->numCells[dim]);
+            dim_f[i] = static_cast<real>(i) / static_cast<real>(dd->numCells[dim]);
         }
     }
-    (*dim_f)[dd->numCells[dim]] = 1;
+    dim_f[dd->numCells[dim]] = 1;
+    return dim_f;
 }
 
 static void init_ddpme(gmx_domdec_t* dd, gmx_ddpme_t* ddpme, int dimind)
@@ -934,8 +802,8 @@ static void init_ddpme(gmx_domdec_t* dd, gmx_ddpme_t* ddpme, int dimind)
 
     const int nso = ddRankSetup.numRanksDoingPme / ddpme->nslab;
     /* Determine for each PME slab the PP location range for dimension dim */
-    snew(ddpme->pp_min, ddpme->nslab);
-    snew(ddpme->pp_max, ddpme->nslab);
+    ddpme->pp_min.resize(ddpme->nslab);
+    ddpme->pp_max.resize(ddpme->nslab);
     for (int slab = 0; slab < ddpme->nslab; slab++)
     {
         ddpme->pp_min[slab] = dd->numCells[dd->dim[dimind]] - 1;
@@ -957,7 +825,7 @@ static void init_ddpme(gmx_domdec_t* dd, gmx_ddpme_t* ddpme, int dimind)
         }
     }
 
-    set_slb_pme_dim_f(dd, ddpme->dim, &ddpme->slb_dim_f);
+    ddpme->slb_dim_f = set_slb_pme_dim_f(dd, ddpme->dim);
 }
 
 int dd_pme_maxshift_x(const gmx_domdec_t& dd)
@@ -1040,24 +908,24 @@ static void make_load_communicator(gmx_domdec_t* dd, int dim_ind, ivec loc)
     if (bPartOfGroup)
     {
         dd->comm->mpi_comm_load[dim_ind] = c_row;
-        if (!isDlbDisabled(dd->comm))
+        if (!isDlbDisabled(dd->comm->dlbState))
         {
             DDCellsizesWithDlb& cellsizes = dd->comm->cellsizesWithDlb[dim_ind];
 
-            if (dd->ci[dim] == dd->master_ci[dim])
+            if (dd->ci[dim] == dd->main_ci[dim])
             {
                 /* This is the root process of this row */
-                cellsizes.rowMaster = std::make_unique<RowMaster>();
+                cellsizes.rowCoordinator = std::make_unique<RowCoordinator>();
 
-                RowMaster& rowMaster = *cellsizes.rowMaster;
-                rowMaster.cellFrac.resize(ddCellFractionBufferSize(dd, dim_ind));
-                rowMaster.oldCellFrac.resize(dd->numCells[dim] + 1);
-                rowMaster.isCellMin.resize(dd->numCells[dim]);
+                RowCoordinator& rowCoordinator = *cellsizes.rowCoordinator;
+                rowCoordinator.cellFrac.resize(ddCellFractionBufferSize(dd, dim_ind));
+                rowCoordinator.oldCellFrac.resize(dd->numCells[dim] + 1);
+                rowCoordinator.isCellMin.resize(dd->numCells[dim]);
                 if (dim_ind > 0)
                 {
-                    rowMaster.bounds.resize(dd->numCells[dim]);
+                    rowCoordinator.bounds.resize(dd->numCells[dim]);
                 }
-                rowMaster.buf_ncd.resize(dd->numCells[dim]);
+                rowCoordinator.buf_ncd.resize(dd->numCells[dim]);
             }
             else
             {
@@ -1065,9 +933,9 @@ static void make_load_communicator(gmx_domdec_t* dd, int dim_ind, ivec loc)
                 cellsizes.fracRow.resize(ddCellFractionBufferSize(dd, dim_ind));
             }
         }
-        if (dd->ci[dim] == dd->master_ci[dim])
+        if (dd->ci[dim] == dd->main_ci[dim])
         {
-            snew(dd->comm->load[dim_ind].load, dd->numCells[dim] * DD_NLOAD_MAX);
+            dd->comm->load[dim_ind].load.resize(dd->numCells[dim] * DD_NLOAD_MAX);
         }
     }
 }
@@ -1139,8 +1007,8 @@ static void make_load_communicators(gmx_domdec_t gmx_unused* dd)
         fprintf(debug, "Making load communicators\n");
     }
 
-    dd->comm->load = new domdec_load_t[std::max(dd->ndim, 1)];
-    snew(dd->comm->mpi_comm_load, std::max(dd->ndim, 1));
+    dd->comm->load.resize(std::max(dd->ndim, 1));
+    dd->comm->mpi_comm_load.resize(std::max(dd->ndim, 1));
 
     if (dd->ndim == 0)
     {
@@ -1282,7 +1150,7 @@ static void setup_neighbor_relations(gmx_domdec_t* dd)
         zones->iZones.push_back(iZone);
     }
 
-    if (!isDlbDisabled(dd->comm))
+    if (!isDlbDisabled(dd->comm->dlbState))
     {
         dd->comm->cellsizesWithDlb.resize(dd->ndim);
     }
@@ -1299,7 +1167,7 @@ static void make_pp_communicator(const gmx::MDLogger& mdlog,
                                  bool gmx_unused       reorder)
 {
 #if GMX_MPI
-    gmx_domdec_comm_t*  comm      = dd->comm;
+    gmx_domdec_comm_t*  comm      = dd->comm.get();
     CartesianRankSetup& cartSetup = comm->cartesianRankSetup;
 
     if (cartSetup.bCartesianPP)
@@ -1333,11 +1201,11 @@ static void make_pp_communicator(const gmx::MDLogger& mdlog,
         cartSetup.ddindex2ddnodeid.resize(dd->nnodes);
         cartSetup.ddindex2ddnodeid[dd_index(dd->numCells, dd->ci)] = dd->rank;
         gmx_sumi(dd->nnodes, cartSetup.ddindex2ddnodeid.data(), cr);
-        /* Get the rank of the DD master,
-         * above we made sure that the master node is a PP node.
+        /* Get the rank of the DD main,
+         * above we made sure that the main node is a PP node.
          */
-        int rank = MASTER(cr) ? dd->rank : 0;
-        MPI_Allreduce(&rank, &dd->masterrank, 1, MPI_INT, MPI_SUM, dd->mpi_comm_all);
+        int rank = MAIN(cr) ? dd->rank : 0;
+        MPI_Allreduce(&rank, &dd->mainrank, 1, MPI_INT, MPI_SUM, dd->mpi_comm_all);
     }
     else if (cartSetup.bCartesianPP)
     {
@@ -1364,20 +1232,20 @@ static void make_pp_communicator(const gmx::MDLogger& mdlog,
         /* Communicate the ddindex to simulation nodeid index */
         MPI_Allreduce(buf.data(), cartSetup.ddindex2simnodeid.data(), dd->nnodes, MPI_INT, MPI_SUM, cr->mpi_comm_mysim);
 
-        /* Determine the master coordinates and rank.
-         * The DD master should be the same node as the master of this sim.
+        /* Determine the main coordinates and rank.
+         * The DD main should be the same node as the main of this sim.
          */
         for (int i = 0; i < dd->nnodes; i++)
         {
             if (cartSetup.ddindex2simnodeid[i] == 0)
             {
-                ddindex2xyz(dd->numCells, i, dd->master_ci);
-                MPI_Cart_rank(dd->mpi_comm_all, dd->master_ci, &dd->masterrank);
+                ddindex2xyz(dd->numCells, i, dd->main_ci);
+                MPI_Cart_rank(dd->mpi_comm_all, dd->main_ci, &dd->mainrank);
             }
         }
         if (debug)
         {
-            fprintf(debug, "The master rank is %d\n", dd->masterrank);
+            fprintf(debug, "The main rank is %d\n", dd->mainrank);
         }
     }
     else
@@ -1385,9 +1253,9 @@ static void make_pp_communicator(const gmx::MDLogger& mdlog,
         /* No Cartesian communicators */
         /* We use the rank in dd->comm->all as DD index */
         ddindex2xyz(dd->numCells, dd->rank, dd->ci);
-        /* The simulation master nodeid is 0, so the DD master rank is also 0 */
-        dd->masterrank = 0;
-        clear_ivec(dd->master_ci);
+        /* The simulation main nodeid is 0, so the DD main rank is also 0 */
+        dd->mainrank = 0;
+        clear_ivec(dd->main_ci);
     }
 #endif
 
@@ -1512,7 +1380,7 @@ static CartesianRankSetup split_communicator(const gmx::MDLogger& mdlog,
         MPI_Comm comm_cart = MPI_COMM_NULL;
         MPI_Cart_create(cr->mpi_comm_mysim, DIM, cartSetup.ntot, periods, static_cast<int>(reorder), &comm_cart);
         MPI_Comm_rank(comm_cart, &rank);
-        if (MASTER(cr) && rank != 0)
+        if (MAIN(cr) && rank != 0)
         {
             gmx_fatal(FARGS, "MPI rank 0 was renumbered by MPI_Cart_create, we do not allow this");
         }
@@ -1685,20 +1553,20 @@ static void setupGroupCommunication(const gmx::MDLogger&     mdlog,
         dd->pme_nodeid = -1;
     }
 
-    /* We can not use DDMASTER(dd), because dd->masterrank is set later */
-    if (MASTER(cr))
+    /* We can not use DDMAIN(dd), because dd->mainrank is set later */
+    if (MAIN(cr))
     {
         dd->ma = std::make_unique<AtomDistribution>(dd->numCells, numAtomsInSystem, numAtomsInSystem);
     }
 }
 
-static real* get_slb_frac(const gmx::MDLogger& mdlog, const char* dir, int nc, const char* size_string)
+static std::vector<real> get_slb_frac(const gmx::MDLogger& mdlog, const char* dir, int nc, const char* size_string)
 {
-    real* slb_frac = nullptr;
+    std::vector<real> slb_frac;
     if (nc > 1 && size_string != nullptr)
     {
         GMX_LOG(mdlog.info).appendTextFormatted("Using static load balancing for the %s direction", dir);
-        snew(slb_frac, nc);
+        slb_frac.resize(nc);
         real tot = 0;
         for (int i = 0; i < nc; i++)
         {
@@ -1921,9 +1789,9 @@ static DlbState determineInitialDlbState(const gmx::MDLogger&     mdlog,
     return dlbState;
 }
 
-static gmx_domdec_comm_t* init_dd_comm()
+static std::unique_ptr<gmx_domdec_comm_t> init_dd_comm()
 {
-    gmx_domdec_comm_t* comm = new gmx_domdec_comm_t;
+    auto comm = std::make_unique<gmx_domdec_comm_t>();
 
     comm->n_load_have    = 0;
     comm->n_load_collect = 0;
@@ -1942,9 +1810,6 @@ static gmx_domdec_comm_t* init_dd_comm()
     clear_ivec(comm->load_lim);
     comm->load_mdf = 0;
     comm->load_pme = 0;
-
-    /* This should be replaced by a unique pointer */
-    comm->balanceRegion = ddBalanceRegionAllocate();
 
     return comm;
 }
@@ -2138,7 +2003,7 @@ static DDSystemInfo getSystemInfo(const gmx::MDLogger&              mdlog,
             real r_2b = 0;
             real r_mb = 0;
 
-            if (ddRole == DDRole::Master)
+            if (ddRole == DDRole::Main)
             {
                 dd_bonded_cg_distance(mdlog, mtop, ir, xGlobal, box, options.ddBondedChecking, &r_2b, &r_mb);
             }
@@ -2238,7 +2103,7 @@ static void checkDDGridSetup(const DDGridSetup&   ddGridSetup,
 
         gmx_fatal_collective(FARGS,
                              communicator,
-                             ddRole == DDRole::Master,
+                             ddRole == DDRole::Main,
                              "There is no domain decomposition for %d ranks that is compatible "
                              "with the given box and a minimum cell size of %g nm\n"
                              "%s\n"
@@ -2262,7 +2127,7 @@ static void checkDDGridSetup(const DDGridSetup&   ddGridSetup,
             gmx_fatal_collective(
                     FARGS,
                     communicator,
-                    ddRole == DDRole::Master,
+                    ddRole == DDRole::Main,
                     "The initial cell size (%f) is smaller than the cell size limit (%f), change "
                     "options -dd, -rdd or -rcon, see the log file for details",
                     acs,
@@ -2276,7 +2141,7 @@ static void checkDDGridSetup(const DDGridSetup&   ddGridSetup,
     {
         gmx_fatal_collective(FARGS,
                              communicator,
-                             ddRole == DDRole::Master,
+                             ddRole == DDRole::Main,
                              "The size of the domain decomposition grid (%d) does not match the "
                              "number of PP ranks (%d). The total number of ranks is %d",
                              numPPRanks,
@@ -2287,7 +2152,7 @@ static void checkDDGridSetup(const DDGridSetup&   ddGridSetup,
     {
         gmx_fatal_collective(FARGS,
                              communicator,
-                             ddRole == DDRole::Master,
+                             ddRole == DDRole::Main,
                              "The number of separate PME ranks (%d) is larger than the number of "
                              "PP ranks (%d), this is not supported.",
                              ddGridSetup.numPmeOnlyRanks,
@@ -2327,7 +2192,7 @@ static DDRankSetup getDDRankSetup(const gmx::MDLogger& mdlog,
                 ddGridSetup.numDomains[XX] * ddGridSetup.numDomains[YY] * ddGridSetup.numDomains[ZZ];
     }
 
-    if (EEL_PME(ir.coulombtype) || EVDW_PME(ir.vdwtype))
+    if (usingPme(ir.coulombtype) || usingLJPme(ir.vdwtype))
     {
         /* The following choices should match those
          * in comm_cost_est in domdec_setup.c.
@@ -2393,7 +2258,7 @@ static void set_dd_limits(const gmx::MDLogger& mdlog,
                           const t_inputrec&    ir,
                           const gmx_ddbox_t&   ddbox)
 {
-    gmx_domdec_comm_t* comm = dd->comm;
+    gmx_domdec_comm_t* comm = dd->comm.get();
     comm->ddSettings        = ddSettings;
 
     /* Initialize to GPU share count to 0, might change later */
@@ -2431,8 +2296,7 @@ static void set_dd_limits(const gmx::MDLogger& mdlog,
 
     dd->nnodes = dd->numCells[XX] * dd->numCells[YY] * dd->numCells[ZZ];
 
-    snew(comm->slb_frac, DIM);
-    if (isDlbDisabled(comm))
+    if (isDlbDisabled(comm->dlbState))
     {
         comm->slb_frac[XX] = get_slb_frac(mdlog, "x", dd->numCells[XX], options.cellSizeX);
         comm->slb_frac[YY] = get_slb_frac(mdlog, "y", dd->numCells[YY], options.cellSizeY);
@@ -2444,7 +2308,7 @@ static void set_dd_limits(const gmx::MDLogger& mdlog,
     comm->cellsize_limit = systemInfo.cellsizeLimit;
     if (systemInfo.haveInterDomainBondeds && systemInfo.increaseMultiBodyCutoff)
     {
-        if (systemInfo.filterBondedCommunication || !isDlbDisabled(comm))
+        if (systemInfo.filterBondedCommunication || !isDlbDisabled(comm->dlbState))
         {
             /* Set the bonded communication distance to halfway
              * the minimum and the maximum,
@@ -2452,7 +2316,7 @@ static void set_dd_limits(const gmx::MDLogger& mdlog,
              */
             real acs           = average_cellsize_min(ddbox, dd->numCells);
             comm->cutoff_mbody = 0.5 * (systemInfo.minCutoffForMultiBody + acs);
-            if (!isDlbDisabled(comm))
+            if (!isDlbDisabled(comm->dlbState))
             {
                 /* Check if this does not limit the scaling */
                 comm->cutoff_mbody = std::min(comm->cutoff_mbody, options.dlbScaling * acs);
@@ -2491,7 +2355,7 @@ static void set_dd_limits(const gmx::MDLogger& mdlog,
                 comm->cellsize_limit);
     }
 
-    if (ddRole == DDRole::Master)
+    if (ddRole == DDRole::Main)
     {
         check_dd_restrictions(dd, ir, mdlog);
     }
@@ -2505,7 +2369,7 @@ static void writeSettings(gmx::TextWriter*   log,
                           real               dlb_scale,
                           const gmx_ddbox_t* ddbox)
 {
-    gmx_domdec_comm_t* comm = dd->comm;
+    gmx_domdec_comm_t* comm = dd->comm.get();
 
     if (bDynLoadBal)
     {
@@ -2602,12 +2466,13 @@ static void writeSettings(gmx::TextWriter*   log,
                                     "two-body bonded interactions",
                                     "(-rdd)",
                                     std::max(comm->systemInfo.cutoff, comm->cutoff_mbody));
-            log->writeLineFormatted("%40s  %-7s %6.3f nm",
-                                    "multi-body bonded interactions",
-                                    "(-rdd)",
-                                    (comm->systemInfo.filterBondedCommunication || isDlbOn(dd->comm))
-                                            ? comm->cutoff_mbody
-                                            : std::min(comm->systemInfo.cutoff, limit));
+            log->writeLineFormatted(
+                    "%40s  %-7s %6.3f nm",
+                    "multi-body bonded interactions",
+                    "(-rdd)",
+                    (comm->systemInfo.filterBondedCommunication || isDlbOn(dd->comm->dlbState))
+                            ? comm->cutoff_mbody
+                            : std::min(comm->systemInfo.cutoff, limit));
         }
         if (haveInterDomainVsites)
         {
@@ -2632,7 +2497,7 @@ static void logSettings(const gmx::MDLogger& mdlog,
 {
     gmx::StringOutputStream stream;
     gmx::TextWriter         log(&stream);
-    writeSettings(&log, dd, mtop, ir, isDlbOn(dd->comm), dlb_scale, ddbox);
+    writeSettings(&log, dd, mtop, ir, isDlbOn(dd->comm->dlbState), dlb_scale, ddbox);
     if (dd->comm->dlbState == DlbState::offCanTurnOn)
     {
         {
@@ -2655,7 +2520,7 @@ static void set_cell_limits_dlb(const gmx::MDLogger& mdlog,
     int npulse_d_max = 0;
     int npulse_d     = 0;
 
-    gmx_domdec_comm_t* comm = dd->comm;
+    gmx_domdec_comm_t* comm = dd->comm.get();
 
     bool bNoCutOff = (inputrec.rvdw == 0 || inputrec.rcoulomb == 0);
 
@@ -2742,7 +2607,7 @@ static void set_cell_limits_dlb(const gmx::MDLogger& mdlog,
     {
         comm->cutoff_mbody = std::min(comm->systemInfo.cutoff, comm->cellsize_limit);
     }
-    if (isDlbOn(comm))
+    if (isDlbOn(comm->dlbState))
     {
         set_dlb_limits(dd);
     }
@@ -2772,10 +2637,10 @@ static void set_ddgrid_parameters(const gmx::MDLogger& mdlog,
                                   const t_inputrec&    inputrec,
                                   const gmx_ddbox_t*   ddbox)
 {
-    gmx_domdec_comm_t* comm        = dd->comm;
+    gmx_domdec_comm_t* comm        = dd->comm.get();
     DDRankSetup&       ddRankSetup = comm->ddRankSetup;
 
-    if (EEL_PME(inputrec.coulombtype) || EVDW_PME(inputrec.vdwtype))
+    if (usingPme(inputrec.coulombtype) || usingLJPme(inputrec.vdwtype))
     {
         init_ddpme(dd, &ddRankSetup.ddpme[0], 0);
         if (ddRankSetup.npmedecompdim >= 2)
@@ -2790,7 +2655,7 @@ static void set_ddgrid_parameters(const gmx::MDLogger& mdlog,
         {
             gmx_fatal_collective(FARGS,
                                  dd->mpi_comm_all,
-                                 DDMASTER(dd),
+                                 DDMAIN(dd),
                                  "Can not have separate PME ranks without PME electrostatics");
         }
     }
@@ -2799,9 +2664,16 @@ static void set_ddgrid_parameters(const gmx::MDLogger& mdlog,
     {
         fprintf(debug, "The DD cut-off is %f\n", comm->systemInfo.cutoff);
     }
-    if (!isDlbDisabled(comm))
+    if (!isDlbDisabled(comm->dlbState))
     {
         set_cell_limits_dlb(mdlog, dd, dlb_scale, inputrec, ddbox);
+    }
+
+    // Make nstDDGlobalComm the first multiple of nstlist >= c_minimumGCStepInterval
+    dd->comm->nstDDGlobalComm = sc_minimumGCStepInterval;
+    if (dd->comm->nstDDGlobalComm % inputrec.nstlist != 0)
+    {
+        dd->comm->nstDDGlobalComm += inputrec.nstlist - (dd->comm->nstDDGlobalComm % inputrec.nstlist);
     }
 
     logSettings(mdlog, dd, mtop, inputrec, dlb_scale, ddbox);
@@ -2816,7 +2688,7 @@ static void set_ddgrid_parameters(const gmx::MDLogger& mdlog,
     }
     int natoms_tot = mtop.natoms;
 
-    dd->ga2la = new gmx_ga2la_t(natoms_tot, static_cast<int>(vol_frac * natoms_tot));
+    dd->ga2la = std::make_unique<gmx_ga2la_t>(natoms_tot, static_cast<int>(vol_frac * natoms_tot));
 }
 
 /*! \brief Get some important DD parameters which can be modified by env.vars */
@@ -2896,14 +2768,14 @@ public:
          bool                              useGpuForNonbonded,
          bool                              useGpuForPme,
          bool                              useGpuForUpdate,
-         bool*                             useGpuDirectHalo,
+         bool                              useGpuDirectHalo,
          bool                              canUseGpuPmeDecomposition);
 
     //! Build the resulting DD manager
-    gmx_domdec_t* build(LocalAtomSetManager*       atomSets,
-                        const gmx_localtop_t&      localTopology,
-                        const t_state&             localState,
-                        ObservablesReducerBuilder* observablesReducerBuilder);
+    std::unique_ptr<gmx_domdec_t> build(LocalAtomSetManager*       atomSets,
+                                        const gmx_localtop_t&      localTopology,
+                                        const t_state&             localState,
+                                        ObservablesReducerBuilder* observablesReducerBuilder);
 
     //! Objects used in constructing and configuring DD
     //! {
@@ -2957,7 +2829,7 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
                                        bool                              useGpuForNonbonded,
                                        bool                              useGpuForPme,
                                        bool                              useGpuForUpdate,
-                                       bool*                             useGpuDirectHalo,
+                                       bool                              useGpuDirectHalo,
                                        bool canUseGpuPmeDecomposition) :
     mdlog_(mdlog), cr_(cr), options_(options), mtop_(mtop), ir_(ir), notifiers_(notifiers)
 {
@@ -2972,7 +2844,7 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
     }
 
     systemInfo_ = getSystemInfo(mdlog_,
-                                MASTER(cr_) ? DDRole::Master : DDRole::Agent,
+                                MAIN(cr_) ? DDRole::Main : DDRole::Agent,
                                 cr->mpiDefaultCommunicator,
                                 options_,
                                 mtop_,
@@ -2993,10 +2865,20 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
 
     /* Checks for validity of requested Ranks setup */
     checkForValidRankCountRequests(numRanksRequested,
-                                   EEL_PME(ir_.coulombtype) | EVDW_PME(ir_.vdwtype),
+                                   usingPme(ir_.coulombtype) || usingLJPme(ir_.vdwtype),
                                    options_.numPmeRanks,
                                    separatePmeRanksPermitted,
                                    checkForLargePrimeFactors);
+
+    // Now that we know whether GPU-direct halos actually will be used, we might have to modify DLB
+    if (!isDlbDisabled(ddSettings_.initialDlbState) && useGpuForUpdate && useGpuDirectHalo)
+    {
+        ddSettings_.initialDlbState = DlbState::offForever;
+        GMX_LOG(mdlog.info)
+                .appendText(
+                        "Disabling dynamic load balancing; unsupported with GPU communication + "
+                        "update.");
+    }
 
     // DD grid setup uses a more different cell size limit for
     // automated setup than the one in systemInfo_. The latter is used
@@ -3009,7 +2891,7 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
                                         systemInfo_.cellsizeLimit,
                                         numRanksRequested);
     ddGridSetup_ = getDDGridSetup(mdlog_,
-                                  MASTER(cr_) ? DDRole::Master : DDRole::Agent,
+                                  MAIN(cr_) ? DDRole::Main : DDRole::Agent,
                                   cr->mpiDefaultCommunicator,
                                   numRanksRequested,
                                   options_,
@@ -3023,7 +2905,7 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
                                   xGlobal,
                                   &ddbox_);
     checkDDGridSetup(ddGridSetup_,
-                     MASTER(cr_) ? DDRole::Master : DDRole::Agent,
+                     MAIN(cr_) ? DDRole::Main : DDRole::Agent,
                      cr->mpiDefaultCommunicator,
                      cr->sizeOfDefaultCommunicator,
                      options_,
@@ -3031,59 +2913,6 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
                      systemInfo_,
                      gridSetupCellsizeLimit,
                      ddbox_);
-
-    // GPU-direct communication presently only works with a single pulse in the 2nd/3rd dimensions.
-    // Check that the domains are large enough (including a margin for scaling), and disable it otherwise.
-    if (*useGpuDirectHalo)
-    {
-        // Since the simulation box can distort (a lot) during a long simulation,
-        // we need a large margin here to ensure that we will never end up later
-        // triggering the assert condition and the simulation just dying. Instead
-        // of adjusting all the dimensions of the box, we simply use a margin of
-        // on the cutoff distance to ensure the domains are large enough. Without
-        // pressure coupling no margin is needed, for isotropic coupliing it can
-        // be small (10%), and for all other cases we want a factor 2.
-        float marginFactor;
-        if (ir_.epc == PressureCoupling::No)
-        {
-            marginFactor = 1.0;
-        }
-        else if (ir_.epct == PressureCouplingType::Isotropic)
-        {
-            marginFactor = 1.1;
-        }
-        else
-        {
-            marginFactor = 2.0;
-        }
-        const IVec numPulses = getNumCommunicationPulses(
-                ddGridSetup_.numDomains, ir, box, xGlobal, marginFactor * systemInfo_.cutoff);
-
-        // We don't need to check the first dimension;
-        // there we can have multiple pulses with GPU-direct halos.
-        for (int dimIndex = 1; dimIndex < ddGridSetup_.numDDDimensions; dimIndex++)
-        {
-            const int dim = ddGridSetup_.ddDimensions[dimIndex];
-
-            if (numPulses[dim] > 1)
-            {
-                *useGpuDirectHalo = false;
-                GMX_LOG(mdlog.info)
-                        .appendText(
-                                "Disabling GPU-direct halo communication; domains are too small.");
-            }
-        }
-    }
-
-    // Now that we know whether GPU-direct halos actually will be used, we might have to modify DLB
-    if (!isDlbDisabled(ddSettings_.initialDlbState) && useGpuForUpdate && *useGpuDirectHalo)
-    {
-        ddSettings_.initialDlbState = DlbState::offForever;
-        GMX_LOG(mdlog.info)
-                .appendText(
-                        "Disabling dynamic load balancing; unsupported with GPU communication + "
-                        "update.");
-    }
 
     cr_->npmenodes = ddGridSetup_.numPmeOnlyRanks;
 
@@ -3095,12 +2924,12 @@ DomainDecompositionBuilder::Impl::Impl(const MDLogger&                   mdlog,
             mdlog_, ddSettings_, options_.rankOrder, ddRankSetup_, cr_, ddCellIndex_, &pmeRanks_);
 }
 
-gmx_domdec_t* DomainDecompositionBuilder::Impl::build(LocalAtomSetManager*  atomSets,
-                                                      const gmx_localtop_t& localTopology,
-                                                      const t_state&        localState,
-                                                      ObservablesReducerBuilder* observablesReducerBuilder)
+std::unique_ptr<gmx_domdec_t> DomainDecompositionBuilder::Impl::build(LocalAtomSetManager* atomSets,
+                                                                      const gmx_localtop_t& localTopology,
+                                                                      const t_state& localState,
+                                                                      ObservablesReducerBuilder* observablesReducerBuilder)
 {
-    gmx_domdec_t* dd = new gmx_domdec_t(ir_);
+    auto dd = std::make_unique<gmx_domdec_t>(ir_);
 
     copy_ivec(ddCellIndex_, dd->ci);
 
@@ -3110,8 +2939,8 @@ gmx_domdec_t* DomainDecompositionBuilder::Impl::build(LocalAtomSetManager*  atom
     dd->comm->cartesianRankSetup = cartSetup_;
 
     set_dd_limits(mdlog_,
-                  MASTER(cr_) ? DDRole::Master : DDRole::Agent,
-                  dd,
+                  MAIN(cr_) ? DDRole::Main : DDRole::Agent,
+                  dd.get(),
                   options_,
                   ddSettings_,
                   systemInfo_,
@@ -3121,13 +2950,13 @@ gmx_domdec_t* DomainDecompositionBuilder::Impl::build(LocalAtomSetManager*  atom
                   ir_,
                   ddbox_);
 
-    setupGroupCommunication(mdlog_, ddSettings_, pmeRanks_, cr_, mtop_.natoms, dd);
+    setupGroupCommunication(mdlog_, ddSettings_, pmeRanks_, cr_, mtop_.natoms, dd.get());
 
     if (thisRankHasDuty(cr_, DUTY_PP))
     {
-        set_ddgrid_parameters(mdlog_, dd, options_.dlbScaling, mtop_, ir_, &ddbox_);
+        set_ddgrid_parameters(mdlog_, dd.get(), options_.dlbScaling, mtop_, ir_, &ddbox_);
 
-        setup_neighbor_relations(dd);
+        setup_neighbor_relations(dd.get());
     }
 
     /* Set overallocation to avoid frequent reallocation of arrays */
@@ -3137,6 +2966,11 @@ gmx_domdec_t* DomainDecompositionBuilder::Impl::build(LocalAtomSetManager*  atom
 
     dd->localTopologyChecker = std::make_unique<LocalTopologyChecker>(
             mdlog_, cr_, mtop_, localTopology, localState, dd->comm->systemInfo.useUpdateGroups, observablesReducerBuilder);
+
+#if GMX_MPI
+    MPI_Type_contiguous(DIM, GMX_MPI_REAL, &dd->comm->mpiRVec);
+    MPI_Type_commit(&dd->comm->mpiRVec);
+#endif
 
     return dd;
 }
@@ -3156,7 +2990,7 @@ DomainDecompositionBuilder::DomainDecompositionBuilder(const MDLogger&          
                                                        const bool           useGpuForNonbonded,
                                                        const bool           useGpuForPme,
                                                        bool                 useGpuForUpdate,
-                                                       bool*                useGpuDirectHalo,
+                                                       bool                 useGpuDirectHalo,
                                                        const bool canUseGpuPmeDecomposition) :
     impl_(new Impl(mdlog,
                    cr,
@@ -3178,10 +3012,10 @@ DomainDecompositionBuilder::DomainDecompositionBuilder(const MDLogger&          
 {
 }
 
-gmx_domdec_t* DomainDecompositionBuilder::build(LocalAtomSetManager*       atomSets,
-                                                const gmx_localtop_t&      localTopology,
-                                                const t_state&             localState,
-                                                ObservablesReducerBuilder* observablesReducerBuilder)
+std::unique_ptr<gmx_domdec_t> DomainDecompositionBuilder::build(LocalAtomSetManager*  atomSets,
+                                                                const gmx_localtop_t& localTopology,
+                                                                const t_state&        localState,
+                                                                ObservablesReducerBuilder* observablesReducerBuilder)
 {
     return impl_->build(atomSets, localTopology, localState, observablesReducerBuilder);
 }
@@ -3209,27 +3043,6 @@ static int getNumCommunicationPulsesForDim(const gmx_ddbox_t& ddbox,
     return 1 + static_cast<int>(communicationDistance * inverseOfDomainSize * ddbox.skew_fac[dim]);
 }
 
-static gmx::IVec getNumCommunicationPulses(const ivec&                    numDomains,
-                                           const t_inputrec&              ir,
-                                           const matrix                   box,
-                                           gmx::ArrayRef<const gmx::RVec> xGlobal,
-                                           const real                     communicationDistance)
-{
-    const gmx_ddbox_t ddbox = get_ddbox(numDomains, ir, box, xGlobal);
-
-    gmx::IVec numPulses = { 0, 0, 0 };
-    for (int dim = 0; dim < DIM; dim++)
-    {
-        if (numDomains[dim] > 1)
-        {
-            numPulses[dim] = getNumCommunicationPulsesForDim(
-                    ddbox, dim, numDomains[dim], inputrecDynamicBox(&ir), communicationDistance);
-        }
-    }
-
-    return numPulses;
-}
-
 /* Returns whether a cutoff distance of \p cutoffRequested satisfies
  * all limitations of the domain decomposition and thus could be used
  */
@@ -3255,7 +3068,7 @@ static gmx_bool test_dd_cutoff(const t_commrec*               cr,
         const int np = getNumCommunicationPulsesForDim(
                 ddbox, dim, dd->numCells[dim], dd->unitCellInfo.ddBoxIsDynamic, cutoffRequested);
 
-        if (!isDlbDisabled(dd->comm) && (dim < ddbox.npbcdim) && (dd->comm->cd[d].np_dlb > 0))
+        if (!isDlbDisabled(dd->comm->dlbState) && (dim < ddbox.npbcdim) && (dd->comm->cd[d].np_dlb > 0))
         {
             if (np > dd->comm->cd[d].np_dlb)
             {
@@ -3283,12 +3096,12 @@ static gmx_bool test_dd_cutoff(const t_commrec*               cr,
         }
     }
 
-    if (!isDlbDisabled(dd->comm))
+    if (!isDlbDisabled(dd->comm->dlbState))
     {
         /* If DLB is not active yet, we don't need to check the grid jumps.
          * Actually we shouldn't, because then the grid jump data is not set.
          */
-        if (isDlbOn(dd->comm) && gmx::check_grid_jump(0, dd, cutoffRequested, &ddbox, FALSE))
+        if (isDlbOn(dd->comm->dlbState) && gmx::check_grid_jump(0, dd, cutoffRequested, &ddbox, FALSE))
         {
             LocallyLimited = 1;
         }
@@ -3387,7 +3200,7 @@ void dd_init_local_state(const gmx_domdec_t& dd, const t_state* state_global, t_
 {
     std::array<int, 5> buf;
 
-    if (DDMASTER(dd))
+    if (DDMAIN(dd))
     {
         buf[0] = state_global->flags;
         buf[1] = state_global->ngtc;

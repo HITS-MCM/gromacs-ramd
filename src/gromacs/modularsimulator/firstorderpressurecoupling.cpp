@@ -47,14 +47,15 @@
 #include "gromacs/mdlib/mdatoms.h"
 #include "gromacs/mdlib/stat.h"
 #include "gromacs/mdtypes/commrec.h"
+#include "gromacs/mdtypes/group.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/pbcutil/boxutilities.h"
 
 #include "energydata.h"
-#include "statepropagatordata.h"
 #include "simulatoralgorithm.h"
+#include "statepropagatordata.h"
 
 namespace gmx
 {
@@ -62,21 +63,27 @@ namespace gmx
 template<PressureCoupling pressureCouplingType>
 void FirstOrderPressureCoupling::calculateScalingMatrix(Step step)
 {
+    const auto& ekindata         = *energyData_->ekindata();
     const auto* pressure         = energyData_->pressure(step);
     const auto* forceVirial      = energyData_->forceVirial(step);
     const auto* constraintVirial = energyData_->constraintVirial(step);
     const auto* box              = statePropagatorData_->constBox();
 
+    const real ensembleTemperature =
+            (haveEnsembleTemperature(*inputrec_) ? ekindata.currentEnsembleTemperature() : 0.0_real);
+
     previousStepConservedEnergyContribution_ = conservedEnergyContribution_;
     pressureCouplingCalculateScalingMatrix<pressureCouplingType>(fplog_,
                                                                  step,
-                                                                 inputrec_,
+                                                                 inputrec_->pressureCouplingOptions,
+                                                                 inputrec_->ld_seed,
+                                                                 ensembleTemperature,
                                                                  couplingTimeStep_,
                                                                  pressure,
                                                                  box,
                                                                  forceVirial,
                                                                  constraintVirial,
-                                                                 boxScalingMatrix_,
+                                                                 &boxScalingMatrix_,
                                                                  &conservedEnergyContribution_);
     conservedEnergyContributionStep_ = step;
 }
@@ -99,8 +106,19 @@ void FirstOrderPressureCoupling::scaleBoxAndCoordinates()
     const int startAtom = 0;
     const int numAtoms  = mdAtoms_->mdatoms()->homenr;
 
-    pressureCouplingScaleBoxAndCoordinates<pressureCouplingType>(
-            inputrec_, boxScalingMatrix_, box, boxRel_, startAtom, numAtoms, positions, velocities, cFreeze, nrnb_, scaleCoordinates);
+    pressureCouplingScaleBoxAndCoordinates<pressureCouplingType>(inputrec_->pressureCouplingOptions,
+                                                                 inputrec_->deform,
+                                                                 inputrec_->opts.nFreeze,
+                                                                 boxScalingMatrix_,
+                                                                 box,
+                                                                 boxRel_,
+                                                                 startAtom,
+                                                                 numAtoms,
+                                                                 positions,
+                                                                 velocities,
+                                                                 cFreeze,
+                                                                 nrnb_,
+                                                                 scaleCoordinates);
 }
 
 void FirstOrderPressureCoupling::scheduleTask(Step step, Time /*unused*/, const RegisterRunFunction& registerRunFunction)
@@ -126,10 +144,11 @@ void FirstOrderPressureCoupling::scheduleTask(Step step, Time /*unused*/, const 
 
 void FirstOrderPressureCoupling::elementSetup()
 {
-    if (inputrecPreserveShape(inputrec_))
+    if (shouldPreserveBoxShape(inputrec_->pressureCouplingOptions, inputrec_->deform))
     {
-        auto*     box  = statePropagatorData_->box();
-        const int ndim = inputrec_->epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
+        auto*     box = statePropagatorData_->box();
+        const int ndim =
+                inputrec_->pressureCouplingOptions.epct == PressureCouplingType::SemiIsotropic ? 2 : 3;
         do_box_rel(ndim, inputrec_->deform, boxRel_, box, true);
     }
 }
@@ -173,7 +192,7 @@ void FirstOrderPressureCoupling::doCheckpointData(CheckpointData<operation>* che
 void FirstOrderPressureCoupling::saveCheckpointState(std::optional<WriteCheckpointData> checkpointData,
                                                      const t_commrec*                   cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Write>(&checkpointData.value());
     }
@@ -182,7 +201,7 @@ void FirstOrderPressureCoupling::saveCheckpointState(std::optional<WriteCheckpoi
 void FirstOrderPressureCoupling::restoreCheckpointState(std::optional<ReadCheckpointData> checkpointData,
                                                         const t_commrec*                  cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Read>(&checkpointData.value());
     }
@@ -209,7 +228,7 @@ FirstOrderPressureCoupling::FirstOrderPressureCoupling(int                  coup
                                                        const MDAtoms*       mdAtoms,
                                                        t_nrnb*              nrnb,
                                                        ReportPreviousStepConservedEnergy reportPreviousStepConservedEnergy) :
-    pressureCouplingType_(inputrec->epc),
+    pressureCouplingType_(inputrec->pressureCouplingOptions.epc),
     couplingTimeStep_(couplingTimeStep),
     couplingFrequency_(couplingFrequency),
     couplingOffset_(couplingOffset),
@@ -243,9 +262,10 @@ ISimulatorElement* FirstOrderPressureCoupling::getElementPointerImpl(
         ReportPreviousStepConservedEnergy reportPreviousStepConservedEnergy)
 {
     return builderHelper->storeElement(std::make_unique<FirstOrderPressureCoupling>(
-            legacySimulatorData->inputrec->nstpcouple,
+            legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple,
             offset,
-            legacySimulatorData->inputrec->delta_t * legacySimulatorData->inputrec->nstpcouple,
+            legacySimulatorData->inputrec->delta_t
+                    * legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple,
             statePropagatorData,
             energyData,
             legacySimulatorData->fplog,

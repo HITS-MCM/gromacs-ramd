@@ -45,8 +45,8 @@
 #include "gromacs/mdlib/constr.h"
 #include "gromacs/mdlib/coupling.h"
 #include "gromacs/mdlib/enerdata_utils.h"
-#include "gromacs/mdlib/mdatoms.h"
 #include "gromacs/mdlib/md_support.h"
+#include "gromacs/mdlib/mdatoms.h"
 #include "gromacs/mdlib/stat.h"
 #include "gromacs/mdlib/tgroup.h"
 #include "gromacs/mdlib/update.h"
@@ -87,7 +87,6 @@ void integrateVVFirstStep(int64_t                   step,
                           tensor                    shake_vir,
                           tensor                    force_vir,
                           tensor                    pres,
-                          matrix                    M,
                           bool                      do_log,
                           bool                      do_ene,
                           bool                      bCalcEner,
@@ -133,26 +132,27 @@ void integrateVVFirstStep(int64_t                   step,
                            state,
                            total_vir,
                            mdatoms->homenr,
-                           mdatoms->cTC ? gmx::arrayRefFromArray(mdatoms->cTC, mdatoms->nr)
-                                        : gmx::ArrayRef<const unsigned short>(),
-                           gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
+                           mdatoms->cTC,
+                           mdatoms->invmass,
                            MassQ,
                            trotter_seq,
                            TrotterSequence::One);
         }
 
+        // This is not used when updating under VV
+        gmx::Matrix3x3 dummyParrinelloRahmanM;
         upd->update_coords(*ir,
                            step,
                            mdatoms->homenr,
                            mdatoms->havePartiallyFrozenAtoms,
-                           gmx::arrayRefFromArray(mdatoms->ptype, mdatoms->nr),
-                           gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
-                           gmx::arrayRefFromArray(mdatoms->invMassPerDim, mdatoms->nr),
+                           mdatoms->ptype,
+                           mdatoms->invmass,
+                           mdatoms->invMassPerDim,
                            state,
                            f->view().forceWithPadding(),
                            fcdata,
                            ekind,
-                           M,
+                           dummyParrinelloRahmanM,
                            etrtVELOCITY1,
                            cr,
                            constr != nullptr);
@@ -236,9 +236,8 @@ void integrateVVFirstStep(int64_t                   step,
                                state,
                                total_vir,
                                mdatoms->homenr,
-                               mdatoms->cTC ? gmx::arrayRefFromArray(mdatoms->cTC, mdatoms->nr)
-                                            : gmx::ArrayRef<const unsigned short>(),
-                               gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
+                               mdatoms->cTC,
+                               mdatoms->invmass,
                                MassQ,
                                trotter_seq,
                                TrotterSequence::Two);
@@ -302,7 +301,13 @@ void integrateVVFirstStep(int64_t                   step,
     }
 
     /* compute the conserved quantity */
-    *saved_conserved_quantity = NPT_energy(ir, state, MassQ);
+    *saved_conserved_quantity = NPT_energy(ir->pressureCouplingOptions,
+                                           ir->etc,
+                                           gmx::constArrayRefFromArray(ir->opts.nrdf, ir->opts.ngtc),
+                                           *ekind,
+                                           inputrecNvtTrotter(ir) || inputrecNptTrotter(ir),
+                                           state,
+                                           MassQ);
     if (ir->eI == IntegrationAlgorithm::VV)
     {
         *last_ekin = enerd->term[F_EKIN];
@@ -339,7 +344,6 @@ void integrateVVSecondStep(int64_t                   step,
                            tensor                    shake_vir,
                            tensor                    force_vir,
                            tensor                    pres,
-                           matrix                    M,
                            matrix                    lastbox,
                            bool                      do_log,
                            bool                      do_ene,
@@ -354,19 +358,21 @@ void integrateVVSecondStep(int64_t                   step,
                            t_nrnb*                                                  nrnb,
                            gmx_wallcycle*                                           wcycle)
 {
+    // This is not used when updating under VV
+    gmx::Matrix3x3 dummyParrinelloRahmanM;
     /* velocity half-step update */
     upd->update_coords(*ir,
                        step,
                        mdatoms->homenr,
                        mdatoms->havePartiallyFrozenAtoms,
-                       gmx::arrayRefFromArray(mdatoms->ptype, mdatoms->nr),
-                       gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
-                       gmx::arrayRefFromArray(mdatoms->invMassPerDim, mdatoms->nr),
+                       mdatoms->ptype,
+                       mdatoms->invmass,
+                       mdatoms->invMassPerDim,
                        state,
                        f->view().forceWithPadding(),
                        fcdata,
                        ekind,
-                       M,
+                       dummyParrinelloRahmanM,
                        etrtVELOCITY2,
                        cr,
                        constr != nullptr);
@@ -392,14 +398,14 @@ void integrateVVSecondStep(int64_t                   step,
                        step,
                        mdatoms->homenr,
                        mdatoms->havePartiallyFrozenAtoms,
-                       gmx::arrayRefFromArray(mdatoms->ptype, mdatoms->nr),
-                       gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
-                       gmx::arrayRefFromArray(mdatoms->invMassPerDim, mdatoms->nr),
+                       mdatoms->ptype,
+                       mdatoms->invmass,
+                       mdatoms->invMassPerDim,
                        state,
                        f->view().forceWithPadding(),
                        fcdata,
                        ekind,
-                       M,
+                       dummyParrinelloRahmanM,
                        etrtPOSITION,
                        cr,
                        constr != nullptr);
@@ -409,19 +415,8 @@ void integrateVVSecondStep(int64_t                   step,
     constrain_coordinates(
             constr, do_log, do_ene, step, state, upd->xp()->arrayRefWithPadding(), dvdl_constr, bCalcVir, shake_vir);
 
-    upd->update_sd_second_half(*ir,
-                               step,
-                               dvdl_constr,
-                               mdatoms->homenr,
-                               gmx::arrayRefFromArray(mdatoms->ptype, mdatoms->nr),
-                               gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
-                               state,
-                               cr,
-                               nrnb,
-                               wcycle,
-                               constr,
-                               do_log,
-                               do_ene);
+    upd->update_sd_second_half(
+            *ir, step, dvdl_constr, mdatoms->homenr, mdatoms->ptype, mdatoms->invmass, state, cr, nrnb, wcycle, constr, do_log, do_ene);
     upd->finish_update(
             *ir, mdatoms->havePartiallyFrozenAtoms, mdatoms->homenr, state, wcycle, constr != nullptr);
 
@@ -460,9 +455,8 @@ void integrateVVSecondStep(int64_t                   step,
                        state,
                        total_vir,
                        mdatoms->homenr,
-                       mdatoms->cTC ? gmx::arrayRefFromArray(mdatoms->cTC, mdatoms->nr)
-                                    : gmx::ArrayRef<const unsigned short>(),
-                       gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
+                       mdatoms->cTC,
+                       mdatoms->invmass,
                        MassQ,
                        trotter_seq,
                        TrotterSequence::Four);
@@ -473,14 +467,14 @@ void integrateVVSecondStep(int64_t                   step,
                            step,
                            mdatoms->homenr,
                            mdatoms->havePartiallyFrozenAtoms,
-                           gmx::arrayRefFromArray(mdatoms->ptype, mdatoms->nr),
-                           gmx::arrayRefFromArray(mdatoms->invmass, mdatoms->nr),
-                           gmx::arrayRefFromArray(mdatoms->invMassPerDim, mdatoms->nr),
+                           mdatoms->ptype,
+                           mdatoms->invmass,
+                           mdatoms->invMassPerDim,
                            state,
                            f->view().forceWithPadding(),
                            fcdata,
                            ekind,
-                           M,
+                           dummyParrinelloRahmanM,
                            etrtPOSITION,
                            cr,
                            constr != nullptr);

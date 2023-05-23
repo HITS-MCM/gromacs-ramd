@@ -64,27 +64,23 @@ MockThreadAffinityAccess::~MockThreadAffinityAccess() {}
 
 ThreadAffinityTestHelper::ThreadAffinityTestHelper()
 {
-    snew(cr_, 1);
-    cr_->nnodes = gmx_node_num();
-    cr_->nodeid = gmx_node_rank();
-    // Default communicator is needed for [SIM]MASTER(cr) to work
+    cr_.nnodes = gmx_node_num();
+    cr_.nodeid = gmx_node_rank();
+    // Default communicator is needed for [SIM]MAIN(cr) to work
     // TODO: Should get cleaned up once thread affinity works with
     //       communicators rather than the full cr (part of #2395)
-    cr_->sizeOfDefaultCommunicator = gmx_node_num();
-    cr_->rankInDefaultCommunicator = gmx_node_rank();
-    cr_->duty                      = DUTY_PP;
+    cr_.sizeOfDefaultCommunicator = gmx_node_num();
+    cr_.rankInDefaultCommunicator = gmx_node_rank();
+    cr_.duty                      = DUTY_PP;
 #if GMX_MPI
-    cr_->mpi_comm_mysim = MPI_COMM_WORLD;
+    cr_.mpi_comm_mysim = MPI_COMM_WORLD;
 #endif
     hwOpt_.threadAffinity      = ThreadAffinity::Auto;
     hwOpt_.totNumThreadsIsAuto = false;
     physicalNodeId_            = 0;
 }
 
-ThreadAffinityTestHelper::~ThreadAffinityTestHelper()
-{
-    sfree(cr_);
-}
+ThreadAffinityTestHelper::~ThreadAffinityTestHelper() = default;
 
 void ThreadAffinityTestHelper::setLogicalProcessorCount(int logicalProcessorCount)
 {

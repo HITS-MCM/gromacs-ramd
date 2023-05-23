@@ -33,27 +33,29 @@
 
 # Set up the module library
 add_library(topology INTERFACE)
-
-file(GLOB TOPOLOGY_SOURCES *.cpp)
+set(TOPOLOGY_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/atomprop.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/atoms.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/atomsbuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/block.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/exclusionblocks.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/forcefieldparameters.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/idef.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/ifunc.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/index.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/invblock.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/mtop_atomloops.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/mtop_util.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/residuetypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/symtab.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/topology.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/topsort.cpp
+        )
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${TOPOLOGY_SOURCES} PARENT_SCOPE)
 
-if(GMX_INSTALL_LEGACY_API)
-  install(FILES
-	  atomprop.h
-	  atoms.h
-	  block.h
-	  forcefieldparameters.h
-	  idef.h
-	  ifunc.h
-	  index.h
-	  symtab.h
-	  topology.h
-	  DESTINATION include/gromacs/topology)
-endif()
-
 # Source files have the following private module dependencies.
-target_link_libraries(options PRIVATE
-		)
+target_link_libraries(topology PRIVATE
+        )
 
 # Public interface for modules, including dependencies and interfaces
 #target_include_directories(topology PUBLIC
@@ -68,13 +70,6 @@ target_link_libraries(topology INTERFACE
 #target_link_libraries(topology PUBLIC legacy_api)
 #target_link_libraries(topology PRIVATE common)
 
-# Module dependencies
-# topology interfaces convey transitive dependence on these modules.
-#target_link_libraries(topology PUBLIC
-target_link_libraries(topology INTERFACE
-                      utility
-        )
-
 if (BUILD_TESTING)
-	add_subdirectory(tests)
+    add_subdirectory(tests)
 endif()

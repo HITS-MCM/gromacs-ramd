@@ -52,6 +52,7 @@ set_target_properties(gmxapi PROPERTIES POSITION_INDEPENDENT_CODE ON)
 gmx_target_compile_options(gmxapi)
 target_compile_definitions(gmxapi PRIVATE HAVE_CONFIG_H)
 target_include_directories(gmxapi SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+target_compile_definitions(gmxapi PRIVATE TMPI_USE_VISIBILITY)
 # Should be possible to change this when resolving #3290
 target_include_directories(gmxapi SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/src/external)
 
@@ -84,8 +85,9 @@ set_target_properties(gmxapi PROPERTIES
 
 target_link_libraries(gmxapi PRIVATE libgromacs)
 target_link_libraries(gmxapi PRIVATE common)
-# TODO: Explicitly link specific modules: mdlib, mdtypes, utility, commandline
+# TODO: Remove `legacy_modules` once specific modules are explicitly linked.
 target_link_libraries(gmxapi PRIVATE legacy_modules)
+target_link_libraries(gmxapi PRIVATE math utility)
 
 
 ################################################
@@ -107,6 +109,10 @@ install(TARGETS gmxapi
 install(EXPORT gmxapi
         NAMESPACE Gromacs::
         DESTINATION share/cmake/gmxapi/
+        # If we use components for clients to ask for an MPI-aware version,
+        # we might want to export the MPI-related details they need to help
+        # with compatibility.
+        # EXPORT_LINK_INTERFACE_LIBRARIES
         )
 add_library(Gromacs::gmxapi ALIAS gmxapi )
 
@@ -123,6 +129,7 @@ find_dependency(gromacs${GMX_LIBS_SUFFIX} ${GMX_VERSION} CONFIG)"
     )
 endif()
 get_target_property(_mpi Gromacs::gmxapi MPI)
+# TODO(#4334): Rename to gmxapiConfig.cmake to avoid globbing conflict when <name>.cmake includes <name>-*.cmake.
 configure_package_config_file(
     cmake/gmxapi-config.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/cmake/gmxapi-config.cmake"
@@ -131,6 +138,7 @@ configure_package_config_file(
 unset(_mpi)
 unset(_gmxapi_find_dependencies)
 get_target_property(GMXAPI_RELEASE gmxapi RELEASE)
+# TODO(#4334): Rename to gmxapiConfigVersion.cmake to avoid globbing conflict when <name>.cmake includes <name>-*.cmake.
 write_basic_package_version_file(
     ${CMAKE_CURRENT_BINARY_DIR}/cmake/gmxapi-config-version.cmake
     VERSION ${GMXAPI_RELEASE}

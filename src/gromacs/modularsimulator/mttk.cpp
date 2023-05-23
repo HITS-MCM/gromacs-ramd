@@ -42,23 +42,23 @@
 
 #include "mttk.h"
 
-#include "gromacs/mdtypes/commrec.h"
 #include "gromacs/domdec/domdec_network.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/coupling.h"
 #include "gromacs/mdlib/stat.h"
-#include "gromacs/topology/ifunc.h"
-#include "gromacs/mdtypes/inputrec.h"
-#include "gromacs/mdtypes/group.h"
+#include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/enerdata.h"
+#include "gromacs/mdtypes/group.h"
+#include "gromacs/mdtypes/inputrec.h"
+#include "gromacs/topology/ifunc.h"
 
 #include "energydata.h"
-#include "velocityscalingtemperaturecoupling.h"
 #include "nosehooverchains.h"
 #include "simulatoralgorithm.h"
 #include "trotterhelperfunctions.h"
+#include "velocityscalingtemperaturecoupling.h"
 
 namespace gmx
 {
@@ -70,8 +70,9 @@ void MttkData::build(LegacySimulatorData*                    legacySimulatorData
                      const MttkPropagatorConnectionDetails&  mttkPropagatorConnectionDetails)
 {
     // Uses reference temperature of first T-group
-    const real referenceTemperature = legacySimulatorData->inputrec->opts.ref_t[0];
-    const real referencePressure    = trace(legacySimulatorData->inputrec->ref_p) / DIM;
+    const real ensembleTemperature = constantEnsembleTemperature(*legacySimulatorData->inputrec);
+    const real referencePressure =
+            ::trace(legacySimulatorData->inputrec->pressureCouplingOptions.ref_p) / DIM;
     // Weights are set based on initial volume
     real initialVolume = det(statePropagatorData->constBox());
 
@@ -80,7 +81,7 @@ void MttkData::build(LegacySimulatorData*                    legacySimulatorData
     // TODO: Make sure we have a valid state in statePropagatorData at all times (#3421)
     if (haveDDAtomOrdering(*legacySimulatorData->cr))
     {
-        if (MASTER(legacySimulatorData->cr))
+        if (MAIN(legacySimulatorData->cr))
         {
             initialVolume = det(legacySimulatorData->state_global->box);
         }
@@ -107,14 +108,15 @@ void MttkData::build(LegacySimulatorData*                    legacySimulatorData
 
     builderHelper->storeSimulationData(
             MttkData::dataID(),
-            MttkData(referenceTemperature,
+            MttkData(ensembleTemperature,
                      referencePressure,
-                     legacySimulatorData->inputrec->nstpcouple * legacySimulatorData->inputrec->delta_t,
-                     legacySimulatorData->inputrec->tau_p,
+                     legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple
+                             * legacySimulatorData->inputrec->delta_t,
+                     legacySimulatorData->inputrec->pressureCouplingOptions.tau_p,
                      initialVolume,
                      legacySimulatorData->inputrec->opts.nrdf[0],
                      legacySimulatorData->inputrec->delta_t,
-                     legacySimulatorData->inputrec->compress,
+                     legacySimulatorData->inputrec->pressureCouplingOptions.compress,
                      statePropagatorData,
                      mttkPropagatorConnection));
     auto* ptrToDataObject = builderHelper->simulationData<MttkData>(MttkData::dataID()).value();
@@ -135,7 +137,7 @@ std::string MttkData::dataID()
     return "MttkData";
 }
 
-MttkData::MttkData(real                       referenceTemperature,
+MttkData::MttkData(real                       ensembleTemperature,
                    real                       referencePressure,
                    real                       couplingTimeStep,
                    real                       couplingTime,
@@ -147,7 +149,7 @@ MttkData::MttkData(real                       referenceTemperature,
                    MttkPropagatorConnection*  mttkPropagatorConnection) :
     couplingTimeStep_(couplingTimeStep),
     etaVelocity_(0.0),
-    invMass_((c_presfac * trace(compressibility) * c_boltz * referenceTemperature)
+    invMass_((c_presfac * ::trace(compressibility) * c_boltz * ensembleTemperature)
              / (DIM * initialVolume * gmx::square(couplingTime / M_2PI))),
     etaVelocityTime_(0.0),
     temperatureCouplingIntegral_(0.0),
@@ -156,7 +158,7 @@ MttkData::MttkData(real                       referenceTemperature,
     boxVelocity_{ { 0 } },
     numDegreesOfFreedom_(numDegreesOfFreedom),
     simulationTimeStep_(simulationTimeStep),
-    referenceTemperature_(referenceTemperature),
+    ensembleTemperature_(ensembleTemperature),
     statePropagatorData_(statePropagatorData),
     mttkPropagatorConnection_(mttkPropagatorConnection)
 {
@@ -260,8 +262,8 @@ void MttkData::updateReferenceTemperature(real temperature,
 {
     // Currently, we don't know about any temperature change algorithms, so we assert this never gets called
     GMX_ASSERT(false, "MttkData: Unknown ReferenceTemperatureChangeAlgorithm.");
-    invMass_ *= temperature / referenceTemperature_;
-    referenceTemperature_ = temperature;
+    invMass_ *= temperature / ensembleTemperature_;
+    ensembleTemperature_ = temperature;
 }
 
 namespace
@@ -294,7 +296,7 @@ void MttkData::doCheckpointData(CheckpointData<operation>* checkpointData)
 
 void MttkData::saveCheckpointState(std::optional<WriteCheckpointData> checkpointData, const t_commrec* cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Write>(&checkpointData.value());
     }
@@ -302,7 +304,7 @@ void MttkData::saveCheckpointState(std::optional<WriteCheckpointData> checkpoint
 
 void MttkData::restoreCheckpointState(std::optional<ReadCheckpointData> checkpointData, const t_commrec* cr)
 {
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         doCheckpointData<CheckpointDataOperation::Read>(&checkpointData.value());
     }
@@ -610,7 +612,8 @@ ISimulatorElement* MttkElement::getElementPointerImpl(
     auto* element = static_cast<MttkElement*>(builderHelper->storeElement(std::make_unique<MttkElement>(
             legacySimulatorData->inputrec->nsttcouple,
             offset,
-            legacySimulatorData->inputrec->delta_t * legacySimulatorData->inputrec->nstpcouple / 2,
+            legacySimulatorData->inputrec->delta_t
+                    * legacySimulatorData->inputrec->pressureCouplingOptions.nstpcouple / 2,
             scheduleOnInitStep,
             legacySimulatorData->inputrec->init_step,
             statePropagatorData,

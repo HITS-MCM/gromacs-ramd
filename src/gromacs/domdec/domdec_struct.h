@@ -51,6 +51,7 @@
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/topology/block.h"
+#include "gromacs/topology/idef.h"
 #include "gromacs/utility/gmxmpi.h"
 #include "gromacs/utility/range.h"
 #include "gromacs/utility/real.h"
@@ -171,10 +172,10 @@ struct gmx_domdec_t
     int      nnodes       = 1;
     MPI_Comm mpi_comm_all = MPI_COMM_NULL;
     /* The local DD cell index and rank */
-    gmx::IVec ci         = { 0, 0, 0 };
-    int       rank       = 0;
-    gmx::IVec master_ci  = { 0, 0, 0 };
-    int       masterrank = 0;
+    gmx::IVec ci       = { 0, 0, 0 };
+    int       rank     = 0;
+    gmx::IVec main_ci  = { 0, 0, 0 };
+    int       mainrank = 0;
     /* Communication with the PME only nodes */
     int                   pme_nodeid           = 0;
     gmx_bool              pme_receive_vir_ener = false;
@@ -194,7 +195,7 @@ struct gmx_domdec_t
     /* Forward and backward neighboring cells, indexed by 0 to ndim */
     int neighbor[DIM][2] = { { 0, 0 }, { 0, 0 }, { 0, 0 } };
 
-    /* Only available on the master node */
+    /* Only available on the main node */
     std::unique_ptr<AtomDistribution> ma;
 
     /* Global atom number to interaction list */
@@ -204,13 +205,13 @@ struct gmx_domdec_t
     bool haveExclusions = false;
 
     /* Vsite stuff */
-    gmx::HashedMap<int>*      ga2la_vsite = nullptr;
-    gmx_domdec_specat_comm_t* vsite_comm  = nullptr;
-    std::vector<int>          vsite_requestedGlobalAtomIndices;
+    std::unique_ptr<gmx::HashedMap<int>>      ga2la_vsite;
+    std::unique_ptr<gmx_domdec_specat_comm_t> vsite_comm;
+    std::vector<int>                          vsite_requestedGlobalAtomIndices;
 
     /* Constraint stuff */
-    gmx_domdec_constraints_t* constraints     = nullptr;
-    gmx_domdec_specat_comm_t* constraint_comm = nullptr;
+    std::unique_ptr<gmx_domdec_constraints_t> constraints;
+    std::unique_ptr<gmx_domdec_specat_comm_t> constraint_comm;
 
     /* The number of home atoms */
     int numHomeAtoms = 0;
@@ -221,10 +222,10 @@ struct gmx_domdec_t
     std::vector<int> globalAtomIndices;
 
     /* Global atom number to local atom number list */
-    gmx_ga2la_t* ga2la = nullptr;
+    std::unique_ptr<gmx_ga2la_t> ga2la;
 
     /* Communication stuff */
-    gmx_domdec_comm_t* comm = nullptr;
+    std::unique_ptr<gmx_domdec_comm_t> comm;
 
     /* The partioning count, to keep track of the state */
     int64_t ddp_count = 0;
@@ -242,16 +243,16 @@ struct gmx_domdec_t
     std::vector<std::unique_ptr<gmx::GpuHaloExchange>> gpuHaloExchange[DIM];
 };
 
-//! Are we the master node for domain decomposition
-static inline bool DDMASTER(const gmx_domdec_t& dd)
+//! Are we the main node for domain decomposition
+static inline bool DDMAIN(const gmx_domdec_t& dd)
 {
-    return dd.rank == dd.masterrank;
+    return dd.rank == dd.mainrank;
 };
 
-//! Are we the master node for domain decomposition, deprecated
-static inline bool DDMASTER(const gmx_domdec_t* dd)
+//! Are we the main node for domain decomposition, deprecated
+static inline bool DDMAIN(const gmx_domdec_t* dd)
 {
-    return dd->rank == dd->masterrank;
+    return dd->rank == dd->mainrank;
 };
 
 #endif

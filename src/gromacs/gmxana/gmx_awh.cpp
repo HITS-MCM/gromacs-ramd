@@ -53,7 +53,6 @@
 #include "gromacs/applied_forces/awh/read_params.h"
 #include "gromacs/commandline/pargs.h"
 #include "gromacs/fileio/enxio.h"
-#include "gromacs/fileio/gmxfio.h"
 #include "gromacs/fileio/oenv.h"
 #include "gromacs/fileio/tpxio.h"
 #include "gromacs/fileio/trxio.h"
@@ -62,7 +61,6 @@
 #include "gromacs/math/units.h"
 #include "gromacs/mdtypes/awh_params.h"
 #include "gromacs/mdtypes/inputrec.h"
-#include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/trajectory/energyframe.h"
 #include "gromacs/utility/arraysize.h"
@@ -631,7 +629,7 @@ int gmx_awh(int argc, char* argv[])
                                                         fnm,
                                                         awhGraphSelection,
                                                         energyUnit,
-                                                        gmx::c_boltz * ir.opts.ref_t[0],
+                                                        gmx::c_boltz * constantEnsembleTemperature(ir),
                                                         block);
             }
 

@@ -69,8 +69,6 @@ int gmx_dipoles(int argc, char* argv[]);
 
 int gmx_disre(int argc, char* argv[]);
 
-int gmx_do_dssp(int argc, char* argv[]);
-
 int gmx_dos(int argc, char* argv[]);
 
 int gmx_dyecoupl(int argc, char* argv[]);
@@ -158,8 +156,6 @@ int gmx_wham(int argc, char* argv[]);
 int gmx_wheel(int argc, char* argv[]);
 
 int gmx_xpm2ps(int argc, char* argv[]);
-
-int gmx_membed(int argc, char* argv[]);
 
 int gmx_sans(int argc, char* argv[]);
 

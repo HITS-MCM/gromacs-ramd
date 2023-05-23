@@ -43,7 +43,9 @@
 #ifndef GMX_MODULARSIMULATOR_PARRINELLORAHMANBAROSTAT_H
 #define GMX_MODULARSIMULATOR_PARRINELLORAHMANBAROSTAT_H
 
+#include "gromacs/math/matrix.h"
 #include "gromacs/math/vectypes.h"
+#include "gromacs/utility/logger.h"
 
 #include "modularsimulatorinterfaces.h"
 #include "propagator.h"
@@ -76,11 +78,11 @@ public:
     //! Constructor
     ParrinelloRahmanBarostat(int                  nstpcouple,
                              int                  offset,
-                             real                 couplingTimeStep,
+                             real                 couplingTimePeriod,
                              Step                 initStep,
                              StatePropagatorData* statePropagatorData,
                              EnergyData*          energyData,
-                             FILE*                fplog,
+                             const MDLogger&      mdlog,
                              const t_inputrec*    inputrec,
                              const MDAtoms*       mdAtoms);
 
@@ -141,18 +143,18 @@ private:
     const int nstpcouple_;
     //! If != 0, offset the step at which the barostat is applied
     const int offset_;
-    //! The coupling time step - simulation time step x nstcouple_
-    const real couplingTimeStep_;
+    //! The coupling time period, ie. simulation time step times nstcouple_
+    const real couplingTimePeriod_;
     //! The first step of the simulation
     const Step initStep_;
 
     //! View on the velocity scaling tensor (owned by the propagator)
-    ArrayRef<rvec> scalingTensor_;
+    gmx::Matrix3x3* scalingTensor_ = nullptr;
     //! Callback to let propagator know that we updated lambda
     PropagatorCallback propagatorCallback_;
 
     //! Relative change in box before - after barostatting
-    matrix mu_;
+    Matrix3x3 mu_;
     //! Relative box shape
     tensor boxRel_;
     //! Box velocity
@@ -190,7 +192,7 @@ private:
 
     // Access to ISimulator data
     //! Handles logging.
-    FILE* fplog_;
+    MDLogger mdlog_;
     //! Contains user input mdp options.
     const t_inputrec* inputrec_;
     //! Atom parameters for this domain.

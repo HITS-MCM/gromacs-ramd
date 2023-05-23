@@ -105,11 +105,13 @@ public:
     bool computePmeOnSeparateRank = false;
     //! Whether to combine the forces for multiple time stepping before the halo exchange
     bool combineMtsForcesBeforeHaloExchange = false;
+    //! Whether to clear local force buffer on the device early on in the step
+    bool clearGpuFBufferEarly = false;
 };
 
 /*! \libinternal
  * \brief Describes work done on this domain on every step of its lifetime,
- * but which might change after the next domain paritioning.
+ * but which might change after the next domain partitioning.
  *
  * This work description is based on the SimulationWorkload in the context of the
  * current particle interactions assigned to this domain. The latter might change
@@ -131,9 +133,10 @@ public:
     bool haveCpuListedForceWork = false;
     //! Whether the current nstlist step-range has special forces on the CPU.
     bool haveSpecialForces = false;
-    //! Whether there are currently any local forces to be computed on the CPU
+    //! Whether there are currently any local forces to be computed on the CPU.
     bool haveCpuLocalForceWork = false;
-
+    //! Whether there are currently any non-local forces to be computed on the CPU and, with GPU update and DD, later reduced on the GPU.
+    bool haveCpuNonLocalForceWork = false;
     //! Whether the current nstlist step-range Free energy work on the CPU.
     bool haveFreeEnergyWork = false;
     //! Whether the CPU force buffer has contributions to local atoms that need to be reduced on the GPU (with DD).
@@ -141,8 +144,6 @@ public:
     // or when DD is active the halo exchange has resulted in contributions
     // from the non-local part.
     bool haveLocalForceContribInCpuBuffer = false;
-    //! Whether the CPU force buffer has contributions to nonlocal atoms that need to be reduced on the GPU (with DD).
-    bool haveNonLocalForceContribInCpuBuffer = false;
 };
 
 /*! \libinternal
@@ -204,6 +205,18 @@ public:
     bool haveEwaldSurfaceContribution = false;
     //! Whether to use multiple time stepping
     bool useMts = false;
+    //! Whether a GPU graph should be used to execute steps in the MD loop if run conditions allow.
+    bool useMdGpuGraph = false;
+
+    //! Whether PME GPU is active on this PP rank (note that currently only PP ranks use SimulationWorkload)
+#if !defined(_MSC_VER) // MSVC does not support __attribute__
+    __attribute__((always_inline))
+#endif
+    bool
+    haveGpuPmeOnPpRank() const
+    {
+        return useGpuPme && !haveSeparatePmeRank;
+    }
 };
 
 class MdrunScheduleWorkload

@@ -48,7 +48,7 @@ function usage() {
 
 action="check-workdir"
 declare -a diffargs
-baserev="origin/release-2022"
+baserev="origin/main"
 force=
 format_mode=check
 warning_file=

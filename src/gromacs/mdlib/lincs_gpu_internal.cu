@@ -42,6 +42,10 @@
  *
  * \ingroup module_mdlib
  */
+#include "gmxpre.h"
+
+#include "lincs_gpu_internal.h"
+
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/devicebuffer.cuh"
@@ -50,8 +54,6 @@
 #include "gromacs/gpu_utils/vectype_ops.cuh"
 #include "gromacs/mdlib/lincs_gpu.h"
 #include "gromacs/pbcutil/pbc_aiuc_cuda.cuh"
-
-#include "lincs_gpu_internal.h"
 
 namespace gmx
 {

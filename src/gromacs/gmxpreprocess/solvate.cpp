@@ -350,6 +350,13 @@ static void replicateSolventBox(t_atoms*           atoms,
     atoms->atom     = newAtoms.atom;
     atoms->atomname = newAtoms.atomname;
     atoms->resinfo  = newAtoms.resinfo;
+    if (atoms->havePdbInfo)
+    {
+        sfree(atoms->pdbinfo);
+        // gmx::AtomsBuilder does not fill pdbinfo, but let's copy nulls just in case.
+        atoms->pdbinfo     = newAtoms.pdbinfo;
+        atoms->havePdbInfo = newAtoms.havePdbInfo;
+    }
 
     newX.resize(atoms->nr);
     std::swap(*x, newX);
@@ -737,7 +744,6 @@ static void update_top(t_atoms*        atoms,
     FILE *      fpin, *fpout;
     char        buf[STRLEN * 2], buf2[STRLEN], *temp;
     const char* topinout;
-    int         line;
     bool        bSystem;
     int         i;
     double      mtot;
@@ -771,11 +777,9 @@ static void update_top(t_atoms*        atoms,
         fprintf(stderr, "Processing topology\n");
         fpin    = gmx_ffopen(topinout, "r");
         fpout   = gmx_fopen_temporary(temporary_filename);
-        line    = 0;
         bSystem = false;
         while (fgets(buf, STRLEN, fpin))
         {
-            line++;
             strcpy(buf2, buf);
             if ((temp = strchr(buf2, '\n')) != nullptr)
             {

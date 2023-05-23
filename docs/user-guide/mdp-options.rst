@@ -959,6 +959,41 @@ Ewald
 Temperature coupling
 ^^^^^^^^^^^^^^^^^^^^
 
+.. mdp:: ensemble-temperature-setting
+
+   .. mdp-value:: auto
+
+      With this setting :ref:`gmx grompp` will determine which of the next
+      three settings is available and choose the appropriate one.
+      When all atoms are coupled to a temperature bath with the same
+      temperature, a constant ensemble temperature is chosen and the value
+      is taken from the temperature bath.
+
+   .. mdp-value:: constant
+
+      The system has a constant ensemble temperature given by
+      :mdp:`ensemble-temperature`. A constant ensemble temperature is
+      required for certain sampling algorithms such as AWH.
+
+   .. mdp-value:: variable
+
+      The system has a variable ensemble temperature due to simulated
+      annealing or simulated tempering. The system ensemble temperature
+      is set dynamically during the simulation.
+
+   .. mdp-value:: not-available
+
+      The system has no ensemble temperature.
+
+.. mdp:: ensemble-temperature
+
+      (-1) [K]
+
+      The ensemble temperature for the system. The input value is only used
+      with :mdp:`ensemble-temperature-setting=constant`. By default the
+      ensemble temperature is copied from the temperature of the thermal bath
+      (when used).
+
 .. mdp:: tcoupl
 
    .. mdp-value:: no
@@ -1018,11 +1053,12 @@ Temperature coupling
 
    (-1)
    The frequency for coupling the temperature. The default value of -1
-   sets :mdp:`nsttcouple` equal to 10, or fewer steps if required
-   for accurate integration. Note that the default value is not 1
-   because additional computation and communication is required for
-   obtaining the kinetic energy. For velocity
-   Verlet integrators :mdp:`nsttcouple` is set to 1.
+   sets :mdp:`nsttcouple` equal to 100, or fewer steps if required
+   for accurate integration (5 steps per tau for first order coupling,
+   20 steps per tau for second order coupling). Note that the default
+   value is large in order to reduce the overhead of the additional
+   computation and communication required for obtaining the kinetic
+   energy. For velocity Verlet integrators :mdp:`nsttcouple` is set to 1.
 
 .. mdp:: nh-chain-length
 
@@ -1086,6 +1122,8 @@ Pressure coupling
       volume fluctuations.  The box is scaled every :mdp:`nstpcouple`
       steps. It can be used for both equilibration and production,
       but presently it cannot be used for full anisotropic coupling.
+      This requires a (constant or variable) ensemble temperature
+      to be available.
 
    .. mdp-value:: Parrinello-Rahman
 
@@ -1112,8 +1150,9 @@ Pressure coupling
       fluctuations at equilibrium. This is probably a better method
       when you want to apply pressure scaling during data collection,
       but beware that you can get very large oscillations if you are
-      starting from a different pressure. Currently (as of version
-      5.1), it only supports isotropic scaling, and only works without
+      starting from a different pressure. This requires a constant
+      ensemble temperature for the system.
+      Currently it only supports isotropic scaling, and only works without
       constraints.
 
 .. mdp:: pcoupltype
@@ -1163,11 +1202,13 @@ Pressure coupling
 
    (-1)
    The frequency for coupling the pressure. The default value of -1
-   sets :mdp:`nstpcouple` equal to 10, or fewer steps if required
-   for accurate integration. Note that the default value is not 1
-   because additional computation and communication is required for
-   obtaining the virial. For velocity
-   Verlet integrators :mdp:`nstpcouple` is set to 1.
+   sets :mdp:`nstpcouple` equal to 100, or fewer steps if required
+   for accurate integration (5 steps per tau for first order coupling,
+   20 steps per tau for second order coupling). Note that the default
+   value is large in order to reduce the overhead of the additional
+   computation and communication required for obtaining the virial
+   and kinetic energy. For velocity Verlet integrators :mdp:`nsttcouple`
+   is set to 1.
 
 .. mdp:: tau-p
 
@@ -1807,15 +1848,16 @@ pull-coord2-vec, pull-coord2-k, and so on.
    .. mdp-value:: transformation
 
       Transforms other pull coordinates using a mathematical expression defined by :mdp:`pull-coord1-expression`.
-      Pull coordinates of lower indices can be used as variables to this pull coordinate.
-      Thus, pull transformation coordinates should have a higher pull coordinate index
-      than all pull coordinates they transform.
+      Pull coordinates of lower indices, and time, can be used as variables to
+      this pull coordinate. Thus, pull transformation coordinates should have
+      a higher pull coordinate index than all pull coordinates they transform.
 
 .. mdp:: pull-coord1-expression
 
    Mathematical expression to transform pull coordinates of lower indices to a new one.
    The pull coordinates are referred to as variables in the equation so that
    pull-coord1's value becomes 'x1', pull-coord2 value becomes 'x2' etc.
+   Time can also be used a variable, becoming 't'.
    Note that angular coordinates use units of radians in the expression.
    The mathematical expression are evaluated using muParser.
    Only relevant if :mdp:`pull-coord1-geometry` is set to :mdp-value:`transformation`.
@@ -1916,13 +1958,15 @@ AWH adaptive biasing
    .. mdp-value:: yes
 
       Adaptively bias a reaction coordinate using the AWH method and estimate
-      the corresponding PMF. The PMF and other AWH data are written to energy
-      file at an interval set by :mdp:`awh-nstout` and can be extracted with
+      the corresponding PMF. This requires a constant ensemble temperature
+      to be available. The PMF and other AWH data are written to energy file
+      at an interval set by :mdp:`awh-nstout` and can be extracted with
       the ``gmx awh`` tool. The AWH coordinate can be
       multidimensional and is defined by mapping each dimension to a pull coordinate index.
       This is only allowed if :mdp-value:`pull-coord1-type=external-potential` and
       :mdp:`pull-coord1-potential-provider` = ``awh`` for the concerned pull coordinate
-      indices. Pull geometry 'direction-periodic' is not supported by AWH.
+      indices. Pull geometry 'direction-periodic' and transformation
+      coordinates that depend on time are not supported by AWH.
 
 .. mdp:: awh-potential
 
@@ -2557,7 +2601,7 @@ Free energy calculations
    starting value for lambda (float). Generally, this should only be
    used with slow growth (*i.e.* nonzero :mdp:`delta-lambda`). In
    other cases, :mdp:`init-lambda-state` should be specified
-   instead. If a lambda vector is given, :mdp: `init-lambda` is used to
+   instead. If a lambda vector is given, :mdp:`init-lambda` is used to
    interpolate the vector instead of setting lambda directly.
    Must be greater than or equal to 0.
 

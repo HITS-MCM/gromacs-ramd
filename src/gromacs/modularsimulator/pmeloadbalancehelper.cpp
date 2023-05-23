@@ -48,9 +48,9 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/mdrunoptions.h"
+#include "gromacs/mdtypes/simulation_workload.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/nbnxm/nbnxm.h"
-#include "gromacs/mdtypes/simulation_workload.h"
 
 #include "statepropagatordata.h"
 
@@ -61,7 +61,7 @@ bool PmeLoadBalanceHelper::doPmeLoadBalancing(const MdrunOptions&       mdrunOpt
                                               const t_forcerec*         fr,
                                               const SimulationWorkload& simWorkload)
 {
-    return (mdrunOptions.tunePme && EEL_PME(fr->ic->eeltype) && !mdrunOptions.reproducible
+    return (mdrunOptions.tunePme && usingPme(fr->ic->eeltype) && !mdrunOptions.reproducible
             && inputrec->cutoff_scheme != CutoffScheme::Group && !simWorkload.useGpuPmeDecomposition);
 }
 
@@ -108,7 +108,7 @@ void PmeLoadBalanceHelper::run(gmx::Step step, gmx::Time gmx_unused time)
     // simulationWork.useGpuPmePpCommunication as is done in main MD loop.
     pme_loadbal_do(pme_loadbal_,
                    cr_,
-                   (isVerbose_ && MASTER(cr_)) ? stderr : nullptr,
+                   (isVerbose_ && MAIN(cr_)) ? stderr : nullptr,
                    fplog_,
                    mdlog_,
                    *inputrec_,

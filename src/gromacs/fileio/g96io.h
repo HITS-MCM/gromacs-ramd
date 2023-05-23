@@ -34,13 +34,19 @@
 #ifndef GMX_FILEIO_G96IO_H
 #define GMX_FILEIO_G96IO_H
 
-#include <stdio.h>
+#include <cstdio>
 
+#include <filesystem>
 
 struct t_symtab;
 struct t_trxframe;
 
-int read_g96_conf(FILE* fp, const char* infile, char** name, struct t_trxframe* fr, struct t_symtab* symtab, char* line);
+int read_g96_conf(FILE*                        fp,
+                  const std::filesystem::path& infile,
+                  char**                       name,
+                  struct t_trxframe*           fr,
+                  struct t_symtab*             symtab,
+                  char*                        line);
 /* read a Gromos96 coordinate or trajectory file,                       *
  * returns the number of atoms                                          *
  * sets what's in the frame in info                                     *

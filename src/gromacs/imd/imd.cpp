@@ -46,7 +46,6 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/utility/enumerationhelpers.h"
 #include "imd.h"
 
 #include "config.h"
@@ -154,8 +153,8 @@ public:
     Impl(const MDLogger& mdlog);
     ~Impl();
 
-    /*! \brief Prepare the socket on the MASTER. */
-    void prepareMasterSocket();
+    /*! \brief Prepare the socket on the MAIN. */
+    void prepareMainSocket();
     /*! \brief Disconnect the client. */
     void disconnectClient();
     /*! \brief Prints an error message and disconnects the client.
@@ -188,7 +187,7 @@ public:
     void keepOldValues();
     /*! \brief Write the applied pull forces to logfile.
      *
-     * Call on master only!
+     * Call on main only!
      */
     void outputForces(double time);
     /*! \brief Synchronize the nodes. */
@@ -197,7 +196,7 @@ public:
     void readCommand();
     /*! \brief Open IMD output file and write header information.
      *
-     * Call on master only.
+     * Call on main only.
      */
     void openOutputFile(const char* fn, int nat_total, const gmx_output_env_t* oenv, StartingBehavior startingBehavior);
     /*! \brief Creates the molecule start-end position array of molecules in the IMD group. */
@@ -226,27 +225,27 @@ public:
     int* ind_loc = nullptr;
     //! Allocation size for ind_loc.
     int nalloc_loc = 0;
-    //! Positions for all IMD atoms assembled on the master node.
+    //! Positions for all IMD atoms assembled on the main node.
     rvec* xa = nullptr;
     //! Shifts for all IMD atoms, to make molecule(s) whole.
     ivec* xa_shifts = nullptr;
     //! Extra shifts since last DD step.
     ivec* xa_eshifts = nullptr;
-    //! Old positions for all IMD atoms on master.
+    //! Old positions for all IMD atoms on main.
     rvec* xa_old = nullptr;
     //! Position of each local atom in the collective array.
     int* xa_ind = nullptr;
 
     //! Global IMD frequency, known to all ranks.
     int nstimd = 1;
-    //! New frequency from IMD client, master only.
+    //! New frequency from IMD client, main only.
     int nstimd_new = 1;
     //! Default IMD frequency when disconnected.
     int defaultNstImd = -1;
 
     //! Port to use for network socket.
     int port = 0;
-    //! The IMD socket on the master node.
+    //! The IMD socket on the main node.
     IMDSocket* socket = nullptr;
     //! The IMD socket on the client.
     IMDSocket* clientsocket = nullptr;
@@ -255,8 +254,6 @@ public:
 
     //! Shall we block and wait for connection?
     bool bWConnect = false;
-    //! Set if MD is terminated.
-    bool bTerminated = false;
     //! Set if MD can be terminated.
     bool bTerminatable = false;
     //! Set if connection is present.
@@ -282,8 +279,6 @@ public:
     //! The IMD pulling forces.
     rvec* f = nullptr;
 
-    //! Buffer for force sending.
-    char* forcesendbuf = nullptr;
     //! Buffer for coordinate sending.
     char* coordsendbuf = nullptr;
     //! Send buffer for energies.
@@ -294,7 +289,7 @@ public:
     //! Molecules block in IMD group.
     t_block mols;
 
-    /* The next block is used on the master node only to reduce the output
+    /* The next block is used on the main node only to reduce the output
      * without sacrificing information. If any of these values changes,
      * we need to write output */
     //! Old value for nforces.
@@ -553,7 +548,7 @@ void ImdSession::dd_make_local_IMD_atoms(const gmx_domdec_t* dd)
     }
 
     dd_make_local_group_indices(
-            dd->ga2la, impl_->nat, impl_->ind, &impl_->nat_loc, &impl_->ind_loc, &impl_->nalloc_loc, impl_->xa_ind);
+            dd->ga2la.get(), impl_->nat, impl_->ind, &impl_->nat_loc, &impl_->ind_loc, &impl_->nalloc_loc, impl_->xa_ind);
 }
 
 
@@ -586,7 +581,7 @@ static int imd_send_rvecs(IMDSocket* socket, int nat, rvec* x, char* buffer)
 }
 
 
-void ImdSession::Impl::prepareMasterSocket()
+void ImdSession::Impl::prepareMainSocket()
 {
     if (imdsock_winsockinit() == -1)
     {
@@ -873,7 +868,7 @@ void ImdSession::Impl::syncNodes(const t_commrec* cr, double t)
     /* OK, let's check if we have received forces which we need to communicate
      * to the other nodes */
     int new_nforces = 0;
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         if (bNewForces)
         {
@@ -907,8 +902,8 @@ void ImdSession::Impl::syncNodes(const t_commrec* cr, double t)
      * the target arrays for indices and forces */
     prepareMDForces();
 
-    /* we first update the MD forces on the master by converting the VMD forces */
-    if (MASTER(cr))
+    /* we first update the MD forces on the main by converting the VMD forces */
+    if (MAIN(cr))
     {
         copyToMDForces();
         /* We also write out forces on every update, so that we know which
@@ -950,8 +945,7 @@ void ImdSession::Impl::readCommand()
                                     " %s Terminating connection and running simulation (if "
                                     "supported by integrator).",
                                     IMDstr);
-                    bTerminated = true;
-                    bWConnect   = false;
+                    bWConnect = false;
                     gmx_set_stop_condition(StopCondition::Next);
                 }
                 else
@@ -1257,7 +1251,7 @@ void ImdSession::Impl::prepareForPositionAssembly(const t_commrec* cr, gmx::Arra
 
     /* Save the original (whole) set of positions such that later the
      * molecule can always be made whole again */
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         for (int i = 0; i < nat; i++)
         {
@@ -1365,7 +1359,7 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*              ir,
     bool createSession = false;
     /* It seems we have a .tpr file that defines an IMD group and thus allows IMD connections.
      * Check whether we can actually provide the IMD functionality for this setting: */
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         /* Check whether IMD was enabled by one of the command line switches: */
         if (options.wait || options.terminatable || options.pull)
@@ -1384,7 +1378,7 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*              ir,
                             IMDstr,
                             IMDstr);
         }
-    } /* end master only */
+    } /* end main only */
 
     /* Let the other nodes know whether we want IMD */
     if (PAR(cr))
@@ -1424,7 +1418,7 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*              ir,
     impl->enerd  = enerd;
 
     /* We might need to open an output file for IMD forces data */
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         impl->openOutputFile(opt2fn("-if", nfile, fnm), nat_total, oenv, startingBehavior);
     }
@@ -1445,8 +1439,8 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*              ir,
         }
     }
 
-    /* read environment on master and prepare socket for incoming connections */
-    if (MASTER(cr))
+    /* read environment on main and prepare socket for incoming connections */
+    if (MAIN(cr))
     {
         /* we allocate memory for our IMD energy structure */
         int32_t recsize = c_headerSize + sizeof(IMDEnergyBlock);
@@ -1491,11 +1485,11 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*              ir,
         block_bc(cr->mpi_comm_mygroup, impl->bForceActivated);
     }
 
-    /* setup the listening socket on master process */
-    if (MASTER(cr))
+    /* setup the listening socket on main process */
+    if (MAIN(cr))
     {
         GMX_LOG(mdlog.warning).appendTextFormatted("%s Setting port for connection requests to %d.", IMDstr, impl->port);
-        impl->prepareMasterSocket();
+        impl->prepareMainSocket();
         /* Wait until we have a connection if specified before */
         if (impl->bWConnect)
         {
@@ -1513,7 +1507,7 @@ std::unique_ptr<ImdSession> makeImdSession(const t_inputrec*              ir,
     impl->prepareForPositionAssembly(cr, coords);
 
     /* Initialize molecule blocks to make them whole later...*/
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         impl->prepareMoleculesInImdGroup(top_global);
     }
@@ -1533,7 +1527,7 @@ bool ImdSession::Impl::run(int64_t step, bool bNS, const matrix box, gmx::ArrayR
     wallcycle_start(wcycle, WallCycleCounter::Imd);
 
     /* read command from client and check if new incoming connection */
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         /* If not already connected, check for new connections */
         if (!clientsocket)
@@ -1569,13 +1563,13 @@ bool ImdSession::Impl::run(int64_t step, bool bNS, const matrix box, gmx::ArrayR
      * and put molecules back into the box before transfer */
     if ((imdstep && bConnected) || bNS) /* independent of imdstep, we communicate positions at each NS step */
     {
-        /* Transfer the IMD positions to the master node. Every node contributes
+        /* Transfer the IMD positions to the main node. Every node contributes
          * its local positions x and stores them in the assembled xa array. */
         communicate_group_positions(
                 cr, xa, xa_shifts, xa_eshifts, true, as_rvec_array(coords.data()), nat, nat_loc, ind_loc, xa_ind, xa_old, box);
 
-        /* If connected and master -> remove shifts */
-        if ((imdstep && bConnected) && MASTER(cr))
+        /* If connected and main -> remove shifts */
+        if ((imdstep && bConnected) && MAIN(cr))
         {
             removeMolecularShifts(box);
         }

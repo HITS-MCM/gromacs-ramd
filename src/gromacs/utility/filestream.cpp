@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "filestream.h"
+#include "gromacs/utility/filestream.h"
 
 #include "config.h"
 
@@ -99,13 +99,16 @@ class FileStreamImpl
 {
 public:
     explicit FileStreamImpl(FILE* fp) : fp_(fp), bClose_(false) {}
-    FileStreamImpl(const char* filename, const char* mode) : fp_(nullptr), bClose_(true)
+    FileStreamImpl(const std::filesystem::path& filename, const char* mode) :
+        fp_(nullptr), bClose_(true)
     {
-        fp_ = std::fopen(filename, mode);
+        fp_ = std::fopen(filename.u8string().c_str(), mode);
         if (fp_ == nullptr)
         {
             GMX_THROW_WITH_ERRNO(
-                    FileIOError(formatString("Could not open file '%s'", filename)), "fopen", errno);
+                    FileIOError(formatString("Could not open file '%s'", filename.u8string().c_str())),
+                    "fopen",
+                    errno);
         }
     }
     ~FileStreamImpl()
@@ -172,25 +175,21 @@ bool StandardInputStream::readLine(std::string* line)
  */
 
 // static
-FilePtr TextInputFile::openRawHandle(const char* filename)
+FilePtr TextInputFile::openRawHandle(const std::filesystem::path& filename)
 {
-    FilePtr fp(fopen(filename, "r"));
+    FilePtr fp(fopen(filename.u8string().c_str(), "r"));
     if (fp == nullptr)
     {
         GMX_THROW_WITH_ERRNO(
-                FileIOError(formatString("Could not open file '%s'", filename)), "fopen", errno);
+                FileIOError(formatString("Could not open file '%s'", filename.u8string().c_str())),
+                "fopen",
+                errno);
     }
     return fp;
 }
 
-// static
-FilePtr TextInputFile::openRawHandle(const std::string& filename)
-{
-    return openRawHandle(filename.c_str());
-}
-
-TextInputFile::TextInputFile(const std::string& filename) :
-    impl_(new FileStreamImpl(filename.c_str(), "r"))
+TextInputFile::TextInputFile(const std::filesystem::path& filename) :
+    impl_(new FileStreamImpl(filename, "r"))
 {
 }
 
@@ -217,8 +216,8 @@ void TextInputFile::close()
  * TextOutputFile
  */
 
-TextOutputFile::TextOutputFile(const std::string& filename) :
-    impl_(new FileStreamImpl(filename.c_str(), "w"))
+TextOutputFile::TextOutputFile(const std::filesystem::path& filename) :
+    impl_(new FileStreamImpl(filename, "w"))
 {
 }
 

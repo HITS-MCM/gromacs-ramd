@@ -88,8 +88,31 @@ DeviceVendor getDeviceVendor(const char* vendorName)
         {
             return DeviceVendor::Intel;
         }
+        else if (strstr(vendorName, "Apple"))
+        {
+            return DeviceVendor::Apple;
+        }
     }
     return DeviceVendor::Unknown;
+}
+
+int getDeviceComputeUnitFactor(const DeviceInformation& deviceInfo)
+{
+    switch (deviceInfo.deviceVendor)
+    {
+        case DeviceVendor::Amd:
+            // TODO: Handle RDNA, where it should be 2
+            return 1;
+        case DeviceVendor::Intel:
+            // There are 16 XVEs per XC on Gen9-Gen12 and Xe
+            return 16;
+        case DeviceVendor::Nvidia:
+        case DeviceVendor::Apple: return 1;
+        default:
+            // Unknown vendor, we don't know any better.
+            GMX_ASSERT(false, "Vendor not supported");
+            return 1;
+    }
 }
 
 

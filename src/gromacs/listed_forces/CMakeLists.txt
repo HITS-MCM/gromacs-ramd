@@ -47,9 +47,23 @@ gmx_add_libgromacs_sources(
 
 if(GMX_GPU_CUDA)
     gmx_add_libgromacs_sources(
-       listed_forces_gpu_impl.cu
+       listed_forces_gpu_impl_gpu.cpp
        listed_forces_gpu_internal.cu
        )
+    _gmx_add_files_to_property(CUDA_SOURCES
+      listed_forces_gpu_impl_gpu.cpp
+      )
+endif()
+
+if (GMX_GPU_SYCL)
+    gmx_add_libgromacs_sources(
+        listed_forces_gpu_impl_gpu.cpp
+        listed_forces_gpu_internal_sycl.cpp
+        )
+    _gmx_add_files_to_property(SYCL_SOURCES
+        listed_forces_gpu_impl_gpu.cpp
+        listed_forces_gpu_internal_sycl.cpp
+        )
 endif()
 
 # Source files have the following private module dependencies.
@@ -72,12 +86,6 @@ target_link_libraries(listed_forces INTERFACE
 #target_link_libraries(listed_forces PUBLIC legacy_api)
 #target_link_libraries(listed_forces PRIVATE common)
 
-# Module dependencies
-# listed_forces interfaces convey transitive dependence on these modules.
-#target_link_libraries(listed_forces PUBLIC
-target_link_libraries(listed_forces INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(listed_forces PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

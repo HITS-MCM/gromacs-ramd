@@ -59,7 +59,6 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
-#include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pulling/pull.h"
 #include "gromacs/random/tabulatednormaldistribution.h"
@@ -212,9 +211,9 @@ typedef struct UmbrellaOptions // NOLINT(clang-analyzer-optin.performance.Paddin
      */
     /*!\{*/
     const char *fnTpr, *fnPullf, *fnCoordSel;
-    const char* fnPullx;              //!< file names of input
-    gmx_bool    bTpr, bPullf, bPullx; //!< input file types given?
-    real        tmin, tmax, dt;       //!< only read input within tmin and tmax with dt
+    const char* fnPullx;        //!< file names of input
+    gmx_bool    bPullf, bPullx; //!< input file types given?
+    real        tmin, tmax, dt; //!< only read input within tmin and tmax with dt
 
     gmx_bool bInitPotByIntegration; //!< before WHAM, guess potential by force integration. Yields 1.5 to 2 times faster convergence
     int stepUpdateContrib; //!< update contribution table every ... iterations. Accelerates WHAM.
@@ -247,7 +246,7 @@ typedef struct UmbrellaOptions // NOLINT(clang-analyzer-optin.performance.Paddin
     gmx_bool bAuto;                  //!< determine min and max automatically but do not exit
 
     gmx_bool          verbose;    //!< more noisy wham mode
-    int               stepchange; //!< print maximum change in prof after how many interations
+    int               stepchange; //!< print maximum change in prof after how many interactions
     gmx_output_env_t* oenv;       //!< xvgr options
     /*!\}*/
     /*!
@@ -960,14 +959,14 @@ static void calc_cumulatives(t_UmbrellaWindow*  window,
                              const char*        fnhist,
                              const char*        xlabel)
 {
-    int         i, j, k, nbin;
-    double      last;
-    std::string fn;
-    FILE*       fp = nullptr;
+    int                   i, j, k, nbin;
+    double                last;
+    std::filesystem::path fn;
+    FILE*                 fp = nullptr;
 
     if (opt->bs_verbose)
     {
-        fn = gmx::Path::concatenateBeforeExtension(fnhist, "_cumul");
+        fn = gmx::concatenateBeforeExtension(fnhist, "_cumul");
         fp = xvgropen(fn.c_str(), "CDFs of umbrella windows", xlabel, "CDF", opt->oenv);
     }
 
@@ -1008,7 +1007,7 @@ static void calc_cumulatives(t_UmbrellaWindow*  window,
             }
             fprintf(fp, "\n");
         }
-        printf("Wrote cumulative distribution functions to %s\n", fn.c_str());
+        printf("Wrote cumulative distribution functions to %s\n", fn.u8string().c_str());
         xvgrclose(fp);
     }
 }
@@ -1199,22 +1198,23 @@ static void print_histograms(const char*        fnhist,
                              t_UmbrellaOptions* opt,
                              const char*        xlabel)
 {
-    std::string fn, title;
-    FILE*       fp;
-    int         bins, l, i, j;
+    std::filesystem::path fn;
+    std::string           title;
+    FILE*                 fp;
+    int                   bins, l, i, j;
 
     if (bs_index >= 0)
     {
-        fn    = gmx::Path::concatenateBeforeExtension(fnhist, gmx::formatString("_bs%d", bs_index));
+        fn    = gmx::concatenateBeforeExtension(fnhist, gmx::formatString("_bs%d", bs_index));
         title = gmx::formatString("Umbrella histograms. Bootstrap #%d", bs_index);
     }
     else
     {
-        fn    = gmx_strdup(fnhist);
+        fn    = fnhist;
         title = gmx::formatString("Umbrella histograms");
     }
 
-    fp   = xvgropen(fn.c_str(), title.c_str(), xlabel, "count", opt->oenv);
+    fp   = xvgropen(fn, title.c_str(), xlabel, "count", opt->oenv);
     bins = opt->bins;
 
     /* Write histograms */
@@ -1232,7 +1232,7 @@ static void print_histograms(const char*        fnhist,
     }
 
     xvgrclose(fp);
-    printf("Wrote %s\n", fn.c_str());
+    printf("Wrote %s\n", fn.u8string().c_str());
 }
 
 //! Make random weights for histograms for the Bayesian bootstrap of complete histograms)
@@ -1465,7 +1465,7 @@ static void do_bootstrapping(const char*        fnres,
         bsProfiles_av[i] /= opt->nBootStrap;
         bsProfiles_av2[i] /= opt->nBootStrap;
         tmp    = bsProfiles_av2[i] - gmx::square(bsProfiles_av[i]);
-        stddev = (tmp >= 0.) ? std::sqrt(tmp) : 0.; /* Catch rouding errors */
+        stddev = (tmp >= 0.) ? std::sqrt(tmp) : 0.; /* Catch rounding errors */
         fprintf(fp, "%e\t%e\t%e\n", (i + 0.5) * opt->dz + opt->min, bsProfiles_av[i], stddev);
     }
     xvgrclose(fp);
@@ -1616,7 +1616,7 @@ static void read_tpr_header(const char* fn, t_UmbrellaHeader* header, t_Umbrella
             {
                 gmx_fatal(FARGS,
                           "%s: Pull coordinate %d is of type \"%s\", expected \"umbrella\". Only "
-                          "umbrella coodinates can enter WHAM.\n"
+                          "umbrella coordinates can enter WHAM.\n"
                           "If you have umbrella and non-umbrella coordinates, you can select the "
                           "umbrella coordinates with gmx wham -is\n",
                           fn,
@@ -3171,7 +3171,6 @@ int gmx_wham(int argc, char* argv[])
     opt.bProf0Set = opt2parg_bSet("-zprof0", asize(pa), pa);
 
     opt.bTab         = opt2bSet("-tab", NFILE, fnm);
-    opt.bTpr         = opt2bSet("-it", NFILE, fnm);
     opt.bPullx       = opt2bSet("-ix", NFILE, fnm);
     opt.bPullf       = opt2bSet("-if", NFILE, fnm);
     opt.bTauIntGiven = opt2bSet("-iiact", NFILE, fnm);

@@ -67,7 +67,7 @@ void dd_move_f_vsites(const gmx_domdec_t& dd, gmx::ArrayRef<gmx::RVec> f, gmx::A
 {
     if (dd.vsite_comm)
     {
-        dd_move_f_specat(&dd, dd.vsite_comm, as_rvec_array(f.data()), as_rvec_array(fshift.data()));
+        dd_move_f_specat(&dd, dd.vsite_comm.get(), f.data(), fshift.data());
     }
 }
 
@@ -82,19 +82,22 @@ void dd_clear_f_vsites(const gmx_domdec_t& dd, gmx::ArrayRef<gmx::RVec> f)
     }
 }
 
-void dd_move_x_vsites(const gmx_domdec_t& dd, const matrix box, rvec* x)
+void dd_move_x_vsites(const gmx_domdec_t& dd, const matrix box, gmx::ArrayRef<gmx::RVec> x)
 {
     if (dd.vsite_comm)
     {
-        dd_move_x_specat(&dd, dd.vsite_comm, box, x, nullptr, FALSE);
+        dd_move_x_specat(&dd, dd.vsite_comm.get(), box, x.data(), nullptr, FALSE);
     }
 }
 
-void dd_move_x_and_v_vsites(const gmx_domdec_t& dd, const matrix box, rvec* x, rvec* v)
+void dd_move_x_and_v_vsites(const gmx_domdec_t&      dd,
+                            const matrix             box,
+                            gmx::ArrayRef<gmx::RVec> x,
+                            gmx::ArrayRef<gmx::RVec> v)
 {
     if (dd.vsite_comm)
     {
-        dd_move_x_specat(&dd, dd.vsite_comm, box, x, v, FALSE);
+        dd_move_x_specat(&dd, dd.vsite_comm.get(), box, x.data(), v.data(), FALSE);
     }
 }
 
@@ -109,7 +112,7 @@ void dd_clear_local_vsite_indices(gmx_domdec_t* dd)
 int dd_make_local_vsites(gmx_domdec_t* dd, int at_start, gmx::ArrayRef<InteractionList> lil)
 {
     std::vector<int>&    ireq         = dd->vsite_requestedGlobalAtomIndices;
-    gmx::HashedMap<int>* ga2la_specat = dd->ga2la_vsite;
+    gmx::HashedMap<int>* ga2la_specat = dd->ga2la_vsite.get();
 
     ireq.clear();
     /* Loop over all the home vsites */
@@ -148,7 +151,7 @@ int dd_make_local_vsites(gmx_domdec_t* dd, int at_start, gmx::ArrayRef<Interacti
     }
 
     int at_end = setup_specat_communication(
-            dd, &ireq, dd->vsite_comm, ga2la_specat, at_start, 2, "vsite", "");
+            dd, &ireq, dd->vsite_comm.get(), ga2la_specat, at_start, 2, "vsite", "");
 
     /* Fill in the missing indices */
     for (int ftype = 0; ftype < F_NRE; ftype++)
@@ -187,7 +190,7 @@ void init_domdec_vsites(gmx_domdec_t* dd, int n_intercg_vsite)
      * The number of keys is a rough estimate, it will be optimized later.
      */
     int numKeysEstimate = std::min(n_intercg_vsite / 20, n_intercg_vsite / (2 * dd->nnodes));
-    dd->ga2la_vsite     = new gmx::HashedMap<int>(numKeysEstimate);
+    dd->ga2la_vsite     = std::make_unique<gmx::HashedMap<int>>(numKeysEstimate);
 
-    dd->vsite_comm = new gmx_domdec_specat_comm_t;
+    dd->vsite_comm = std::make_unique<gmx_domdec_specat_comm_t>();
 }

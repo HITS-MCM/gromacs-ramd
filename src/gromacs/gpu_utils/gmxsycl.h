@@ -75,7 +75,13 @@
 #    pragma clang diagnostic ignored "-Wgcc-compat"
 #    include <SYCL/sycl.hpp>
 #    pragma clang diagnostic pop
-#else // DPC++ has issues with DIM macro and has no SYCL/sycl.hpp in oneAPI 2021.4
+#else // DPC++
+// Needed for CUDA targets https://github.com/intel/llvm/issues/5936, enabled for SPIR automatically
+#    if defined(__SYCL_DEVICE_ONLY__) && defined(__NVPTX__)
+#        define SYCL_USE_NATIVE_FP_ATOMICS 1
+#    endif
+// DPC++ has issues with DIM macro (https://github.com/intel/llvm/issues/2981)
+// and has no SYCL/sycl.hpp up to oneAPI 2022.0
 #    ifdef DIM
 #        if DIM != 3
 #            error "The workaround here assumes we use DIM=3."
@@ -122,5 +128,25 @@ using local_accessor = sycl::local_accessor<dataT, dimensions>;
 #endif
 
 } // namespace sycl_2020
+
+/* Macro to optimize runtime performance by not recording unnecessary events.
+ *
+ * It relies on the availability of HIPSYCL_EXT_CG_PROPERTY_* extension, and is no-op for
+ * other SYCL implementations. Macro can be used as follows (note the lack of comma after it):
+ * `queue.submit(GMX_SYCL_DISCARD_EVENT [=](....))`.
+ *
+ * When this macro is added to `queue.submit`, the returned event should not be used!
+ * As a consequence, patterns like `queue.submit(GMX_SYCL_DISCARD_EVENT [=](....)).wait()`
+ * must be avoided. If you intend to use the returned event in any way, do not add this macro.
+ *
+ * The use of the returned event will not necessarily cause run-time errors, but can cause
+ * performance degradation (specifically, in hipSYCL the synchronization will be sub-optimal).
+ */
+#if GMX_SYCL_HIPSYCL
+#    define GMX_SYCL_DISCARD_EVENT \
+        sycl::property_list{ sycl::property::command_group::hipSYCL_coarse_grained_events() },
+#else // IntelLLVM does not support command-group properties
+#    define GMX_SYCL_DISCARD_EVENT
+#endif
 
 #endif

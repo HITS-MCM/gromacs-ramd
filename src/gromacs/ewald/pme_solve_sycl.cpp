@@ -88,6 +88,10 @@ auto makeSolveKernel(sycl::handler&                    cgh,
      */
     return [=](sycl::nd_item<3> itemIdx) [[intel::reqd_sub_group_size(subGroupSize)]]
     {
+        if constexpr (skipKernelCompilation<subGroupSize>())
+        {
+            return;
+        }
         /* This kernel supports 2 different grid dimension orderings: YZX and XYZ */
         int majorDim, middleDim, minorDim;
         switch (gridOrdering)
@@ -104,7 +108,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
                 minorDim  = ZZ;
                 break;
 
-            default: assert(false);
+            default: SYCL_ASSERT(false);
         }
 
         /* Global memory pointers */
@@ -130,17 +134,19 @@ auto makeSolveKernel(sycl::handler&                    cgh,
         sycl::global_ptr<float> gm_fourierGrid = a_fourierGrid.get_pointer();
 
         /* Various grid sizes and indices */
-        const int localOffsetMinor = 0, localOffsetMajor = 0, localOffsetMiddle = 0;
-        const int localSizeMinor   = solveKernelParams.complexGridSizePadded[minorDim];
-        const int localSizeMiddle  = solveKernelParams.complexGridSizePadded[middleDim];
-        const int localCountMiddle = solveKernelParams.complexGridSize[middleDim];
-        const int localCountMinor  = solveKernelParams.complexGridSize[minorDim];
-        const int nMajor           = solveKernelParams.realGridSize[majorDim];
-        const int nMiddle          = solveKernelParams.realGridSize[middleDim];
-        const int nMinor           = solveKernelParams.realGridSize[minorDim];
-        const int maxkMajor        = (nMajor + 1) / 2;  // X or Y
-        const int maxkMiddle       = (nMiddle + 1) / 2; // Y OR Z => only check for !YZX
-        const int maxkMinor        = (nMinor + 1) / 2;  // Z or X => only check for YZX
+        const int localOffsetMinor  = solveKernelParams.kOffsets[minorDim];
+        const int localOffsetMiddle = solveKernelParams.kOffsets[middleDim];
+        const int localOffsetMajor  = solveKernelParams.kOffsets[majorDim];
+        const int localSizeMinor    = solveKernelParams.complexGridSizePadded[minorDim];
+        const int localSizeMiddle   = solveKernelParams.complexGridSizePadded[middleDim];
+        const int localCountMiddle  = solveKernelParams.complexGridSize[middleDim];
+        const int localCountMinor   = solveKernelParams.complexGridSize[minorDim];
+        const int nMajor            = solveKernelParams.realGridSize[majorDim];
+        const int nMiddle           = solveKernelParams.realGridSize[middleDim];
+        const int nMinor            = solveKernelParams.realGridSize[minorDim];
+        const int maxkMajor         = (nMajor + 1) / 2;  // X or Y
+        const int maxkMiddle        = (nMiddle + 1) / 2; // Y OR Z => only check for !YZX
+        const int maxkMinor         = (nMinor + 1) / 2;  // Z or X => only check for YZX
 
         const int threadLocalId     = itemIdx.get_local_linear_id();
         const int gridLineSize      = localCountMinor;
@@ -162,7 +168,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
         float viryz  = 0.0F;
         float virzz  = 0.0F;
 
-        assert(indexMajor < solveKernelParams.complexGridSize[majorDim]);
+        SYCL_ASSERT(indexMajor < solveKernelParams.complexGridSize[majorDim]);
         if ((indexMiddle < localCountMiddle) & (indexMinor < localCountMinor)
             & (gridLineIndex < gridLinesPerBlock))
         {
@@ -206,7 +212,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
                     mZ = mMinor;
                     break;
 
-                default: assert(false);
+                default: SYCL_ASSERT(false);
             }
 
             /* 0.5 correction factor for the first and last components of a Z dimension */
@@ -227,7 +233,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
                     }
                     break;
 
-                default: assert(false);
+                default: SYCL_ASSERT(false);
             }
 
             if (notZeroPoint)
@@ -240,24 +246,20 @@ auto makeSolveKernel(sycl::handler&                    cgh,
                                    + mZ * solveKernelParams.recipBox[ZZ][ZZ];
 
                 const float m2k = mhxk * mhxk + mhyk * mhyk + mhzk * mhzk;
-                assert(m2k != 0.0F);
+                SYCL_ASSERT(m2k != 0.0F);
                 float denom = m2k * float(M_PI) * solveKernelParams.boxVolume * gm_splineValueMajor[kMajor]
                               * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
-                assert(sycl_2020::isfinite(denom));
-                assert(denom != 0.0F);
+                SYCL_ASSERT(sycl_2020::isfinite(denom));
+                SYCL_ASSERT(denom != 0.0F);
 
                 const float tmp1   = sycl::exp(-solveKernelParams.ewaldFactor * m2k);
                 const float etermk = solveKernelParams.elFactor * tmp1 / denom;
 
-                // sycl::float2::load and store are buggy in hipSYCL,
-                // but can probably be used after resolution of
-                // https://github.com/illuhad/hipSYCL/issues/647
                 sycl::float2 gridValue;
-                sycl_2020::loadToVec(
-                        gridThreadIndex, sycl::global_ptr<const float>(gm_fourierGrid), &gridValue);
+                gridValue.load(gridThreadIndex, sycl::global_ptr<const float>(gm_fourierGrid));
                 const sycl::float2 oldGridValue = gridValue;
                 gridValue *= etermk;
-                sycl_2020::storeFromVec(gridValue, gridThreadIndex, gm_fourierGrid);
+                gridValue.store(gridThreadIndex, gm_fourierGrid);
 
                 if (computeEnergyAndVirial)
                 {
@@ -364,7 +366,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
              *       To use fewer warps, add to the conditional:
              *       && threadLocalId < activeWarps * stride
              */
-            assert(activeWarps * stride >= subGroupSize);
+            SYCL_ASSERT(activeWarps * stride >= subGroupSize);
             if (threadLocalId < subGroupSize)
             {
                 float output = sm_virialAndEnergy[threadLocalId];
@@ -376,7 +378,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
                 /* Final output */
                 if (validComponentIndex)
                 {
-                    assert(sycl_2020::isfinite(output));
+                    SYCL_ASSERT(sycl_2020::isfinite(output));
                     atomicFetchAdd(a_virialAndEnergy[componentIndex], output);
                 }
             }
@@ -402,8 +404,9 @@ void PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subGroupSiz
         gridParams_                              = &params->grid;
         solveKernelParams_.ewaldFactor           = params->grid.ewaldFactor;
         solveKernelParams_.realGridSize          = params->grid.realGridSize;
-        solveKernelParams_.complexGridSize       = params->grid.complexGridSize;
-        solveKernelParams_.complexGridSizePadded = params->grid.complexGridSizePadded;
+        solveKernelParams_.kOffsets              = params->grid.kOffsets;
+        solveKernelParams_.complexGridSize       = params->grid.localComplexGridSize;
+        solveKernelParams_.complexGridSizePadded = params->grid.localComplexGridSizePadded;
         solveKernelParams_.splineValuesOffset    = params->grid.splineValuesOffset;
         solveKernelParams_.recipBox[XX]          = params->current.recipBox[XX];
         solveKernelParams_.recipBox[YY]          = params->current.recipBox[YY];
@@ -418,7 +421,7 @@ void PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subGroupSiz
 }
 
 template<GridOrdering gridOrdering, bool computeEnergyAndVirial, int gridIndex, int subGroupSize>
-sycl::event PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subGroupSize>::launch(
+void PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subGroupSize>::launch(
         const KernelLaunchConfig& config,
         const DeviceStream&       deviceStream)
 {
@@ -434,20 +437,18 @@ sycl::event PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subG
 
     sycl::queue q = deviceStream.stream();
 
-    sycl::event e = q.submit([&](sycl::handler& cgh) {
+    q.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel = makeSolveKernel<gridOrdering, computeEnergyAndVirial, subGroupSize>(
                 cgh,
                 gridParams_->d_splineModuli[gridIndex],
                 solveKernelParams_,
                 constParams_->d_virialAndEnergy[gridIndex],
-                gridParams_->d_fourierGrid[gridIndex]);
+                gridParams_->d_fftComplexGrid[gridIndex]);
         cgh.parallel_for<KernelNameType>(range, kernel);
     });
 
     // Delete set args, so we don't forget to set them before the next launch.
     reset();
-
-    return e;
 }
 
 template<GridOrdering gridOrdering, bool computeEnergyAndVirial, int gridIndex, int subGroupSize>
@@ -479,11 +480,9 @@ void PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subGroupSiz
 
 #if GMX_SYCL_DPCPP
 INSTANTIATE(16);
-INSTANTIATE(32);
-#elif GMX_SYCL_HIPSYCL
+#endif
 INSTANTIATE(32);
 INSTANTIATE(64);
-#endif
 
 #ifdef __clang__
 #    pragma clang diagnostic pop

@@ -42,13 +42,8 @@
 #include "gromacs/fileio/trxio.h"
 #include "gromacs/fileio/xvgr.h"
 #include "gromacs/gmxana/gmx_ana.h"
-#include "gromacs/gmxana/gstat.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
-#include "gromacs/math/vec.h"
-#include "gromacs/mdlib/energyoutput.h"
-#include "gromacs/mdtypes/enerdata.h"
-#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/trajectory/energyframe.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/cstringutil.h"
@@ -589,7 +584,7 @@ int gmx_enemat(int argc, char* argv[])
         }
 
         out = xvgropen(ftp2fn(efXVG, NFILE, fnm), "Mean Energy", "Residue", "kJ/mol", oenv);
-        xvgr_legend(out, 0, nullptr, oenv);
+        xvgrLegend(out, {}, oenv);
         j = 0;
         if (output_env_get_print_xvgr_codes(oenv))
         {

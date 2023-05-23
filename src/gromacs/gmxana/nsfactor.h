@@ -36,7 +36,6 @@
 #define GMX_GMXANA_NSFACTOR_H
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/utility/basedefinitions.h"
 
 struct t_topology;
 
@@ -87,8 +86,8 @@ gmx_radial_distribution_histogram_t* calc_radial_distribution_histogram(gmx_sans
                                                                         const int*   index,
                                                                         int          isize,
                                                                         double       binwidth,
-                                                                        gmx_bool     bMC,
-                                                                        gmx_bool     bNORM,
+                                                                        bool         bMC,
+                                                                        bool         bNORM,
                                                                         real         mcover,
                                                                         unsigned int seed);
 

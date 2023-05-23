@@ -15,8 +15,9 @@ stage. New things can lead to exciting science, and we love
 that. However, the subsequent code maintenance is time-consuming and
 requires both "up front" and long-term commitment from you, and others
 who might not share your particular scientific enthusiasm. Please read
-this page first, and at least post on the `developer mailing list`_.
-Sometimes we'll be able to save you a lot of time even at the
+this page first, and at least post on the `developer discussion forum`_.
+Looking through the `gmx-developers mailing list archive`_ might also be
+helpful. Sometimes we'll be able to save you a lot of time even at the
 planning stage!
 
 Much of the documentation is found alongside the source code in the
@@ -40,7 +41,7 @@ please make sure that you have checked all the points on this list:
   widespread adoption of the method.
 
 * *Advance discussion*: Please communicate with the other developers,
-  e.g.  on the `developer mailing list`_ mailing list, or
+  e.g.  on the `developer discussion forum`_, or
   `issue tracker`_ to let them know of the general
   nature of your plans. This will prevent duplicate or wasted
   effort. It is also a good idea to search those resources as well as
@@ -89,7 +90,7 @@ please make sure that you have checked all the points on this list:
     * functionality for an analysis tool to do useful things with the
       simulation output.
 
-  Do get in touch with us, e.g. on the `developer mailing list`_, to
+  Do get in touch with us, e.g. on the `developer discussion forum`_, to
   exchange ideas here.
 
 * *Timeliness*: We make an annual release of |Gromacs|, with a feature
@@ -97,7 +98,7 @@ please make sure that you have checked all the points on this list:
   than six months in advance. We still need a month or more to do
   quality testing on that branch, after the fork and before the
   release, so there's a period when we cannot accept certain kinds of
-  potentially risky changes. (The master branch will remain open for
+  potentially risky changes. (The main branch will remain open for
   all kinds of changes, but it is likely that the focus of many of the
   core developers will be on the release process.) If you have a large
   change to propose, you need to
@@ -127,7 +128,7 @@ Preparing code for submission
 
 |Gromacs| uses ``git`` for :doc:`change-management`.
 Instead of accepting "pull requests", |Gromacs| changes are submitted as individual
-commits on the tip of the ``master`` branch hosted at `gitlab`_.
+commits on the tip of the ``main`` branch hosted at `gitlab`_.
 Preparing, submitting, and managing patches for a change requires a little bit
 of set-up. Refer to :doc:`change-management` for information about
 
@@ -153,7 +154,7 @@ There is a project underway to develop a stable API for |Gromacs|,
 which promises to be a great tool for permitting innovation while
 ensuring ongoing quality of the core functionality. You might prefer
 to plan to port your functionality to that API when it becomes
-available. Do keep in touch on the `developer mailing list`_, so
+available. Do keep in touch on the `developer discussion forum`_, so
 you'll be the first to know when such functionality is ready for people to
 explore!
 
@@ -161,19 +162,15 @@ Do you have more questions?
 ---------------------------
 
 If you have questions regarding these points, or would like feedback on your ideas for contributing,
-please feel free to contact us through the `developer mailing list`_.
+please feel free to contact us through the `developer discussion forum`_.
 If your code is of interest to the wider |Gromacs| community, we will be happy to assist you
 in the process of including it in the main source tree.
-
-.. _developer mailing list: https://maillist.sys.kth.se/mailman/listinfo/gromacs.org_gmx-developers
 
 Removing functionality
 ----------------------
 
 This is occasionally necessary, and there is :ref:`policy for such
 occasions <deprecation-policy>`.
-.. only:: html
-
-    For users, there are also lists of
-    :ref:`anticipated changes <anticipated-changes>` and :ref:`deprecated
-    functionality <deprecated-functionality>`.
+For users, there are also lists of anticipated changes,
+including deprecated functionality,
+in the "Major release" :ref:`notes <release-notes>`.

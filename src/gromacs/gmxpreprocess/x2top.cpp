@@ -125,9 +125,9 @@ static void mk_bonds(int                 nnm,
             dx2 = iprod(dx, dx);
             if (is_bond(nnm, nmt, *atoms->atomname[i], *atoms->atomname[j], std::sqrt(dx2)))
             {
-                forceParam[0]          = std::sqrt(dx2);
-                std::vector<int> atoms = { i, j };
-                add_param_to_list(bond, InteractionOfType(atoms, forceParam));
+                forceParam[0]             = std::sqrt(dx2);
+                std::vector<int> atomPair = { i, j };
+                add_param_to_list(bond, InteractionOfType(atomPair, forceParam));
                 nbond[i]++;
                 nbond[j]++;
             }
@@ -163,7 +163,6 @@ static int* set_cgnr(t_atoms* atoms, bool bUsePDBcharge, real* qtot, real* mtot)
 }
 
 static void set_atom_type(PreprocessingAtomTypes* atypes,
-                          t_symtab*               tab,
                           t_atoms*                atoms,
                           InteractionsOfType*     bonds,
                           int*                    nbonds,
@@ -174,7 +173,7 @@ static void set_atom_type(PreprocessingAtomTypes* atypes,
     int nresolved;
 
     snew(atoms->atomtype, atoms->nr);
-    nresolved = nm2type(nnm, nm2t, tab, atoms, atypes, nbonds, bonds);
+    nresolved = nm2type(nnm, nm2t, atoms, atypes, nbonds, bonds);
     if (nresolved != atoms->nr)
     {
         gmx_fatal(FARGS, "Could only find a forcefield type for %d out of %d atoms", nresolved, atoms->nr);
@@ -342,7 +341,7 @@ static void print_rtp(const char*                             filenm,
         {
             gmx_fatal(FARGS, "tp = %d, i = %d in print_rtp", tp, i);
         }
-        fprintf(fp, "%-8s  %12s  %8.4f  %5d\n", *atoms->atomname[i], *tpnm, atoms->atom[i].q, cgnr[i]);
+        fprintf(fp, "%-8s  %12s  %8.4f  %5d\n", *atoms->atomname[i], tpnm->c_str(), atoms->atom[i].q, cgnr[i]);
     }
     print_pl(fp, plist, F_BONDS, "bonds", atoms->atomname);
     print_pl(fp, plist, F_ANGLES, "angles", atoms->atomname);
@@ -379,8 +378,8 @@ int gmx_x2top(int argc, char* argv[])
         "The atom type selection is primitive. Virtually no chemical knowledge is used",
         "Periodic boundary conditions screw up the bonding",
         "No improper dihedrals are generated",
-        "The atoms to atomtype translation table is incomplete ([TT]atomname2type.n2t[tt] file in",
-        "the data directory). Please extend it and send the results back to the GROMACS crew."
+        ("The atoms to atomtype translation table is incomplete ([TT]atomname2type.n2t[tt] file in "
+         "the data directory). Please extend it and send the results back to the GROMACS crew.")
     };
     FILE*                                 fp;
     std::array<InteractionsOfType, F_NRE> plist;
@@ -388,7 +387,7 @@ int gmx_x2top(int argc, char* argv[])
     t_nm2type*                            nm2t;
     t_mols                                mymol;
     int                                   nnm;
-    char                                  forcefield[32], ffdir[STRLEN];
+    char                                  forcefield[32];
     rvec*                                 x; /* coordinates? */
     int *                                 nbonds, *cgnr;
     int                                   bts[] = { 1, 1, 1, 2 };
@@ -396,9 +395,7 @@ int gmx_x2top(int argc, char* argv[])
     int                                   natoms; /* number of atoms in one molecule  */
     PbcType                               pbcType;
     bool                                  bRTP, bTOP, bOPLS;
-    t_symtab                              symtab;
     real                                  qtot, mtot;
-    char                                  n2t[STRLEN];
     gmx_output_env_t*                     oenv;
 
     t_filenm fnm[] = { { efSTX, "-f", "conf", ffREAD },
@@ -481,7 +478,7 @@ int gmx_x2top(int argc, char* argv[])
 
 
     /* Force field selection, interactive or direct */
-    choose_ff(strcmp(ff, "select") == 0 ? nullptr : ff, forcefield, sizeof(forcefield), ffdir, sizeof(ffdir), logger);
+    auto ffdir = choose_ff(strcmp(ff, "select") == 0 ? nullptr : ff, forcefield, sizeof(forcefield), logger);
 
     bOPLS = (strcmp(forcefield, "oplsaa") == 0);
 
@@ -500,17 +497,20 @@ int gmx_x2top(int argc, char* argv[])
         snew(atoms->pdbinfo, natoms);
     }
 
-    sprintf(n2t, "%s", ffdir);
-    nm2t = rd_nm2type(n2t, &nnm);
+    nm2t = rd_nm2type(ffdir, &nnm);
     if (nnm == 0)
     {
-        gmx_fatal(FARGS, "No or incorrect atomname2type.n2t file found (looking for %s)", n2t);
+        gmx_fatal(FARGS,
+                  "No or incorrect atomname2type.n2t file found (looking for %s)",
+                  ffdir.u8string().c_str());
     }
     else
     {
         GMX_LOG(logger.info)
                 .asParagraph()
-                .appendTextFormatted("There are %d name to type translations in file %s", nnm, n2t);
+                .appendTextFormatted("There are %d name to type translations in file %s",
+                                     nnm,
+                                     ffdir.u8string().c_str());
     }
     if (debug)
     {
@@ -520,9 +520,8 @@ int gmx_x2top(int argc, char* argv[])
     snew(nbonds, atoms->nr);
     mk_bonds(nnm, nm2t, atoms, x, &(plist[F_BONDS]), nbonds, bPBC, box);
 
-    open_symtab(&symtab);
     PreprocessingAtomTypes atypes;
-    set_atom_type(&atypes, &symtab, atoms, &(plist[F_BONDS]), nbonds, nnm, nm2t, logger);
+    set_atom_type(&atypes, atoms, &(plist[F_BONDS]), nbonds, nnm, nm2t, logger);
 
     /* Make Angles and Dihedrals */
     snew(excls, atoms->nr);
@@ -566,7 +565,7 @@ int gmx_x2top(int argc, char* argv[])
         print_top_header(fp, ftp2fn(efTOP, NFILE, fnm), TRUE, ffdir, 1.0);
 
         write_top(fp,
-                  nullptr,
+                  {},
                   mymol.name.c_str(),
                   atoms,
                   FALSE,
@@ -589,7 +588,6 @@ int gmx_x2top(int argc, char* argv[])
     {
         dump_hybridization(debug, atoms, nbonds);
     }
-    close_symtab(&symtab);
 
     GMX_LOG(logger.warning)
             .asParagraph()

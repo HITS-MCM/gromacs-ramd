@@ -44,12 +44,14 @@
 #include <gtest/gtest.h>
 
 #include "gromacs/topology/exclusionblocks.h"
+
 #include "nblib/gmxcalculatorcpu.h"
 #include "nblib/integrator.h"
-#include "nblib/tests/testhelpers.h"
-#include "nblib/tests/testsystems.h"
 #include "nblib/topology.h"
 #include "nblib/util/setup.h"
+
+#include "testhelpers.h"
+#include "testsystems.h"
 
 namespace nblib
 {

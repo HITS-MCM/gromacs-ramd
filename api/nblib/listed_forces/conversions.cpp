@@ -48,8 +48,9 @@
 
 #include <memory>
 
+#include "listed_forces/conversionscommon.h"
+
 #include "gromacs/topology/forcefieldparameters.h"
-#include "nblib/listed_forces/conversionscommon.h"
 
 namespace nblib
 {

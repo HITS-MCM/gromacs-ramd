@@ -44,7 +44,7 @@
 #ifndef GMX_FFT_GPU_3DFFT_OCL_H
 #define GMX_FFT_GPU_3DFFT_OCL_H
 
-#include "gpu_3dfft_impl.h"
+#include <clFFT.h>
 
 #include "gromacs/fft/fft.h"
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
@@ -52,7 +52,7 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/gmxmpi.h"
 
-#include <clFFT.h>
+#include "gpu_3dfft_impl.h"
 
 class DeviceContext;
 class DeviceStream;
@@ -67,7 +67,7 @@ class Gpu3dFft::ImplOcl : public Gpu3dFft::Impl
 {
 public:
     //! \copydoc Gpu3dFft::Impl::Impl
-    ImplOcl(bool                 allocateGrids,
+    ImplOcl(bool                 allocateRealGrid,
             MPI_Comm             comm,
             ArrayRef<const int>  gridSizesInXForEachRank,
             ArrayRef<const int>  gridSizesInYForEachRank,
@@ -92,7 +92,6 @@ private:
     clfftPlanHandle               planC2R_;
     std::vector<cl_command_queue> commandStreams_;
     cl_mem                        realGrid_;
-    cl_mem                        complexGrid_;
 };
 
 } // namespace gmx

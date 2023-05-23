@@ -60,11 +60,10 @@
 #include "gromacs/pbcutil/pbc.h"
 #include "gromacs/selection/selectionoption.h"
 #include "gromacs/statistics/statistics.h"
+#include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/trajectoryanalysis/analysissettings.h"
 #include "gromacs/trajectoryanalysis/topologyinformation.h"
-#include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/stringutil.h"
-#include "gromacs/utility.h"
 
 namespace gmx
 {

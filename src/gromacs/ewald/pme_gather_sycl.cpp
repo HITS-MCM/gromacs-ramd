@@ -49,9 +49,9 @@
 #include "gromacs/math/functions.h"
 
 #include "pme_gpu_calculate_splines_sycl.h"
-#include "pme_grid.h"
 #include "pme_gpu_constants.h"
 #include "pme_gpu_types_host.h"
+#include "pme_grid.h"
 
 /*! \brief
  * Use loads from constant address space indexed by constant offsets rather
@@ -73,7 +73,7 @@ inline float readGridSize(const float* realGridSizeFP, const int dimIndex)
         case YY: return realGridSizeFP[YY];
         case ZZ: return realGridSizeFP[ZZ];
     }
-    assert(false);
+    SYCL_ASSERT(false);
     return 0.0F;
 }
 
@@ -211,7 +211,7 @@ inline void sumForceComponents(sycl::private_ptr<float>            fx,
                 ix -= nx;
             }
             const int gridIndexGlobal = ix * pny * pnz + constOffset;
-            assert(gridIndexGlobal >= 0);
+            SYCL_ASSERT(gridIndexGlobal >= 0);
             const float gridValue = gm_grid[gridIndexGlobal];
             assertIsFinite(gridValue);
             const int splineIndexX = getSplineParamIndex<order, atomsPerWarp>(splineIndexBase, XX, ithx);
@@ -358,7 +358,11 @@ auto pmeGatherKernel(sycl::handler&                                     cgh,
 
     return [=](sycl::nd_item<3> itemIdx) [[intel::reqd_sub_group_size(subGroupSize)]]
     {
-        assert(blockSize == itemIdx.get_local_range().size());
+        if constexpr (skipKernelCompilation<subGroupSize>())
+        {
+            return;
+        }
+        SYCL_ASSERT(blockSize == itemIdx.get_local_range().size());
         /* These are the atom indices - for the shared and global memory */
         const int atomIndexLocal = itemIdx.get_local_id(XX);
         const int blockIndex =
@@ -382,12 +386,12 @@ auto pmeGatherKernel(sycl::handler&                                     cgh,
 
         const int threadLocalId    = itemIdx.get_local_linear_id();
         const int threadLocalIdMax = blockSize;
-        assert(threadLocalId < threadLocalIdMax);
+        SYCL_ASSERT(threadLocalId < threadLocalIdMax);
 
         const int lineIndex =
                 (itemIdx.get_local_id(XX) * (itemIdx.get_local_range(ZZ) * itemIdx.get_local_range(YY)))
                 + splineIndex; // And to all the block's particles
-        assert(lineIndex == threadLocalId);
+        SYCL_ASSERT(lineIndex == threadLocalId);
 
         if constexpr (readGlobal)
         {
@@ -400,7 +404,7 @@ auto pmeGatherKernel(sycl::handler&                                     cgh,
             {
                 sm_gridlineIndices[localGridlineIndicesIndex] =
                         a_gridlineIndices[globalGridlineIndicesIndex];
-                assert(sm_gridlineIndices[localGridlineIndicesIndex] >= 0);
+                SYCL_ASSERT(sm_gridlineIndices[localGridlineIndicesIndex] >= 0);
             }
             /* The loop needed for order threads per atom to make sure we load all data values, as each thread must load multiple values
                with order*order threads per atom, it is only required for each thread to load one data value */
@@ -644,7 +648,7 @@ void PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPerAtom, 
 
 
 template<int order, bool wrapX, bool wrapY, int numGrids, bool readGlobal, ThreadsPerAtom threadsPerAtom, int subGroupSize>
-sycl::event PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPerAtom, subGroupSize>::launch(
+void PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPerAtom, subGroupSize>::launch(
         const KernelLaunchConfig& config,
         const DeviceStream&       deviceStream)
 {
@@ -662,7 +666,7 @@ sycl::event PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPe
 
     sycl::queue q = deviceStream.stream();
 
-    sycl::event e = q.submit([&](sycl::handler& cgh) {
+    q.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel = pmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPerAtom, subGroupSize>(
                 cgh,
                 atomParams_->nAtoms,
@@ -690,8 +694,6 @@ sycl::event PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPe
 
     // Delete set args, so we don't forget to set them before the next launch.
     reset();
-
-    return e;
 }
 
 
@@ -729,11 +731,9 @@ void PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPerAtom, 
 
 #if GMX_SYCL_DPCPP
 INSTANTIATE(4, 16); // TODO: Choose best value, Issue #4153.
-INSTANTIATE(4, 32);
-#elif GMX_SYCL_HIPSYCL
+#endif
 INSTANTIATE(4, 32);
 INSTANTIATE(4, 64);
-#endif
 
 #ifdef __clang__
 #    pragma clang diagnostic pop

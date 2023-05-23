@@ -39,6 +39,7 @@ gmx_add_unit_test(QMMMAppliedForcesUnitTest qmmm_applied_forces-test
         qmmmforceprovider.cpp
         qmmm.cpp
         )
+target_link_libraries(qmmm_applied_forces-test PRIVATE math)
 
 # For QMMMForceProvider test we need to define wether libcp2k linked
 if (GMX_CP2K)
@@ -46,3 +47,5 @@ if (GMX_CP2K)
 else()
     set_source_files_properties(qmmmforceprovider.cpp PROPERTIES COMPILE_DEFINITIONS GMX_CP2K=0)
 endif()
+
+target_link_libraries(qmmm_applied_forces-test PRIVATE topology)

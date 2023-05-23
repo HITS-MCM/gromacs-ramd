@@ -223,6 +223,14 @@ public:
      */
     void setXUpdatedOnDeviceEventExpectedConsumptionCount(int expectedConsumptionCount);
 
+    /*! \brief Set the expected consumption count for the event associated with GPU forces computation.
+     *
+     *  \param[in] atomLocality  Locality of the particles.
+     *  \param[in] expectedConsumptionCount  New value.
+     */
+    void setFReadyOnDeviceEventExpectedConsumptionCount(AtomLocality atomLocality,
+                                                        int          expectedConsumptionCount);
+
     /*! \brief Copy positions from the GPU memory, with an optional explicit dependency.
      *
      *  \param[in] h_x           Positions buffer in the host memory.
@@ -427,9 +435,6 @@ private:
 
     //! \brief Pointer to wallcycle structure.
     gmx_wallcycle* wcycle_;
-
-    //! Whether this instance of the class is used on a PME-only rank
-    bool isPmeOnly_ = false;
 
     /*! \brief Performs the copy of data from host to device buffer.
      *

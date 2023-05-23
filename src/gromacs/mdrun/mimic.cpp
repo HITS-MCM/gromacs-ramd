@@ -208,7 +208,7 @@ void gmx::LegacySimulator::do_mimic()
 
     ObservablesReducer observablesReducer = observablesReducerBuilder->build();
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         MimicCommunicator::init();
         auto* nonConstGlobalTopology = const_cast<gmx_mtop_t*>(&top_global);
@@ -235,8 +235,8 @@ void gmx::LegacySimulator::do_mimic()
                        ir->bSimTemp,
                        *ir->fepvals,
                        ir->simtempvals->temperatures,
-                       gmx::arrayRefFromArray(ir->opts.ref_t, ir->opts.ngtc),
-                       MASTER(cr),
+                       ekind,
+                       MAIN(cr),
                        &state_global->fep_state,
                        state_global->lambda);
 
@@ -277,7 +277,7 @@ void gmx::LegacySimulator::do_mimic()
 
     {
         double io = compute_io(ir, top_global.natoms, *groups, energyOutput.numEnergyTerms(), 1);
-        if ((io > 2000) && MASTER(cr))
+        if ((io > 2000) && MAIN(cr))
         {
             fprintf(stderr, "\nWARNING: This run will generate roughly %.0f Mb of data\n\n", io);
         }
@@ -288,13 +288,12 @@ void gmx::LegacySimulator::do_mimic()
         // Local state only becomes valid now.
         dd_init_local_state(*cr->dd, state_global, state);
 
-        /* Distribute the charge groups over the nodes from the master node */
+        /* Distribute the charge groups over the nodes from the main node */
         dd_partition_system(fplog,
                             mdlog,
                             ir->init_step,
                             cr,
                             TRUE,
-                            1,
                             state_global,
                             top_global,
                             *ir,
@@ -366,7 +365,7 @@ void gmx::LegacySimulator::do_mimic()
         observablesReducer.markAsReadyToReduce();
     }
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fprintf(stderr, "starting MiMiC MD run '%s'\n\n", *(top_global.name));
         if (mdrunOptions.verbose)
@@ -407,7 +406,7 @@ void gmx::LegacySimulator::do_mimic()
     auto stopHandler = stopHandlerBuilder->getStopHandlerMD(
             compat::not_null<SimulationSignal*>(&signals[eglsSTOPCOND]),
             false,
-            MASTER(cr),
+            MAIN(cr),
             ir->nstlist,
             mdrunOptions.reproducible,
             nstglobalcomm,
@@ -432,7 +431,7 @@ void gmx::LegacySimulator::do_mimic()
 
         t = step;
 
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             MimicCommunicator::getCoords(state_global->x, state_global->natoms);
         }
@@ -442,7 +441,7 @@ void gmx::LegacySimulator::do_mimic()
             state->lambda = currentLambdas(step, *(ir->fepvals), state_global->fep_state);
         }
 
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             const bool constructVsites = ((vsite != nullptr) && mdrunOptions.rerunConstructVsites);
             if (constructVsites && haveDDAtomOrdering(*cr))
@@ -463,13 +462,12 @@ void gmx::LegacySimulator::do_mimic()
         if (haveDDAtomOrdering(*cr))
         {
             /* Repartition the domain decomposition */
-            const bool bMasterState = true;
+            const bool bMainState = true;
             dd_partition_system(fplog,
                                 mdlog,
                                 step,
                                 cr,
-                                bMasterState,
-                                nstglobalcomm,
+                                bMainState,
                                 state_global,
                                 top_global,
                                 *ir,
@@ -487,7 +485,7 @@ void gmx::LegacySimulator::do_mimic()
                                 mdrunOptions.verbose);
         }
 
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             EnergyOutput::printHeader(fplog, step, t); /* can we improve the information printed here? */
         }
@@ -663,7 +661,7 @@ void gmx::LegacySimulator::do_mimic()
                 ftemp = f.view().force();
             }
 
-            if (MASTER(cr))
+            if (MAIN(cr))
             {
                 MimicCommunicator::sendEnergies(enerd->term[F_EPOT]);
                 MimicCommunicator::sendForces(ftemp, state_global->natoms);
@@ -684,7 +682,7 @@ void gmx::LegacySimulator::do_mimic()
         }
 
         /* Output stuff */
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             const bool bCalcEnerStep = true;
             energyOutput.addDataAtEnergyStep(doFreeEnergyPerturbation,
@@ -712,7 +710,7 @@ void gmx::LegacySimulator::do_mimic()
             const bool do_dr  = ir->nstdisreout != 0;
             const bool do_or  = ir->nstorireout != 0;
 
-            EnergyOutput::printAnnealingTemperatures(do_log ? fplog : nullptr, groups, &(ir->opts));
+            EnergyOutput::printAnnealingTemperatures(do_log ? fplog : nullptr, *groups, ir->opts, *ekind);
             energyOutput.printStepToEnergyFile(mdoutf_get_fp_ene(outf),
                                                do_ene,
                                                do_dr,
@@ -733,7 +731,7 @@ void gmx::LegacySimulator::do_mimic()
         }
 
         /* Print the remaining wall clock time for the run */
-        if (isMasterSimMasterRank(ms, MASTER(cr)) && (mdrunOptions.verbose || gmx_got_usr_signal()))
+        if (isMainSimMainRank(ms, MAIN(cr)) && (mdrunOptions.verbose || gmx_got_usr_signal()))
         {
             if (shellfc)
             {
@@ -762,7 +760,7 @@ void gmx::LegacySimulator::do_mimic()
     /* Stop measuring walltime */
     walltime_accounting_end_time(walltime_accounting);
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         MimicCommunicator::finalize();
     }

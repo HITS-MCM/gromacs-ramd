@@ -33,7 +33,7 @@
  */
 #include "gmxpre.h"
 
-#include "eigensolver.h"
+#include "gromacs/linearalgebra/eigensolver.h"
 
 #include "gromacs/linearalgebra/sparsematrix.h"
 #include "gromacs/utility/fatalerror.h"
@@ -201,7 +201,7 @@ void eigensolver(real* a, int n, int index_lower, int index_upper, real* eigenva
 
     if (info != 0)
     {
-        gmx_fatal(FARGS, "Internal errror in LAPACK diagonalization.");
+        gmx_fatal(FARGS, "Internal error in LAPACK diagonalization.");
     }
 }
 

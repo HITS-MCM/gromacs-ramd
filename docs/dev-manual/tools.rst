@@ -82,7 +82,7 @@ floating-point exceptions
   Such checks are *not* performed in the following configurations:
 
   - release build,
-  - any build by GCC 7.x or Clang with optimizations,
+  - any build by Clang with optimizations,
   - build with SYCL support.
 
   In these configurations, FPEs can be enabled by adding ``-fpexcept`` flag to ``gmx``
@@ -139,12 +139,6 @@ clang-tidy
   ``clang-tidy.sh``, ``copyright.sh`` and ``clang-format.sh`` automatically
   before every commit to check for formatting
   issues.  See :doc:`code-formatting` for details.
-
-``docs/doxygen/includesorter.py``
-  This Python script sorts and reformats #include directives according to
-  the guidelines at :doc:`includestyle`.  Details are documented on a
-  separate page (with the whole suite of Python scripts used for source code
-  checks): :ref:`dev-include-sorter`.
 
 include directive checker
   In its present form, the above include sorter script cannot be conveniently

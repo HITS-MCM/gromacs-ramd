@@ -47,6 +47,7 @@
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/math/paddedvector.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/forceoutput.h"
 #include "gromacs/mdtypes/iforceprovider.h"
@@ -57,7 +58,6 @@
 #include "gromacs/options/treesupport.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreetransform.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/real.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringcompare.h"
@@ -84,7 +84,7 @@ public:
     {
         mdpValueBuilder_.rootObject().addValue(
                 "density-guided-simulation-reference-density-filename",
-                std::string(test::TestFileManager::getInputFilePath("ellipsoid-density.mrc")));
+                std::string(test::TestFileManager::getInputFilePath("ellipsoid-density.mrc").u8string()));
     }
 
     //! build an mdp options tree that sets the options for the density fitting module

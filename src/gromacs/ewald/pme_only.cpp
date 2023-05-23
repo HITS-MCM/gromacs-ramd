@@ -101,7 +101,7 @@
 #include "pme_output.h"
 #include "pme_pp_communication.h"
 
-/*! \brief Master PP-PME communication data structure */
+/*! \brief Main PP-PME communication data structure */
 struct gmx_pme_pp
 {
     MPI_Comm             mpi_comm_mysim; /**< MPI communicator for this simulation */
@@ -133,6 +133,8 @@ struct gmx_pme_pp
     bool useGpuDirectComm = false;
     /*! \brief whether GPU direct communications should send forces directly to remote GPU memory */
     bool sendForcesDirectToPpGpu = false;
+    /*! \brief Whether a GPU graph should be used to execute steps in the MD loop if run conditions allow */
+    bool useMdGpuGraph = false;
 };
 
 /*! \brief Initialize the PME-only side of the PME <-> PP communication */
@@ -200,8 +202,11 @@ static gmx_pme_t* gmx_pmeonly_switch(std::vector<gmx_pme_t*>* pmedata,
              * So, just some grid size updates in the GPU kernel parameters.
              * TODO: this should be something like gmx_pme_update_split_params()
              */
-            gmx_pme_reinit(&pme, cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
-            return pme;
+            gmx_pme_t* pmeNew;
+            gmx_pme_reinit(&pmeNew, cr, pme, ir, grid_size, ewaldcoeff_q, ewaldcoeff_lj);
+            gmx_pme_destroy(pme, false);
+            pme = pmeNew;
+            return pmeNew;
         }
     }
 
@@ -291,6 +296,8 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
                    "The use of GPU direct communication for PME-PP is enabled, "
                    "but the PME GPU force reciever object does not exist");
         pme_pp->sendForcesDirectToPpGpu = ((cnb.flags & PP_PME_RECVFTOGPU) != 0);
+
+        pme_pp->useMdGpuGraph = ((cnb.flags & PP_PME_MDGPUGRAPH) != 0);
 
         if (cnb.flags & PP_PME_FINISH)
         {
@@ -463,12 +470,12 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
                     {
                         if (GMX_THREAD_MPI)
                         {
-                            pme_pp->pmeCoordinateReceiverGpu->receiveCoordinatesSynchronizerFromPpCudaDirect(
+                            pme_pp->pmeCoordinateReceiverGpu->receiveCoordinatesSynchronizerFromPpPeerToPeer(
                                     sender.rankId);
                         }
                         else
                         {
-                            pme_pp->pmeCoordinateReceiverGpu->launchReceiveCoordinatesFromPpCudaMpi(
+                            pme_pp->pmeCoordinateReceiverGpu->launchReceiveCoordinatesFromPpGpuAwareMpi(
                                     stateGpu->getCoordinates(),
                                     nat,
                                     sender.numAtoms * sizeof(rvec),
@@ -559,7 +566,7 @@ static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme, gmx_pme_pp* pme_pp
         for (int i = 0; i < numPpRanks; i++)
         {
             auto& receiver = pme_pp->ppRanks[i];
-            pme_pp->pmeForceSenderGpu->sendFToPpCudaDirect(
+            pme_pp->pmeForceSenderGpu->sendFToPpPeerToPeer(
                     receiver.rankId, receiver.numAtoms, pme_pp->sendForcesDirectToPpGpu);
         }
     }
@@ -571,15 +578,15 @@ static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme, gmx_pme_pp* pme_pp
             ind_end   = ind_start + receiver.numAtoms;
             if (pme_pp->useGpuDirectComm)
             {
-                pme_pp->pmeForceSenderGpu->sendFToPpCudaMpi(pme_gpu_get_device_f(&pme),
-                                                            ind_start,
-                                                            receiver.numAtoms * sizeof(rvec),
-                                                            receiver.rankId,
-                                                            &pme_pp->req[messages]);
+                pme_pp->pmeForceSenderGpu->sendFToPpGpuAwareMpi(pme_gpu_get_device_f(&pme),
+                                                                ind_start,
+                                                                receiver.numAtoms * sizeof(rvec),
+                                                                receiver.rankId,
+                                                                &pme_pp->req[messages]);
             }
             else
             {
-                void* sendbuf = const_cast<void*>(static_cast<const void*>(output.forces_[ind_start]));
+                void* sendbuf = &output.forces_[ind_start];
                 // Send using MPI
                 MPI_Isend(sendbuf,
                           receiver.numAtoms * sizeof(rvec),
@@ -622,7 +629,7 @@ static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme, gmx_pme_pp* pme_pp
 #endif
 }
 
-int gmx_pmeonly(struct gmx_pme_t*               pme,
+int gmx_pmeonly(struct gmx_pme_t**              pmeFromRunnerPtr,
                 const t_commrec*                cr,
                 t_nrnb*                         mynrnb,
                 gmx_wallcycle*                  wcycle,
@@ -639,13 +646,16 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
     real    lambda_lj  = 0;
     int     maxshift_x = 0, maxshift_y = 0;
     float   cycles;
-    int     count;
     bool    computeEnergyAndVirial = false;
     int64_t step;
 
-    /* This data will only use with PME tuning, i.e. switching PME grids */
+    gmx_pme_t* pmeFromRunner = *pmeFromRunnerPtr;
+
+    // This data will only use with PME tuning, i.e. switching PME grids
+    // The first element comes from outside, the rest is generated here,
+    // but all elements are freed at the end of this function or when switching configs.
     std::vector<gmx_pme_t*> pmedata;
-    pmedata.push_back(pme);
+    pmedata.push_back(pmeFromRunner);
 
     auto pme_pp = gmx_pme_pp_init(cr);
 
@@ -666,11 +676,11 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
         {
             pme_pp->pmeCoordinateReceiverGpu = std::make_unique<gmx::PmeCoordinateReceiverGpu>(
                     pme_pp->mpi_comm_mysim, deviceStreamManager->context(), pme_pp->ppRanks);
-            pme_pp->pmeForceSenderGpu =
-                    std::make_unique<gmx::PmeForceSenderGpu>(pme_gpu_get_f_ready_synchronizer(pme),
-                                                             pme_pp->mpi_comm_mysim,
-                                                             deviceStreamManager->context(),
-                                                             pme_pp->ppRanks);
+            pme_pp->pmeForceSenderGpu = std::make_unique<gmx::PmeForceSenderGpu>(
+                    pme_gpu_get_f_ready_synchronizer(pmeFromRunner),
+                    pme_pp->mpi_comm_mysim,
+                    deviceStreamManager->context(),
+                    pme_pp->ppRanks);
         }
         // TODO: Special PME-only constructor is used here. There is no mechanism to prevent from using the other constructor here.
         //       This should be made safer.
@@ -678,13 +688,15 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
                 &deviceStreamManager->stream(gmx::DeviceStreamType::Pme),
                 deviceStreamManager->context(),
                 GpuApiCallBehavior::Async,
-                pme_gpu_get_block_size(pme),
+                pme_gpu_get_block_size(pmeFromRunner),
                 wcycle);
     }
 
     clear_nrnb(mynrnb);
 
-    count = 0;
+    // the current PME data structure, may change due to PME tuning
+    gmx_pme_t* pme               = pmeFromRunner;
+    bool       haveStartedTiming = false;
     do /****** this is a quasi-loop over time steps! */
     {
         /* The reason for having a loop here is PME grid tuning/switching */
@@ -729,13 +741,16 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
             break;
         }
 
-        if (count == 0)
+        // Starting wall-time accounting is delayed to avoid the PME rank
+        // start its timer while the PP is still doing initialization.
+        if (!haveStartedTiming)
         {
+            haveStartedTiming = true;
             wallcycle_start(wcycle, WallCycleCounter::Run);
             walltime_accounting_start_time(walltime_accounting);
         }
 
-        wallcycle_start(wcycle, WallCycleCounter::PmeMesh);
+        wallcycle_start(wcycle, useGpuForPme ? WallCycleCounter::PmeGpuMesh : WallCycleCounter::PmeMesh);
 
         // TODO Make a struct of array refs onto these per-atom fields
         // of pme_pp (maybe box, energy and virial, too; and likewise
@@ -745,7 +760,7 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
         stepWork.computeVirial = computeEnergyAndVirial;
         stepWork.computeEnergy = computeEnergyAndVirial;
         stepWork.computeForces = true;
-        PmeOutput output       = { {}, false, 0, { { 0 } }, 0, 0, { { 0 } }, 0 };
+        PmeOutput output       = { {}, false, 0, { { 0 } }, 0, 0, 0, { { 0 } } };
         if (useGpuForPme)
         {
             stepWork.haveDynamicBox      = false;
@@ -775,7 +790,6 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
             pme_gpu_launch_complex_transforms(pme, wcycle, stepWork);
             pme_gpu_launch_gather(pme, wcycle, lambda_q);
             output = pme_gpu_wait_finish_task(pme, computeEnergyAndVirial, lambda_q, wcycle);
-            pme_gpu_reinit_computation(pme, wcycle);
         }
         else
         {
@@ -809,13 +823,34 @@ int gmx_pmeonly(struct gmx_pme_t*               pme,
             output.forces_ = pme_pp->f;
         }
 
-        cycles = wallcycle_stop(wcycle, WallCycleCounter::PmeMesh);
+        cycles = wallcycle_stop(
+                wcycle, useGpuForPme ? WallCycleCounter::PmeGpuMesh : WallCycleCounter::PmeMesh);
+
+
+        if (useGpuForPme && pme_pp->useMdGpuGraph)
+        {
+            // Reinit before PME->PP force send so it is included in graph
+            // which implicitly joins back to PP task as part of force transfer
+            pme_gpu_reinit_computation(pme, pme_pp->useMdGpuGraph, wcycle);
+        }
+
         gmx_pme_send_force_vir_ener(*pme, pme_pp.get(), output, cycles);
 
-        count++;
+        // Reinit after PME->PP force send so it is removed from the critical path
+        if (useGpuForPme && !pme_pp->useMdGpuGraph)
+        {
+            pme_gpu_reinit_computation(pme, pme_pp->useMdGpuGraph, wcycle);
+        }
     } /***** end of quasi-loop, we stop with the break above */
     while (TRUE);
 
+    for (size_t i = 0; i < pmedata.size(); i++)
+    {
+        bool destroySharedData = (i == pmedata.size() - 1);
+        gmx_pme_destroy(pmedata[i], destroySharedData);
+    }
+    // reset the PME pointer passed from runner
+    *pmeFromRunnerPtr = nullptr;
     walltime_accounting_end_time(walltime_accounting);
 
     return 0;

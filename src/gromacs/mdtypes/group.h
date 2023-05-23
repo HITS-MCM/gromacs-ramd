@@ -37,8 +37,18 @@
 #include <vector>
 
 #include "gromacs/math/vectypes.h"
+#include "gromacs/mdtypes/md_enums.h"
+#include "gromacs/utility/basedefinitions.h"
+#include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/real.h"
-#include "gromacs/utility/smalloc.h"
+
+struct t_inputrec;
+
+namespace gmx
+{
+template<typename>
+class ArrayRef;
+} // namespace gmx
 
 struct t_grp_tcstat
 {
@@ -75,9 +85,71 @@ struct t_cos_acc
 class gmx_ekindata_t
 {
 public:
-    gmx_ekindata_t(int numTempCoupleGroups, real cos_accel, int numThreads);
-    //! The number of T-coupling groups
-    int ngtc;
+    gmx_ekindata_t(gmx::ArrayRef<const real>  referenceTemperature,
+                   EnsembleTemperatureSetting ensembleTemperatureSetting,
+                   real                       ensembleTemperature,
+                   real                       cosineAcceleration,
+                   int                        numThreads);
+
+    //! Returns the number of T-coupling groups
+    int numTemperatureCouplingGroups() const { return gmx::ssize(currentReferenceTemperature_); }
+
+    //! Returns the reference temperature for T-coupling group \p groupIndex
+    real currentReferenceTemperature(const int groupIndex) const
+    {
+        return currentReferenceTemperature_[groupIndex];
+    }
+
+    //! Set the reference temperature for T-coupling group \p groupIndex
+    void setCurrentReferenceTemperature(const int groupIndex, const real referenceTemperature)
+    {
+        currentReferenceTemperature_[groupIndex] = referenceTemperature;
+
+        // If we have a variable ensemble temperature, all groups should
+        // have equal temperature, so we can set the ensemble temperature
+        // when setting the reference temperature of group 0
+        if (ensembleTemperatureSetting_ == EnsembleTemperatureSetting::Variable && groupIndex == 0)
+        {
+            currentEnsembleTemperature_ = referenceTemperature;
+        }
+    }
+
+    /*! \brief Returns the ensemble temperature of the system
+     *
+     * Should only be called when the system has an ensemble temperature,
+     * i.e. when haveEnsembleTemperature(inputRecord) returns true.
+     */
+    real currentEnsembleTemperature() const
+    {
+        GMX_ASSERT(ensembleTemperatureSetting_ == EnsembleTemperatureSetting::Constant
+                           || ensembleTemperatureSetting_ == EnsembleTemperatureSetting::Variable,
+                   "Should only request ensemble T when available");
+
+        return currentEnsembleTemperature_;
+    }
+
+    /*! \brief Sets the ensemble temperature for the system
+     *
+     * Should only be called when the system has an ensemble temperature,
+     * i.e. when haveEnsembleTemperature(inputRecord) returns true.
+     */
+    void setCurrentEnsembleTemperature(const real ensembleTemperature)
+    {
+        GMX_RELEASE_ASSERT(ensembleTemperatureSetting_ == EnsembleTemperatureSetting::Variable,
+                           "Can only set ensemble temperature when it is variable");
+
+        currentEnsembleTemperature_ = ensembleTemperature;
+    }
+
+private:
+    //! The reference temperatures, can change when using simulated annealing
+    std::vector<real> currentReferenceTemperature_;
+    //! The setting for the ensemble temperature of the system
+    EnsembleTemperatureSetting ensembleTemperatureSetting_;
+    //! The current ensemble temperature
+    real currentEnsembleTemperature_;
+
+public:
     //! T-coupling data
     std::vector<t_grp_tcstat> tcstat;
     //! Allocated locations for *_work members

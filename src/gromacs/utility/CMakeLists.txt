@@ -35,7 +35,8 @@ add_library(utility INTERFACE)
 
 file(GLOB UTILITY_SOURCES *.cpp)
 if (GMX_GPU_CUDA)
-    gmx_add_libgromacs_sources(cuda_version_information.cu)
+    set_source_files_properties(cuda_version_information.cu PROPERTIES LANGUAGE CUDA)
+    set_property(GLOBAL APPEND PROPERTY GMX_LIBGROMACS_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cuda_version_information.cu)
 endif ()
 if (GMX_GPU_SYCL)
     _gmx_add_files_to_property(SYCL_SOURCES
@@ -43,23 +44,6 @@ if (GMX_GPU_SYCL)
                                )
 endif ()
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${UTILITY_SOURCES} PARENT_SCOPE)
-
-if (GMX_INSTALL_LEGACY_API)
-    install(FILES
-            baseversion.h
-            classhelpers.h
-            enumerationhelpers.h
-            fileptr.h
-            futil.h
-            flags.h
-            pleasecite.h
-            programcontext.h
-            range.h
-            smalloc.h
-            stringutil.h
-            unique_cptr.h
-            DESTINATION include/gromacs/utility)
-endif ()
 
 # Public interface for modules, including dependencies and interfaces
 #target_include_directories(utility PUBLIC
@@ -76,6 +60,7 @@ else ()
         utility INTERFACE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/external/thread_mpi/include>
     )
+    target_compile_definitions(utility INTERFACE TMPI_USE_VISIBILITY)
 endif ()
 
 # TODO(#3288): when utility is an OBJECT target, explicitly link source dependencies.

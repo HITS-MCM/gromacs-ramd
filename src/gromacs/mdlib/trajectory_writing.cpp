@@ -127,13 +127,13 @@ void do_md_trajectory_writing(FILE*                          fplog,
             const bool checkpointEkindata = (ekindataState != EkindataState::NotUsed);
             if (checkpointEkindata)
             {
-                update_ekinstate(MASTER(cr) ? &state_global->ekinstate : nullptr,
+                update_ekinstate(MAIN(cr) ? &state_global->ekinstate : nullptr,
                                  ekind,
                                  ekindataState == EkindataState::UsedNeedToReduce,
                                  cr);
             }
 
-            if (MASTER(cr))
+            if (MAIN(cr))
             {
                 state_global->ekinstate.bUpToDate = checkpointEkindata;
 
@@ -149,7 +149,7 @@ void do_md_trajectory_writing(FILE*                          fplog,
         // TODO: Remove duplication asap, make sure to keep in sync in the meantime.
         mdoutf_write_to_trajectory_files(
                 fplog, cr, outf, mdof_flags, top_global.natoms, step, t, state, state_global, observablesHistory, f, &checkpointDataHolder);
-        if (bLastStep && step_rel == ir->nsteps && bDoConfOut && MASTER(cr) && !bRerunMD)
+        if (bLastStep && step_rel == ir->nsteps && bDoConfOut && MAIN(cr) && !bRerunMD)
         {
             if (fr->bMolPBC && state == state_global)
             {
@@ -195,7 +195,7 @@ void do_md_trajectory_writing(FILE*                          fplog,
         wallcycle_stop(mdoutf_get_wcycle(outf), WallCycleCounter::Traj);
     }
 #if GMX_FAHCORE
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         fcWriteVisFrame(ir->pbcType, state_global->box, top_global, state_global->x.rvec_array());
     }

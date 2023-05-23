@@ -34,7 +34,24 @@
 # Set up the module library
 add_library(math INTERFACE)
 
-file(GLOB MATH_SOURCES *.cpp)
+set(MATH_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/3dtransforms.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/coordinatetransformation.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/densityfit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/densityfittingforce.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/do_fit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/exponentialmovingaverage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/functions.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/gausstransform.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/invertmatrix.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/matrix.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/neldermead.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/nrjac.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/optimization.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/utilities.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/veccompare.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/vecdump.cpp
+        )
 set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${MATH_SOURCES} PARENT_SCOPE)
 
 # Source files have the following private module dependencies.
@@ -58,12 +75,6 @@ target_link_libraries(math INTERFACE
 #target_link_libraries(math PUBLIC legacy_api)
 #target_link_libraries(math PRIVATE common)
 
-# Module dependencies
-# fileio interfaces convey transitive dependence on these modules.
-#target_link_libraries(math PUBLIC
-target_link_libraries(math INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(math PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

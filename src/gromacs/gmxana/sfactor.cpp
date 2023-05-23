@@ -45,7 +45,6 @@
 #include "gromacs/fileio/xvgr.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
-#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/topology/index.h"
@@ -82,7 +81,6 @@ typedef struct reduced_atom
 typedef struct structure_factor
 {
     int      n_angles;
-    int      n_groups;
     double   lambda;
     double   energy;
     double   momentum;

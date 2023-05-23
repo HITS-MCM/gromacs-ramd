@@ -1,0 +1,166 @@
+GROMACS 2023.1 release notes
+----------------------------
+
+This version was released on April 21st, 2023. These release notes
+document the changes that have taken place in GROMACS since the
+previous 2023 version, to fix known issues. It also incorporates all
+fixes made in version 2022.5 and earlier, which you can find described
+in the :ref:`release-notes`.
+
+.. Note to developers!
+   Please use """"""" to underline the individual entries for fixed issues in the subfolders,
+   otherwise the formatting on the webpage is messed up.
+   Also, please use the syntax :issue:`number` to reference issues on GitLab, without
+   a space between the colon and number!
+
+Fixes where mdrun could behave incorrectly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Parallelization of TPI an normal modes working again
+""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When running TPI or normal mode analysis with multiple MPI ranks
+mdrun would exit with an assertion failure.
+
+:issue:`4770`
+
+The AWH metric could be incorrect for free-energy lambda dimensions
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When different lambda components had different values for the same lambda
+point index, the AWH metric used dH/dlambda as input that used
+the derivative with respect to all lambda components. Note that this
+only affected the metric, not the sampling nor the free energy values.
+
+:issue:`4730`
+
+Fix checkpointing of expanded ensemble simulations with domain decomposition
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Expanded-ensemble simulations can now restart from a checkpoint when running
+multiple PP ranks.
+
+:issue:`4629`
+
+Fix PME pipelining support in SYCL
+""""""""""""""""""""""""""""""""""
+
+When PME pipelining was used, long-range PME electrostatics were producing
+incorrect results in SYCL.
+
+Only runs with >=3 GPUs and with direct GPU communication enabled
+(``GMX_ENABLE_DIRECT_GPU_COMM`` env. var.) are affected.
+
+:issue:`4733`
+
+Fix checkpointing of AWH friction metric for dimensions > 1.
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The friction metric checkpoint i/o was wrong for dimensions > 1. This did
+not affect the AWH PMF or sampling, but would result in nonsense if the
+AWH friction tensors were used to calculate the diffusion in dimensions > 1.
+
+:issue:`4723`
+
+Fixes for ``gmx`` tools
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Fix crash in ``gmx solvate`` when using solvent box in PDB format
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Now a PDB file can be passed to the ``-cs`` option in ``gmx solvate``.
+In previous releases (since at least 2016) this lead to a segfault.
+
+Fix creating index file from another index file
+""""""""""""""""""""""""""""""""""""""""""""""""
+
+``gmx make_ndx`` can again accept an index file alone as input, without associated structure file.
+
+:issue:`4717`
+
+Allow selection of energy term by full name in ``gmx energy``
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+It is now possible to select energy terms by full name. This is specifically helpful for terms starting
+with a number, such as "1/Viscosity" or "2CosZ*Vel-X", which could previously only be selected reliably
+by number.
+
+:issue:`4739`
+
+Fix early crash in ``gmx anaeig``
+"""""""""""""""""""""""""""""""""
+
+An internal change in |Gromacs| 2023 caused improper handling of optional program arguments leading 
+to a crash in the program. This might have affected some other analysis tools.
+
+:issue:`4756`
+
+
+Fixes that affect portability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Fixed GMX_USE_TNG=off build
+"""""""""""""""""""""""""""
+
+|Gromacs| can again be built without TNG support.
+
+Fixed abnormal termination during ``gmx`` startup
+"""""""""""""""""""""""""""""""""""""""""""""""""
+
+|Gromacs| made a call to ``std::filesystem::equivalent`` in a less than
+perfectly robust manner. This caused ``gmx`` to stop execution
+when linked against the (atypical) libc++ standard library when
+the build directory no longer existed.
+
+:issue:`4724`
+
+Fixed CPU FFT with MKL 2023.0
+"""""""""""""""""""""""""""""
+
+Previously, |Gromacs| would fail during the initialization of CPU FFT when it
+was compiled with oneMKL 2023.0. This is fixed now.
+
+:issue:`4691`
+
+
+Miscellaneous
+^^^^^^^^^^^^^
+
+Workaround for strange compiler behavior to improve SYCL bonded kernel performance
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+For some SYCL targets (most notably, hipSYCL for AMD GPUs with ROCm 5.x),
+a very inefficient code was generated for bonded kernels.
+Now, bonded force calculation on GPU is expected to be up to 3 times faster.
+
+:issue:`3928`
+
+Restored OpenMP acceleration of pulling routines
+""""""""""""""""""""""""""""""""""""""""""""""""
+
+During internal code reorganization, OpenMP acceleration was accidentally disabled
+for pulling force calculation in |Gromacs| 2023. This is now fixed.
+
+:issue:`4747`
+
+Added support for new cuFFTMp interface
+"""""""""""""""""""""""""""""""""""""""
+
+The interface to the cuFFTMp library has changed with its latest
+release in the the NVIDIA HPC SDK version 23.3, which is required for
+NVIDIA Hopper GPU support. We have now added default support to the
+new interface, while retaining support for the legacy interface. 
+
+:issue:`4731`
+
+Document workaround when MPI detection fails
+""""""""""""""""""""""""""""""""""""""""""""
+
+MPI is an optional dependency of gmxapi even when building GROMACS
+without support for an MPI library. CMake's mechanism to find MPI can
+choke on broken MPI installations in ways that could be confusing. Now
+a work-around is documented for the convenience of a user who was not
+intending to use MPI.
+
+:issue:`4699`
+

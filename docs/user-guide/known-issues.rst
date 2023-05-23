@@ -14,27 +14,6 @@ We recommend using CUDA 11.4 or newer.
 
 :issue:`4037`
 
-Verlet buffer underestimated for inhomogeneous systems
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The current Verlet buffer estimation code assumes that the density
-in the system is uniform. This leads to an underestimate of the buffer
-for strongly inhomogeneous systems. The temporary solution to this is
-to lower the verlet-buffer-tolerance parameter value by the factor between
-the uniform density and the local density. In the 2023 release this
-correction will be performed automatically.
-
-:issue:`4509`
-
-Verlet buffer underestimated when using only r^-12 potentials
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-When only the repulsive part of the Lennard-Jones potential is used,
-as can be the case in coarse-grained systems, the Verlet buffer can be
-underestimated due to the extremely non-linear nature of the r^-12 potential.
-A temporary solution is to decrease the verlet-buffer-tolerance until you
-get a non-zero Verlet buffer. This issue will be fixed in the 2023 release.
-
 The deform option is not suitable for flow
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -87,6 +66,31 @@ When an incompatible combination is used, an error will be raised
 from CMake or later during build.
 
 :issue:`4574`
+
+"Cannot find a working standard library" error with ROCm Clang
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Some Clang installations don't contain a compatible C++ standard library.
+In such cases, you might have to install ``g++`` and help CMake find it
+by setting ``-DGMX_GPLUSGPLUS_PATH=/path/to/bin/g++``.
+
+On Ubuntu 22.04, installing GCC 12 standard library (with 
+``sudo apt install libstdc++-12-dev``) usually works well even without
+setting ``-DGMX_GPLUSGPLUS_PATH``.
+
+:issue:`4679`
+
+Ryckaert-Bell dihedral potential calculated imprecisely on Gen9 Intel GPUs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In SYCL/oneAPI build, when bonded forces are offloaded to an Intel Gen9 GPU
+(HD Graphics 5xx to 7xx-series; Skylake to Gemini Lake) the Ryckaert-Bell potential
+is computed imprecisely. This is unlikely to lead to wrong results, but
+we still recommend disabling listed forces offload (``-bonded cpu``) when running
+on Gen9 Intel integrated GPUs, especially since offloading is unlikely to offer significant
+performance advantage on such devices.
+
+:issue:`4686`
 
 Expanded ensemble does not checkpoint correctly
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

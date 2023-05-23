@@ -133,16 +133,15 @@ static void get_params(const char* mpin, const char* mpout, t_psrec* psr)
     static const char* gmx_bools[BOOL_NR + 1] = { "no", "yes", nullptr };
     /* this must correspond to t_rgb *linecolors[] below */
     static const char*     colors[] = { "none", "black", "white", nullptr };
-    warninp_t              wi;
     std::vector<t_inpfile> inp;
 
-    wi = init_warning(FALSE, 0);
+    WarningHandler wi{ false, 0 };
 
     if (mpin != nullptr)
     {
-        std::string        libmpin = gmx::findLibraryFile(mpin);
+        std::string        libmpin = gmx::findLibraryFile(mpin).u8string();
         gmx::TextInputFile stream(libmpin);
-        inp = read_inpfile(&stream, libmpin.c_str(), wi);
+        inp = read_inpfile(&stream, libmpin.c_str(), &wi);
     }
     else
     {
@@ -150,45 +149,45 @@ static void get_params(const char* mpin, const char* mpout, t_psrec* psr)
     }
 
     psr->bw        = get_eenum(&inp, "black&white", gmx_bools);
-    psr->linewidth = get_ereal(&inp, "linewidth", 1.0, wi);
+    psr->linewidth = get_ereal(&inp, "linewidth", 1.0, &wi);
     setStringEntry(&inp, "titlefont", psr->titfont, "Helvetica");
-    psr->titfontsize = get_ereal(&inp, "titlefontsize", 20.0, wi);
+    psr->titfontsize = get_ereal(&inp, "titlefontsize", 20.0, &wi);
     psr->legend      = (get_eenum(&inp, "legend", gmx_bools) != 0);
     setStringEntry(&inp, "legendfont", psr->legfont, psr->titfont);
     setStringEntry(&inp, "legendlabel", psr->leglabel, "");
     setStringEntry(&inp, "legend2label", psr->leg2label, psr->leglabel);
-    psr->legfontsize    = get_ereal(&inp, "legendfontsize", 14.0, wi);
-    psr->xboxsize       = get_ereal(&inp, "xbox", 0.0, wi);
-    psr->yboxsize       = get_ereal(&inp, "ybox", 0.0, wi);
-    psr->boxspacing     = get_ereal(&inp, "matrixspacing", 20.0, wi);
-    psr->xoffs          = get_ereal(&inp, "xoffset", 0.0, wi);
-    psr->yoffs          = get_ereal(&inp, "yoffset", psr->xoffs, wi);
-    psr->boxlinewidth   = get_ereal(&inp, "boxlinewidth", psr->linewidth, wi);
-    psr->ticklinewidth  = get_ereal(&inp, "ticklinewidth", psr->linewidth, wi);
-    psr->zerolinewidth  = get_ereal(&inp, "zerolinewidth", psr->ticklinewidth, wi);
+    psr->legfontsize    = get_ereal(&inp, "legendfontsize", 14.0, &wi);
+    psr->xboxsize       = get_ereal(&inp, "xbox", 0.0, &wi);
+    psr->yboxsize       = get_ereal(&inp, "ybox", 0.0, &wi);
+    psr->boxspacing     = get_ereal(&inp, "matrixspacing", 20.0, &wi);
+    psr->xoffs          = get_ereal(&inp, "xoffset", 0.0, &wi);
+    psr->yoffs          = get_ereal(&inp, "yoffset", psr->xoffs, &wi);
+    psr->boxlinewidth   = get_ereal(&inp, "boxlinewidth", psr->linewidth, &wi);
+    psr->ticklinewidth  = get_ereal(&inp, "ticklinewidth", psr->linewidth, &wi);
+    psr->zerolinewidth  = get_ereal(&inp, "zerolinewidth", psr->ticklinewidth, &wi);
     psr->X.lineatzero   = get_eenum(&inp, "x-lineat0value", colors);
-    psr->X.major        = get_ereal(&inp, "x-major", -1, wi);
-    psr->X.minor        = get_ereal(&inp, "x-minor", -1, wi);
-    psr->X.offset       = get_ereal(&inp, "x-firstmajor", 0.0, wi);
+    psr->X.major        = get_ereal(&inp, "x-major", -1, &wi);
+    psr->X.minor        = get_ereal(&inp, "x-minor", -1, &wi);
+    psr->X.offset       = get_ereal(&inp, "x-firstmajor", 0.0, &wi);
     psr->X.first        = (get_eenum(&inp, "x-majorat0", gmx_bools) != 0);
-    psr->X.majorticklen = get_ereal(&inp, "x-majorticklen", 8.0, wi);
-    psr->X.minorticklen = get_ereal(&inp, "x-minorticklen", 4.0, wi);
+    psr->X.majorticklen = get_ereal(&inp, "x-majorticklen", 8.0, &wi);
+    psr->X.minorticklen = get_ereal(&inp, "x-minorticklen", 4.0, &wi);
     setStringEntry(&inp, "x-label", psr->X.label, "");
-    psr->X.fontsize = get_ereal(&inp, "x-fontsize", 16.0, wi);
+    psr->X.fontsize = get_ereal(&inp, "x-fontsize", 16.0, &wi);
     setStringEntry(&inp, "x-font", psr->X.font, psr->titfont);
-    psr->X.tickfontsize = get_ereal(&inp, "x-tickfontsize", 10.0, wi);
+    psr->X.tickfontsize = get_ereal(&inp, "x-tickfontsize", 10.0, &wi);
     setStringEntry(&inp, "x-tickfont", psr->X.tickfont, psr->X.font);
     psr->Y.lineatzero   = get_eenum(&inp, "y-lineat0value", colors);
-    psr->Y.major        = get_ereal(&inp, "y-major", psr->X.major, wi);
-    psr->Y.minor        = get_ereal(&inp, "y-minor", psr->X.minor, wi);
-    psr->Y.offset       = get_ereal(&inp, "y-firstmajor", psr->X.offset, wi);
+    psr->Y.major        = get_ereal(&inp, "y-major", psr->X.major, &wi);
+    psr->Y.minor        = get_ereal(&inp, "y-minor", psr->X.minor, &wi);
+    psr->Y.offset       = get_ereal(&inp, "y-firstmajor", psr->X.offset, &wi);
     psr->Y.first        = (get_eenum(&inp, "y-majorat0", gmx_bools) != 0);
-    psr->Y.majorticklen = get_ereal(&inp, "y-majorticklen", psr->X.majorticklen, wi);
-    psr->Y.minorticklen = get_ereal(&inp, "y-minorticklen", psr->X.minorticklen, wi);
+    psr->Y.majorticklen = get_ereal(&inp, "y-majorticklen", psr->X.majorticklen, &wi);
+    psr->Y.minorticklen = get_ereal(&inp, "y-minorticklen", psr->X.minorticklen, &wi);
     setStringEntry(&inp, "y-label", psr->Y.label, psr->X.label);
-    psr->Y.fontsize = get_ereal(&inp, "y-fontsize", psr->X.fontsize, wi);
+    psr->Y.fontsize = get_ereal(&inp, "y-fontsize", psr->X.fontsize, &wi);
     setStringEntry(&inp, "y-font", psr->Y.font, psr->X.font);
-    psr->Y.tickfontsize = get_ereal(&inp, "y-tickfontsize", psr->X.tickfontsize, wi);
+    psr->Y.tickfontsize = get_ereal(&inp, "y-tickfontsize", psr->X.tickfontsize, &wi);
     setStringEntry(&inp, "y-tickfont", psr->Y.tickfont, psr->Y.font);
 
     check_warning_error(wi, FARGS);
@@ -196,21 +195,18 @@ static void get_params(const char* mpin, const char* mpout, t_psrec* psr)
     if (mpout != nullptr)
     {
         gmx::TextOutputFile stream(mpout);
-        write_inpfile(&stream, mpout, &inp, TRUE, WriteMdpHeader::yes, wi);
+        write_inpfile(&stream, mpout, &inp, TRUE, WriteMdpHeader::yes, &wi);
         stream.close();
     }
 
     done_warning(wi, FARGS);
 }
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static t_rgb black = { 0, 0, 0 };
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static t_rgb white = { 1, 1, 1 };
+static const t_rgb black = { 0, 0, 0 };
+static const t_rgb white = { 1, 1, 1 };
 #define BLACK (&black)
 /* this must correspond to *colors[] in get_params */
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-static t_rgb* linecolors[] = { nullptr, &black, &white, nullptr };
+static const t_rgb* const linecolors[] = { nullptr, &black, &white, nullptr };
 
 static void leg_discrete(t_psdata*                      ps,
                          real                           x0,
@@ -1207,7 +1203,7 @@ static void write_combined_matrix(int                     ecombine,
         {
             gmx_fatal(FARGS,
                       "Could not extract real data from %s xpm matrices. Note that, e.g.,\n"
-                      "g_rms and g_mdmat provide such data, but not do_dssp.\n",
+                      "g_rms and g_mdmat provide such data.\n",
                       (nullptr == rmat1 && nullptr == rmat2) ? "both" : "one of the");
         }
         rlo = 1e38;
@@ -1417,7 +1413,7 @@ int gmx_xpm2ps(int argc, char* argv[])
         "[THISMODULE] makes a beautiful color plot of an XPixelMap file.",
         "Labels and axis can be displayed, when they are supplied",
         "in the correct matrix format.",
-        "Matrix data may be generated by programs such as [gmx-do_dssp], [gmx-rms] or",
+        "Matrix data may be generated by programs such as [gmx-rms] or",
         "[gmx-mdmat].[PAR]",
         "Parameters are set in the [TT].m2p[tt] file optionally supplied with",
         "[TT]-di[tt]. Reasonable defaults are provided. Settings for the [IT]y[it]-axis",

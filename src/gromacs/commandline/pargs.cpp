@@ -314,7 +314,7 @@ void OptionsAdapter::filenmToOptions(Options* options, t_filenm* fnm)
     {
         defName = ftp2defnm(fnm->ftp);
     }
-    else if (Path::hasExtension(defName))
+    else if (std::filesystem::path(defName).has_extension())
     {
         defType = fn2ftp(defName);
         GMX_RELEASE_ASSERT(defType != efNR, "File name option specifies an invalid extension");
@@ -536,7 +536,7 @@ gmx_bool parse_common_args(int*               argc,
         {
             GMX_RELEASE_ASSERT(gmx_node_rank() == 0,
                                "Help output should be handled higher up and "
-                               "only get called only on the master rank");
+                               "only get called only on the main rank");
             gmx::CommandLineHelpWriter(options)
                     .setHelpText(gmx::constArrayRefFromArray<const char*>(desc, ndesc))
                     .setKnownIssues(gmx::constArrayRefFromArray(bugs, nbugs))

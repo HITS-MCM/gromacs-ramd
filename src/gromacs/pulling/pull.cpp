@@ -33,7 +33,7 @@
  */
 #include "gmxpre.h"
 
-#include "pull.h"
+#include "gromacs/pulling/pull.h"
 
 #include "config.h"
 
@@ -65,6 +65,8 @@
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/pbc.h"
+#include "gromacs/pulling/pull_internal.h"
+#include "gromacs/pulling/transformationcoordinate.h"
 #include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/arrayref.h"
@@ -79,9 +81,6 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/strconvert.h"
 #include "gromacs/utility/stringutil.h"
-
-#include "pull_internal.h"
-#include "transformationcoordinate.h"
 
 namespace gmx
 {
@@ -719,7 +718,7 @@ static double get_dihedral_angle_coord(PullCoordSpatialData* spatialData)
 /* Calculates pull->coord[coord_ind].value.
  * This function also updates pull->coord[coord_ind].dr.
  */
-static void get_pull_coord_distance(const pull_t& pull, pull_coord_work_t* pcrd, const t_pbc& pbc)
+static void get_pull_coord_distance(const pull_t& pull, pull_coord_work_t* pcrd, const t_pbc& pbc, const double t)
 {
     get_pull_coord_dr(pull, pcrd, pbc);
 
@@ -754,7 +753,9 @@ static void get_pull_coord_distance(const pull_t& pull, pull_coord_work_t* pcrd,
         case PullGroupGeometry::Transformation:
             // Note that we would only need to pass the part of coord up to coord_ind
             spatialData.value = gmx::getTransformationPullCoordinateValue(
-                    pcrd, ArrayRef<const pull_coord_work_t>(pull.coord).subArray(0, pcrd->params.coordIndex));
+                    pcrd,
+                    ArrayRef<const pull_coord_work_t>(pull.coord).subArray(0, pcrd->params.coordIndex),
+                    t);
             break;
         default: gmx_incons("Unsupported pull type in get_pull_coord_distance");
     }
@@ -772,7 +773,7 @@ static double get_pull_coord_deviation(const pull_t& pull, pull_coord_work_t* pc
      */
     updatePullCoordReferenceValue(&pcrd->value_ref, pcrd->params, t);
 
-    get_pull_coord_distance(pull, pcrd, pbc);
+    get_pull_coord_distance(pull, pcrd, pbc, t);
 
     /* Determine the deviation */
     dev = pcrd->spatialData.value - pcrd->value_ref;
@@ -796,9 +797,20 @@ static double get_pull_coord_deviation(const pull_t& pull, pull_coord_work_t* pc
     return dev;
 }
 
+double get_pull_coord_value(pull_t* pull, int coordIndex, const t_pbc& pbc, const double t)
+{
+    get_pull_coord_distance(*pull, &pull->coord[coordIndex], pbc, t);
+
+    return pull->coord[coordIndex].spatialData.value;
+}
+
 double get_pull_coord_value(pull_t* pull, int coordIndex, const t_pbc& pbc)
 {
-    get_pull_coord_distance(*pull, &pull->coord[coordIndex], pbc);
+    GMX_RELEASE_ASSERT(!pull->allowTimeAsTransformationVariable,
+                       "This function should only be called when time is not allowed as a "
+                       "transformation coordinate variable");
+
+    get_pull_coord_distance(*pull, &pull->coord[coordIndex], pbc, 0.0);
 
     return pull->coord[coordIndex].spatialData.value;
 }
@@ -820,7 +832,7 @@ static void do_constraint(struct pull_t* pull,
                           const t_pbc&   pbc,
                           ArrayRef<RVec> x,
                           ArrayRef<RVec> v,
-                          gmx_bool       bMaster,
+                          gmx_bool       bMain,
                           tensor         vir,
                           double         dt,
                           double         t)
@@ -867,7 +879,7 @@ static void do_constraint(struct pull_t* pull,
          * We don't modify dr and value anymore, so these values are also used
          * for printing.
          */
-        get_pull_coord_distance(*pull, pcrd, pbc);
+        get_pull_coord_distance(*pull, pcrd, pbc, t);
 
         const PullCoordSpatialData& spatialData = pcrd->spatialData;
         if (debug)
@@ -1184,7 +1196,7 @@ static void do_constraint(struct pull_t* pull,
                    * dt * dt);
         pcrd->scalarForce += force;
 
-        if (vir != nullptr && pcrd->params.eGeom != PullGroupGeometry::DirectionPBC && bMaster)
+        if (vir != nullptr && pcrd->params.eGeom != PullGroupGeometry::DirectionPBC && bMain)
         {
             double f_invr;
 
@@ -1619,7 +1631,7 @@ real pull_potential(struct pull_t*       pull,
             }
         }
 
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             *dvdlambda += dVdl;
         }
@@ -1630,7 +1642,7 @@ real pull_potential(struct pull_t*       pull,
     /* All external pull potentials still need to be applied */
     pull->numExternalPotentialsStillToBeAppliedThisStep = pull->numCoordinatesWithExternalPotential;
 
-    return (MASTER(cr) ? V : 0.0);
+    return (MAIN(cr) ? V : 0.0);
 }
 
 void pull_apply_forces(struct pull_t*        pull,
@@ -1646,7 +1658,7 @@ void pull_apply_forces(struct pull_t*        pull,
         return;
     }
 
-    const bool computeVirial = (force != nullptr && force->computeVirial_ && MASTER(cr));
+    const bool computeVirial = (force != nullptr && force->computeVirial_ && MAIN(cr));
     matrix     virial        = { { 0 } };
 
     /* Applying forces needs to loop backward to apply transformation coordinate forces */
@@ -1703,7 +1715,7 @@ void pull_constraint(struct pull_t*       pull,
     {
         pull_calc_coms(cr, pull, masses, pbc, t, x, xp);
 
-        do_constraint(pull, pbc, xp, v, MASTER(cr), vir, dt, t);
+        do_constraint(pull, pbc, xp, v, MAIN(cr), vir, dt, t);
     }
 }
 
@@ -1717,10 +1729,10 @@ void dd_make_local_pull_groups(const t_commrec* cr, struct pull_t* pull)
 
     comm = &pull->comm;
 
-    /* We always make the master node participate, such that it can do i/o,
+    /* We always make the main node participate, such that it can do i/o,
      * add the virial and to simplify MC type extensions people might have.
      */
-    bMustParticipate = (comm->bParticipateAll || comm->isMasterRank);
+    bMustParticipate = (comm->bParticipateAll || comm->isMainRank);
 
     for (pull_group_work_t& group : pull->group)
     {
@@ -1771,7 +1783,7 @@ void dd_make_local_pull_groups(const t_commrec* cr, struct pull_t* pull)
         if (debug && dd != nullptr)
         {
             fprintf(debug,
-                    "Our DD rank (%3d) pull #atoms>0 or master: %s, will be part %s\n",
+                    "Our DD rank (%3d) pull #atoms>0 or main: %s, will be part %s\n",
                     dd->rank,
                     gmx::boolToString(bMustParticipate),
                     gmx::boolToString(bWillParticipate));
@@ -1828,8 +1840,8 @@ void dd_make_local_pull_groups(const t_commrec* cr, struct pull_t* pull)
             {
                 if (group.epgrppbc == epgrppbcPREVSTEPCOM)
                 {
-                    GMX_ASSERT(comm->bParticipate || !MASTER(cr),
-                               "The master rank has to participate, as it should pass an up to "
+                    GMX_ASSERT(comm->bParticipate || !MAIN(cr),
+                               "The main rank has to participate, as it should pass an up to "
                                "date prev. COM "
                                "to bcast here as well as to e.g. checkpointing");
 
@@ -2015,6 +2027,9 @@ struct pull_t* init_pull(FILE*                     fplog,
     /* Copy the pull parameters */
     pull->params = *pull_params;
 
+    /* We do not allow transformation coordinates to depend on time when using AWH */
+    pull->allowTimeAsTransformationVariable = !ir->bDoAwh;
+
     /* The gmx_omp_nthreads module might not be initialized here, so max(1,) */
     const int maxNumThreads = std::max(1, gmx_omp_nthreads_get(ModuleMultiThread::Default));
 
@@ -2058,7 +2073,7 @@ struct pull_t* init_pull(FILE*                     fplog,
                            "The stored index should match the position in the vector");
 
         /* Construct a pull coordinate, copying all coordinate parameters */
-        pull->coord.emplace_back(pull_params->coord[c]);
+        pull->coord.emplace_back(pull_params->coord[c], pull->allowTimeAsTransformationVariable);
 
         pull_coord_work_t* pcrd = &pull->coord.back();
 
@@ -2384,11 +2399,11 @@ struct pull_t* init_pull(FILE*                     fplog,
      */
     comm->mpi_comm_com = MPI_COMM_NULL;
     comm->nparticipate = 0;
-    comm->isMasterRank = (cr == nullptr || MASTER(cr));
+    comm->isMainRank   = (cr == nullptr || MAIN(cr));
 #else
     /* No MPI: 1 rank: all ranks pull */
     comm->bParticipateAll = TRUE;
-    comm->isMasterRank    = true;
+    comm->isMainRank      = true;
 #endif
     comm->bParticipate = comm->bParticipateAll;
     comm->setup_count  = 0;
@@ -2456,13 +2471,13 @@ void preparePrevStepPullCom(const t_inputrec*    ir,
     allocStatePrevStepPullCom(state, pull_work);
     if (startingFromCheckpoint)
     {
-        if (MASTER(cr))
+        if (MAIN(cr))
         {
             state->pull_com_prev_step = state_global->pull_com_prev_step;
         }
         if (PAR(cr))
         {
-            /* Only the master rank has the checkpointed COM from the previous step */
+            /* Only the main rank has the checkpointed COM from the previous step */
             gmx_bcast(sizeof(double) * state->pull_com_prev_step.size(),
                       &state->pull_com_prev_step[0],
                       cr->mpi_comm_mygroup);

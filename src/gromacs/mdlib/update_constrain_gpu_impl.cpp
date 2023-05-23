@@ -48,10 +48,9 @@
 
 #include "update_constrain_gpu_impl.h"
 
-#include <assert.h>
-#include <stdio.h>
-
+#include <cassert>
 #include <cmath>
+#include <cstdio>
 
 #include <algorithm>
 
@@ -81,9 +80,9 @@ void UpdateConstrainGpu::Impl::integrate(GpuEventSynchronizer*             fRead
                                          gmx::ArrayRef<const t_grp_tcstat> tcstat,
                                          const bool                        doParrinelloRahman,
                                          const float                       dtPressureCouple,
-                                         const matrix                      prVelocityScalingMatrix)
+                                         const Matrix3x3&                  prVelocityScalingMatrix)
 {
-    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpuPp);
     wallcycle_sub_start(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
 
     // Clearing virial matrix
@@ -122,17 +121,17 @@ void UpdateConstrainGpu::Impl::integrate(GpuEventSynchronizer*             fRead
     xUpdatedOnDeviceEvent_.markEvent(deviceStream_);
 
     wallcycle_sub_stop(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
-    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpuPp);
 }
 
-void UpdateConstrainGpu::Impl::scaleCoordinates(const matrix scalingMatrix)
+void UpdateConstrainGpu::Impl::scaleCoordinates(const Matrix3x3& scalingMatrix)
 {
     if (numAtoms_ == 0)
     {
         return;
     }
 
-    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpuPp);
     wallcycle_sub_start(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
 
     ScalingMatrix mu(scalingMatrix);
@@ -140,17 +139,17 @@ void UpdateConstrainGpu::Impl::scaleCoordinates(const matrix scalingMatrix)
     launchScaleCoordinatesKernel(numAtoms_, d_x_, mu, deviceStream_);
 
     wallcycle_sub_stop(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
-    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpuPp);
 }
 
-void UpdateConstrainGpu::Impl::scaleVelocities(const matrix scalingMatrix)
+void UpdateConstrainGpu::Impl::scaleVelocities(const Matrix3x3& scalingMatrix)
 {
     if (numAtoms_ == 0)
     {
         return;
     }
 
-    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpuPp);
     wallcycle_sub_start(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
 
     ScalingMatrix mu(scalingMatrix);
@@ -158,7 +157,7 @@ void UpdateConstrainGpu::Impl::scaleVelocities(const matrix scalingMatrix)
     launchScaleCoordinatesKernel(numAtoms_, d_v_, mu, deviceStream_);
 
     wallcycle_sub_stop(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
-    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpuPp);
 }
 
 UpdateConstrainGpu::Impl::Impl(const t_inputrec&    ir,
@@ -185,7 +184,7 @@ void UpdateConstrainGpu::Impl::set(DeviceBuffer<Float3>          d_x,
                                    const InteractionDefinitions& idef,
                                    const t_mdatoms&              md)
 {
-    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpuPp);
     wallcycle_sub_start(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
 
     GMX_ASSERT(d_x, "Coordinates device buffer should not be null.");
@@ -217,7 +216,7 @@ void UpdateConstrainGpu::Impl::set(DeviceBuffer<Float3>          d_x,
     }
 
     wallcycle_sub_stop(wcycle_, WallCycleSubCounter::LaunchGpuUpdateConstrain);
-    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpuPp);
 }
 
 void UpdateConstrainGpu::Impl::setPbc(const PbcType pbcType, const matrix box)
@@ -252,7 +251,7 @@ void UpdateConstrainGpu::integrate(GpuEventSynchronizer*             fReadyOnDev
                                    gmx::ArrayRef<const t_grp_tcstat> tcstat,
                                    const bool                        doParrinelloRahman,
                                    const float                       dtPressureCouple,
-                                   const matrix                      prVelocityScalingMatrix)
+                                   const gmx::Matrix3x3&             prVelocityScalingMatrix)
 {
     impl_->integrate(fReadyOnDevice,
                      dt,
@@ -266,12 +265,12 @@ void UpdateConstrainGpu::integrate(GpuEventSynchronizer*             fReadyOnDev
                      prVelocityScalingMatrix);
 }
 
-void UpdateConstrainGpu::scaleCoordinates(const matrix scalingMatrix)
+void UpdateConstrainGpu::scaleCoordinates(const gmx::Matrix3x3& scalingMatrix)
 {
     impl_->scaleCoordinates(scalingMatrix);
 }
 
-void UpdateConstrainGpu::scaleVelocities(const matrix scalingMatrix)
+void UpdateConstrainGpu::scaleVelocities(const gmx::Matrix3x3& scalingMatrix)
 {
     impl_->scaleVelocities(scalingMatrix);
 }

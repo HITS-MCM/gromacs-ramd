@@ -14,13 +14,13 @@
 #include <mutex>
 #include <vector>
 
-#include "gmxapi/gromacsfwd.h"
-#include "gmxapi/session.h"
-#include "gmxapi/session/resources.h"
-#include "gmxapi/md/mdmodule.h"
-
 #include "gromacs/restraint/restraintpotential.h"
 #include "gromacs/utility/real.h"
+
+#include "gmxapi/gromacsfwd.h"
+#include "gmxapi/md/mdmodule.h"
+#include "gmxapi/session.h"
+#include "gmxapi/session/resources.h"
 
 namespace plugin
 {
@@ -178,13 +178,13 @@ private:
  * \brief Template for MDModules from restraints.
  *
  * Allows a GROMACS module to be produced easily from the provided class. Refer to
- * src/pythonmodule/export_plugin.cpp for how this template is used.
+ * gmxapi/pythonmodule/export_plugin.cpp for how this template is used.
  *
  * \tparam R a class implementing the gmx::IRestraintPotential interface.
  *
  * The template type parameter is a class that defines a ``input_param_type`` member type
  * and which implements a constructor with the signature
- * ``R(std::vector<int>, const R::input_param_type&, std::shared_ptr<Resources>)``.
+ * ``R(std::vector<int>&&, const R::input_param_type&, std::shared_ptr<Resources>)``.
  *
  * \todo move this to a template header in gmxapi */
 template<class R>
@@ -207,7 +207,7 @@ public:
      * \param resources
      */
     RestraintModule(std::string                         name,
-                    std::vector<int>                    sites,
+                    std::vector<int>&&                  sites,
                     const typename R::input_param_type& params,
                     std::shared_ptr<Resources>          resources) :
         sites_{ std::move(sites) },

@@ -76,6 +76,7 @@ struct AwhBiasHistory;
 class BiasParams;
 class BiasGrid;
 class BiasSharing;
+class CorrelationGrid;
 class GridAxis;
 class PointState;
 
@@ -329,20 +330,6 @@ private:
     void resetLocalUpdateRange(const BiasGrid& grid);
 
     /*! \brief
-     * Returns the new size of the reference weight histogram in the initial stage.
-     *
-     * This function also takes care resetting the histogram used for covering checks
-     * and for exiting the initial stage.
-     *
-     * \param[in]     params            The bias parameters.
-     * \param[in]     t                 Time.
-     * \param[in]     detectedCovering  True if we detected that the sampling interval has been sufficiently covered.
-     * \param[in,out] fplog             Log file.
-     * \returns the new histogram size.
-     */
-    double newHistogramSizeInitialStage(const BiasParams& params, double t, bool detectedCovering, FILE* fplog);
-
-    /*! \brief
      * Check if the sampling region has been covered "enough" or not.
      *
      * A one-dimensional interval is defined as covered if each point has
@@ -362,19 +349,6 @@ private:
     bool isSamplingRegionCovered(const BiasParams&         params,
                                  ArrayRef<const DimParams> dimParams,
                                  const BiasGrid&           grid) const;
-
-    /*! \brief
-     * Return the new reference weight histogram size for the current update.
-     *
-     * This function also takes care of checking for covering in the initial stage.
-     *
-     * \param[in]     params   The bias parameters.
-     * \param[in]     t        Time.
-     * \param[in]     covered  True if the sampling interval has been covered enough.
-     * \param[in,out] fplog    Log file.
-     * \returns the new histogram size.
-     */
-    double newHistogramSize(const BiasParams& params, double t, bool covered, FILE* fplog);
 
 public:
     /*! \brief
@@ -523,6 +497,37 @@ public:
      */
     void setUmbrellaGridpointToGridpoint() { coordState_.setUmbrellaGridpointToGridpoint(); }
 
+    /*! \brief Updates sharedCorrelationTensorTimeIntegral_ for all points.
+     *
+     * \param[in] biasParams       The bias parameters.
+     * \param[in] forceCorrelation The force correlation grid.
+     */
+    void updateSharedCorrelationTensorTimeIntegral(const BiasParams&      biasParams,
+                                                   const CorrelationGrid& forceCorrelation);
+
+    /*! \brief Gets the time integral, shared across all ranks, of a tensor of a correlation grid point.
+     *
+     * \param[in] gridPointIndex         The index of the grid point from which to retrieve the tensor
+     * volume.
+     * \param[in] correlationTensorIndex The index of the tensor.
+     */
+    double getSharedCorrelationTensorTimeIntegral(int gridPointIndex, int correlationTensorIndex) const;
+
+    /*! \brief Gets the time integral (all tensors), shared across all ranks, of a correlation grid point.
+     *
+     * \param[in] gridPointIndex         The index of the grid point from which to retrieve the tensor
+     * volume.
+     */
+    const std::vector<double>& getSharedPointCorrelationIntegral(int gridPointIndex) const;
+
+    /*! \brief Gets the volume element, shared across all ranks, of a correlation grid point.
+     *
+     * \param[in] gridPointIndex   The index of the grid point from which to retrieve the tensor
+     * volume.
+     * \param[in] numCorrelation   Number of force correlation tensors.
+     */
+    double getSharedCorrelationTensorVolumeElement(int gridPointIndex, int numCorrelation) const;
+
     /* Data members */
 private:
     CoordState coordState_; /**< The Current coordinate state */
@@ -541,13 +546,14 @@ private:
 
     //! Object for sharing biases over multiple simulations, can be nullptr
     const BiasSharing* biasSharing_;
+
+    /* Correlation tensor time integral, for all points, shared across all ranks (weighted based on
+     * the local weight contribution). The structure is [points][correlationTensorIndex] */
+    std::vector<std::vector<double>> sharedCorrelationTensorTimeIntegral_;
 };
 
 //! Linewidth used for warning output
 static const int c_linewidth = 80 - 2;
-
-//! Indent used for warning output
-static const int c_indent = 0;
 
 } // namespace gmx
 

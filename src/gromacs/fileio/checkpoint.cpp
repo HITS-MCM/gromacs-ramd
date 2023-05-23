@@ -45,7 +45,6 @@
 #include <array>
 #include <memory>
 
-#include "buildinfo.h"
 #include "gromacs/fileio/filetypes.h"
 #include "gromacs/fileio/gmxfio.h"
 #include "gromacs/fileio/gmxfio_xdr.h"
@@ -55,6 +54,7 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/math/vecdump.h"
 #include "gromacs/math/vectypes.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/awh_correlation_history.h"
 #include "gromacs/mdtypes/awh_history.h"
 #include "gromacs/mdtypes/checkpointdata.h"
@@ -82,12 +82,13 @@
 #include "gromacs/utility/keyvaluetree.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreeserializer.h"
-#include "gromacs/utility/mdmodulesnotifiers.h"
 #include "gromacs/utility/programcontext.h"
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/sysinfo.h"
 #include "gromacs/utility/textwriter.h"
 #include "gromacs/utility/txtdump.h"
+
+#include "buildinfo.h"
 
 #define CPT_MAGIC1 171817
 #define CPT_MAGIC2 171819
@@ -770,8 +771,11 @@ static int doVectorLow(XDR*                           xd,
         return -1;
     }
 
-    if (list == nullptr && (sflags & enumValueToBitMask(ecpt)))
+    if (list == nullptr)
     {
+        GMX_RELEASE_ASSERT(
+                sflags & enumValueToBitMask(ecpt),
+                "When not listing, the flag for the entry should be set when requesting i/o");
         if (nval >= 0)
         {
             if (numElemInTheFile != nval)
@@ -818,6 +822,7 @@ static int doVectorLow(XDR*                           xd,
         }
         else
         {
+            GMX_RELEASE_ASSERT(vector != nullptr, "Without list or v, vector should be supplied");
             /* This conditional ensures that we don't resize on write.
              * In particular in the state where this code was written
              * vector has a size of numElemInThefile and we
@@ -2074,7 +2079,12 @@ static int do_cpt_correlation_grid(XDR*                         xd,
     return ret;
 }
 
-static int do_cpt_awh_bias(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhBiasHistory* biasHistory, FILE* list)
+static int do_cpt_awh_bias(XDR*                    xd,
+                           gmx_bool                bRead,
+                           int                     fflags,
+                           gmx::AwhBiasHistory*    biasHistory,
+                           FILE*                   list,
+                           const CheckPointVersion fileVersion)
 {
     int ret = 0;
 
@@ -2123,6 +2133,14 @@ static int do_cpt_awh_bias(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhBiasHist
                         do_cpt_double_err(xd, enumValueToString(*i), &psh.log_pmfsum, list);
                         do_cpt_double_err(xd, enumValueToString(*i), &psh.visits_iteration, list);
                         do_cpt_double_err(xd, enumValueToString(*i), &psh.visits_tot, list);
+                        if (fileVersion >= CheckPointVersion::AwhLocalWeightSum)
+                        {
+                            do_cpt_double_err(xd, enumValueToString(*i), &psh.localWeightSum, list);
+                        }
+                        else
+                        {
+                            psh.localWeightSum = 0;
+                        }
                     }
                     break;
                 case StateAwhEntry::UmbrellaGridPoint:
@@ -2151,7 +2169,7 @@ static int do_cpt_awh_bias(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhBiasHist
     return ret;
 }
 
-static int do_cpt_awh(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhHistory* awhHistory, FILE* list)
+static int do_cpt_awh(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhHistory* awhHistory, FILE* list, const CheckPointVersion fileVersion)
 {
     int ret = 0;
 
@@ -2191,7 +2209,7 @@ static int do_cpt_awh(XDR* xd, gmx_bool bRead, int fflags, gmx::AwhHistory* awhH
         }
         for (auto& bias : awhHistory->bias)
         {
-            ret = do_cpt_awh_bias(xd, bRead, fflags, &bias, list);
+            ret = do_cpt_awh_bias(xd, bRead, fflags, &bias, list, fileVersion);
             if (ret)
             {
                 return ret;
@@ -2217,10 +2235,10 @@ static void do_cpt_mdmodules(CheckPointVersion              fileVersion,
             gmx::TextWriter textWriter(outputFile);
             gmx::dumpKeyValueTree(&textWriter, mdModuleCheckpointParameterTree);
         }
-        gmx::MDModulesCheckpointReadingDataOnMaster mdModuleCheckpointReadingDataOnMaster = {
-            mdModuleCheckpointParameterTree, fileVersion
+        gmx::MDModulesCheckpointReadingDataOnMain mdModuleCheckpointReadingDataOnMain = {
+            mdModuleCheckpointParameterTree
         };
-        mdModulesNotifiers.checkpointingNotifier_.notify(mdModuleCheckpointReadingDataOnMaster);
+        mdModulesNotifiers.checkpointingNotifier_.notify(mdModuleCheckpointReadingDataOnMain);
     }
 }
 
@@ -2426,7 +2444,8 @@ void write_checkpoint_data(t_fileio*                         fp,
         || (do_cpt_EDstate(
                     gmx_fio_getxdr(fp), FALSE, headerContents.nED, observablesHistory->edsamHistory.get(), nullptr)
             < 0)
-        || (do_cpt_awh(gmx_fio_getxdr(fp), FALSE, headerContents.flags_awhh, state->awhHistory.get(), nullptr) < 0)
+        || (do_cpt_awh(gmx_fio_getxdr(fp), FALSE, headerContents.flags_awhh, state->awhHistory.get(), nullptr, CheckPointVersion::CurrentVersion)
+            < 0)
         || (do_cpt_swapstate(gmx_fio_getxdr(fp),
                              FALSE,
                              headerContents.eSwapCoords,
@@ -2441,8 +2460,7 @@ void write_checkpoint_data(t_fileio*                         fp,
     // Checkpointing MDModules
     {
         gmx::KeyValueTreeBuilder          builder;
-        gmx::MDModulesWriteCheckpointData mdModulesWriteCheckpoint = { builder.rootObject(),
-                                                                       headerContents.file_version };
+        gmx::MDModulesWriteCheckpointData mdModulesWriteCheckpoint = { builder.rootObject() };
         mdModulesNotifiers.checkpointingNotifier_.notify(mdModulesWriteCheckpoint);
         auto                     tree = builder.build();
         gmx::FileIOXdrSerializer serializer(fp);
@@ -2538,8 +2556,11 @@ static void check_match(FILE*                           fplog,
 
     if (reproducibilityRequested)
     {
-        check_string(
-                fplog, "Program name", gmx::getProgramContext().fullBinaryPath(), headerContents.fprog, &mm);
+        check_string(fplog,
+                     "Program name",
+                     gmx::getProgramContext().fullBinaryPath().u8string().c_str(),
+                     headerContents.fprog,
+                     &mm);
 
         check_int(fplog, "#ranks", cr->nnodes, headerContents.nnodes, &mm);
     }
@@ -2610,7 +2631,7 @@ static void check_match(FILE*                           fplog,
     }
 }
 
-static void read_checkpoint(const char*                    fn,
+static void read_checkpoint(const std::filesystem::path&   fn,
                             t_fileio*                      logfio,
                             const t_commrec*               cr,
                             const ivec                     dd_nc,
@@ -2640,7 +2661,7 @@ static void read_checkpoint(const char*                    fn,
     if (fplog)
     {
         fprintf(fplog, "\n");
-        fprintf(fplog, "Reading checkpoint file %s\n", fn);
+        fprintf(fplog, "Reading checkpoint file %s\n", fn.u8string().c_str());
         fprintf(fplog, "  file generated by:     %s\n", headerContents->fprog);
         fprintf(fplog, "  file generated at:     %s\n", headerContents->ftime);
         fprintf(fplog, "  GROMACS double prec.:  %d\n", headerContents->double_prec);
@@ -2696,7 +2717,7 @@ static void read_checkpoint(const char*                    fn,
         gmx_fatal(FARGS,
                   "Cannot change integrator during a checkpoint restart. Perhaps you should make a "
                   "new .tpr with grompp -f new.mdp -t %s",
-                  fn);
+                  fn.u8string().c_str());
     }
 
     // For modular simulator, no state object is populated, so we cannot do this check here!
@@ -2705,7 +2726,7 @@ static void read_checkpoint(const char*                    fn,
         gmx_fatal(FARGS,
                   "Cannot change a simulation algorithm during a checkpoint restart. Perhaps you "
                   "should make a new .tpr with grompp -f new.mdp -t %s",
-                  fn);
+                  fn.u8string().c_str());
     }
 
     GMX_RELEASE_ASSERT(!(headerContents->isModularSimulatorCheckpoint && !useModularSimulator),
@@ -2727,7 +2748,7 @@ static void read_checkpoint(const char*                    fn,
                        "GMX_DISABLE_MODULAR_SIMULATOR=ON to overwrite the default behavior and use "
                        "legacy simulator for all implemented use cases.");
 
-    if (MASTER(cr))
+    if (MAIN(cr))
     {
         check_match(fplog, cr, dd_nc, *headerContents, reproducibilityRequested);
     }
@@ -2809,7 +2830,12 @@ static void read_checkpoint(const char*                    fn,
     {
         state->awhHistory = std::make_shared<gmx::AwhHistory>();
     }
-    ret = do_cpt_awh(gmx_fio_getxdr(fp), TRUE, headerContents->flags_awhh, state->awhHistory.get(), nullptr);
+    ret = do_cpt_awh(gmx_fio_getxdr(fp),
+                     TRUE,
+                     headerContents->flags_awhh,
+                     state->awhHistory.get(),
+                     nullptr,
+                     headerContents->file_version);
     if (ret)
     {
         cp_error();
@@ -2850,7 +2876,7 @@ static void read_checkpoint(const char*                    fn,
 }
 
 
-void load_checkpoint(const char*                    fn,
+void load_checkpoint(const std::filesystem::path&   fn,
                      t_fileio*                      logfio,
                      const t_commrec*               cr,
                      const ivec                     dd_nc,
@@ -2863,7 +2889,7 @@ void load_checkpoint(const char*                    fn,
                      bool                           useModularSimulator)
 {
     CheckpointHeaderContents headerContents;
-    if (SIMMASTER(cr))
+    if (SIMMAIN(cr))
     {
         /* Read the state from the checkpoint file */
         read_checkpoint(fn,
@@ -2883,9 +2909,8 @@ void load_checkpoint(const char*                    fn,
     if (PAR(cr))
     {
         gmx_bcast(sizeof(headerContents.step), &headerContents.step, cr->mpiDefaultCommunicator);
-        gmx::MDModulesCheckpointReadingBroadcast broadcastCheckPointData = {
-            cr->mpiDefaultCommunicator, PAR(cr), headerContents.file_version
-        };
+        gmx::MDModulesCheckpointReadingBroadcast broadcastCheckPointData = { cr->mpiDefaultCommunicator,
+                                                                             PAR(cr) };
         mdModulesNotifiers.checkpointingNotifier_.notify(broadcastCheckPointData);
     }
     ir->bContinuation = TRUE;
@@ -2920,11 +2945,11 @@ void load_checkpoint(const char*                    fn,
     ir->simulation_part = headerContents.simulation_part + 1;
 }
 
-void read_checkpoint_part_and_step(const char* filename, int* simulation_part, int64_t* step)
+void read_checkpoint_part_and_step(const std::filesystem::path& filename, int* simulation_part, int64_t* step)
 {
     t_fileio* fp;
 
-    if (filename == nullptr || !gmx_fexist(filename) || ((fp = gmx_fio_open(filename, "r")) == nullptr))
+    if (filename.empty() || !gmx_fexist(filename) || ((fp = gmx_fio_open(filename, "r")) == nullptr))
     {
         *simulation_part = 0;
         *step            = 0;
@@ -2988,7 +3013,12 @@ static CheckpointHeaderContents read_checkpoint_data(t_fileio*                  
         cp_error();
     }
 
-    ret = do_cpt_awh(gmx_fio_getxdr(fp), TRUE, headerContents.flags_awhh, state->awhHistory.get(), nullptr);
+    ret = do_cpt_awh(gmx_fio_getxdr(fp),
+                     TRUE,
+                     headerContents.flags_awhh,
+                     state->awhHistory.get(),
+                     nullptr,
+                     headerContents.file_version);
     if (ret)
     {
         cp_error();
@@ -3063,7 +3093,7 @@ void read_checkpoint_trxframe(t_fileio* fp, t_trxframe* fr)
     }
 }
 
-void list_checkpoint(const char* fn, FILE* out)
+void list_checkpoint(const std::filesystem::path& fn, FILE* out)
 {
     t_fileio* fp;
     int       ret;
@@ -3112,7 +3142,12 @@ void list_checkpoint(const char* fn, FILE* out)
 
     if (ret == 0)
     {
-        ret = do_cpt_awh(gmx_fio_getxdr(fp), TRUE, headerContents.flags_awhh, state.awhHistory.get(), out);
+        ret = do_cpt_awh(gmx_fio_getxdr(fp),
+                         TRUE,
+                         headerContents.flags_awhh,
+                         state.awhHistory.get(),
+                         out,
+                         headerContents.file_version);
     }
 
     if (ret == 0)

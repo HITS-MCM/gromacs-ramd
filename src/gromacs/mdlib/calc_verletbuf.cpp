@@ -41,6 +41,7 @@
 #include <algorithm>
 
 #include "gromacs/ewald/ewald_utils.h"
+#include "gromacs/gmxlib/network.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/vec.h"
@@ -353,7 +354,7 @@ static std::vector<VerletbufAtomtype> getVerletBufferAtomtypes(const gmx_mtop_t&
             {
                 const t_iparams& ip = mtop.ffparams.iparams[il.iatoms[i]];
                 /* When using free-energy perturbation constraint can be perturbed.
-                 * As we can have a dynamic lamdba, we might not know the constraint length.
+                 * As we can have a dynamic lambda, we might not know the constraint length.
                  * And even with fixed lambda we would here need to have the constraint lambda
                  * value. So we skip the optimization for a perturbed constraint, this results in a
                  * more conservative buffer estimate.
@@ -650,7 +651,8 @@ static real energyDrift(gmx::ArrayRef<const VerletbufAtomtype> att,
                         real                                   rlj,
                         real                                   rcoulomb,
                         real                                   rlist,
-                        real                                   boxvol)
+                        const int                              totNumAtoms,
+                        const real                             effectiveAtomDensity)
 {
     double drift_tot = 0;
 
@@ -715,7 +717,7 @@ static real energyDrift(gmx::ArrayRef<const VerletbufAtomtype> att,
             /* We need the line density to get the energy drift of the system.
              * The effective average r^2 is close to (rlist+sigma)^2.
              */
-            pot *= 4 * M_PI * gmx::square(rlist + std::sqrt(s2)) / boxvol;
+            pot *= 4 * M_PI * gmx::square(rlist + std::sqrt(s2)) * effectiveAtomDensity / totNumAtoms;
 
             /* Add the unsigned drift to avoid cancellation of errors */
             drift_tot += std::abs(pot);
@@ -855,12 +857,78 @@ static real maxSigma(real kT_fac, gmx::ArrayRef<const VerletbufAtomtype> att)
     return 2 * std::sqrt(kT_fac / smallestMass);
 }
 
+/* Returns the density weighted over cells weighted by the atom count per cell */
+static real computeEffectiveAtomDensity(gmx::ArrayRef<const gmx::RVec> coordinates,
+                                        const matrix                   box,
+                                        const real                     cutoff)
+{
+    GMX_RELEASE_ASSERT(!coordinates.empty(), "Need coordinates to compute a density");
+
+    gmx::IVec numCells;
+    gmx::RVec invCellSize;
+
+    for (int d = 0; d < DIM; d++)
+    {
+        GMX_RELEASE_ASSERT(cutoff < box[d][d], "The cutoff should be smaller than the boxsize");
+        numCells[d]    = int(lround(box[d][d] / cutoff));
+        invCellSize[d] = numCells[d] / box[d][d];
+    }
+
+    std::vector<int> atomCount(numCells[XX] * numCells[YY] * numCells[ZZ], 0);
+
+    for (const gmx::RVec& coord : coordinates)
+    {
+        gmx::IVec indices;
+        for (int d = 0; d < DIM; d++)
+        {
+            indices[d] = (int(coord[d] * invCellSize[d]) + numCells[d]) % numCells[d];
+        }
+        int index = (indices[XX] * numCells[YY] + indices[YY]) * numCells[ZZ] + indices[ZZ];
+        atomCount[index]++;
+    }
+
+    int64_t sumSquares = 0;
+    for (int count : atomCount)
+    {
+        sumSquares += gmx::square(int64_t(count));
+    }
+
+    return (double(sumSquares) / coordinates.size()) * invCellSize[XX] * invCellSize[YY] * invCellSize[ZZ];
+}
+
+real computeEffectiveAtomDensity(gmx::ArrayRef<const gmx::RVec> coordinates,
+                                 const matrix                   box,
+                                 const real                     cutoff,
+                                 MPI_Comm                       communicator)
+{
+    int ourMpiRank = 0;
+#if GMX_MPI
+    if (communicator != MPI_COMM_NULL)
+    {
+        MPI_Comm_rank(communicator, &ourMpiRank);
+    }
+#endif
+
+    real effectiveAtomDensity;
+
+    if (ourMpiRank == 0)
+    {
+        effectiveAtomDensity = computeEffectiveAtomDensity(coordinates, box, cutoff);
+    }
+    if (communicator != MPI_COMM_NULL)
+    {
+        gmx_bcast(sizeof(effectiveAtomDensity), &effectiveAtomDensity, communicator);
+    }
+
+    return effectiveAtomDensity;
+}
+
 real calcVerletBufferSize(const gmx_mtop_t&         mtop,
-                          const real                boxVolume,
+                          const real                effectiveAtomDensity,
                           const t_inputrec&         ir,
                           const int                 nstlist,
                           const int                 listLifetime,
-                          real                      referenceTemperature,
+                          real                      ensembleTemperature,
                           const VerletbufListSetup& listSetup)
 {
     double resolution;
@@ -884,16 +952,15 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
         gmx_incons("The Verlet buffer tolerance needs to be larger than zero");
     }
 
-    if (referenceTemperature < 0)
+    if (ensembleTemperature < 0)
     {
         /* We use the maximum temperature with multiple T-coupl groups.
          * We could use a per particle temperature, but since particles
          * interact, this might underestimate the buffer size.
          */
-        referenceTemperature = maxReferenceTemperature(ir);
+        ensembleTemperature = maxReferenceTemperature(ir);
 
-        GMX_RELEASE_ASSERT(referenceTemperature >= 0,
-                           "Without T-coupling we should not end up here");
+        GMX_RELEASE_ASSERT(ensembleTemperature >= 0, "Without T-coupling we should not end up here");
     }
 
     /* Resolution of the buffer size */
@@ -930,7 +997,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
      */
 
     /* Worst case assumption: HCP packing of particles gives largest distance */
-    particle_distance = std::cbrt(boxVolume * std::sqrt(2) / mtop.natoms);
+    particle_distance = std::cbrt(std::sqrt(2) / effectiveAtomDensity);
 
     /* TODO: Obtain masses through (future) integrator functionality
      *       to avoid scattering the code with (or forgetting) checks.
@@ -942,6 +1009,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
 
     if (debug)
     {
+        fprintf(debug, "Using an effective atom density of: %f atoms/nm^3\n", effectiveAtomDensity);
         fprintf(debug, "particle distance assuming HCP packing: %f nm\n", particle_distance);
         fprintf(debug, "energy drift atom types: %zu\n", att.size());
     }
@@ -982,7 +1050,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
             default: gmx_incons("Unimplemented VdW modifier");
         }
     }
-    else if (EVDW_PME(ir.vdwtype))
+    else if (usingLJPme(ir.vdwtype))
     {
         real b   = calc_ewaldcoeff_lj(ir.rvdw, ir.ewald_rtol_lj);
         real r   = ir.rvdw;
@@ -1008,7 +1076,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
     // Determine the 1st and 2nd derivative for the electostatics
     pot_derivatives_t elec = { 0, 0, 0 };
 
-    if (ir.coulombtype == CoulombInteractionType::Cut || EEL_RF(ir.coulombtype))
+    if (ir.coulombtype == CoulombInteractionType::Cut || usingRF(ir.coulombtype))
     {
         real eps_rf, k_rf;
 
@@ -1037,7 +1105,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
         }
         elec.d2 = elfac * (2.0 / gmx::power3(ir.rcoulomb) + 2 * k_rf);
     }
-    else if (EEL_PME(ir.coulombtype) || ir.coulombtype == CoulombInteractionType::Ewald)
+    else if (usingPme(ir.coulombtype) || ir.coulombtype == CoulombInteractionType::Ewald)
     {
         real b, rc, br;
 
@@ -1060,7 +1128,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
      * For inertial dynamics (not Brownian dynamics) the mass factor
      * is not included in kT_fac, it is added later.
      */
-    const real kT_fac = displacementVariance(ir, referenceTemperature, listLifetime * ir.delta_t);
+    const real kT_fac = displacementVariance(ir, ensembleTemperature, listLifetime * ir.delta_t);
 
     if (debug)
     {
@@ -1085,7 +1153,7 @@ real calcVerletBufferSize(const gmx_mtop_t&         mtop,
          * of the nstlist steps at which the pair-list is used.
          */
         drift = energyDrift(
-                att, &mtop.ffparams, kT_fac, &ljDisp, &ljRep, &elec, ir.rvdw, ir.rcoulomb, rl, boxVolume);
+                att, &mtop.ffparams, kT_fac, &ljDisp, &ljRep, &elec, ir.rvdw, ir.rcoulomb, rl, mtop.natoms, effectiveAtomDensity);
 
         /* Correct for the fact that we are using a Ni x Nj particle pair list
          * and not a 1 x 1 particle pair list. This reduces the drift.

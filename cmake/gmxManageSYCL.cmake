@@ -41,15 +41,15 @@ set(GMX_GPU_SYCL ON)
 # CMake issue tracking the efforts to make a universal upstream module:
 # https://gitlab.kitware.com/cmake/cmake/-/issues/21711
 
-option(GMX_SYCL_HIPSYCL "Use hipSYCL instead of Intel/Clang for SYCL compilation" OFF)
-
-option(GMX_SYCL_USE_USM "Use USM instead of SYCL buffers" ON)
+option(GMX_SYCL_HIPSYCL "Use hipSYCL instead of Intel oneAPI for SYCL compilation" OFF)
 
 if(GMX_DOUBLE)
     message(FATAL_ERROR "SYCL acceleration is not available in double precision")
 endif()
 
 include(gmxFindFlagsForSource)
+
+set(_sycl_has_valid_fft FALSE)
 
 # Return all current CMake variables with name starting with "hipsycl" (case-insensitive).
 # Result is in the form of a list of flags ("-Dfoo=bar;-Dbaz=true").
@@ -73,10 +73,14 @@ function(_getHipSyclCmakeFlags RETURN_VAR)
 endfunction()
 
 if(GMX_SYCL_HIPSYCL)
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
+        message(FATAL_ERROR "HipSYCL build requires Clang compiler, but ${CMAKE_CXX_COMPILER_ID} is used")
+    endif()
     set(HIPSYCL_CLANG "${CMAKE_CXX_COMPILER}")
-    # -Wno-unknown-cuda-version because Clang-11 complains about CUDA 11.0-11.2, despite working fine with them.
+    # -Wno-unknown-cuda-version because Clang often complains about the newest CUDA, despite working fine with it.
     # -Wno-unknown-attributes because hipSYCL does not support reqd_sub_group_size (because it can only do some sub group sizes).
-    set(HIPSYCL_SYCLCC_EXTRA_ARGS "-Wno-unknown-cuda-version -Wno-unknown-attributes")
+    #    The latter can be added to HIPSYCL_SYCLCC_EXTRA_COMPILE_OPTIONS
+    set(HIPSYCL_SYCLCC_EXTRA_ARGS "-Wno-unknown-cuda-version -Wno-unknown-attributes ${SYCL_CXX_FLAGS_EXTRA}")
 
     # Must be called before find_package to capture all user-set CMake variables, but not those set automatically
     _getHipSyclCmakeFlags(_ALL_HIPSYCL_CMAKE_FLAGS)
@@ -111,6 +115,27 @@ if(GMX_SYCL_HIPSYCL)
     endif()
     if (NOT GMX_HIPSYCL_COMPILATION_WORKS)
         message(FATAL_ERROR "hipSYCL compiler not working:\n${_HIPSYCL_COMPILATION_OUTPUT}")
+    endif()
+
+    # Does hipSYCL support passing compilation flags to a subset of files?
+    if(NOT DEFINED GMX_HIPSYCL_HAVE_SYCLCC_EXTRA_COMPILE_OPTIONS OR _rerun_hipsycl_try_compile_tests)
+        message(STATUS "Checking for hipSYCL compiler options handling")
+        set(_ALL_HIPSYCL_CMAKE_FLAGS_WITHOUT_EXTRA_FLAGS ${_ALL_HIPSYCL_CMAKE_FLAGS})
+        list(FILTER _ALL_HIPSYCL_CMAKE_FLAGS_WITHOUT_EXTRA_FLAGS EXCLUDE REGEX "-DHIPSYCL_SYCLCC_EXTRA_COMPILE_OPTIONS=.*")
+        try_compile(GMX_HIPSYCL_HAVE_SYCLCC_EXTRA_COMPILE_OPTIONS "${CMAKE_BINARY_DIR}/CMakeTmpHipSyclTest" "${CMAKE_SOURCE_DIR}/cmake/HipSyclTest/" "HipSyclTest"
+            CMAKE_FLAGS
+            -DHIPSYCL_SYCLCC_EXTRA_COMPILE_OPTIONS=-DTEST_MACRO_IS_SET=1
+            -DCHECK_TEST_MACRO_IS_SET=ON
+            ${_ALL_HIPSYCL_CMAKE_FLAGS_WITHOUT_EXTRA_FLAGS})
+        file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/CMakeTmpHipSyclTest")
+        if(GMX_HIPSYCL_HAVE_SYCLCC_EXTRA_COMPILE_OPTIONS)
+            message(STATUS "Checking for the ability to pass compilation flags - Success")
+        else()
+            message(STATUS "Checking for the ability to pass compilation flags - Failed")
+        endif()
+        if (NOT GMX_HIPSYCL_HAVE_SYCLCC_EXTRA_COMPILE_OPTIONS)
+            message(WARNING "hipSYCL cannot pass compilation flags to a subset of files. It might hurt the performance. Please update your hipSYCL.")
+        endif()
     endif()
 
     # Does hipSYCL compilation target CUDA devices?
@@ -167,8 +192,51 @@ if(GMX_SYCL_HIPSYCL)
     endif()
     unset(_rerun_hipsycl_try_compile_tests)
 
+
+    if (GMX_HIPSYCL_HAVE_SYCLCC_EXTRA_COMPILE_OPTIONS)
+        # -ffast-math for performance
+        set(HIPSYCL_SYCLCC_EXTRA_COMPILE_OPTIONS -ffast-math)
+
+        # We want to inline aggressively, but only Clang 13 or newer supports this flag.
+        # Likely not needed on AMD, since hipSYCL by default sets AMD-specific flags to force inlining, but no harm either.
+        check_cxx_compiler_flag("-fgpu-inline-threshold=1" HAS_GPU_INLINE_THRESHOLD)
+        if(${HAS_GPU_INLINE_THRESHOLD})
+            list(APPEND HIPSYCL_SYCLCC_EXTRA_COMPILE_OPTIONS -fgpu-inline-threshold=99999)
+        endif()
+    endif()
+
+    if(GMX_GPU_FFT_VKFFT)
+        include(gmxManageVkFft)
+        if (GMX_HIPSYCL_HAVE_CUDA_TARGET)
+            gmx_manage_vkfft("CUDA")
+        elseif (GMX_HIPSYCL_HAVE_HIP_TARGET)
+            gmx_manage_vkfft("HIP")
+        else()
+            message(FATAL_ERROR "VkFFT can only be used with HIP or CUDA backends")
+        endif()
+        set(_sycl_has_valid_fft TRUE)
+    endif()
+
+    # Try to detect if we need RDNA support. Not very robust, but should cover the most common use.
+    if (GMX_HIPSYCL_HAVE_HIP_TARGET AND ${HIPSYCL_TARGETS} MATCHES "gfx1[0-9][0-9][0-9]")
+        set(_enable_rdna_support_automatically ON)
+    else()
+        set(_enable_rdna_support_automatically OFF)
+        # We assume that any GCN2-5 architecture (gfx7/8) and CDNA1-3 (gfx9 series) up until the time of writing of this conditional is 64-wide
+        if (${HIPSYCL_TARGETS} MATCHES "gfx[7-8][0-9][0-9]|gfx9[0-4][0-9ac]")
+            option(GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT
+                "Disable NBNXM GPU cluster pair splitting. Only supported with SYCL and 64-wide GPU architectures (like AMD GCN/CDNA)."
+                ON)
+            mark_as_advanced(GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT)
+        endif()
+    endif()
+    option(GMX_HIPSYCL_ENABLE_AMD_RDNA_SUPPORT
+        "Enable compiling kernels for AMD RDNA GPUs (gfx1xxx). When OFF, only CDNA and GCN are supported. Only used with hipSYCL."
+        ${_enable_rdna_support_automatically})
+    mark_as_advanced(GMX_HIPSYCL_ENABLE_AMD_RDNA_SUPPORT)
+
     # Find a suitable rocFFT when hipSYCL is targeting AMD devices
-    if (GMX_HIPSYCL_HAVE_HIP_TARGET)
+    if (GMX_HIPSYCL_HAVE_HIP_TARGET AND GMX_GPU_FFT_ROCFFT)
         # For consistency, we prefer to find rocFFT as part of the
         # default ROCm distribution that supports the version of
         # hipSYCL that is being used. Other installations of rocFFT
@@ -222,13 +290,24 @@ if(GMX_SYCL_HIPSYCL)
             endif()
         endif()
 
+
         # Find rocFFT, either from the ROCm used by hipSYCL, or as otherwise found on the system
         find_package(rocfft ${FIND_ROCFFT_QUIETLY} CONFIG HINTS ${HIPSYCL_SYCLCC_ROCM_PATH} PATHS /opt/rocm)
         if (NOT rocfft_FOUND)
             message(FATAL_ERROR "rocFFT is required for the hipSYCL build, but was not found")
         endif()
         set(FIND_ROCFFT_QUIETLY "QUIET")
+        set(_sycl_has_valid_fft TRUE)
     endif()
+
+    # Mark hipsycl-related CMake options as "advanced"
+    get_cmake_property(_VARS VARIABLES)
+    foreach (_VARNAME ${_VARS})
+        if (_VARNAME MATCHES "^HIPSYCL")
+            mark_as_advanced(${_VARNAME})
+        endif()
+    endforeach()
+    mark_as_advanced(CLEAR HIPSYCL_TARGETS)
 else()
     if(WIN32)
         if(CMAKE_VERSION VERSION_LESS "3.23.0")
@@ -264,7 +343,7 @@ else()
             DISABLE_SYCL_CXX_FLAGS_RESULT)
     
         if(DISABLE_SYCL_CXX_FLAGS_RESULT)
-            set(DISABLE_SYCL_CXX_FLAGS "-fno-sycl")
+            set(SYCL_TOOLCHAIN_CXX_FLAGS "-fno-sycl")
         endif()
         if(NOT CHECK_DISABLE_SYCL_CXX_FLAGS_QUIETLY)
             if(DISABLE_SYCL_CXX_FLAGS_RESULT)
@@ -275,42 +354,126 @@ else()
             set(CHECK_DISABLE_SYCL_CXX_FLAGS_QUIETLY 1 CACHE INTERNAL "Keep quiet on future calls to detect no-SYCL flags" FORCE)
         endif()
     endif()
-    
+
     # Find the flags to enable (or re-enable) SYCL with Intel extensions. In case we turned it off above,
     # it's important that we check the combination of both flags, to make sure the second one re-enables SYCL.
     if(NOT CHECK_SYCL_CXX_FLAGS_QUIETLY)
         message(STATUS "Checking for flags to enable SYCL")
     endif()
-    gmx_find_flag_for_source(SYCL_CXX_FLAGS_RESULT
+    set(SAMPLE_SYCL_SOURCE
         "#include <CL/sycl.hpp>
          int main(){
              sycl::queue q(sycl::default_selector{});
              return 0;
-         }
-         " "CXX" DISABLE_SYCL_CXX_FLAGS SYCL_CXX_FLAGS " -fsycl -fsycl-device-code-split=per_kernel ${SYCL_CXX_FLAGS_EXTRA}")
-    
-    string(STRIP "${SYCL_CXX_FLAGS}" SYCL_CXX_FLAGS)
-    if(NOT CHECK_SYCL_CXX_FLAGS_QUIETLY)
-        if(SYCL_CXX_FLAGS_RESULT)
-            message(STATUS "Checking for flags to enable SYCL - ${SYCL_CXX_FLAGS}")
+         }")
+    set(SYCL_CXX_FLAGS "-fsycl")
+    gmx_check_source_compiles_with_flags(
+        "${SAMPLE_SYCL_SOURCE}"
+        "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_CXX_FLAGS}"
+        "CXX"
+        SYCL_CXX_FLAGS_RESULT
+        )
+    if (SYCL_CXX_FLAGS_RESULT)
+        if(NOT CHECK_SYCL_CXX_FLAGS_QUIETLY)
+            message(STATUS "Checking for flags to enable SYCL - ${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_CXX_FLAGS}")
         endif()
         set(CHECK_SYCL_CXX_FLAGS_QUIETLY 1 CACHE INTERNAL "Keep quiet on future calls to detect SYCL flags" FORCE)
-    endif()
-    
-    if(NOT SYCL_CXX_FLAGS_RESULT)
-        message(FATAL_ERROR "Cannot compile with SYCL Intel compiler. Try a different compiler or disable SYCL.")
+        set(SYCL_TOOLCHAIN_CXX_FLAGS "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_CXX_FLAGS}")
+        set(SYCL_TOOLCHAIN_LINKER_FLAGS "${SYCL_TOOLCHAIN_LINKER_FLAGS} ${SYCL_CXX_FLAGS}")
+    else()
+        message(FATAL_ERROR "Cannot compile a SYCL program with ${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_CXX_FLAGS}. Try a different compiler or disable SYCL.")
     endif()
 
-    if(NOT WIN32)
-         set(SYCL_CXX_FLAGS "${SYCL_CXX_FLAGS} -ffast-math")
+    # Add kernel-splitting flag if available, both for compiling and linking
+    set(SYCL_DEVICE_CODE_SPLIT_CXX_FLAGS "-fsycl-device-code-split=per_kernel")
+    gmx_check_source_compiles_with_flags(
+        "${SAMPLE_SYCL_SOURCE}"
+        "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_DEVICE_CODE_SPLIT_CXX_FLAGS}"
+        "CXX"
+        SYCL_DEVICE_CODE_SPLIT_CXX_FLAGS_RESULT
+        )
+    if (SYCL_DEVICE_CODE_SPLIT_CXX_FLAGS_RESULT)
+        set(SYCL_TOOLCHAIN_CXX_FLAGS "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_DEVICE_CODE_SPLIT_CXX_FLAGS}")
+        set(SYCL_TOOLCHAIN_LINKER_FLAGS "${SYCL_TOOLCHAIN_LINKER_FLAGS} ${SYCL_DEVICE_CODE_SPLIT_CXX_FLAGS}")
+    else()
+        message(WARNING "Cannot compile SYCL with per-kernel device-code splitting. Simulations will work, but the first step will be much slower than it needs to be. Try a different compiler.")
+    endif()
+
+    # Add fast-math flag where available
+    gmx_find_flag_for_source(
+        SYCL_FAST_MATH_CXX_FLAGS_RESULT
+        "${SAMPLE_SYCL_SOURCE}"
+        "CXX"
+        SYCL_TOOLCHAIN_CXX_FLAGS
+        SYCL_FAST_MATH_CXX_FLAGS
+        "-ffast-math" "/clang:-ffast-math")
+    if (SYCL_FAST_MATH_CXX_FLAGS_RESULT)
+        set(SYCL_TOOLCHAIN_CXX_FLAGS "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_FAST_MATH_CXX_FLAGS}")
+    endif()
+
+    if("${SYCL_CXX_FLAGS_EXTRA}" MATCHES "fsycl-targets=.*(nvptx64|amdgcn)")
+        # When compiling for NVIDIA/AMD, Intel LLVM produces tons of harmless warnings, ignore them
+        set(SYCL_WARNINGS_CXX_FLAGS "-Wno-linker-warnings -Wno-override-module -Wno-sycl-target")
+        gmx_check_source_compiles_with_flags(
+            "${SAMPLE_SYCL_SOURCE}"
+            "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_WARNING_CXX_FLAGS}"
+            "CXX"
+            SYCL_WARNINGS_CXX_FLAGS_RESULT
+            )
+        if (SYCL_WARNINGS_CXX_FLAGS_RESULT)
+            set(SYCL_TOOLCHAIN_CXX_FLAGS "${SYCL_TOOLCHAIN_CXX_FLAGS} ${SYCL_WARNINGS_CXX_FLAGS}")
+            set(SYCL_TOOLCHAIN_LINKER_FLAGS "${SYCL_TOOLCHAIN_LINKER_FLAGS} ${SYCL_WARNINGS_CXX_FLAGS}")
+        endif()
+    endif()
+
+    if(GMX_GPU_FFT_VKFFT)
+        include(gmxManageVkFft)
+        if ("${SYCL_CXX_FLAGS_EXTRA}" MATCHES "fsycl-targets=.*nvptx64")
+            gmx_manage_vkfft("CUDA")
+        else()
+            message(FATAL_ERROR "VkFFT can only be used with CUDA backend")
+        endif()
+        set(_sycl_has_valid_fft TRUE)
     endif()
 
     include(gmxManageFFTLibraries)
-    if(NOT GMX_FFT_MKL)
-        message(WARNING "Building SYCL version with ${GMX_FFT_LIBRARY} instead of MKL. GPU FFT is disabled!")
+
+    if(GMX_GPU_FFT_MKL)
+        #MKLROOT is set by gmxManageFFTLibraries.cmake
+        find_library(mkl_sycl_PATH mkl_sycl PATHS "${MKLROOT}/lib/intel64" REQUIRED)
+        mark_as_advanced(mkl_sycl_PATH)
+        list(APPEND GMX_EXTRA_LIBRARIES "${mkl_sycl_PATH};OpenCL")
+
+        set(CMAKE_REQUIRED_FLAGS "${SYCL_TOOLCHAIN_CXX_FLAGS}")
+        set(CMAKE_REQUIRED_LIBRARIES "${GMX_EXTRA_LIBRARIES};${FFT_LIBRARIES}")
+        check_cxx_source_compiles("
+#include <oneapi/mkl/dfti.hpp>
+int main() {
+    oneapi::mkl::dft::descriptor<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL> d({3,5,7});
+    sycl::queue q;
+    d.commit(q);
+}"
+          CAN_LINK_SYCL_MKL)
+        unset(CMAKE_REQUIRED_FLAGS)
+        unset(CMAKE_REQUIRED_LIBRARIES)
+        unset(CMAKE_REQUIRED_INCLUDES)
+        if (NOT CAN_LINK_SYCL_MKL)
+            message(WARNING "Cannot link mkl_sycl. Make sure the MKL and compiler versions are compatible.")
+        endif()
+
+        set(_sycl_has_valid_fft TRUE)
     endif()
-    if(WIN32 AND GMX_FFT_MKL)
-        list(APPEND GMX_EXTRA_LIBRARIES "opencl")
+
+    if(GMX_GPU_FFT_DBFFT)
+        # The double-batched FFT library is still called by its former
+        # name bbfft in the implementation. For now, only the shared
+        # libraries can link into GROMACS shared libraries.
+        if (BUILD_SHARED_LIBS)
+            find_package(bbfft-sycl 0.3.1 REQUIRED shared)
+        else()
+            find_package(bbfft-sycl 0.3.1 REQUIRED)
+        endif()
+        set(_sycl_has_valid_fft TRUE)
     endif()
 
     # Add function wrapper similar to the one used by ComputeCPP and hipSYCL
@@ -321,8 +484,34 @@ else()
             "" # No options
             "TARGET" # One-value keyword
             "SOURCES" # Multi-value keyword
-        )
-        set_source_files_properties(${ARGS_SOURCES} PROPERTIES COMPILE_FLAGS "${SYCL_CXX_FLAGS}")
-        target_link_libraries(${ARGS_TARGET} PRIVATE ${SYCL_CXX_FLAGS})
+            )
+        # convert the space-separated string to a list
+        separate_arguments(SYCL_TOOLCHAIN_CXX_FLAGS)
+        set_property(SOURCE ${ARGS_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+            ${SYCL_TOOLCHAIN_CXX_FLAGS}
+            ${SYCL_CXX_FLAGS_EXTRA})
+        string(REPLACE " " ";" SYCL_TOOLCHAIN_LINKER_FLAGS_LIST "${SYCL_TOOLCHAIN_LINKER_FLAGS} ${SYCL_CXX_FLAGS_EXTRA}")
+        target_link_options(${ARGS_TARGET} PRIVATE ${SYCL_TOOLCHAIN_LINKER_FLAGS_LIST})
     endfunction(add_sycl_to_target)
+endif()
+
+if (GMX_GPU_FFT_CUFFT AND GMX_USE_HEFFTE)
+    set(_sycl_has_valid_fft TRUE)
+    if (NOT DEFINED ENV{GITLAB_CI}) # Don't warn in CI builds
+        message(WARNING "SYCL build with HeFFTe and cuFFT should only ever be used for testing")
+    endif()
+endif()
+
+if(NOT ${_sycl_has_valid_fft} AND NOT GMX_GPU_FFT_LIBRARY STREQUAL "NONE")
+    set(_hint "")
+    if (GMX_GPU_FFT_CUFFT OR GMX_GPU_FFT_CLFFT)
+        set(_hint " It is not supported with SYCL.")
+    elseif (GMX_SYCL_HIPSYCL AND GMX_GPU_FFT_MKL)
+        set(_hint " MKL is only supported with Intel DPC++ compiler, not with hipSYCL")
+    endif()
+    message(FATAL_ERROR "The selected GPU FFT library ${GMX_GPU_FFT_LIBRARY} is not compatible.${_hint}")
+endif()
+
+if(NOT ${_sycl_has_valid_fft} AND NOT DEFINED ENV{GITLAB_CI}) # Don't warn in CI builds
+    message(WARNING "Building SYCL version without GPU FFT library.  Will not be able to perform FFTs on a GPU, which is not good for performance.")
 endif()

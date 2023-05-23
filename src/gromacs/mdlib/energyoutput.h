@@ -50,8 +50,8 @@
 #include <memory>
 
 #include "gromacs/math/vectypes.h"
-#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/enerdata.h"
+#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/real.h"
@@ -242,8 +242,12 @@ public:
      * \param[in] groups  Information on atom groups.
      * \param[in] opts    Atom temperature coupling groups options
      *                    (annealing is done by groups).
+     * \param[in] ekind   Kinetic energy data, including current reference temperatures
      */
-    static void printAnnealingTemperatures(FILE* log, const SimulationGroups* groups, const t_grpopts* opts);
+    static void printAnnealingTemperatures(FILE*                   log,
+                                           const SimulationGroups& groups,
+                                           const t_grpopts&        opts,
+                                           const gmx_ekindata_t&   ekind);
 
     /*! \brief Prints average values to log file.
      *

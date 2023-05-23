@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "topologyinformation.h"
+#include "gromacs/trajectoryanalysis/topologyinformation.h"
 
 #include <memory>
 
@@ -54,7 +54,6 @@
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/smalloc.h"
-#include "gromacs/utility/unique_cptr.h"
 
 namespace gmx
 {
@@ -168,7 +167,7 @@ ArrayRef<const RVec> TopologyInformation::v() const
 void TopologyInformation::getBox(matrix box) const
 {
     GMX_RELEASE_ASSERT(box != nullptr, "Must have valid box to fill");
-    copy_mat(const_cast<rvec*>(boxtop_), box);
+    copy_mat(boxtop_, box);
 }
 
 const char* TopologyInformation::name() const

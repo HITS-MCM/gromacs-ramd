@@ -43,15 +43,15 @@
 
 #include "gmxpre.h"
 
-#include "gpuforcereduction_impl_internal.h"
-
 #include <utility>
 
-#include "gromacs/gpu_utils/gmxsycl.h"
 #include "gromacs/gpu_utils/devicebuffer.h"
+#include "gromacs/gpu_utils/gmxsycl.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/gpu_utils/gpueventsynchronizer.h"
 #include "gromacs/utility/template_mp.h"
+
+#include "gpuforcereduction_impl_internal.h"
 
 //! \brief Class name for reduction kernel
 template<bool addRvecForce, bool accumulateForce>
@@ -113,7 +113,7 @@ static void launchReductionKernel_(const int                   numAtoms,
     // We only need parts of b_rvecForceToAdd and b_forceTotal, so sub-buffers would be appropriate.
     // But hipSYCL does not support them yet, nor plans to. See Issue #4019.
 
-    queue.submit([&](sycl::handler& cgh) {
+    queue.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel = reduceKernel<addRvecForce, accumulateForce>(
                 cgh, b_nbnxmForce, b_rvecForceToAdd, b_forceTotal, b_cell, atomStart);
         cgh.parallel_for<ReduceKernel<addRvecForce, accumulateForce>>(rangeNumAtoms, kernel);

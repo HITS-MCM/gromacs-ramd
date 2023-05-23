@@ -56,6 +56,7 @@ gmx_target_compile_options(modularsimulator)
 target_compile_definitions(modularsimulator PRIVATE HAVE_CONFIG_H)
 # Should be possible to remove this when resolving #3290
 target_include_directories(modularsimulator SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/thread_mpi/include)
+target_compile_definitions(modularsimulator PRIVATE TMPI_USE_VISIBILITY)
 
 # Source files have the following private external dependencies.
 target_link_libraries(modularsimulator PRIVATE tng_io)
@@ -65,26 +66,24 @@ target_link_libraries(modularsimulator PRIVATE common)
 
 # Source files have the following private module dependencies.
 # TODO: Explicitly link specific modules.
-target_link_libraries(modularsimulator PRIVATE legacy_modules)
 target_link_libraries(modularsimulator PRIVATE
+                      legacy_api
+                      legacy_modules
                       gmxlib
                       math
                       mdtypes
+                      pbcutil
+                      pulling
+                      timing
                       tng_io
-                      )
+                      topology
+                      utility
+)
 
 # Public interface for modules, including dependencies and interfaces
 target_include_directories(modularsimulator PUBLIC
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-target_link_libraries(modularsimulator PUBLIC
-                      legacy_api
-                      )
 
-# Module dependencies
-# This module convey transitive dependence on these modules.
-target_link_libraries(modularsimulator PUBLIC
-                      utility
-                      )
-
-list(APPEND libgromacs_object_library_dependencies modularsimulator)
-set(libgromacs_object_library_dependencies ${libgromacs_object_library_dependencies} PARENT_SCOPE)
+if (BUILD_SHARED_LIBS)
+    set_target_properties(modularsimulator PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()

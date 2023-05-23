@@ -38,8 +38,8 @@
 
 #include <cmath>
 
-#include "gromacs/linearalgebra/nrjac.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/math/nrjac.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/smalloc.h"
@@ -269,17 +269,6 @@ real sub_xcm(rvec x[], int gnx, const int* index, const t_atom atom[], rvec xcm,
         rvec_dec(x[ii], xcm);
     }
     return tm;
-}
-
-void add_xcm(rvec x[], int gnx, const int* index, rvec xcm)
-{
-    int i, ii;
-
-    for (i = 0; (i < gnx); i++)
-    {
-        ii = index ? index[i] : i;
-        rvec_inc(x[ii], xcm);
-    }
 }
 
 void orient_princ(const t_atoms* atoms, int isize, const int* index, int natoms, rvec x[], rvec* v, rvec d)

@@ -52,6 +52,7 @@
 
 struct gmx_mtop_t;
 struct gmx_multisim_t;
+struct gmx_wallcycle;
 class InteractionDefinitions;
 struct t_commrec;
 struct t_inputrec;
@@ -69,9 +70,6 @@ class Lincs;
 template<typename>
 class ListOfLists;
 class ObservablesReducerBuilder;
-
-/*! \brief Return the data for determining constraint RMS relative deviations. */
-ArrayRef<real> lincs_rmsdData(Lincs* lincsd);
 
 /*! \brief Return the RMSD of the constraint. */
 real lincs_rmsd(const Lincs* lincsd);
@@ -123,7 +121,8 @@ bool constrain_lincs(bool                            computeRmsd,
                      ConstraintVariable              econq,
                      t_nrnb*                         nrnb,
                      int                             maxwarn,
-                     int*                            warncount);
+                     int*                            warncount,
+                     gmx_wallcycle*                  wcycle);
 
 } // namespace gmx
 

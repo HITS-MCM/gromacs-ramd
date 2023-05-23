@@ -35,6 +35,7 @@
 
 #include <cmath>
 #include <cstring>
+
 #include <vector>
 
 #include "gromacs/commandline/pargs.h"
@@ -44,7 +45,6 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
-#include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
 #include "gromacs/pbcutil/rmpbc.h"
 #include "gromacs/topology/index.h"
@@ -52,7 +52,6 @@
 #include "gromacs/trajectory/trajectoryframe.h"
 #include "gromacs/utility/arraysize.h"
 #include "gromacs/utility/fatalerror.h"
-#include "gromacs/utility/futil.h"
 #include "gromacs/utility/smalloc.h"
 
 #define MAX_ENDS 3

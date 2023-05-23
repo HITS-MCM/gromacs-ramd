@@ -32,38 +32,54 @@
 # the research papers on the package. Check out https://www.gromacs.org.
 
 # Set up the module library
-add_library(pulling INTERFACE)
-file(GLOB PULLING_SOURCES *.cpp)
-set(LIBGROMACS_SOURCES ${LIBGROMACS_SOURCES} ${PULLING_SOURCES} PARENT_SCOPE)
+add_library(pulling OBJECT)
+target_sources(pulling PRIVATE
+        output.cpp
+        pull.cpp
+        pull_rotation.cpp
+        pullcoordexpressionparser.cpp
+        pullutil.cpp
+        transformationcoordinate.cpp)
+if (BUILD_SHARED_LIBS)
+    set_target_properties(pulling PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+# Set required compile flags
+gmx_target_compile_options(pulling)
+target_compile_definitions(pulling PRIVATE HAVE_CONFIG_H)
 
 # Source files have the following dependencies on library infrastructure.
-#target_link_libraries(pulling PRIVATE
-#                      common
-#                      legacy_modules
-#)
+target_link_libraries(pulling PRIVATE
+                      common
+                      legacy_modules
+        math
+        utility
+        muparser
+        linearalgebra
+        timing
+        topology
+        utility
+)
 
 # pulling needs muparser defines 
 target_link_libraries(pulling INTERFACE muparser::muparser)
 
 # Public interface for modules, including dependencies and interfaces
-#target_include_directories(pulling PUBLIC
-target_include_directories(pulling INTERFACE
+target_include_directories(pulling PUBLIC
                            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 #target_link_libraries(pulling PUBLIC
 target_link_libraries(pulling INTERFACE
                       legacy_api
                       )
 
+if (GMX_OPENMP)
+    target_link_libraries(pulling PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
 # TODO: when pulling is an OBJECT target
 #target_link_libraries(pulling PUBLIC legacy_api)
 #target_link_libraries(pulling PRIVATE common)
 
-# Module dependencies
-# pulling interfaces convey transitive dependence on these modules.
-#target_link_libraries(pulling PUBLIC
-target_link_libraries(pulling INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(pulling PRIVATE NOTHING)
 # TODO: Explicitly link specific modules.

@@ -57,7 +57,6 @@
 #include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/fatalerror.h"
 #include "gromacs/utility/iserializer.h"
-#include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringutil.h"
 
 #include "biasparams.h"
@@ -107,7 +106,7 @@ namespace
  * \param[in] inputrec  Inputput parameter struct.
  * \param[in,out] wi    Struct for bookeeping warnings.
  */
-void checkMtsConsistency(const t_inputrec& inputrec, warninp_t wi)
+void checkMtsConsistency(const t_inputrec& inputrec, WarningHandler* wi)
 {
     if (!inputrec.useMts)
     {
@@ -133,21 +132,20 @@ void checkMtsConsistency(const t_inputrec& inputrec, warninp_t wi)
     const int awhMtsLevel = forceGroupMtsLevel(inputrec.mtsLevels, MtsForceGroups::Awh);
     if (usesPull && forceGroupMtsLevel(inputrec.mtsLevels, MtsForceGroups::Pull) != awhMtsLevel)
     {
-        warning_error(wi,
-                      "When AWH is applied to pull coordinates, pull and AWH should be computed at "
-                      "the same MTS level");
+        wi->addError(
+                "When AWH is applied to pull coordinates, pull and AWH should be computed at "
+                "the same MTS level");
     }
     if (usesFep && awhMtsLevel != ssize(inputrec.mtsLevels) - 1)
     {
-        warning_error(wi,
-                      "When AWH is applied to the free-energy lambda with MTS, AWH should be "
-                      "computed at the slow MTS level");
+        wi->addError(
+                "When AWH is applied to the free-energy lambda with MTS, AWH should be "
+                "computed at the slow MTS level");
     }
 
     if (inputrec.awhParams->nstSampleCoord() % inputrec.mtsLevels[awhMtsLevel].stepFactor != 0)
     {
-        warning_error(wi,
-                      "With MTS applied to AWH, awh-nstsample should be a multiple of mts-factor");
+        wi->addError("With MTS applied to AWH, awh-nstsample should be a multiple of mts-factor");
     }
 }
 
@@ -162,22 +160,22 @@ void checkMtsConsistency(const t_inputrec& inputrec, warninp_t wi)
 void checkPullDimParams(const std::string&   prefix,
                         const AwhDimParams&  dimParams,
                         const pull_params_t& pull_params,
-                        warninp_t            wi)
+                        WarningHandler*      wi)
 {
     if (dimParams.coordinateIndex() < 0)
     {
-        gmx_fatal(FARGS,
-                  "Failed to read a valid coordinate index for %s-coord-index. "
-                  "Note that the pull coordinate indexing starts at 1.",
-                  prefix.c_str());
+        wi->addError(
+                gmx::formatString("Failed to read a valid coordinate index for %s-coord-index. "
+                                  "Note that the pull coordinate indexing starts at 1.",
+                                  prefix.c_str()));
     }
     if (dimParams.coordinateIndex() >= pull_params.ncoord)
     {
-        gmx_fatal(FARGS,
-                  "The given AWH coordinate index (%d) is larger than the number of pull "
-                  "coordinates (%d)",
-                  dimParams.coordinateIndex() + 1,
-                  pull_params.ncoord);
+        wi->addError(gmx::formatString(
+                "The given AWH coordinate index (%d) is larger than the number of pull "
+                "coordinates (%d)",
+                dimParams.coordinateIndex() + 1,
+                pull_params.ncoord));
     }
     if (pull_params.coord[dimParams.coordinateIndex()].rate != 0)
     {
@@ -185,7 +183,7 @@ void checkPullDimParams(const std::string&   prefix,
                 "Setting pull-coord%d-rate (%g) is incompatible with AWH biasing this coordinate",
                 dimParams.coordinateIndex() + 1,
                 pull_params.coord[dimParams.coordinateIndex()].rate);
-        warning_error(wi, message);
+        wi->addError(message);
     }
 
     if (gmx_within_tol(dimParams.end() - dimParams.origin(), 0, GMX_REAL_EPS))
@@ -197,12 +195,12 @@ void checkPullDimParams(const std::string&   prefix,
                 dimParams.origin(),
                 prefix.c_str(),
                 dimParams.end());
-        warning(wi, message);
+        wi->addWarning(message);
     }
 
     if (dimParams.forceConstant() <= 0)
     {
-        warning_error(wi, "The force AWH bias force constant should be > 0");
+        wi->addError("The force AWH bias force constant should be > 0");
     }
 
     /* Grid params for each axis */
@@ -213,44 +211,44 @@ void checkPullDimParams(const std::string&   prefix,
     {
         if (dimParams.origin() < 0 || dimParams.end() < 0)
         {
-            gmx_fatal(FARGS,
-                      "%s-start (%g) or %s-end (%g) set to a negative value. With pull "
-                      "geometry distance coordinate values are non-negative. "
-                      "Perhaps you want to use geometry %s instead?",
-                      prefix.c_str(),
-                      dimParams.origin(),
-                      prefix.c_str(),
-                      dimParams.end(),
-                      enumValueToString(PullGroupGeometry::Direction));
+            wi->addError(gmx::formatString(
+                    "%s-start (%g) or %s-end (%g) set to a negative value. With pull "
+                    "geometry distance coordinate values are non-negative. "
+                    "Perhaps you want to use geometry %s instead?",
+                    prefix.c_str(),
+                    dimParams.origin(),
+                    prefix.c_str(),
+                    dimParams.end(),
+                    enumValueToString(PullGroupGeometry::Direction)));
         }
     }
     else if (eGeom == PullGroupGeometry::Angle || eGeom == PullGroupGeometry::AngleAxis)
     {
         if (dimParams.origin() < 0 || dimParams.end() > 180)
         {
-            gmx_fatal(FARGS,
-                      "%s-start (%g) and %s-end (%g) are outside of the allowed range "
-                      "0 to 180 deg for pull geometries %s and %s ",
-                      prefix.c_str(),
-                      dimParams.origin(),
-                      prefix.c_str(),
-                      dimParams.end(),
-                      enumValueToString(PullGroupGeometry::Angle),
-                      enumValueToString(PullGroupGeometry::AngleAxis));
+            wi->addError(gmx::formatString(
+                    "%s-start (%g) and %s-end (%g) are outside of the allowed range "
+                    "0 to 180 deg for pull geometries %s and %s ",
+                    prefix.c_str(),
+                    dimParams.origin(),
+                    prefix.c_str(),
+                    dimParams.end(),
+                    enumValueToString(PullGroupGeometry::Angle),
+                    enumValueToString(PullGroupGeometry::AngleAxis)));
         }
     }
     else if (eGeom == PullGroupGeometry::Dihedral)
     {
         if (dimParams.origin() < -180 || dimParams.end() > 180)
         {
-            gmx_fatal(FARGS,
-                      "%s-start (%g) and %s-end (%g) are outside of the allowed range "
-                      "-180 to 180 deg for pull geometry %s. ",
-                      prefix.c_str(),
-                      dimParams.origin(),
-                      prefix.c_str(),
-                      dimParams.end(),
-                      enumValueToString(PullGroupGeometry::Dihedral));
+            wi->addError(gmx::formatString(
+                    "%s-start (%g) and %s-end (%g) are outside of the allowed range "
+                    "-180 to 180 deg for pull geometry %s. ",
+                    prefix.c_str(),
+                    dimParams.origin(),
+                    prefix.c_str(),
+                    dimParams.end(),
+                    enumValueToString(PullGroupGeometry::Dihedral)));
         }
     }
 }
@@ -268,58 +266,59 @@ void checkFepLambdaDimParams(const std::string&               prefix,
                              const AwhDimParams&              dimParams,
                              const t_lambda*                  lambdaParams,
                              const FreeEnergyPerturbationType efep,
-                             warninp_t                        wi)
+                             WarningHandler*                  wi)
 {
     std::string opt;
 
     if (!lambdaParams)
     {
-        gmx_fatal(FARGS,
-                  "There must be free energy input if using AWH to steer the free energy lambda "
-                  "state.");
+        wi->addError(
+                "There must be free energy input if using AWH to steer the free energy lambda "
+                "state.");
+        return;
     }
 
     if (lambdaParams->lambda_neighbors != -1)
     {
-        gmx_fatal(FARGS,
-                  "When running AWH coupled to the free energy lambda state all lambda states "
-                  "should be used as neighbors in order to get correct probabilities, i.e. "
-                  "calc-lambda-neighbors (%d) must be %d.",
-                  lambdaParams->lambda_neighbors,
-                  -1);
+        wi->addError(gmx::formatString(
+                "When running AWH coupled to the free energy lambda state all lambda states "
+                "should be used as neighbors in order to get correct probabilities, i.e. "
+                "calc-lambda-neighbors (%d) must be %d.",
+                lambdaParams->lambda_neighbors,
+                -1));
     }
 
     if (efep == FreeEnergyPerturbationType::SlowGrowth || lambdaParams->delta_lambda != 0)
     {
-        gmx_fatal(FARGS,
-                  "AWH coupled to the free energy lambda state is not compatible with slow-growth "
-                  "and delta-lambda must be 0.");
+        wi->addError(
+                "AWH coupled to the free energy lambda state is not compatible with slow-growth "
+                "and delta-lambda must be 0.");
     }
 
     if (efep == FreeEnergyPerturbationType::Expanded)
     {
-        gmx_fatal(FARGS,
-                  "AWH is not treated like other expanded ensemble methods. Do not use expanded.");
+        wi->addError(
+                "AWH is not treated like other expanded ensemble methods. Do not use expanded.");
     }
 
     if (dimParams.origin() < 0)
     {
         opt = prefix + "-start";
-        gmx_fatal(FARGS,
-                  "When running AWH coupled to the free energy lambda state the lower lambda state "
-                  "for AWH, %s (%.0f), must be >= 0.",
-                  opt.c_str(),
-                  dimParams.origin());
+        wi->addError(gmx::formatString(
+                "When running AWH coupled to the free energy lambda state the lower lambda state "
+                "for AWH, %s (%.0f), must be >= 0.",
+                opt.c_str(),
+                dimParams.origin()));
     }
     if (dimParams.end() >= lambdaParams->n_lambda)
     {
         opt = prefix + "-end";
-        gmx_fatal(FARGS,
-                  "When running AWH coupled to the free energy lambda state the upper lambda state "
-                  "for AWH, %s (%.0f), must be < n_lambda (%d).",
-                  opt.c_str(),
-                  dimParams.origin(),
-                  lambdaParams->n_lambda);
+        wi->addError(gmx::formatString(
+                "When running AWH coupled to the free energy lambda state the upper lambda state "
+                "for AWH, %s (%.0f), must be < n_lambda (%d).",
+                opt.c_str(),
+                dimParams.origin(),
+                lambdaParams->n_lambda));
     }
     if (gmx_within_tol(dimParams.end() - dimParams.origin(), 0, GMX_REAL_EPS))
     {
@@ -331,15 +330,22 @@ void checkFepLambdaDimParams(const std::string&               prefix,
                 dimParams.origin(),
                 prefix.c_str(),
                 dimParams.end());
-        warning(wi, message);
+        wi->addWarning(message);
     }
 
     if (dimParams.forceConstant() != 0)
     {
-        warning_error(
-                wi,
+        wi->addError(
+
                 "The force AWH bias force constant is not used with free energy lambda state as "
                 "coordinate provider.");
+    }
+
+    if (!fepLambdasChangeAtSameRate(lambdaParams->all_lambda))
+    {
+        wi->addWarning(
+                "Some free-energy lambda components change at different rates over some lambda "
+                "interval. The friction metric will be incorrect for such intervals.");
     }
 }
 
@@ -349,18 +355,18 @@ void checkFepLambdaDimParams(const std::string&               prefix,
  * \param[in] mtop      System topology.
  * \param[in,out] wi    Struct for bookeeping warnings.
  */
-void checkFepLambdaDimDecouplingConsistency(const gmx_mtop_t& mtop, warninp_t wi)
+void checkFepLambdaDimDecouplingConsistency(const gmx_mtop_t& mtop, WarningHandler* wi)
 {
     if (haveFepPerturbedMasses(mtop))
     {
-        warning(wi,
+        wi->addWarning(
                 "Masses may not be perturbed when using the free energy lambda state as AWH "
                 "coordinate provider. If you are using fep-lambdas to specify lambda states "
                 "make sure that you also specify mass-lambdas without perturbation.");
     }
     if (havePerturbedConstraints(mtop))
     {
-        warning(wi,
+        wi->addWarning(
                 "Constraints may not be perturbed when using the free energy lambda state as AWH "
                 "coordinate provider. If you are using fep-lambdas to specify lambda states "
                 "make sure that you also specify mass-lambdas without perturbation.");
@@ -375,15 +381,15 @@ void checkFepLambdaDimDecouplingConsistency(const gmx_mtop_t& mtop, warninp_t wi
  * \param[in] ir             Input parameter struct.
  * \param[in,out] wi         Struct for bookeeping warnings.
  */
-void checkDimParams(const std::string& prefix, const AwhDimParams& dimParams, const t_inputrec& ir, warninp_t wi)
+void checkDimParams(const std::string& prefix, const AwhDimParams& dimParams, const t_inputrec& ir, WarningHandler* wi)
 {
     if (dimParams.coordinateProvider() == AwhCoordinateProviderType::Pull)
     {
         if (!ir.bPull)
         {
-            gmx_fatal(FARGS,
-                      "AWH biasing along a pull dimension is only compatible with COM pulling "
-                      "turned on");
+            wi->addError(
+                    "AWH biasing along a pull dimension is only compatible with COM pulling "
+                    "turned on");
         }
         checkPullDimParams(prefix, dimParams, *ir.pull, wi);
     }
@@ -391,17 +397,17 @@ void checkDimParams(const std::string& prefix, const AwhDimParams& dimParams, co
     {
         if (ir.efep == FreeEnergyPerturbationType::No)
         {
-            gmx_fatal(FARGS,
-                      "AWH biasing along a free energy lambda state dimension is only compatible "
-                      "with free energy turned on");
+            wi->addError(
+                    "AWH biasing along a free energy lambda state dimension is only compatible "
+                    "with free energy turned on");
         }
         checkFepLambdaDimParams(prefix, dimParams, ir.fepvals.get(), ir.efep, wi);
     }
     else
     {
-        gmx_fatal(FARGS,
-                  "AWH biasing can only be  applied to pull and free energy lambda state "
-                  "coordinates");
+        wi->addError(
+                "AWH biasing can only be  applied to pull and free energy lambda state "
+                "coordinates");
     }
 }
 
@@ -413,12 +419,15 @@ void checkDimParams(const std::string& prefix, const AwhDimParams& dimParams, co
  * \param[in]     ir             Input parameter struct.
  * \param[in,out] wi             Struct for bookeeping warnings.
  */
-void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& prefix, const t_inputrec& ir, warninp_t wi)
+void checkBiasParams(const AwhBiasParams& awhBiasParams,
+                     const std::string&   prefix,
+                     const t_inputrec&    ir,
+                     WarningHandler*      wi)
 {
     std::string opt = prefix + "-error-init";
     if (awhBiasParams.initialErrorEstimate() <= 0)
     {
-        gmx_fatal(FARGS, "%s needs to be > 0.", opt.c_str());
+        wi->addError(gmx::formatString("%s needs to be > 0.", opt.c_str()));
     }
 
     opt = prefix + "-equilibrate-histogram";
@@ -429,7 +438,7 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& pref
                 formatString("Option %s will only have an effect for histogram growth type '%s'.",
                              opt.c_str(),
                              enumValueToString(AwhHistogramGrowthType::ExponentialLinear));
-        warning(wi, message);
+        wi->addWarning(message);
     }
 
     if ((awhBiasParams.targetDistribution() == AwhTargetType::LocalBoltzmann)
@@ -442,7 +451,7 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& pref
                 enumValueToString(AwhTargetType::LocalBoltzmann),
                 enumValueToString(AwhHistogramGrowthType::ExponentialLinear),
                 enumValueToString(AwhHistogramGrowthType::Linear));
-        warning(wi, message);
+        wi->addWarning(message);
     }
 
     opt = prefix + "-target-beta-scaling";
@@ -452,22 +461,20 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& pref
         case AwhTargetType::LocalBoltzmann:
             if (awhBiasParams.targetBetaScaling() < 0 || awhBiasParams.targetBetaScaling() > 1)
             {
-                gmx_fatal(FARGS,
-                          "%s = %g is not useful for target type %s.",
-                          opt.c_str(),
-                          awhBiasParams.targetBetaScaling(),
-                          enumValueToString(awhBiasParams.targetDistribution()));
+                wi->addError(gmx::formatString("%s = %g is not useful for target type %s.",
+                                               opt.c_str(),
+                                               awhBiasParams.targetBetaScaling(),
+                                               enumValueToString(awhBiasParams.targetDistribution())));
             }
             break;
         default:
             if (awhBiasParams.targetBetaScaling() != 0)
             {
-                gmx_fatal(
-                        FARGS,
+                wi->addError(gmx::formatString(
                         "Value for %s (%g) set explicitly but will not be used for target type %s.",
                         opt.c_str(),
                         awhBiasParams.targetBetaScaling(),
-                        enumValueToString(awhBiasParams.targetDistribution()));
+                        enumValueToString(awhBiasParams.targetDistribution())));
             }
             break;
     }
@@ -478,22 +485,21 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& pref
         case AwhTargetType::Cutoff:
             if (awhBiasParams.targetCutoff() <= 0)
             {
-                gmx_fatal(FARGS,
-                          "%s = %g is not useful for target type %s.",
-                          opt.c_str(),
-                          awhBiasParams.targetCutoff(),
-                          enumValueToString(awhBiasParams.targetDistribution()));
+                wi->addError(gmx::formatString("%s = %g is not useful for target type %s.",
+                                               opt.c_str(),
+                                               awhBiasParams.targetCutoff(),
+                                               enumValueToString(awhBiasParams.targetDistribution())));
             }
             break;
         default:
             if (awhBiasParams.targetCutoff() != 0)
             {
-                gmx_fatal(
-                        FARGS,
+                wi->addError(gmx::formatString(
+
                         "Value for %s (%g) set explicitly but will not be used for target type %s.",
                         opt.c_str(),
                         awhBiasParams.targetCutoff(),
-                        enumValueToString(awhBiasParams.targetDistribution()));
+                        enumValueToString(awhBiasParams.targetDistribution())));
             }
             break;
     }
@@ -501,20 +507,21 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& pref
     opt = prefix + "-share-group";
     if (awhBiasParams.shareGroup() < 0)
     {
-        warning_error(wi, "AWH bias share-group should be >= 0");
+        wi->addError("AWH bias share-group should be >= 0");
     }
 
     opt = prefix + "-ndim";
     if (awhBiasParams.ndim() <= 0 || awhBiasParams.ndim() > c_biasMaxNumDim)
     {
-        gmx_fatal(FARGS, "%s (%d) needs to be > 0 and at most %d\n", opt.c_str(), awhBiasParams.ndim(), c_biasMaxNumDim);
+        wi->addError(gmx::formatString(
+                "%s (%d) needs to be > 0 and at most %d\n", opt.c_str(), awhBiasParams.ndim(), c_biasMaxNumDim));
     }
     if (awhBiasParams.ndim() > 2)
     {
-        warning_note(wi,
-                     "For awh-dim > 2 the estimate based on the diffusion and the initial error is "
-                     "currently only a rough guideline."
-                     " You should verify its usefulness for your system before production runs!");
+        wi->addNote(
+                "For awh-dim > 2 the estimate based on the diffusion and the initial error is "
+                "currently only a rough guideline."
+                " You should verify its usefulness for your system before production runs!");
     }
     for (int d = 0; d < awhBiasParams.ndim(); d++)
     {
@@ -529,7 +536,7 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams, const std::string& pref
  * \param[in]     awhBiasParams  AWH bias parameters.
  * \param[in,out] wi             Struct for bookkeeping warnings.
  */
-void checkInputConsistencyAwhBias(const AwhBiasParams& awhBiasParams, warninp_t wi)
+void checkInputConsistencyAwhBias(const AwhBiasParams& awhBiasParams, WarningHandler* wi)
 {
     /* Covering diameter and sharing warning. */
     auto awhBiasDimensionParams = awhBiasParams.dimParams();
@@ -538,7 +545,7 @@ void checkInputConsistencyAwhBias(const AwhBiasParams& awhBiasParams, warninp_t 
         double coverDiameter = dimensionParam.coverDiameter();
         if (awhBiasParams.shareGroup() <= 0 && coverDiameter > 0)
         {
-            warning(wi,
+            wi->addWarning(
                     "The covering diameter is only relevant to set for bias sharing simulations.");
         }
     }
@@ -550,7 +557,7 @@ void checkInputConsistencyAwhBias(const AwhBiasParams& awhBiasParams, warninp_t 
  * \param[in]     awhParams  AWH parameters.
  * \param[in,out] wi         Struct for bookkeeping warnings.
  */
-void checkInputConsistencyAwh(const AwhParams& awhParams, warninp_t wi)
+void checkInputConsistencyAwh(const AwhParams& awhParams, WarningHandler* wi)
 {
     /* Each pull coord can map to at most 1 AWH coord.
      * Check that we have a shared bias when requesting multisim sharing.
@@ -589,8 +596,7 @@ void checkInputConsistencyAwh(const AwhParams& awhParams, warninp_t wi)
                     if ((d1 != d2 || k1 != k2)
                         && (dimParams1[d1].coordinateIndex() == dimParams2[d2].coordinateIndex()))
                     {
-                        char errormsg[STRLEN];
-                        sprintf(errormsg,
+                        wi->addError(gmx::formatString(
                                 "One pull coordinate (%d) cannot be mapped to two separate AWH "
                                 "dimensions (awh%d-dim%d and awh%d-dim%d). "
                                 "If this is really what you want to do you will have to duplicate "
@@ -599,8 +605,7 @@ void checkInputConsistencyAwh(const AwhParams& awhParams, warninp_t wi)
                                 k1 + 1,
                                 d1 + 1,
                                 k2 + 1,
-                                d2 + 1);
-                        gmx_fatal(FARGS, "%s", errormsg);
+                                d2 + 1));
                     }
                 }
             }
@@ -609,7 +614,7 @@ void checkInputConsistencyAwh(const AwhParams& awhParams, warninp_t wi)
 
     if (awhParams.shareBiasMultisim() && !haveSharedBias)
     {
-        warning(wi,
+        wi->addWarning(
                 "Sharing of biases over multiple simulations is requested, but no bias is marked "
                 "as shared (share-group > 0)");
     }
@@ -617,7 +622,7 @@ void checkInputConsistencyAwh(const AwhParams& awhParams, warninp_t wi)
     /* mdrun does not support this (yet), but will check again */
     if (haveBiasSharingWithinSimulation(awhParams))
     {
-        warning(wi,
+        wi->addWarning(
                 "You have shared biases within a single simulation, but mdrun does not support "
                 "this (yet)");
     }
@@ -625,7 +630,7 @@ void checkInputConsistencyAwh(const AwhParams& awhParams, warninp_t wi)
 
 } // namespace
 
-AwhDimParams::AwhDimParams(std::vector<t_inpfile>* inp, const std::string& prefix, warninp_t wi, bool bComment)
+AwhDimParams::AwhDimParams(std::vector<t_inpfile>* inp, const std::string& prefix, WarningHandler* wi, bool bComment)
 {
     std::string opt;
     if (bComment)
@@ -648,10 +653,10 @@ AwhDimParams::AwhDimParams(std::vector<t_inpfile>* inp, const std::string& prefi
     coordIndexInput = get_eint(inp, opt, 1, wi);
     if (coordIndexInput < 1)
     {
-        gmx_fatal(FARGS,
-                  "Failed to read a valid coordinate index for %s. "
-                  "Note that the pull coordinate indexing starts at 1.",
-                  opt.c_str());
+        wi->addError(
+                gmx::formatString("Failed to read a valid coordinate index for %s. "
+                                  "Note that the pull coordinate indexing starts at 1.",
+                                  opt.c_str()));
     }
 
     /* The pull coordinate indices start at 1 in the input file, at 0 internally */
@@ -691,7 +696,7 @@ AwhDimParams::AwhDimParams(std::vector<t_inpfile>* inp, const std::string& prefi
                 "non-optimal for your system!",
                 opt.c_str(),
                 diffusion_default);
-        warning(wi, message);
+        wi->addWarning(message);
         diffusionValue = diffusion_default;
     }
     diffusion_ = diffusionValue;
@@ -737,7 +742,7 @@ void AwhDimParams::serialize(ISerializer* serializer)
     serializer->doDouble(&coverDiameter_);
 }
 
-AwhBiasParams::AwhBiasParams(std::vector<t_inpfile>* inp, const std::string& prefix, warninp_t wi, bool bComment)
+AwhBiasParams::AwhBiasParams(std::vector<t_inpfile>* inp, const std::string& prefix, WarningHandler* wi, bool bComment)
 {
     if (bComment)
     {
@@ -844,8 +849,6 @@ AwhBiasParams::AwhBiasParams(ISerializer* serializer)
     {
         dimParams_.emplace_back(serializer);
     }
-    /* Check consistencies here that cannot be checked at read time at a lower level. */
-    checkInputConsistencyAwhBias(*this, nullptr);
 }
 
 void AwhBiasParams::serialize(ISerializer* serializer)
@@ -870,7 +873,7 @@ void AwhBiasParams::serialize(ISerializer* serializer)
     }
 }
 
-AwhParams::AwhParams(std::vector<t_inpfile>* inp, warninp_t wi)
+AwhParams::AwhParams(std::vector<t_inpfile>* inp, WarningHandler* wi)
 {
     std::string opt;
 
@@ -923,6 +926,7 @@ AwhParams::AwhParams(std::vector<t_inpfile>* inp, warninp_t wi)
         bool        bComment  = (k == 0);
         std::string prefixawh = formatString("awh%d", k + 1);
         awhBiasParams_.emplace_back(inp, prefixawh, wi, bComment);
+        checkInputConsistencyAwhBias(awhBiasParams_.back(), wi);
     }
     checkInputConsistencyAwh(*this, wi);
 }
@@ -947,7 +951,6 @@ AwhParams::AwhParams(ISerializer* serializer)
             awhBiasParams_.emplace_back(serializer);
         }
     }
-    checkInputConsistencyAwh(*this, nullptr);
 }
 
 void AwhParams::serialize(ISerializer* serializer)
@@ -1076,7 +1079,7 @@ static bool valueIsInInterval(double origin, double end, double period, double v
  * \param[in]     awhParams  AWH parameters.
  * \param[in,out] wi         Struct for bookeeping warnings.
  */
-static void checkInputConsistencyInterval(const AwhParams& awhParams, warninp_t wi)
+static void checkInputConsistencyInterval(const AwhParams& awhParams, WarningHandler* wi)
 {
     const auto& awhBiasParams = awhParams.awhBiasParams();
     for (int k = 0; k < gmx::ssize(awhBiasParams); k++)
@@ -1148,7 +1151,7 @@ static void checkInputConsistencyInterval(const AwhParams& awhParams, warninp_t 
                         k + 1,
                         d + 1,
                         end);
-                warning(wi, message);
+                wi->addWarning(message);
             }
         }
     }
@@ -1175,7 +1178,7 @@ static void setStateDependentAwhPullDimParams(AwhDimParams*        dimParams,
                                               pull_t*              pull_work,
                                               const t_pbc&         pbc,
                                               const tensor&        compressibility,
-                                              warninp_t            wi)
+                                              WarningHandler*      wi)
 {
     const t_pull_coord& pullCoordParams = pull_params.coord[dimParams->coordinateIndex()];
 
@@ -1214,11 +1217,14 @@ static void setStateDependentAwhPullDimParams(AwhDimParams*        dimParams,
                     dimIndex + 1,
                     biasIndex + 1,
                     enumValueToString(pullCoordParams.eGeom));
-            warning(wi, mesg.c_str());
+            wi->addWarning(mesg);
         }
     }
 
-    /* The initial coordinate value, converted to external user units. */
+    /* The initial coordinate value, converted to external user units.
+     * Note that we do not pass time here, as time is not allowed as
+     * a variable for transformation coordinates when AWH is in use.
+     */
     double initialCoordinate = get_pull_coord_value(pull_work, dimParams->coordinateIndex(), pbc);
     initialCoordinate *= pull_conversion_factor_internal2userinput(pullCoordParams);
     dimParams->setInitialCoordinate(initialCoordinate);
@@ -1230,27 +1236,20 @@ void setStateDependentAwhParams(AwhParams*           awhParams,
                                 const matrix         box,
                                 PbcType              pbcType,
                                 const tensor&        compressibility,
-                                const t_grpopts*     inputrecGroupOptions,
+                                const t_inputrec&    inputrec,
                                 const real           initLambda,
                                 const gmx_mtop_t&    mtop,
-                                warninp_t            wi)
+                                WarningHandler*      wi)
 {
     /* The temperature is not really state depenendent but is not known
      * when read_awhParams is called (in get ir).
      * It is known first after do_index has been called in grompp.cpp.
      */
-    if (inputrecGroupOptions->ref_t == nullptr || inputrecGroupOptions->ref_t[0] <= 0)
+    GMX_RELEASE_ASSERT(haveConstantEnsembleTemperature(inputrec),
+                       "AWH requires a constant ensemble temperaure");
+    if (constantEnsembleTemperature(inputrec) <= 0)
     {
         gmx_fatal(FARGS, "AWH biasing is only supported for temperatures > 0");
-    }
-    for (int i = 1; i < inputrecGroupOptions->ngtc; i++)
-    {
-        if (inputrecGroupOptions->ref_t[i] != inputrecGroupOptions->ref_t[0])
-        {
-            gmx_fatal(FARGS,
-                      "AWH biasing is currently only supported for identical temperatures for all "
-                      "temperature coupling groups");
-        }
     }
 
     t_pbc pbc;
@@ -1271,8 +1270,8 @@ void setStateDependentAwhParams(AwhParams*           awhParams,
                         || pullCoordParams.eGeom == PullGroupGeometry::Dihedral
                         || pullCoordParams.eGeom == PullGroupGeometry::AngleAxis))
                 {
-                    warning_note(
-                            wi,
+                    wi->addNote(
+
                             "Note that the unit of the AWH cover-diameter parameter for angle and "
                             "dihedral pull coordinates has recently changed from radian to "
                             "degrees");
@@ -1295,7 +1294,7 @@ void setStateDependentAwhParams(AwhParams*           awhParams,
     Awh::registerAwhWithPull(*awhParams, pull_work);
 }
 
-void checkAwhParams(const AwhParams& awhParams, const t_inputrec& ir, warninp_t wi)
+void checkAwhParams(const AwhParams& awhParams, const t_inputrec& ir, WarningHandler* wi)
 {
     std::string opt;
     checkMtsConsistency(ir, wi);
@@ -1306,20 +1305,20 @@ void checkAwhParams(const AwhParams& awhParams, const t_inputrec& ir, warninp_t 
         auto message = formatString("Not writing AWH output with AWH (%s = %d) does not make sense",
                                     opt.c_str(),
                                     awhParams.nstout());
-        warning_error(wi, message);
+        wi->addError(message);
     }
     /* This restriction can be removed by changing a flag of print_ebin() */
     if (ir.nstenergy == 0 || awhParams.nstout() % ir.nstenergy != 0)
     {
         auto message = formatString(
                 "%s (%d) should be a multiple of nstenergy (%d)", opt.c_str(), awhParams.nstout(), ir.nstenergy);
-        warning_error(wi, message);
+        wi->addError(message);
     }
 
     opt = "awh-nsamples-update";
     if (awhParams.numSamplesUpdateFreeEnergy() <= 0)
     {
-        warning_error(wi, opt + " needs to be an integer > 0");
+        wi->addError(opt + " needs to be an integer > 0");
     }
 
     bool       haveFepLambdaDim = false;
@@ -1346,7 +1345,7 @@ void checkAwhParams(const AwhParams& awhParams, const t_inputrec& ir, warninp_t 
                     opt.c_str(),
                     awhParams.nstSampleCoord(),
                     ir.nstcalcenergy);
-            warning_error(wi, message);
+            wi->addError(message);
         }
         if (awhParams.potential() != AwhPotentialType::Umbrella)
         {
@@ -1356,13 +1355,13 @@ void checkAwhParams(const AwhParams& awhParams, const t_inputrec& ir, warninp_t 
                     opt.c_str(),
                     enumValueToString(awhParams.potential()),
                     enumValueToString(AwhPotentialType::Umbrella));
-            warning_error(wi, message);
+            wi->addError(message);
         }
     }
 
     if (ir.init_step != 0)
     {
-        warning_error(wi, "With AWH init-step should be 0");
+        wi->addError("With AWH init-step should be 0");
     }
 }
 

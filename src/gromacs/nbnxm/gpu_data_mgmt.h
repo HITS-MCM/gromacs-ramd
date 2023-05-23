@@ -45,21 +45,18 @@
 
 #include <memory>
 
-#include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/gpu_utils/gpu_macros.h"
 #include "gromacs/mdtypes/locality.h"
 
 #include "nbnxm.h"
 
 struct NbnxmGpu;
-struct DeviceInformation;
+struct NBAtomDataGpu;
 struct gmx_wallclock_gpu_nbnxn_t;
 struct nbnxn_atomdata_t;
 struct NbnxnPairlistGpu;
 struct PairlistParams;
 struct interaction_const_t;
-
-class DeviceStream;
 
 namespace gmx
 {
@@ -125,24 +122,16 @@ int gpu_min_ci_balanced(NbnxmGpu gmx_unused* nb) GPU_FUNC_TERM_WITH_RETURN(-1);
 GPU_FUNC_QUALIFIER
 bool gpu_is_kernel_ewald_analytical(const NbnxmGpu gmx_unused* nb) GPU_FUNC_TERM_WITH_RETURN(FALSE);
 
-/** Returns an opaque pointer to the GPU coordinate+charge array
- *  Note: CUDA only.
+/** Returns an opaque pointer to the GPU NBNXM atom data.
  */
-CUDA_FUNC_QUALIFIER
-void* gpu_get_xq(NbnxmGpu gmx_unused* nb) CUDA_FUNC_TERM_WITH_RETURN(nullptr);
+GPU_FUNC_QUALIFIER
+NBAtomDataGpu* gpuGetNBAtomData(NbnxmGpu gmx_unused* nb) GPU_FUNC_TERM_WITH_RETURN(nullptr);
 
 /** Returns forces device buffer.
  */
 GPU_FUNC_QUALIFIER
 DeviceBuffer<gmx::RVec> gpu_get_f(NbnxmGpu gmx_unused* nb)
         GPU_FUNC_TERM_WITH_RETURN(DeviceBuffer<gmx::RVec>{});
-
-/** Returns an opaque pointer to the GPU shift force array
- *  Note: CUDA only.
- */
-CUDA_FUNC_QUALIFIER
-DeviceBuffer<gmx::RVec> gpu_get_fshift(NbnxmGpu gmx_unused* nb)
-        CUDA_FUNC_TERM_WITH_RETURN(DeviceBuffer<gmx::RVec>{});
 
 } // namespace Nbnxm
 

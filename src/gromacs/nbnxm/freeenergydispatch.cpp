@@ -36,9 +36,9 @@
 
 #include "freeenergydispatch.h"
 
-#include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/gmxlib/nonbonded/nb_free_energy.h"
 #include "gromacs/gmxlib/nonbonded/nonbonded.h"
+#include "gromacs/gmxlib/nrnb.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdlib/enerdata_utils.h"
 #include "gromacs/mdlib/force.h"
@@ -148,18 +148,16 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                               const gmx::ArrayRefWithPadding<const gmx::RVec>& coords,
                               bool                                             useSimd,
                               int                                              ntype,
-                              real                                             rlist,
-                              real                                 maxAllowedCutoffSquared,
-                              const interaction_const_t&           ic,
-                              gmx::ArrayRef<const gmx::RVec>       shiftvec,
-                              gmx::ArrayRef<const real>            nbfp,
-                              gmx::ArrayRef<const real>            nbfp_grid,
-                              gmx::ArrayRef<const real>            chargeA,
-                              gmx::ArrayRef<const real>            chargeB,
-                              gmx::ArrayRef<const int>             typeA,
-                              gmx::ArrayRef<const int>             typeB,
-                              t_lambda*                            fepvals,
-                              gmx::ArrayRef<const real>            lambda,
+                              const interaction_const_t&                       ic,
+                              gmx::ArrayRef<const gmx::RVec>                   shiftvec,
+                              gmx::ArrayRef<const real>                        nbfp,
+                              gmx::ArrayRef<const real>                        nbfp_grid,
+                              gmx::ArrayRef<const real>                        chargeA,
+                              gmx::ArrayRef<const real>                        chargeB,
+                              gmx::ArrayRef<const int>                         typeA,
+                              gmx::ArrayRef<const int>                         typeB,
+                              t_lambda*                                        fepvals,
+                              gmx::ArrayRef<const real>                        lambda,
                               const bool                           clearForcesAndEnergies,
                               gmx::ThreadedForceBuffer<gmx::RVec>* threadedForceBuffer,
                               gmx::ThreadedForceBuffer<gmx::RVec>* threadedForeignEnergyBuffer,
@@ -212,8 +210,6 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                                       coords,
                                       useSimd,
                                       ntype,
-                                      rlist,
-                                      maxAllowedCutoffSquared,
                                       ic,
                                       shiftvec,
                                       nbfp,
@@ -279,8 +275,6 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                                               coords,
                                               useSimd,
                                               ntype,
-                                              rlist,
-                                              maxAllowedCutoffSquared,
                                               ic,
                                               shiftvec,
                                               nbfp,
@@ -308,11 +302,7 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
             std::array<real, F_NRE> foreign_term = { 0 };
             sum_epot(*foreignGroupPairEnergies, foreign_term.data());
             // Accumulate the foreign energy difference and dV/dlambda into the passed enerd
-            enerd->foreignLambdaTerms.accumulate(
-                    i,
-                    foreign_term[F_EPOT],
-                    dvdl_nb[FreeEnergyPerturbationCouplingType::Vdw]
-                            + dvdl_nb[FreeEnergyPerturbationCouplingType::Coul]);
+            enerd->foreignLambdaTerms.accumulate(i, foreign_term[F_EPOT], dvdl_nb);
         }
     }
 }
@@ -324,9 +314,7 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
                                                    gmx::ForceWithShiftForces* forceWithShiftForces,
                                                    const bool                 useSimd,
                                                    const int                  ntype,
-                                                   const real                 rlist,
-                                                   const real maxAllowedCutoffSquared,
-                                                   const interaction_const_t&     ic,
+                                                   const interaction_const_t& ic,
                                                    gmx::ArrayRef<const gmx::RVec> shiftvec,
                                                    gmx::ArrayRef<const real>      nbfp,
                                                    gmx::ArrayRef<const real>      nbfp_grid,
@@ -363,8 +351,6 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
                                      coords,
                                      useSimd,
                                      ntype,
-                                     rlist,
-                                     maxAllowedCutoffSquared,
                                      ic,
                                      shiftvec,
                                      nbfp,
@@ -430,9 +416,7 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernels(const gmx::ArrayRefWithPaddin
                                                    gmx::ForceWithShiftForces* forceWithShiftForces,
                                                    const bool                 useSimd,
                                                    const int                  ntype,
-                                                   const real                 rlist,
-                                                   const real maxAllowedCutoffSquared,
-                                                   const interaction_const_t&     ic,
+                                                   const interaction_const_t& ic,
                                                    gmx::ArrayRef<const gmx::RVec> shiftvec,
                                                    gmx::ArrayRef<const real>      nbfp,
                                                    gmx::ArrayRef<const real>      nbfp_grid,
@@ -458,8 +442,6 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernels(const gmx::ArrayRefWithPaddin
                                                    forceWithShiftForces,
                                                    useSimd,
                                                    ntype,
-                                                   rlist,
-                                                   maxAllowedCutoffSquared,
                                                    ic,
                                                    shiftvec,
                                                    nbfp,

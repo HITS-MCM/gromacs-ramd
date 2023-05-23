@@ -44,9 +44,10 @@
 #ifndef GMX_DOMDEC_DLBTIMING_H
 #define GMX_DOMDEC_DLBTIMING_H
 
+#include <memory>
+
 #include "gromacs/mdtypes/commrec.h"
 
-struct BalanceRegion;
 struct gmx_domdec_t;
 struct t_nrnb;
 
@@ -202,12 +203,17 @@ private:
     gmx_domdec_t* dd_;
 };
 
-/*! \brief Returns a pointer to a constructed \p BalanceRegion struct
- *
- * Should be replaced by a proper constructor once BalanceRegion is a proper
- * class (requires restructering in domdec.cpp).
- */
-BalanceRegion* ddBalanceRegionAllocate();
+//! Object that describes a DLB balancing region
+class BalanceRegion
+{
+public:
+    BalanceRegion();
+    ~BalanceRegion();
+    // Not private because used by DDBalanceRegionHandler
+    // private:
+    class Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 /*! \brief Start the force flop count */
 void dd_force_flop_start(struct gmx_domdec_t* dd, t_nrnb* nrnb);

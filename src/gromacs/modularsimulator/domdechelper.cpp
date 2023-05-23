@@ -59,7 +59,6 @@ DomDecHelper::DomDecHelper(bool                          isVerbose,
                            int                           verbosePrintInterval,
                            StatePropagatorData*          statePropagatorData,
                            TopologyHolder*               topologyHolder,
-                           int                           nstglobalcomm,
                            FILE*                         fplog,
                            t_commrec*                    cr,
                            const MDLogger&               mdlog,
@@ -76,7 +75,6 @@ DomDecHelper::DomDecHelper(bool                          isVerbose,
     nextNSStep_(-1),
     isVerbose_(isVerbose),
     verbosePrintInterval_(verbosePrintInterval),
-    nstglobalcomm_(nstglobalcomm),
     domdecCallbacks_(std::move(domdecCallbacks)),
     statePropagatorData_(statePropagatorData),
     topologyHolder_(topologyHolder),
@@ -100,15 +98,13 @@ DomDecHelper::DomDecHelper(bool                          isVerbose,
 void DomDecHelper::setup()
 {
     // constant choices for this call to dd_partition_system
-    const bool     verbose       = false;
-    const bool     isMasterState = true;
-    const int      nstglobalcomm = 1;
-    gmx_wallcycle* wcycle        = nullptr;
+    const bool     verbose     = false;
+    const bool     isMainState = true;
+    gmx_wallcycle* wcycle      = nullptr;
 
-    // Distribute the charge groups over the nodes from the master node
+    // Distribute the charge groups over the nodes from the main node
     partitionSystem(verbose,
-                    isMasterState,
-                    nstglobalcomm,
+                    isMainState,
                     wcycle,
                     statePropagatorData_->localState(),
                     statePropagatorData_->globalState());
@@ -125,7 +121,7 @@ void DomDecHelper::run(Step step, Time gmx_unused time)
 
     // constant choices for this call to dd_partition_system
     const bool verbose = isVerbose_ && (step % verbosePrintInterval_ == 0 || step == inputrec_->init_step);
-    bool isMasterState = false;
+    bool isMainState = false;
 
     // Correct the new box if it is too skewed
     if (inputrecDynamicBox(inputrec_))
@@ -134,21 +130,20 @@ void DomDecHelper::run(Step step, Time gmx_unused time)
         //       Think about unifying this responsibility, could this be done in one place?
         if (correct_box(fplog_, step, localState->box))
         {
-            isMasterState = true;
+            isMainState = true;
         }
     }
-    if (isMasterState)
+    if (isMainState)
     {
         dd_collect_state(cr_->dd, localState, globalState);
     }
 
-    // Distribute the charge groups over the nodes from the master node
-    partitionSystem(verbose, isMasterState, nstglobalcomm_, wcycle_, localState, globalState);
+    // Distribute the charge groups over the nodes from the main node
+    partitionSystem(verbose, isMainState, wcycle_, localState, globalState);
 }
 
 void DomDecHelper::partitionSystem(bool           verbose,
-                                   bool           isMasterState,
-                                   int            nstglobalcomm,
+                                   bool           isMainState,
                                    gmx_wallcycle* wcycle,
                                    t_state*       localState,
                                    t_state*       globalState)
@@ -158,13 +153,12 @@ void DomDecHelper::partitionSystem(bool           verbose,
     // Work-around to keep dd_partition_system from failing -
     // we're not actually using the information related to Nose-Hoover chains
     localState->nhchainlength = inputrec_->opts.nhchainlength;
-    // Distribute the charge groups over the nodes from the master node
+    // Distribute the charge groups over the nodes from the main node
     dd_partition_system(fplog_,
                         mdlog_,
                         inputrec_->init_step,
                         cr_,
-                        isMasterState,
-                        nstglobalcomm,
+                        isMainState,
                         globalState,
                         topologyHolder_->globalTopology(),
                         *inputrec_,

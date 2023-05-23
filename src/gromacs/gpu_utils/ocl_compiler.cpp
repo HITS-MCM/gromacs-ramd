@@ -49,6 +49,7 @@
 #include <cstdio>
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -215,9 +216,9 @@ static std::string selectCompilerOptions(DeviceVendor deviceVendor)
  * \throws std::bad_alloc    if out of memory.
  *         FileIOError  if GMX_OCL_FILE_PATH does not specify a readable path
  */
-static std::string getSourceRootPath(const std::string& sourceRelativePath)
+static std::filesystem::path getSourceRootPath(const std::string& sourceRelativePath)
 {
-    std::string sourceRootPath;
+    std::filesystem::path sourceRootPath;
     /* Use GMX_OCL_FILE_PATH if the user has defined it */
     const char* gmxOclFilePath = getenv("GMX_OCL_FILE_PATH");
 
@@ -227,22 +228,23 @@ static std::string getSourceRootPath(const std::string& sourceRelativePath)
            root path from the path to the binary that is running. */
         InstallationPrefixInfo info           = getProgramContext().installationPrefix();
         std::string            dataPathSuffix = (info.bSourceLayout ? "src" : GMX_INSTALL_OCLDIR);
-        sourceRootPath = Path::join(info.path, dataPathSuffix, sourceRelativePath);
+        sourceRootPath =
+                std::filesystem::path(info.path).append(dataPathSuffix).append(sourceRelativePath);
     }
     else
     {
-        if (!Directory::exists(gmxOclFilePath))
+        if (!std::filesystem::is_directory(gmxOclFilePath))
         {
             GMX_THROW(FileIOError(
                     formatString("GMX_OCL_FILE_PATH must point to the directory where OpenCL"
                                  "kernels are found, but '%s' does not exist",
                                  gmxOclFilePath)));
         }
-        sourceRootPath = Path::join(gmxOclFilePath, sourceRelativePath);
+        sourceRootPath = std::filesystem::path(gmxOclFilePath).append(sourceRelativePath);
     }
 
     // Make sure we return an OS-correct path format
-    return Path::normalize(sourceRootPath);
+    return sourceRootPath.make_preferred();
 }
 
 size_t getKernelWarpSize(cl_kernel kernel, cl_device_id deviceId)
@@ -319,6 +321,7 @@ static std::string makeVendorFlavorChoice(DeviceVendor deviceVendor)
         case DeviceVendor::Amd: return "-D_AMD_SOURCE_";
         case DeviceVendor::Nvidia: return "-D_NVIDIA_SOURCE_";
         case DeviceVendor::Intel: return "-D_INTEL_SOURCE_";
+        case DeviceVendor::Apple: return "-D_APPLE_SOURCE_";
         default: return "";
     }
 }
@@ -374,11 +377,11 @@ static void removeExtraSpaces(std::string* str)
 /*! \brief Builds a string with build options for the OpenCL kernels
  *
  * \throws std::bad_alloc  if out of memory. */
-static std::string makePreprocessorOptions(const std::string& kernelRootPath,
-                                           const std::string& includeRootPath,
-                                           size_t             warpSize,
-                                           DeviceVendor       deviceVendor,
-                                           const std::string& extraDefines)
+static std::string makePreprocessorOptions(const std::filesystem::path& kernelRootPath,
+                                           const std::filesystem::path& includeRootPath,
+                                           size_t                       warpSize,
+                                           DeviceVendor                 deviceVendor,
+                                           const std::string&           extraDefines)
 {
     std::string preprocessorOptions;
 
@@ -391,9 +394,9 @@ static std::string makePreprocessorOptions(const std::string& kernelRootPath,
     preprocessorOptions += ' ';
     preprocessorOptions += selectCompilerOptions(deviceVendor);
     preprocessorOptions += ' ';
-    preprocessorOptions += makeKernelIncludePathOption(kernelRootPath);
+    preprocessorOptions += makeKernelIncludePathOption(kernelRootPath.generic_u8string());
     preprocessorOptions += ' ';
-    preprocessorOptions += makeKernelIncludePathOption(includeRootPath);
+    preprocessorOptions += makeKernelIncludePathOption(includeRootPath.generic_u8string());
 
     // Mac OS (and maybe some other implementations) does not accept double spaces in options
     removeExtraSpaces(&preprocessorOptions);
@@ -411,14 +414,14 @@ cl_program compileProgram(FILE*              fplog,
 {
     cl_int cl_error;
     // Let the kernel find include files from its module.
-    std::string kernelRootPath = getSourceRootPath(kernelRelativePath);
+    auto kernelRootPath = getSourceRootPath(kernelRelativePath);
     // Let the kernel find include files from other modules.
-    std::string rootPath = getSourceRootPath("");
+    auto rootPath = getSourceRootPath("");
 
     GMX_RELEASE_ASSERT(fplog != nullptr, "Need a valid log file for building OpenCL programs");
 
     /* Load OpenCL source files */
-    std::string kernelFilename = Path::join(kernelRootPath, kernelBaseFilename);
+    auto kernelFilename = std::filesystem::path(kernelRootPath).append(kernelBaseFilename);
 
     /* Make the build options */
     std::string preprocessorOptions = makePreprocessorOptions(
@@ -464,10 +467,11 @@ cl_program compileProgram(FILE*              fplog,
     if (program == nullptr)
     {
         // Compile OpenCL program from source
-        std::string kernelSource = TextReader::readFileToString(kernelFilename);
+        std::string kernelSource = TextReader::readFileToString(kernelFilename.u8string());
         if (kernelSource.empty())
         {
-            GMX_THROW(FileIOError("Error loading OpenCL code " + kernelFilename));
+            GMX_THROW(FileIOError(gmx::formatString("Error loading OpenCL code %s",
+                                                    kernelFilename.u8string().c_str())));
         }
         const char* kernelSourcePtr  = kernelSource.c_str();
         size_t      kernelSourceSize = kernelSource.size();
@@ -487,7 +491,8 @@ cl_program compileProgram(FILE*              fplog,
 
     /* Write log first, and then throw exception that the user know what is
        the issue even if the build fails. */
-    writeOclBuildLog(fplog, program, deviceId, kernelFilename, preprocessorOptions, buildStatus != CL_SUCCESS);
+    writeOclBuildLog(
+            fplog, program, deviceId, kernelFilename.u8string(), preprocessorOptions, buildStatus != CL_SUCCESS);
 
     if (buildStatus != CL_SUCCESS)
     {

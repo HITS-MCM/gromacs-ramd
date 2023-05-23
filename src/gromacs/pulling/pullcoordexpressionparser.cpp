@@ -33,21 +33,22 @@
  */
 #include "gmxpre.h"
 
-#include "pullcoordexpressionparser.h"
+#include "gromacs/pulling/pullcoordexpressionparser.h"
 
 #include "config.h"
 
+#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/stringutil.h"
 
-#include "pull_internal.h"
-
 namespace gmx
 {
 
-PullCoordExpressionParser::PullCoordExpressionParser(const std::string& expression, const int numVariables) :
+PullCoordExpressionParser::PullCoordExpressionParser(const std::string& expression,
+                                                     const int          numCoordVariables,
+                                                     const bool         allowTimeAsVariable) :
     expression_(expression)
 {
 #if HAVE_MUPARSER
@@ -56,16 +57,25 @@ PullCoordExpressionParser::PullCoordExpressionParser(const std::string& expressi
         // Initialize the parser
         parser_ = std::make_unique<mu::Parser>();
         parser_->SetExpr(expression_);
-        variableValues_.resize(numVariables);
-        for (int n = 0; n < numVariables; n++)
+        // Add a buffer entry for the time, even when it is not used
+        variableValues_.resize(numCoordVariables + 1);
+        for (int n = 0; n < numCoordVariables + (allowTimeAsVariable ? 1 : 0); n++)
         {
             variableValues_[n] = 0;
-            std::string name   = "x" + std::to_string(n + 1);
+            std::string name;
+            if (n < numCoordVariables)
+            {
+                name = "x" + std::to_string(n + 1);
+            }
+            else
+            {
+                name = "t";
+            }
             parser_->DefineVar(name, &variableValues_[n]);
         }
     }
 #else
-    GMX_UNUSED_VALUE(numVariables);
+    GMX_UNUSED_VALUE(numCoordVariables);
     GMX_RELEASE_ASSERT(expression.empty(),
                        "Can not use transformation pull coordinate without muparser");
 #endif

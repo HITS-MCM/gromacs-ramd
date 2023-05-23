@@ -59,14 +59,23 @@ namespace test
  * StdioTestHelper
  */
 
+StdioTestHelper::~StdioTestHelper()
+{
+    if (redirected)
+    {
+        fclose(stdin);
+    }
+}
+
 void StdioTestHelper::redirectStringToStdin(const char* theString)
 {
-    const std::string fakeStdin = fileManager_.getTemporaryFilePath(".stdin");
+    const std::string fakeStdin = fileManager_.getTemporaryFilePath(".stdin").u8string();
     gmx::TextWriter::writeFileFromString(fakeStdin, theString);
     if (nullptr == std::freopen(fakeStdin.c_str(), "r", stdin))
     {
         GMX_THROW_WITH_ERRNO(FileIOError("Failed to redirect a string to stdin"), "freopen", errno);
     }
+    redirected = true;
 }
 
 } // namespace test

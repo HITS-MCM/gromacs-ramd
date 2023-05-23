@@ -58,7 +58,6 @@
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/stringutil.h"
 
 namespace gmx
@@ -815,7 +814,7 @@ BiasGrid::BiasGrid(ArrayRef<const DimParams> dimParams, ArrayRef<const AwhDimPar
     GMX_RELEASE_ASSERT(dimParams.size() == awhDimParams.size(), "Dimensions needs to be equal");
     /* Define the discretization along each dimension */
     awh_dvec period;
-    int      numPoints = 1;
+    int64_t  numPoints = 1;
     for (int d = 0; d < gmx::ssize(awhDimParams); d++)
     {
         double origin = dimParams[d].scaleUserInputToInternal(awhDimParams[d].origin());
@@ -837,6 +836,22 @@ BiasGrid::BiasGrid(ArrayRef<const DimParams> dimParams, ArrayRef<const AwhDimPar
         numPoints *= axis_[d].numPoints();
     }
 
+    // Check for unreasonably large grids to avoid sampling and allocation problems
+    // 10^7 points are practically impossible to sample and use about 1 GB of data
+    const int64_t c_maxNumPoints = 10'000'000;
+    const char*   envVar         = "GMX_AWH_NO_POINT_LIMIT";
+    if (numPoints > c_maxNumPoints && getenv(envVar) == nullptr)
+    {
+        std::string mesg = gmx::formatString(
+                "An AWH bias grid has %" PRId64
+                " points, which seems unreasonable large. "
+                "This is often caused by a (too) large force constant. "
+                "You can set the '%s' environment variable to override this check.",
+                numPoints,
+                envVar);
+        GMX_THROW(InvalidInputError(mesg));
+    }
+
     point_.resize(numPoints);
 
     /* Set their values */
@@ -854,15 +869,17 @@ BiasGrid::BiasGrid(ArrayRef<const DimParams> dimParams, ArrayRef<const AwhDimPar
     }
 }
 
-void mapGridToDataGrid(std::vector<int>*    gridpointToDatapoint,
-                       const double* const* data,
-                       int                  numDataPoints,
-                       const std::string&   dataFilename,
-                       const BiasGrid&      grid,
-                       const std::string&   correctFormatMessage)
+void mapGridToDataGrid(std::vector<int>* gridpointToDatapoint,
+                       const MultiDimArray<std::vector<double>, dynamicExtents2D>& data,
+                       int                                                         numDataPoints,
+                       const std::string&                                          dataFilename,
+                       const BiasGrid&                                             grid,
+                       const std::string& correctFormatMessage)
 {
     /* Transform the data into a grid in order to map each grid point to a data point
        using the grid functions. */
+
+    const auto& dataView = data.asConstView();
 
     /* Count the number of points for each dimension. Each dimension
        has its own stride. */
@@ -874,13 +891,13 @@ void mapGridToDataGrid(std::vector<int>*    gridpointToDatapoint,
     {
         int    numPointsInDim = 0;
         int    pointIndex     = 0;
-        double firstValue     = data[d][pointIndex];
+        double firstValue     = dataView[d][pointIndex];
         do
         {
             numPointsInDim++;
             pointIndex += stride;
         } while (pointIndex < numDataPoints
-                 && !gmx_within_tol(firstValue, data[d][pointIndex], GMX_REAL_EPS));
+                 && !gmx_within_tol(firstValue, dataView[d][pointIndex], GMX_REAL_EPS));
 
         /* The stride in dimension dimension d - 1 equals the number of points
            dimension d. */
@@ -909,12 +926,12 @@ void mapGridToDataGrid(std::vector<int>*    gridpointToDatapoint,
     {
         if (isFepLambdaAxis[d])
         {
-            axis_.emplace_back(data[d][0], data[d][numDataPoints - 1], 0, numPoints[d], true);
+            axis_.emplace_back(dataView[d][0], dataView[d][numDataPoints - 1], 0, numPoints[d], true);
         }
         else
         {
             axis_.emplace_back(
-                    data[d][0], data[d][numDataPoints - 1], grid.axis(d).period(), numPoints[d], false);
+                    dataView[d][0], dataView[d][numDataPoints - 1], grid.axis(d).period(), numPoints[d], false);
         }
     }
 

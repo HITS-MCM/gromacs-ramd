@@ -513,24 +513,24 @@ static real free_energy_evaluate_single(real                                    
 
 /*! \brief Calculate pair interactions, supports all types and conditions. */
 template<BondedKernelFlavor flavor>
-static real do_pairs_general(int                           ftype,
-                             int                           nbonds,
-                             const t_iatom                 iatoms[],
-                             const t_iparams               iparams[],
-                             const rvec                    x[],
-                             rvec4                         f[],
-                             rvec                          fshift[],
-                             const struct t_pbc*           pbc,
-                             const real*                   lambda,
-                             real*                         dvdl,
-                             gmx::ArrayRef<real>           chargeA,
-                             gmx::ArrayRef<real>           chargeB,
-                             gmx::ArrayRef<bool>           atomIsPerturbed,
-                             gmx::ArrayRef<unsigned short> cENER,
-                             int                           numEnergyGroups,
-                             const t_forcerec*             fr,
-                             gmx_grppairener_t*            grppener,
-                             int*                          global_atom_index)
+static real do_pairs_general(int                                 ftype,
+                             int                                 nbonds,
+                             const t_iatom                       iatoms[],
+                             const t_iparams                     iparams[],
+                             const rvec                          x[],
+                             rvec4                               f[],
+                             rvec                                fshift[],
+                             const struct t_pbc*                 pbc,
+                             const real*                         lambda,
+                             real*                               dvdl,
+                             gmx::ArrayRef<const real>           chargeA,
+                             gmx::ArrayRef<const real>           chargeB,
+                             gmx::ArrayRef<const bool>           atomIsPerturbed,
+                             gmx::ArrayRef<const unsigned short> cENER,
+                             int                                 numEnergyGroups,
+                             const t_forcerec*                   fr,
+                             gmx_grppairener_t*                  grppener,
+                             int*                                global_atom_index)
 {
     real            qq, c6, c12;
     rvec            dx;
@@ -834,14 +834,14 @@ static real do_pairs_general(int                           ftype,
  * This function is templated for real/SimdReal and for optimization.
  */
 template<typename T, int pack_size, typename pbc_type>
-static void do_pairs_simple(int                 nbonds,
-                            const t_iatom       iatoms[],
-                            const t_iparams     iparams[],
-                            const rvec          x[],
-                            rvec4               f[],
-                            const pbc_type      pbc,
-                            gmx::ArrayRef<real> charge,
-                            const real          scale_factor)
+static void do_pairs_simple(int                       nbonds,
+                            const t_iatom             iatoms[],
+                            const t_iparams           iparams[],
+                            const rvec                x[],
+                            rvec4                     f[],
+                            const pbc_type            pbc,
+                            gmx::ArrayRef<const real> charge,
+                            const real                scale_factor)
 {
     const int nfa1 = 1 + 2;
 
@@ -937,29 +937,30 @@ static void do_pairs_simple(int                 nbonds,
 }
 
 /*! \brief Calculate all listed pair interactions */
-void do_pairs(int                           ftype,
-              int                           nbonds,
-              const t_iatom                 iatoms[],
-              const t_iparams               iparams[],
-              const rvec                    x[],
-              rvec4                         f[],
-              rvec                          fshift[],
-              const struct t_pbc*           pbc,
-              const real*                   lambda,
-              real*                         dvdl,
-              gmx::ArrayRef<real>           chargeA,
-              gmx::ArrayRef<real>           chargeB,
-              gmx::ArrayRef<bool>           atomIsPerturbed,
-              gmx::ArrayRef<unsigned short> cENER,
-              const int                     numEnergyGroups,
-              const t_forcerec*             fr,
-              const bool                    havePerturbedInteractions,
-              const gmx::StepWorkload&      stepWork,
-              gmx_grppairener_t*            grppener,
-              int*                          global_atom_index)
+void do_pairs(int                                 ftype,
+              int                                 nbonds,
+              const t_iatom                       iatoms[],
+              const t_iparams                     iparams[],
+              const rvec                          x[],
+              rvec4                               f[],
+              rvec                                fshift[],
+              const struct t_pbc*                 pbc,
+              const real*                         lambda,
+              real*                               dvdl,
+              gmx::ArrayRef<const real>           chargeA,
+              gmx::ArrayRef<const real>           chargeB,
+              gmx::ArrayRef<const bool>           atomIsPerturbed,
+              gmx::ArrayRef<const unsigned short> cENER,
+              const int                           numEnergyGroups,
+              const t_forcerec*                   fr,
+              const bool                          havePerturbedInteractions,
+              const gmx::StepWorkload&            stepWork,
+              gmx_grppairener_t*                  grppener,
+              int*                                global_atom_index)
 {
-    if (ftype == F_LJ14 && fr->ic->vdwtype != VanDerWaalsType::User && !EEL_USER(fr->ic->eeltype)
-        && !havePerturbedInteractions && (!stepWork.computeVirial && !stepWork.computeEnergy))
+    if (ftype == F_LJ14 && fr->ic->vdwtype != VanDerWaalsType::User
+        && !usingUserTableElectrostatics(fr->ic->eeltype) && !havePerturbedInteractions
+        && (!stepWork.computeVirial && !stepWork.computeEnergy))
     {
         /* We use a fast code-path for plain LJ 1-4 without FEP.
          *
@@ -1013,7 +1014,7 @@ void do_pairs(int                           ftype,
                                                                        dvdl,
                                                                        chargeA,
                                                                        chargeB,
-                                                                       atomIsPerturbed,
+                                                                       makeArrayRef(atomIsPerturbed),
                                                                        cENER,
                                                                        numEnergyGroups,
                                                                        fr,

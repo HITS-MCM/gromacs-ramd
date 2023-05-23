@@ -49,6 +49,7 @@
 #include "gromacs/gpu_utils/gputraits.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/gmxmpi.h"
+
 #include "gpu_3dfft_impl.h"
 
 class DeviceContext;
@@ -64,7 +65,7 @@ class Gpu3dFft::ImplSyclRocfft : public Gpu3dFft::Impl
 {
 public:
     //! \copydoc Gpu3dFft::Impl::Impl
-    ImplSyclRocfft(bool                 allocateGrids,
+    ImplSyclRocfft(bool                 allocateRealGrid,
                    MPI_Comm             comm,
                    ArrayRef<const int>  gridSizesInXForEachRank,
                    ArrayRef<const int>  gridSizesInYForEachRank,

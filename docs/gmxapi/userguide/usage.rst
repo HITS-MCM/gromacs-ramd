@@ -35,15 +35,29 @@ from Python, build and install *gmxapi* in separate
 Notes on parallelism and MPI
 ============================
 
+The |Gromacs| library can be built for parallel computation using various
+strategies.
+If |Gromacs| was configured with ``-DGMX_MPI=ON``,
+the same MPI library and compiler tool chain must be used for *gmxapi*
+and :py:mod:`mpi4py`.
+In any case, the Python package must be built with :py:mod:`mpi4py` installed.
+See :ref:`mpi_requirements`.
+
 .. note::
     This section uses "mpiexec" generically to refer to the MPI program launcher.
     Depending on your MPI implementation and system details,
     your environment may use "mpirun", or some other command instead.
 
-When launching a *gmxapi* script with MPI,
-you must help *gmxapi* detect the MPI context by ensuring that :py:mod:`mpi4py`
-is loaded.
-Refer to :ref:`mpi_requirements` for more on installing :py:mod:`mpi4py`.
+*gmxapi* scripts manage batches of simulations (as "ensembles") using
+MPI and :py:mod:`mpi4py`.
+To check whether your installed *gmxapi* package was built with MPI bindings,
+you can check for the ``mpi_bindings`` feature using
+:py:func:`gmxapi.version.has_feature`. The following command will produce an
+error if the feature is not available.
+
+::
+
+    python -c 'import gmxapi; assert gmxapi.version.has_feature("mpi_bindings")'
 
 Assuming you use :command:`mpiexec` to launch MPI jobs in your environment,
 run a *gmxapi* script on two ranks with something like the following.
@@ -54,18 +68,47 @@ the intended Python interpreter since new process environments are being created
 
     mpiexec -n 2 `which python` -m mpi4py myscript.py
 
-*gmxapi* 0.1 has limited parallelism, but future versions will include seamless
-acceleration as integration improves with the GROMACS library and computing
-environment runtime resources.
-Currently, *gmxapi* and the GROMACS library do not have an effective way to
-share an MPI environment.
-Therefore, if you intend to run more than one simulation at a time, in parallel,
-in a *gmxapi* script, you should build GROMACS with *thread-MPI* instead of a
-standard MPI library.
-I.e. configure GROMACS with the CMake flag ``-DGMX_THREAD_MPI=ON``.
-Then, launch your *gmxapi* script with one MPI rank per node, and *gmxapi* will
-assign each (non-MPI) simulation to its own node, while keeping the full MPI
-environment available for use via :py:mod:`mpi4py`.
+The ``-m mpi4py`` ensures that the :py:mod:`mpi4py` package is available and
+allows for proper clean-up of resources.
+(See :py:mod:`mpi4py.run` for details.)
+
+Mapping ranks to ensemble members
+---------------------------------
+
+*gmxapi* divides the root communicator into separate sub-communicators for
+each simulator in an ensemble simulation task.
+Consider a root communicator of size *S* being allocated to *N* simulators.
+Each rank *R* in the root communicator is assigned to ensemble member *M(R)*
+as follows.
+
+When |Gromacs| is built with MPI library support, *gmxapi* allocates available
+MPI ranks to simulators in (approximately) equal size consecutive chunks.
+
+.. math::
+
+    M(R) = \text{trunc}(R * N / S)
+
+For thread-MPI (or no-MPI) |Gromacs| builds,
+each simulator is assigned one process (with an attempt at even distribution).
+Based on the preceding formula,
+thread-MPI ensemble member assignment looks like the following.
+
+.. math::
+
+    M_T(R) =
+    \begin{cases}
+    M(R) &,\; M(R) \neq M(R-1) \\
+    \textrm{null} &,\; \textrm{otherwise}
+    \end{cases}
+
+In other words, without an MPI library,
+only the root rank from *M(R)* is assigned.
+
+.. versionchanged:: 0.4.0
+
+    In earlier releases, ranks were assigned to thread-MPI simulators
+    contiguously, such that high-numbered ranks *R>N* were unused.
+    MPI simulators were not supported for ensemble simulation tasks.
 
 Caveats for MPI jobs
 --------------------
@@ -117,7 +160,7 @@ trigger execution. You can explicitly trigger execution with::
     md.run()
 
 or you can let gmxapi automatically launch work in response to the data you
-request.
+request (by calling :py:func:`~gmxapi.abc.Future.result()` on a named *output* member).
 
 The :py:func:`gmxapi.mdrun` operation produces a simulation trajectory output.
 You can use ``md.output.trajectory`` as input to other operations,
@@ -136,11 +179,44 @@ To run a batch of simulations, just pass an array of inputs.::
 Make sure to launch the script in an MPI environment with a sufficient number
 of ranks to allow one rank per simulation.
 
-For *gmxapi* 0.1, we recommend configuring the GROMACS build with
-``GMX_THREAD_MPI=ON`` and allowing one rank per node in order to allow each
-simulation ensemble member to run on a separate node.
-
 .. seealso:: :ref:`parallelism`
+
+.. _gmxapi ensemble:
+
+Input arguments and "ensemble" syntax
+=====================================
+
+When a :py:class:`list` of input is provided to a command argument that expects
+some other type, *gmxapi* generates an *ensemble* operation.
+The command is applied to each element of input,
+and the :py:func:`~Future.result` will be a list.
+When an *output* member of an ensemble operation is provided as input to another command,
+the consuming command will also be an ensemble operation.
+
+*gmxapi* uses MPI to manage ensemble members across available resources.
+It is important that the same *gmxapi* commands are called on all processes
+so that underlying collective MPI calls are made as expected.
+In other words, if you are using :py:mod:`mpi4py` in your script,
+be careful with conditional execution like the following.
+
+.. code-block:: python
+
+    if mpi4py.MPI.COMM_WORLD.Get_rank() == 0:
+        # don't put any gmxapi commands here, including method calls
+        # like `obj.result()`, unless you have an `else`
+        # to make sure the same gmxapi command runs on every rank.
+        ...
+
+For commands that already integrate well with *gmxapi's* MPI-based ensemble management
+(like :py:func:`~gmxapi.mdrun`), available resources can be split up automatically,
+and applied to run the ensemble members concurrently.
+Other operations may require further development of Resource Management
+API features for the *gmxapi* framework to most effectively apply multi-core computing resources.
+See :issue:`3718` and `the wiki
+<https://gitlab.com/gromacs/gromacs/-/wikis/subprojects/Resource-Management-2023>`__
+for more information.
+
+See also :ref:`parallelism`.
 
 .. _commandline:
 
@@ -176,6 +252,8 @@ Example::
     structurefile = solvate.output.file['-o'].result()
     if solvate.output.returncode.result() != 0:
         print(solvate.output.erroroutput.result())
+
+.. _gmxapi simulation preparation:
 
 Preparing simulations
 =====================
@@ -329,7 +407,7 @@ Logging
 
 *gmxapi* uses the Python :py:mod:`logging` module to provide hierarchical
 logging, organized by submodule.
-You can access the logger at ``gmxapi.logger`` or, after importing *gmxapi*,
+You can access the logger at ``gmxapi.logger`` or
 through the Python logging framework::
 
     import gmxapi as gmx

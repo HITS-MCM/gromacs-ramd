@@ -42,6 +42,9 @@
 
 #include <cstdio>
 
+#include "mdrun/mdrun_main.h"
+#include "mdrun/nonbonded_bench.h"
+
 #include "gromacs/commandline/cmdlinemodule.h"
 #include "gromacs/commandline/cmdlinemodulemanager.h"
 #include "gromacs/commandline/cmdlineoptionsmodule.h"
@@ -66,10 +69,6 @@
 #include "gromacs/tools/trjcat.h"
 #include "gromacs/tools/trjconv.h"
 #include "gromacs/tools/tune_pme.h"
-
-#include "mdrun/mdrun_main.h"
-#include "mdrun/nonbonded_bench.h"
-#include "view/view.h"
 
 namespace
 {
@@ -206,10 +205,6 @@ void registerLegacyModules(gmx::CommandLineModuleManager* manager)
             manager, gmx::pdb2gmxInfo::name, gmx::pdb2gmxInfo::shortDescription, &gmx::pdb2gmxInfo::create);
 
     // Modules from gmx_ana.h.
-    registerModule(manager,
-                   &gmx_do_dssp,
-                   "do_dssp",
-                   "Assign secondary structure and calculate solvent accessible surface area");
     registerModule(manager, &gmx_editconf, "editconf", "Convert and manipulates structure files");
     registerModule(manager, &gmx_eneconv, "eneconv", "Convert energy files");
     registerModule(manager, &gmx_solvate, "solvate", "Solvate a system");
@@ -386,7 +381,6 @@ void registerLegacyModules(gmx::CommandLineModuleManager* manager)
                    "wham",
                    "Perform weighted histogram analysis after umbrella sampling");
     registerModule(manager, &gmx_wheel, "wheel", "Plot helical wheels");
-    registerModuleNoNice(manager, &gmx_view, "view", "View a trajectory on an X-Windows terminal");
 
     {
         gmx::CommandLineModuleGroup group =
@@ -409,7 +403,6 @@ void registerLegacyModules(gmx::CommandLineModuleManager* manager)
     {
         gmx::CommandLineModuleGroup group = manager->addModuleGroup("Viewing trajectories");
         group.addModule("nmtraj");
-        group.addModule("view");
     }
     {
         gmx::CommandLineModuleGroup group = manager->addModuleGroup("Processing energies");
@@ -517,7 +510,6 @@ void registerLegacyModules(gmx::CommandLineModuleManager* manager)
     }
     {
         gmx::CommandLineModuleGroup group = manager->addModuleGroup("Protein-specific analysis");
-        group.addModule("do_dssp");
         group.addModule("chi");
         group.addModule("helix");
         group.addModule("helixorient");

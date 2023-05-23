@@ -149,15 +149,16 @@ struct PullCoordSpatialData
 struct pull_coord_work_t
 {
     //! Constructor
-    pull_coord_work_t(const t_pull_coord& params) :
+    pull_coord_work_t(const t_pull_coord& params, const bool allowTimeAsTransformationVariable = true) :
         params(params),
         value_ref(0),
         spatialData(),
         scalarForce(0),
         bExternalPotentialProviderHasBeenRegistered(false),
         expressionParser(params.eGeom == PullGroupGeometry::Transformation ? params.expression : "",
-                         params.coordIndex),
-        transformationVariables(params.eGeom == PullGroupGeometry::Transformation ? params.coordIndex : 0)
+                         params.coordIndex,
+                         allowTimeAsTransformationVariable),
+        transformationVariables(params.eGeom == PullGroupGeometry::Transformation ? params.coordIndex + 1 : 0)
     {
     }
 
@@ -231,7 +232,7 @@ struct pull_comm_t
     MPI_Comm mpi_comm_com; /* Communicator for pulling */
 #endif
     int nparticipate; /* The number of ranks participating */
-    bool isMasterRank; /* Tells whether our rank is the master rank and thus should add the pull virial */
+    bool isMainRank; /* Tells whether our rank is the main rank and thus should add the pull virial */
 
     int64_t setup_count; /* The number of decomposition calls */
     int64_t must_count;  /* The last count our rank needed to be part */
@@ -248,6 +249,9 @@ struct pull_t
 {
     /* Global parameters */
     pull_params_t params; /* The pull parameters, from inputrec */
+
+    /* Tells whether time is allowed as a variable in transformation coordinate expressions */
+    bool allowTimeAsTransformationVariable;
 
     gmx_bool bPotential;  /* Are there coordinates with potential? */
     gmx_bool bConstraint; /* Are there constrained coordinates? */

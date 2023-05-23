@@ -66,12 +66,19 @@ class ArrayRef;
  */
 enum class FftBackend
 {
-    Cufft, // supports only single-GPU
-    Ocl,   // supports only single-GPU
-    HeFFTe_CUDA,
-    SyclMkl,    // supports only single-GPU
-    SyclRocfft, // supports only single-GPU
-    Sycl,       // stubs for not supported configurations
+    Cufft,              //!< supports only single-GPU
+    OclVkfft,           //!< supports only single-GPU
+    Ocl,                //!< supports only single-GPU
+    CuFFTMp,            //!< supports only multi-gpu
+    HeFFTe_CUDA,        //!< supports only multi-gpu
+    HeFFTe_Sycl_OneMkl, //!< supports only multi-gpu
+    HeFFTe_Sycl_Rocfft, //!< supports only multi-gpu
+    HeFFTe_Sycl_cuFFT,  //!< supports only multi-gpu
+    SyclMkl,            //!< supports only single-GPU
+    SyclRocfft,         //!< supports only single-GPU
+    SyclVkfft,          //!< supports only single-GPU
+    SyclDbfft,          //!< supports only single-GPU
+    Sycl,               //!< stubs for not supported configurations
     Count
 };
 
@@ -84,23 +91,24 @@ public:
     /*! \brief
      * Construct 3D FFT object for given backend
      *
-     * \param[in]  backend                      FFT backend to be instantiated
-     * \param[in]  allocateGrids                True if fft grids are to be allocated, false if pre-allocated
-     * \param[in]  comm                         MPI communicator, used with distributed-FFT backends
-     * \param[in]  gridSizesInXForEachRank      Number of grid points used with each rank in X-dimension
-     * \param[in]  gridSizesInYForEachRank      Number of grid points used with each rank in Y-dimension
-     * \param[in]  nz                           Grid dimension in Z
-     * \param[in]  performOutOfPlaceFFT         Whether the FFT will be performed out-of-place
-     * \param[in]  context                      GPU context.
-     * \param[in]  pmeStream                    GPU stream for PME.
-     * \param[in,out]  realGridSize             Dimensions of the local real grid, out if allocateGrids=true
-     * \param[in,out]  realGridSizePadded       Dimensions of the local real grid with padding, out if allocateGrids=true
-     * \param[in,out]  complexGridSizePadded    Dimensions of the local complex grid with padding, out if allocateGrids=true
-     * \param[in,out]  realGrid                 Device buffer of floats for the local real grid, out if allocateGrids=true
-     * \param[in,out]  complexGrid              Device buffer of complex floats for the local complex grid, out if allocateGrids=true
+     * \param[in]  backend                   FFT backend to be instantiated
+     * \param[in]  allocateRealGrid          True if fft real-grid is to be allocated,
+     *                                          false if pre-allocated
+     * \param[in]  comm                      MPI communicator, used with distributed-FFT backends
+     * \param[in]  gridSizesInXForEachRank   Number of grid points used with each rank in X-dimension
+     * \param[in]  gridSizesInYForEachRank   Number of grid points used with each rank in Y-dimension
+     * \param[in]  nz                        Grid dimension in Z
+     * \param[in]  performOutOfPlaceFFT      Whether the FFT will be performed out-of-place
+     * \param[in] context                    GPU context.
+     * \param[in]  pmeStream                 GPU stream for PME.
+     * \param[in,out]  realGridSize          Dimensions of the local real grid, out if allocateRealGrid=true
+     * \param[in,out]  realGridSizePadded    Dimensions of the local real grid with padding, out if allocateRealGrid=true
+     * \param[in,out]  complexGridSizePadded Dimensions of the local complex grid with padding, out if allocateRealGrid=true
+     * \param[in,out]  realGrid              Device buffer of floats for the local real grid, out if allocateRealGrid=true
+     * \param[out] complexGrid               Device buffer of complex floats for the local complex grid
      */
     Gpu3dFft(FftBackend           backend,
-             bool                 allocateGrids,
+             bool                 allocateRealGrid,
              MPI_Comm             comm,
              ArrayRef<const int>  gridSizesInXForEachRank,
              ArrayRef<const int>  gridSizesInYForEachRank,
@@ -126,9 +134,13 @@ public:
 private:
     class Impl;
     class ImplCuFft;
+    class ImplCuFftMp;
+    class ImplOclVkfft;
     class ImplOcl;
     class ImplSyclMkl;
+    class ImplSyclDbfft;
     class ImplSyclRocfft;
+    class ImplSyclVkfft;
     class ImplSycl;
 
     template<typename backend_tag>

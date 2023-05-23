@@ -47,10 +47,11 @@
 
 #include "gmxpre.h"
 
-#include <cassert>
-
 #include <math_constants.h>
 
+#include <cassert>
+
+#include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/typecasts.cuh"
 #include "gromacs/gpu_utils/vectype_ops.cuh"
@@ -68,6 +69,28 @@
 #if defined(_MSVC)
 #    include <limits>
 #endif
+
+
+// \brief Staggered atomic force component accumulation to reduce clashes
+//
+// Reduce the number of atomic clashes by a theoretical max 3x by having consecutive threads
+// accumulate different force components at the same time.
+__device__ __forceinline__ void staggeredAtomicAddForce(float3* __restrict__ targetPtr, float3 f)
+{
+    int3 offset = make_int3(0, 1, 2);
+
+    // Shift force components x, y, and z left by 2, 1, and 0, respectively
+    // to end up with zxy, yzx, xyz on consecutive threads.
+    f      = (threadIdx.x % 3 == 0) ? make_float3(f.y, f.z, f.x) : f;
+    offset = (threadIdx.x % 3 == 0) ? make_int3(offset.y, offset.z, offset.x) : offset;
+    f      = (threadIdx.x % 3 <= 1) ? make_float3(f.y, f.z, f.x) : f;
+    offset = (threadIdx.x % 3 <= 1) ? make_int3(offset.y, offset.z, offset.x) : offset;
+
+    atomicAdd(&targetPtr->x + offset.x, f.x);
+    atomicAdd(&targetPtr->x + offset.y, f.y);
+    atomicAdd(&targetPtr->x + offset.z, f.z);
+}
+
 
 /*-------------------------------- CUDA kernels-------------------------------- */
 /*------------------------------------------------------------------------------*/
@@ -91,15 +114,15 @@ harmonic_gpu(const float kA, const float xA, const float x, float* V, float* F)
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void bonds_gpu(const int       i,
-                          float*          vtot_loc,
-                          const int       numBonds,
-                          const t_iatom   d_forceatoms[],
-                          const t_iparams d_forceparams[],
-                          const float4    gm_xq[],
-                          float3          gm_f[],
-                          float3          sm_fShiftLoc[],
-                          const PbcAiuc   pbcAiuc)
+__device__ __forceinline__ void bonds_gpu(const int       i,
+                                          float*          vtot_loc,
+                                          const int       numBonds,
+                                          const t_iatom   d_forceatoms[],
+                                          const t_iparams d_forceparams[],
+                                          const float4    gm_xq[],
+                                          float3          gm_f[],
+                                          float3          sm_fShiftLoc[],
+                                          const PbcAiuc   pbcAiuc)
 {
     if (i < numBonds)
     {
@@ -129,12 +152,12 @@ __device__ void bonds_gpu(const int       i,
             fbond *= rsqrtf(dr2);
 
             float3 fij = fbond * dx;
-            atomicAdd(&gm_f[ai], fij);
-            atomicAdd(&gm_f[aj], -fij);
+            staggeredAtomicAddForce(&gm_f[ai], fij);
+            staggeredAtomicAddForce(&gm_f[aj], -fij);
             if (calcVir && ki != gmx::c_centralShiftIndex)
             {
-                atomicAdd(&sm_fShiftLoc[ki], fij);
-                atomicAdd(&sm_fShiftLoc[gmx::c_centralShiftIndex], -fij);
+                staggeredAtomicAddForce(&sm_fShiftLoc[ki], fij);
+                staggeredAtomicAddForce(&sm_fShiftLoc[gmx::c_centralShiftIndex], -fij);
             }
         }
     }
@@ -162,15 +185,15 @@ __device__ __forceinline__ static float bond_angle_gpu(const float4   xi,
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void angles_gpu(const int       i,
-                           float*          vtot_loc,
-                           const int       numBonds,
-                           const t_iatom   d_forceatoms[],
-                           const t_iparams d_forceparams[],
-                           const float4    gm_xq[],
-                           float3          gm_f[],
-                           float3          sm_fShiftLoc[],
-                           const PbcAiuc   pbcAiuc)
+__device__ __forceinline__ void angles_gpu(const int       i,
+                                           float*          vtot_loc,
+                                           const int       numBonds,
+                                           const t_iatom   d_forceatoms[],
+                                           const t_iparams d_forceparams[],
+                                           const float4    gm_xq[],
+                                           float3          gm_f[],
+                                           float3          sm_fShiftLoc[],
+                                           const PbcAiuc   pbcAiuc)
 {
     if (i < numBonds)
     {
@@ -220,30 +243,30 @@ __device__ void angles_gpu(const int       i,
             float3 f_k = ckk * r_kj - cik * r_ij;
             float3 f_j = -f_i - f_k;
 
-            atomicAdd(&gm_f[ai], f_i);
-            atomicAdd(&gm_f[aj], f_j);
-            atomicAdd(&gm_f[ak], f_k);
+            staggeredAtomicAddForce(&gm_f[ai], f_i);
+            staggeredAtomicAddForce(&gm_f[aj], f_j);
+            staggeredAtomicAddForce(&gm_f[ak], f_k);
 
             if (calcVir)
             {
-                atomicAdd(&sm_fShiftLoc[t1], f_i);
-                atomicAdd(&sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
-                atomicAdd(&sm_fShiftLoc[t2], f_k);
+                staggeredAtomicAddForce(&sm_fShiftLoc[t1], f_i);
+                staggeredAtomicAddForce(&sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
+                staggeredAtomicAddForce(&sm_fShiftLoc[t2], f_k);
             }
         }
     }
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void urey_bradley_gpu(const int       i,
-                                 float*          vtot_loc,
-                                 const int       numBonds,
-                                 const t_iatom   d_forceatoms[],
-                                 const t_iparams d_forceparams[],
-                                 const float4    gm_xq[],
-                                 float3          gm_f[],
-                                 float3          sm_fShiftLoc[],
-                                 const PbcAiuc   pbcAiuc)
+__device__ __forceinline__ void urey_bradley_gpu(const int       i,
+                                                 float*          vtot_loc,
+                                                 const int       numBonds,
+                                                 const t_iatom   d_forceatoms[],
+                                                 const t_iparams d_forceparams[],
+                                                 const float4    gm_xq[],
+                                                 float3          gm_f[],
+                                                 float3          sm_fShiftLoc[],
+                                                 const PbcAiuc   pbcAiuc)
 {
     if (i < numBonds)
     {
@@ -286,6 +309,11 @@ __device__ void urey_bradley_gpu(const int       i,
         harmonic_gpu(kUBA, r13A, dr, &vbond, &fbond);
 
         float cos_theta2 = cos_theta * cos_theta;
+
+        float3 f_i = make_float3(0.0F);
+        float3 f_j = make_float3(0.0F);
+        float3 f_k = make_float3(0.0F);
+
         if (cos_theta2 < 1.0F)
         {
             float st  = dVdt * rsqrtf(1.0F - cos_theta2);
@@ -298,19 +326,15 @@ __device__ void urey_bradley_gpu(const int       i,
             float cii = sth / nrij2;
             float ckk = sth / nrkj2;
 
-            float3 f_i = cii * r_ij - cik * r_kj;
-            float3 f_k = ckk * r_kj - cik * r_ij;
-            float3 f_j = -f_i - f_k;
-
-            atomicAdd(&gm_f[ai], f_i);
-            atomicAdd(&gm_f[aj], f_j);
-            atomicAdd(&gm_f[ak], f_k);
+            f_i = cii * r_ij - cik * r_kj;
+            f_k = ckk * r_kj - cik * r_ij;
+            f_j = -f_i - f_k;
 
             if (calcVir)
             {
-                atomicAdd(&sm_fShiftLoc[t1], f_i);
-                atomicAdd(&sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
-                atomicAdd(&sm_fShiftLoc[t2], f_k);
+                staggeredAtomicAddForce(&sm_fShiftLoc[t1], f_i);
+                staggeredAtomicAddForce(&sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
+                staggeredAtomicAddForce(&sm_fShiftLoc[t2], f_k);
             }
         }
 
@@ -325,14 +349,24 @@ __device__ void urey_bradley_gpu(const int       i,
             fbond *= rsqrtf(dr2);
 
             float3 fik = fbond * r_ik;
-            atomicAdd(&gm_f[ai], fik);
-            atomicAdd(&gm_f[ak], -fik);
+            f_i += fik;
+            f_k -= fik;
 
             if (calcVir && ki != gmx::c_centralShiftIndex)
             {
-                atomicAdd(&sm_fShiftLoc[ki], fik);
-                atomicAdd(&sm_fShiftLoc[gmx::c_centralShiftIndex], -fik);
+                staggeredAtomicAddForce(&sm_fShiftLoc[ki], fik);
+                staggeredAtomicAddForce(&sm_fShiftLoc[gmx::c_centralShiftIndex], -fik);
             }
+        }
+        if ((cos_theta2 < 1.0F) || (dr2 != 0.0F))
+        {
+            staggeredAtomicAddForce(&gm_f[ai], f_i);
+            staggeredAtomicAddForce(&gm_f[ak], f_k);
+        }
+
+        if (cos_theta2 < 1.0F)
+        {
+            staggeredAtomicAddForce(&gm_f[aj], f_j);
         }
     }
 }
@@ -379,23 +413,23 @@ dopdihs_gpu(const float cpA, const float phiA, const int mult, const float phi, 
 }
 
 template<bool calcVir>
-__device__ static void do_dih_fup_gpu(const int            i,
-                                      const int            j,
-                                      const int            k,
-                                      const int            l,
-                                      const float          ddphi,
-                                      const float3         r_ij,
-                                      const float3         r_kj,
-                                      const float3         r_kl,
-                                      const float3         m,
-                                      const float3         n,
-                                      float3               gm_f[],
-                                      float3               sm_fShiftLoc[],
-                                      const PbcAiuc&       pbcAiuc,
-                                      const float4         gm_xq[],
-                                      const int            t1,
-                                      const int            t2,
-                                      const int gmx_unused t3)
+__device__ __forceinline__ static void do_dih_fup_gpu(const int            i,
+                                                      const int            j,
+                                                      const int            k,
+                                                      const int            l,
+                                                      const float          ddphi,
+                                                      const float3         r_ij,
+                                                      const float3         r_kj,
+                                                      const float3         r_kl,
+                                                      const float3         m,
+                                                      const float3         n,
+                                                      float3               gm_f[],
+                                                      float3               sm_fShiftLoc[],
+                                                      const PbcAiuc&       pbcAiuc,
+                                                      const float4         gm_xq[],
+                                                      const int            t1,
+                                                      const int            t2,
+                                                      const int gmx_unused t3)
 {
     float iprm  = norm2(m);
     float iprn  = norm2(n);
@@ -420,34 +454,34 @@ __device__ static void do_dih_fup_gpu(const int            i,
         float3 f_j  = f_i - svec;
         float3 f_k  = f_l + svec;
 
-        atomicAdd(&gm_f[i], f_i);
-        atomicAdd(&gm_f[j], -f_j);
-        atomicAdd(&gm_f[k], -f_k);
-        atomicAdd(&gm_f[l], f_l);
+        staggeredAtomicAddForce(&gm_f[i], f_i);
+        staggeredAtomicAddForce(&gm_f[j], -f_j);
+        staggeredAtomicAddForce(&gm_f[k], -f_k);
+        staggeredAtomicAddForce(&gm_f[l], f_l);
 
         if (calcVir)
         {
             float3 dx_jl;
             int    t3 = pbcDxAiuc<calcVir>(pbcAiuc, gm_xq[l], gm_xq[j], dx_jl);
 
-            atomicAdd(&sm_fShiftLoc[t1], f_i);
-            atomicAdd(&sm_fShiftLoc[gmx::c_centralShiftIndex], -f_j);
-            atomicAdd(&sm_fShiftLoc[t2], -f_k);
-            atomicAdd(&sm_fShiftLoc[t3], f_l);
+            staggeredAtomicAddForce(&sm_fShiftLoc[t1], f_i);
+            staggeredAtomicAddForce(&sm_fShiftLoc[gmx::c_centralShiftIndex], -f_j);
+            staggeredAtomicAddForce(&sm_fShiftLoc[t2], -f_k);
+            staggeredAtomicAddForce(&sm_fShiftLoc[t3], f_l);
         }
     }
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void pdihs_gpu(const int       i,
-                          float*          vtot_loc,
-                          const int       numBonds,
-                          const t_iatom   d_forceatoms[],
-                          const t_iparams d_forceparams[],
-                          const float4    gm_xq[],
-                          float3          gm_f[],
-                          float3          sm_fShiftLoc[],
-                          const PbcAiuc   pbcAiuc)
+__device__ __forceinline__ void pdihs_gpu(const int       i,
+                                          float*          vtot_loc,
+                                          const int       numBonds,
+                                          const t_iatom   d_forceatoms[],
+                                          const t_iparams d_forceparams[],
+                                          const float4    gm_xq[],
+                                          float3          gm_f[],
+                                          float3          sm_fShiftLoc[],
+                                          const PbcAiuc   pbcAiuc)
 {
     if (i < numBonds)
     {
@@ -488,15 +522,15 @@ __device__ void pdihs_gpu(const int       i,
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void rbdihs_gpu(const int       i,
-                           float*          vtot_loc,
-                           const int       numBonds,
-                           const t_iatom   d_forceatoms[],
-                           const t_iparams d_forceparams[],
-                           const float4    gm_xq[],
-                           float3          gm_f[],
-                           float3          sm_fShiftLoc[],
-                           const PbcAiuc   pbcAiuc)
+__device__ __forceinline__ void rbdihs_gpu(const int       i,
+                                           float*          vtot_loc,
+                                           const int       numBonds,
+                                           const t_iatom   d_forceatoms[],
+                                           const t_iparams d_forceparams[],
+                                           const float4    gm_xq[],
+                                           float3          gm_f[],
+                                           float3          sm_fShiftLoc[],
+                                           const PbcAiuc   pbcAiuc)
 {
     constexpr float c0 = 0.0F, c1 = 1.0F, c2 = 2.0F, c3 = 3.0F, c4 = 4.0F, c5 = 5.0F;
 
@@ -605,15 +639,15 @@ __device__ __forceinline__ static void make_dp_periodic_gpu(float* dp)
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void idihs_gpu(const int       i,
-                          float*          vtot_loc,
-                          const int       numBonds,
-                          const t_iatom   d_forceatoms[],
-                          const t_iparams d_forceparams[],
-                          const float4    gm_xq[],
-                          float3          gm_f[],
-                          float3          sm_fShiftLoc[],
-                          const PbcAiuc   pbcAiuc)
+__device__ __forceinline__ void idihs_gpu(const int       i,
+                                          float*          vtot_loc,
+                                          const int       numBonds,
+                                          const t_iatom   d_forceatoms[],
+                                          const t_iparams d_forceparams[],
+                                          const float4    gm_xq[],
+                                          float3          gm_f[],
+                                          float3          sm_fShiftLoc[],
+                                          const PbcAiuc   pbcAiuc)
 {
     if (i < numBonds)
     {
@@ -663,17 +697,17 @@ __device__ void idihs_gpu(const int       i,
 }
 
 template<bool calcVir, bool calcEner>
-__device__ void pairs_gpu(const int       i,
-                          const int       numBonds,
-                          const t_iatom   d_forceatoms[],
-                          const t_iparams iparams[],
-                          const float4    gm_xq[],
-                          float3          gm_f[],
-                          float3          sm_fShiftLoc[],
-                          const PbcAiuc   pbcAiuc,
-                          const float     scale_factor,
-                          float*          vtotVdw_loc,
-                          float*          vtotElec_loc)
+__device__ __forceinline__ void pairs_gpu(const int       i,
+                                          const int       numBonds,
+                                          const t_iatom   d_forceatoms[],
+                                          const t_iparams iparams[],
+                                          const float4    gm_xq[],
+                                          float3          gm_f[],
+                                          float3          sm_fShiftLoc[],
+                                          const PbcAiuc   pbcAiuc,
+                                          const float     scale_factor,
+                                          float*          vtotVdw_loc,
+                                          float*          vtotElec_loc)
 {
     if (i < numBonds)
     {
@@ -706,12 +740,12 @@ __device__ void pairs_gpu(const int       i,
         float3 f     = finvr * dr;
 
         /* Add the forces */
-        atomicAdd(&gm_f[ai], f);
-        atomicAdd(&gm_f[aj], -f);
+        staggeredAtomicAddForce(&gm_f[ai], f);
+        staggeredAtomicAddForce(&gm_f[aj], -f);
         if (calcVir && fshift_index != gmx::c_centralShiftIndex)
         {
-            atomicAdd(&sm_fShiftLoc[fshift_index], f);
-            atomicAdd(&sm_fShiftLoc[gmx::c_centralShiftIndex], -f);
+            staggeredAtomicAddForce(&sm_fShiftLoc[fshift_index], f);
+            staggeredAtomicAddForce(&sm_fShiftLoc[gmx::c_centralShiftIndex], -f);
         }
 
         if (calcEner)
@@ -726,13 +760,16 @@ namespace gmx
 {
 
 template<bool calcVir, bool calcEner>
-__global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4* gm_xq, float3* gm_f, float3* gm_fShift)
+__global__ void bonded_kernel_gpu(BondedGpuKernelParameters kernelParams,
+                                  BondedGpuKernelBuffers    kernelBuffers,
+                                  float4*                   gm_xq,
+                                  float3*                   gm_f,
+                                  float3*                   gm_fShift)
 {
     assert(blockDim.y == 1 && blockDim.z == 1);
     const int tid          = blockIdx.x * blockDim.x + threadIdx.x;
-    float     vtot_loc     = 0;
-    float     vtotVdw_loc  = 0;
-    float     vtotElec_loc = 0;
+    float     vtot_loc     = 0.0F;
+    float     vtotElec_loc = 0.0F; // Used only for F_LJ14
 
     extern __shared__ char sm_dynamicShmem[];
     char*                  sm_nextSlotPtr = sm_dynamicShmem;
@@ -757,7 +794,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
         {
             const int      numBonds = kernelParams.numFTypeBonds[j];
             int            fTypeTid = tid - kernelParams.fTypeRangeStart[j];
-            const t_iatom* iatoms   = kernelParams.d_iatoms[j];
+            const t_iatom* iatoms   = kernelBuffers.d_iatoms[j];
             fType                   = kernelParams.fTypesOnGpu[j];
             if (calcEner)
             {
@@ -771,7 +808,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                                                  &vtot_loc,
                                                  numBonds,
                                                  iatoms,
-                                                 kernelParams.d_forceParams,
+                                                 kernelBuffers.d_forceParams,
                                                  gm_xq,
                                                  gm_f,
                                                  sm_fShiftLoc,
@@ -782,7 +819,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                                                   &vtot_loc,
                                                   numBonds,
                                                   iatoms,
-                                                  kernelParams.d_forceParams,
+                                                  kernelBuffers.d_forceParams,
                                                   gm_xq,
                                                   gm_f,
                                                   sm_fShiftLoc,
@@ -793,7 +830,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                                                         &vtot_loc,
                                                         numBonds,
                                                         iatoms,
-                                                        kernelParams.d_forceParams,
+                                                        kernelBuffers.d_forceParams,
                                                         gm_xq,
                                                         gm_f,
                                                         sm_fShiftLoc,
@@ -805,7 +842,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                                                  &vtot_loc,
                                                  numBonds,
                                                  iatoms,
-                                                 kernelParams.d_forceParams,
+                                                 kernelBuffers.d_forceParams,
                                                  gm_xq,
                                                  gm_f,
                                                  sm_fShiftLoc,
@@ -816,7 +853,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                                                   &vtot_loc,
                                                   numBonds,
                                                   iatoms,
-                                                  kernelParams.d_forceParams,
+                                                  kernelBuffers.d_forceParams,
                                                   gm_xq,
                                                   gm_f,
                                                   sm_fShiftLoc,
@@ -827,7 +864,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                                                  &vtot_loc,
                                                  numBonds,
                                                  iatoms,
-                                                 kernelParams.d_forceParams,
+                                                 kernelBuffers.d_forceParams,
                                                  gm_xq,
                                                  gm_f,
                                                  sm_fShiftLoc,
@@ -837,13 +874,13 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
                     pairs_gpu<calcVir, calcEner>(fTypeTid,
                                                  numBonds,
                                                  iatoms,
-                                                 kernelParams.d_forceParams,
+                                                 kernelBuffers.d_forceParams,
                                                  gm_xq,
                                                  gm_f,
                                                  sm_fShiftLoc,
                                                  kernelParams.pbcAiuc,
                                                  kernelParams.electrostaticsScaleFactor,
-                                                 &vtotVdw_loc,
+                                                 &vtot_loc,
                                                  &vtotElec_loc);
                     break;
             }
@@ -853,43 +890,30 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
 
     if (threadComputedPotential)
     {
-        float* vtotVdw  = kernelParams.d_vTot + F_LJ14;
-        float* vtotElec = kernelParams.d_vTot + F_COUL14;
+        float* vtot     = kernelBuffers.d_vTot + fType;
+        float* vtotElec = kernelBuffers.d_vTot + F_COUL14;
 
-        // Stage atomic accumulation through shared memory:
-        // each warp will accumulate its own partial sum
-        // and then a single thread per warp will accumulate this to the global sum
+        // Perform warp-local reduction
+        vtot_loc += __shfl_down_sync(c_fullWarpMask, vtot_loc, 1);
+        vtotElec_loc += __shfl_up_sync(c_fullWarpMask, vtotElec_loc, 1);
+        if (threadIdx.x & 1)
+        {
+            vtot_loc = vtotElec_loc;
+        }
+#pragma unroll 4
+        for (int i = 2; i < warpSize; i *= 2)
+        {
+            vtot_loc += __shfl_down_sync(c_fullWarpMask, vtot_loc, i);
+        }
 
-        int numWarps = blockDim.x / warpSize;
-        int warpId   = threadIdx.x / warpSize;
-
-        // Shared memory variables to hold block-local partial sum
-        float* sm_vTot = reinterpret_cast<float*>(sm_nextSlotPtr);
-        sm_nextSlotPtr += numWarps * sizeof(float);
-        float* sm_vTotVdw = reinterpret_cast<float*>(sm_nextSlotPtr);
-        sm_nextSlotPtr += numWarps * sizeof(float);
-        float* sm_vTotElec = reinterpret_cast<float*>(sm_nextSlotPtr);
-
+        // Write reduced warp results into global memory
         if (threadIdx.x % warpSize == 0)
         {
-            // One thread per warp initializes to zero
-            sm_vTot[warpId]     = 0.;
-            sm_vTotVdw[warpId]  = 0.;
-            sm_vTotElec[warpId] = 0.;
+            atomicAdd(vtot, vtot_loc);
         }
-        __syncwarp(); // All threads in warp must wait for initialization
-
-        // Perform warp-local accumulation in shared memory
-        atomicAdd(sm_vTot + warpId, vtot_loc);
-        atomicAdd(sm_vTotVdw + warpId, vtotVdw_loc);
-        atomicAdd(sm_vTotElec + warpId, vtotElec_loc);
-
-        __syncwarp(); // Ensure all threads in warp have completed
-        if (threadIdx.x % warpSize == 0)
-        { // One thread per warp accumulates partial sum into global sum
-            atomicAdd(kernelParams.d_vTot + fType, sm_vTot[warpId]);
-            atomicAdd(vtotVdw, sm_vTotVdw[warpId]);
-            atomicAdd(vtotElec, sm_vTotElec[warpId]);
+        else if ((threadIdx.x % warpSize == 1) && (fType == F_LJ14))
+        {
+            atomicAdd(vtotElec, vtot_loc);
         }
     }
     /* Accumulate shift vectors from shared memory to global memory on the first c_numShiftVectors threads of the block. */
@@ -898,7 +922,7 @@ __global__ void exec_kernel_gpu(BondedCudaKernelParameters kernelParams, float4*
         __syncthreads();
         if (threadIdx.x < c_numShiftVectors)
         {
-            atomicAdd(gm_fShift[threadIdx.x], sm_fShiftLoc[threadIdx.x]);
+            staggeredAtomicAddForce(&gm_fShift[threadIdx.x], sm_fShiftLoc[threadIdx.x]);
         }
     }
 }
@@ -913,7 +937,7 @@ void ListedForcesGpu::Impl::launchKernel()
     GMX_ASSERT(haveInteractions_,
                "Cannot launch bonded GPU kernels unless bonded GPU work was scheduled");
 
-    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_start_nocount(wcycle_, WallCycleCounter::LaunchGpuPp);
     wallcycle_sub_start(wcycle_, WallCycleSubCounter::LaunchGpuBonded);
 
     int fTypeRangeEnd = kernelParams_.fTypeRangeEnd[numFTypesOnGpu - 1];
@@ -923,20 +947,20 @@ void ListedForcesGpu::Impl::launchKernel()
         return;
     }
 
-    auto kernelPtr = exec_kernel_gpu<calcVir, calcEner>;
+    auto kernelPtr = bonded_kernel_gpu<calcVir, calcEner>;
 
     const auto kernelArgs = prepareGpuKernelArguments(
-            kernelPtr, kernelLaunchConfig_, &kernelParams_, &d_xq_, &d_f_, &d_fShift_);
+            kernelPtr, kernelLaunchConfig_, &kernelParams_, &kernelBuffers_, &d_xq_, &d_f_, &d_fShift_);
 
     launchGpuKernel(kernelPtr,
                     kernelLaunchConfig_,
                     deviceStream_,
                     nullptr,
-                    "exec_kernel_gpu<calcVir, calcEner>",
+                    "bonded_kernel_gpu<calcVir, calcEner>",
                     kernelArgs);
 
     wallcycle_sub_stop(wcycle_, WallCycleSubCounter::LaunchGpuBonded);
-    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpu);
+    wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpuPp);
 }
 
 void ListedForcesGpu::launchKernel(const gmx::StepWorkload& stepWork)

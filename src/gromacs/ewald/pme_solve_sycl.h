@@ -39,7 +39,6 @@
  *  \author Andrey Alekseenko <al42and@gmail.com>
  */
 
-#include "gromacs/gpu_utils/gmxsycl.h"
 #include "gromacs/gpu_utils/syclutils.h"
 #include "gromacs/math/vectypes.h"
 
@@ -58,6 +57,8 @@ struct SolveKernelParams
     gmx::IVec realGridSize;
     /*! \brief Fourier grid dimensions. This counts the complex numbers! */
     gmx::IVec complexGridSize;
+    /*! \brief Offsets for the complex grid */
+    gmx::IVec kOffsets;
     /*! \brief Fourier grid dimensions (padded). This counts the complex numbers! */
     gmx::IVec complexGridSizePadded;
     /*! \brief Offsets for X/Y/Z components of d_splineModuli */
@@ -79,7 +80,7 @@ public:
     //! Sets the kernel arguments
     void setArg(size_t argIndex, void* arg) override;
     //! Launches the kernel with given \c config and \c deviceStream
-    sycl::event launch(const KernelLaunchConfig& config, const DeviceStream& deviceStream) override;
+    void launch(const KernelLaunchConfig& config, const DeviceStream& deviceStream) override;
 
 private:
     //! Kernel argument set by \c setArg()

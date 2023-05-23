@@ -40,8 +40,8 @@
 
 #include "config.h"
 
-#include <assert.h>
-#include <stdlib.h>
+#include <cassert>
+#include <cstdlib>
 
 #include "gromacs/nbnxm/nbnxm_gpu.h"
 
@@ -50,8 +50,7 @@
 #endif
 
 
-#include "nbnxm_cuda.h"
-
+#include "gromacs/gpu_utils/devicebuffer.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/gpu_utils/gpueventsynchronizer.h"
 #include "gromacs/gpu_utils/typecasts.cuh"
@@ -69,6 +68,7 @@
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/gmxassert.h"
 
+#include "nbnxm_cuda.h"
 #include "nbnxm_cuda_types.h"
 
 /***** The kernel declarations/definitions come here *****/
@@ -571,7 +571,6 @@ void gpu_launch_kernel_pruneonly(NbnxmGpu* nb, const InteractionLocality iloc, c
 
         /* Set rollingPruningNumParts to signal that it is not set */
         plist->rollingPruningNumParts = 0;
-        plist->rollingPruningPart     = 0;
     }
     else
     {
@@ -586,22 +585,15 @@ void gpu_launch_kernel_pruneonly(NbnxmGpu* nb, const InteractionLocality iloc, c
         }
     }
 
-    /* Use a local variable for part and update in plist, so we can return here
-     * without duplicating the part increment code.
+    /* Compute the max number of list entries to prune across all passes
+     * Note that the actual number for a specific pass will be computed inside the kernel.
+     * Also note that this CUDA implementation (parts tracking on device) differs from the
+     * other backends (parts tracking on host, passed as kernel argument).
      */
-    int part = plist->rollingPruningPart;
-
-    plist->rollingPruningPart++;
-    if (plist->rollingPruningPart >= plist->rollingPruningNumParts)
-    {
-        plist->rollingPruningPart = 0;
-    }
-
-    /* Compute the number of list entries to prune in this pass */
-    int numSciInPart = (plist->nsci - part) / numParts;
+    int numSciInPartMax = (plist->nsci) / numParts;
 
     /* Don't launch the kernel if there is no work to do (not allowed with CUDA) */
-    if (numSciInPart <= 0)
+    if (numSciInPartMax <= 0)
     {
         plist->haveFreshList = false;
 
@@ -626,8 +618,9 @@ void gpu_launch_kernel_pruneonly(NbnxmGpu* nb, const InteractionLocality iloc, c
      *   and j-cluster concurrency, in x, y, and z, respectively.
      * - The 1D block-grid contains as many blocks as super-clusters.
      */
-    int num_threads_z = c_pruneKernelJ4Concurrency;
-    int nblock        = calc_nb_kernel_nblock(numSciInPart, &nb->deviceContext_->deviceInfo());
+    int num_threads_z = c_pruneKernelJPackedConcurrency;
+    int nblock        = calc_nb_kernel_nblock(numSciInPartMax, &nb->deviceContext_->deviceInfo());
+
     KernelLaunchConfig config;
     config.blockSize[0]     = c_clSize;
     config.blockSize[1]     = c_clSize;
@@ -646,7 +639,7 @@ void gpu_launch_kernel_pruneonly(NbnxmGpu* nb, const InteractionLocality iloc, c
                 config.blockSize[2],
                 config.gridSize[0],
                 config.gridSize[1],
-                numSciInPart * c_nbnxnGpuNumClusterPerSupercluster,
+                numSciInPartMax * c_nbnxnGpuNumClusterPerSupercluster,
                 c_nbnxnGpuNumClusterPerSupercluster,
                 plist->na_c,
                 config.sharedMemorySize);
@@ -656,7 +649,7 @@ void gpu_launch_kernel_pruneonly(NbnxmGpu* nb, const InteractionLocality iloc, c
     constexpr char kernelName[] = "k_pruneonly";
     const auto     kernel =
             plist->haveFreshList ? nbnxn_kernel_prune_cuda<true> : nbnxn_kernel_prune_cuda<false>;
-    const auto kernelArgs = prepareGpuKernelArguments(kernel, config, adat, nbp, plist, &numParts, &part);
+    const auto kernelArgs = prepareGpuKernelArguments(kernel, config, adat, nbp, plist, &numParts);
     launchGpuKernel(kernel, config, deviceStream, timingEvent, kernelName, kernelArgs);
 
     /* TODO: consider a more elegant way to track which kernel has been called

@@ -62,12 +62,12 @@ struct PmeOutput
     matrix coulombVirial_ = { { 0 } };
     //!< Host staging area for PME coulomb dVdl.
     real coulombDvdl_ = 0;
+    //!< Host staging area for PME LJ dVdl.
+    real lennardJonesDvdl_ = 0;
     //!< Host staging area for PME LJ energy
     real lennardJonesEnergy_ = 0;
     //!< Host staging area for PME LJ virial contributions
     matrix lennardJonesVirial_ = { { 0 } };
-    //!< Host staging area for PME LJ dVdl. (Not used)
-    real lennardJonesDvdl_ = 0;
 };
 
 #endif

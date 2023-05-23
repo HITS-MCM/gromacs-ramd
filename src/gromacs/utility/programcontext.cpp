@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "programcontext.h"
+#include "gromacs/utility/programcontext.h"
 
 #include <cstddef>
 
@@ -68,7 +68,7 @@ public:
 
     const char*            programName() const override { return "GROMACS"; }
     const char*            displayName() const override { return "GROMACS"; }
-    const char*            fullBinaryPath() const override { return ""; }
+    std::filesystem::path  fullBinaryPath() const override { return ""; }
     InstallationPrefixInfo installationPrefix() const override
     {
         return InstallationPrefixInfo("", false);

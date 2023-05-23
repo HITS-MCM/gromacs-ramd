@@ -1,0 +1,49 @@
+# Test goal: Continuous integration testing for gmxapi clients development branch.
+# (Note: does not yet distinguish branches or cross-check for forward/backward compatibility.)
+# Test intents:
+#   OS: Ubuntu oldest supported
+#   GPU: unspecified
+#   GROMACS: main
+#   GROMACS MPI: OpenMPI
+#   gmxapi: as per GROMACS main
+#   client code:
+#    * sample_restraint as bundled with GROMACS main
+#    * TAF extension example as bundled with GROMACS main
+#   Scope: build, install, test
+# Test implementation choices (free to change as needed):
+#   GROMACS branch: merge request target branch
+#   gmxapi Python package: according to merge request target branch
+#   sample code: according to merge request target branch
+#   compiler: clang-13
+
+sample_taf:openmpi-double:
+  extends:
+    - .sample_taf
+    - .rules:merge-requests
+  image: ${CI_REGISTRY_IMAGE}/ci-ubuntu-20.04-llvm-13
+  variables:
+    KUBERNETES_CPU_LIMIT: 2
+    KUBERNETES_CPU_REQUEST: 2
+    KUBERNETES_MEMORY_LIMIT: 2Gi
+    KUBERNETES_MEMORY_REQUEST: 2Gi
+    CMAKE: "/usr/local/cmake-3.18.4/bin/cmake"
+    GMX_SUFFIX: "_mpi_d"
+    GMX_DOUBLE: "ON"
+  needs:
+    - job: gromacs:clang-13-mpi:build
+
+sample_restraint:openmpi-double:
+  extends:
+    - .sample_restraint
+    - .use-clang:base
+    - .rules:merge-requests
+  image: ${CI_REGISTRY_IMAGE}/ci-ubuntu-20.04-llvm-13
+  variables:
+    KUBERNETES_CPU_LIMIT: 4
+    KUBERNETES_CPU_REQUEST: 4
+    GMX_SUFFIX: "_mpi_d"
+    GMX_DOUBLE: "ON"
+    VENVPATH: "/root/venv/py3.10"
+  needs:
+    - job: gromacs:clang-13-mpi:build
+      artifacts: true

@@ -50,11 +50,17 @@
 
 #include "device_event.h"
 
+#ifdef __clang__
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wmissing-noreturn"
+#endif
+
 /*! \libinternal \brief
  * A class which allows for CPU thread to mark and wait for certain GPU stream execution point.
  *
- * The event can be put into the stream with \ref markEvent and then later waited on with \ref
- * waitForEvent or \ref enqueueWaitEvent.
+ * The event can be put into the stream with \ref GpuEventSynchronizer::markEvent and then later
+ * waited on with \ref GpuEventSynchronizer::waitForEvent or
+ * \ref GpuEventSynchronizer::enqueueWaitEvent.
  *
  * Additionally, this class offers facilities for runtime checking of correctness by counting
  * how many times each marked event is used as a synchronization point.
@@ -68,24 +74,36 @@
  * - Consuming the event is only possible if it is not <em>fully consumed</em> (<tt>c < maxConsumptionCount</tt>).
  * Consuming the event increments \c c by 1. Trying to consume <em>fully consumed</em> event
  * throws \ref gmx::InternalError.
- * - \ref reset returns object into the initial <em>fully consumed</em> state.
+ * - \ref GpuEventSynchronizer::reset returns object into the initial <em>fully consumed</em> state.
  * This function is intended to manually override the consumption limits.
- * - \ref consume \em consumes the event, without doing anything else.
+ * - \ref GpuEventSynchronizer::consume \em consumes the event, without doing anything else.
  * This function is intended to manually override the consumption limits.
- * - \ref markEvent enqueues new event into the provided stream, and sets \c to 0. Marking is only
- * possible if the event is <em>sufficiently consumed</em>, otherwise \ref gmx::InternalError
+ * - \ref GpuEventSynchronizer::markEvent enqueues new event into the provided stream, and sets \c to 0.
+ * Marking is only possible if the event is <em>sufficiently consumed</em>, otherwise \ref gmx::InternalError
  * is thrown.
- * - \ref waitForEvent \em consumes the event and blocks the host thread until the event
- * is ready (complete).
- * - \ref enqueueWaitEvent \em consumes the event and blocks the inserts a blocking barrier
- * into the provided stream which blocks the execution of all tasks later submitted to this
- * stream until the event is ready (completes).
+ * - \ref GpuEventSynchronizer::waitForEvent \em consumes the event and blocks the host thread until
+ * the event is ready (complete).
+ * - \ref GpuEventSynchronizer::enqueueWaitEvent \em consumes the event and blocks the inserts
+ * a blocking barrier into the provided stream which blocks the execution of all tasks later submitted
+ * to this stream until the event is ready (completes).
  *
- * Default <tt>minConsumptionCount=maxConsumptionCount=1</tt> limits mean that each call to \ref markEvent must be followed
- * by exactly one \ref enqueueWaitEvent or \ref enqueueWaitEvent. This is the recommended pattern
- * for most use cases. By providing other constructor arguments, this requirement can be relaxed
- * as needed.
+ * Default <tt>minConsumptionCount=maxConsumptionCount=1</tt> limits mean that each call to
+ * \ref GpuEventSynchronizer::markEvent must be followed by exactly one
+ * \ref GpuEventSynchronizer::enqueueWaitEvent or \ref GpuEventSynchronizer::enqueueWaitEvent.
+ * This is the recommended pattern for most use cases. By providing other constructor arguments,
+ * this requirement can be relaxed as needed.
  */
+
+/* With CUDA, we only want to use event counting in known "good" configurations. With OpenCL
+ * and SYCL, we want it to be enabled always. So, we have a global flag in CUDA build, and
+ * a constexpr in others. See #3988 */
+#if GMX_GPU_CUDA
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+extern bool g_useEventConsumptionCounting; // Defined in gpueventsynchronizer_helpers.h
+#else
+constexpr bool g_useEventConsumptionCounting = true;
+#endif
+
 class GpuEventSynchronizer
 {
 public:
@@ -115,15 +133,30 @@ public:
      */
     inline void markEvent(const DeviceStream& deviceStream)
     {
-#if !GMX_GPU_CUDA // For now, we have relaxed conditions for CUDA
-        if (consumptionCount_ < minConsumptionCount_)
+        if (g_useEventConsumptionCounting && consumptionCount_ < minConsumptionCount_)
         {
             GMX_THROW(gmx::InternalError("Trying to mark event before fully consuming it"));
         }
-#endif
         event_.mark(deviceStream);
         consumptionCount_ = 0;
     }
+
+    /*! \brief Marks the synchronization point in the \p stream and reset the consumption counter,
+     * for an external event while capturing a graph
+     */
+    //NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+    inline void markExternalEventWhileCapturingGraph(const DeviceStream& deviceStream)
+    {
+#if GMX_HAVE_CUDA_GRAPH_SUPPORT
+        event_.markExternalEventWhileCapturingGraph(deviceStream);
+#else
+        GMX_UNUSED_VALUE(deviceStream);
+        GMX_THROW(gmx::InternalError(
+                "markExternalEventWhileCapturingGraph called without CUDA graph support"));
+#endif
+        consumptionCount_ = 0;
+    }
+
     /*! \brief Synchronizes the host thread on the marked event.
      *
      * Consumes the event if able, otherwise throws \ref gmx::InternalError.
@@ -153,13 +186,11 @@ public:
      */
     inline void consume()
     {
-#if !GMX_GPU_CUDA // For now, we have relaxed conditions for CUDA
-        if (consumptionCount_ >= maxConsumptionCount_)
+        if (g_useEventConsumptionCounting && consumptionCount_ >= maxConsumptionCount_)
         {
             GMX_THROW(gmx::InternalError(
                     "Trying to consume an event before marking it or after fully consuming it"));
         }
-#endif
         consumptionCount_++;
     }
     //! Helper function to reset the event when it is fully consumed.
@@ -181,6 +212,25 @@ public:
         resetIfFullyConsumed();
     }
 
+    /*! \brief Enqueues a wait for the recorded event in stream \p deviceStream,
+     * for an external event while capturing a graph.
+     *
+     */
+    //NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+    inline void enqueueExternalWaitEventWhileCapturingGraph(const DeviceStream& deviceStream)
+    {
+#if GMX_HAVE_CUDA_GRAPH_SUPPORT
+        event_.enqueueExternalWaitEventWhileCapturingGraph(deviceStream);
+#else
+        GMX_UNUSED_VALUE(deviceStream);
+        GMX_THROW(gmx::InternalError(
+                "enqueueExternalWaitEventWhileCapturingGraph called without CUDA graph support"));
+#endif
+        resetIfFullyConsumed();
+    }
+#ifdef __clang__
+#    pragma clang diagnostic pop
+#endif
     //! Resets the event to unmarked state, releasing the underlying event object if needed.
     inline void reset()
     {
@@ -199,11 +249,8 @@ public:
 private:
     DeviceEvent event_;
     int         consumptionCount_;
-#if defined(__clang__) && GMX_GPU_CUDA
-    [[maybe_unused]]
-#endif
-    int minConsumptionCount_; // Unused in CUDA builds, yet
-    int maxConsumptionCount_;
+    int         minConsumptionCount_;
+    int         maxConsumptionCount_;
 };
 
 #endif

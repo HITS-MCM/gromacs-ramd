@@ -40,12 +40,13 @@
  * \author Prashanth Kanduri <kanduri@cscs.ch>
  * \author Sebastian Keller <keller@cscs.ch>
  */
+#include "listed_forces/transformations.h"
+
 #include <numeric>
 
 #include <gtest/gtest.h>
 
-#include "nblib/listed_forces/traits.h"
-#include "nblib/listed_forces/transformations.h"
+#include "listed_forces/traits.h"
 
 #include "testutils/refdata.h"
 #include "testutils/testasserts.h"

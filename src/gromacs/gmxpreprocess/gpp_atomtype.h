@@ -53,10 +53,8 @@
 
 struct gmx_mtop_t;
 struct t_atom;
-struct t_atomtypes;
 class InteractionOfType;
 struct InteractionsOfType;
-struct t_symtab;
 enum class ParticleType : int;
 namespace gmx
 {
@@ -100,7 +98,7 @@ public:
      * \param[in] nt Internal number of atom type.
      * \returns The optional type name.
      */
-    std::optional<const char*> atomNameFromAtomType(int nt) const;
+    std::optional<const std::string> atomNameFromAtomType(int nt) const;
 
     /*! \brief
      * Get normal mass of atom from internal atom type number.
@@ -160,17 +158,9 @@ public:
     bool isSet(int nt) const;
 
     /*! \brief
-     * Print data to file.
-     *
-     * \param[in] out File pointer.
-     */
-    void printTypes(FILE* out);
-
-    /*! \brief
      * Set the values of an existing atom type \p nt.
      *
      * \param[in] nt Type that should be set.
-     * \param[in] tab Symbol table.
      * \param[in] a Atom information.
      * \param[in] name Atom name.
      * \param[in] nb Nonbonded parameters.
@@ -179,7 +169,6 @@ public:
      * \returns Optional number of the type set.
      */
     std::optional<int> setType(int                      nt,
-                               t_symtab*                tab,
                                const t_atom&            a,
                                const std::string&       name,
                                const InteractionOfType& nb,
@@ -189,7 +178,6 @@ public:
     /*! \brief
      * Add a unique type to the database.
      *
-     * \param[in] tab Symbol table.
      * \param[in] a Atom information.
      * \param[in] name Atom name.
      * \param[in] nb Nonbonded parameters.
@@ -198,12 +186,7 @@ public:
      * \returns Index to the type in the database. If the type shares
      *          a name with an existing type, return the index of that type.
      */
-    int addType(t_symtab*                tab,
-                const t_atom&            a,
-                const std::string&       name,
-                const InteractionOfType& nb,
-                int                      bondAtomType,
-                int                      atomNumber);
+    int addType(const t_atom& a, const std::string& name, const InteractionOfType& nb, int bondAtomType, int atomNumber);
 
     /*! \brief
      * Renumber existing atom type entries.
@@ -214,13 +197,6 @@ public:
      * \param[in] verbose If we want to print additional info.
      */
     void renumberTypes(gmx::ArrayRef<InteractionsOfType> plist, gmx_mtop_t* mtop, int* wallAtomType, bool verbose);
-
-    /*! \brief
-     * Copy information to other structure.
-     *
-     * \param[inout] atypes Other datastructure to copy to.
-     */
-    void copyTot_atomtypes(t_atomtypes* atypes) const;
 
 private:
     class Impl;

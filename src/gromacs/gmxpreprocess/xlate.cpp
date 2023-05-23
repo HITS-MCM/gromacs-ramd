@@ -61,16 +61,15 @@ typedef struct
     char* replace;
 } t_xlate_atom;
 
-static void get_xlatoms(const std::string& filename, FILE* fp, int* nptr, t_xlate_atom** xlptr)
+static void get_xlatoms(const std::filesystem::path& filename, FILE* fp, int* nptr, t_xlate_atom** xlptr)
 {
-    char          filebase[STRLEN];
     char          line[STRLEN];
     char          abuf[1024], rbuf[1024], repbuf[1024], dumbuf[1024];
     char*         _ptr;
     int           n, na, idum;
     t_xlate_atom* xl;
 
-    fflib_filename_base(filename.c_str(), filebase, STRLEN);
+    auto filebase = fflib_filename_base(filename);
 
     n  = *nptr;
     xl = *xlptr;
@@ -89,12 +88,12 @@ static void get_xlatoms(const std::string& filename, FILE* fp, int* nptr, t_xlat
         {
             gmx_fatal(FARGS,
                       "Expected a residue name and two atom names in file '%s', not '%s'",
-                      filename.c_str(),
+                      filename.u8string().c_str(),
                       line);
         }
 
         srenew(xl, n + 1);
-        xl[n].filebase = gmx_strdup(filebase);
+        xl[n].filebase = gmx_strdup(filebase.u8string().c_str());
 
         /* Use wildcards... */
         if (strcmp(rbuf, "*") != 0)
@@ -138,8 +137,8 @@ static void done_xlatom(int nxlate, t_xlate_atom* xlatom)
     sfree(xlatom);
 }
 
-void rename_atoms(const char*                            xlfile,
-                  const char*                            ffdir,
+void rename_atoms(const std::filesystem::path&           xlfile,
+                  const std::filesystem::path&           ffdir,
                   t_atoms*                               atoms,
                   t_symtab*                              symtab,
                   gmx::ArrayRef<const PreprocessResidue> localPpResidue,
@@ -156,14 +155,14 @@ void rename_atoms(const char*                            xlfile,
 
     nxlate = 0;
     xlatom = nullptr;
-    if (xlfile != nullptr)
+    if (!xlfile.empty())
     {
         gmx::FilePtr fp = gmx::openLibraryFile(xlfile);
         get_xlatoms(xlfile, fp.get(), &nxlate, &xlatom);
     }
     else
     {
-        std::vector<std::string> fns = fflib_search_file_end(ffdir, ".arn", FALSE);
+        auto fns = fflib_search_file_end(ffdir, ".arn", FALSE);
         for (const auto& filename : fns)
         {
             FILE* fp = fflib_open(filename);

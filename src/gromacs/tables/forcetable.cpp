@@ -328,15 +328,16 @@ real ewald_spline3_table_scale(const interaction_const_t& ic,
                                const bool                 generateCoulombTables,
                                const bool                 generateVdwTables)
 {
-    GMX_RELEASE_ASSERT(!generateCoulombTables || EEL_PME_EWALD(ic.eeltype),
+    GMX_RELEASE_ASSERT(!generateCoulombTables || usingPmeOrEwald(ic.eeltype),
                        "Can only use tables with Ewald");
-    GMX_RELEASE_ASSERT(!generateVdwTables || EVDW_PME(ic.vdwtype), "Can only use tables with Ewald");
+    GMX_RELEASE_ASSERT(!generateVdwTables || usingLJPme(ic.vdwtype),
+                       "Can only use tables with Ewald");
 
     real sc = 0;
 
     if (generateCoulombTables)
     {
-        GMX_RELEASE_ASSERT(ic.ewaldcoeff_q > 0, "The Ewald coefficient shoule be positive");
+        GMX_RELEASE_ASSERT(ic.ewaldcoeff_q > 0, "The Ewald coefficient should be positive");
 
         double erf_x_d3 = 1.0522; /* max of (erf(x)/x)''' */
         double etol;
@@ -357,7 +358,7 @@ real ewald_spline3_table_scale(const interaction_const_t& ic,
 
     if (generateVdwTables)
     {
-        GMX_RELEASE_ASSERT(ic.ewaldcoeff_lj > 0, "The Ewald coefficient shoule be positive");
+        GMX_RELEASE_ASSERT(ic.ewaldcoeff_lj > 0, "The Ewald coefficient should be positive");
 
         double func_d3 = 0.42888; /* max of (x^-6 (1 - exp(-x^2)(1+x^2+x^4/2)))''' */
         double xrc2, etol;
@@ -465,21 +466,6 @@ static void spline_forces(int nx, double h, const double v[], gmx_bool bS3, gmx_
         }
         b_s   = 2 * (v[1] - v[0]) + v3 / 6;
         start = 0;
-
-        if (FALSE)
-        {
-            /* Fit V'' at the start */
-            real v2;
-
-            v2 = -v[3] + 4 * v[2] - 5 * v[1] + 2 * v[0];
-            /* v2  = v[2] - 2*v[1] + v[0]; */
-            if (debug)
-            {
-                fprintf(debug, "The left second derivative is %g\n", v2 / (h * h));
-            }
-            b_s   = 3 * (v[1] - v[0]) - v2 / 2;
-            start = 0;
-        }
     }
     else
     {
@@ -584,7 +570,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
     double   tabscale;
 
     nny               = 2 * ntab + 1;
-    std::string libfn = gmx::findLibraryFile(filename);
+    std::string libfn = gmx::findLibraryFile(filename).u8string();
     gmx::MultiDimArray<std::vector<double>, gmx::dynamicExtents2D> xvgData    = readXvgData(libfn);
     int                                                            numColumns = xvgData.extent(0);
     if (numColumns != nny)

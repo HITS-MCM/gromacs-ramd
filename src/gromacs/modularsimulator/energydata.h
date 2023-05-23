@@ -108,10 +108,10 @@ public:
                FILE*                       fplog,
                t_fcdata*                   fcd,
                const MDModulesNotifiers&   mdModulesNotifiers,
-               bool                        isMasterRank,
+               bool                        isMainRank,
                ObservablesHistory*         observablesHistory,
                StartingBehavior            startingBehavior,
-               bool                        simulationsShareState,
+               bool                        simulationsShareHamiltonian,
                pull_t*                     pullWork);
 
     /*! \brief Final output
@@ -249,7 +249,7 @@ private:
 
     /*! \brief Write to energy trajectory
      *
-     * This is only called by master - writes energy to trajectory and to log.
+     * This is only called by main - writes energy to trajectory and to log.
      */
     void write(gmx_mdoutf* outf, Step step, Time time, bool writeTrajectory, bool writeLog);
 
@@ -263,8 +263,8 @@ private:
     //! Helper object to checkpoint kinetic energy data
     ekinstate_t ekinstate_;
 
-    //! Whether this is the master rank
-    const bool isMasterRank_;
+    //! Whether this is the main rank
+    const bool isMainRank_;
 
     //! The force virial tensor
     tensor forceVirial_;
@@ -330,8 +330,8 @@ private:
     const SimulationGroups* groups_;
     //! History of simulation observables.
     ObservablesHistory* observablesHistory_;
-    //! Whether simulations share the state
-    bool simulationsShareState_;
+    //! Whether simulations do not have an individual Hamiltonian but share one
+    bool simulationsShareHamiltonian_;
     //! The pull work object.
     pull_t* pullWork_;
 };
@@ -360,7 +360,7 @@ class EnergyData::Element final :
 {
 public:
     //! Constructor
-    Element(EnergyData* energyData, bool isMasterRank, int freeEnergyCalculationPeriod);
+    Element(EnergyData* energyData, bool isMainRank, int freeEnergyCalculationPeriod);
 
     /*! \brief Register run function for step / time
      *
@@ -438,8 +438,8 @@ private:
     template<CheckpointDataOperation operation>
     void doCheckpointData(CheckpointData<operation>* checkpointData);
 
-    //! Whether this is the master rank
-    const bool isMasterRank_;
+    //! Whether this is the main rank
+    const bool isMainRank_;
     //! The next communicated energy writing step
     Step energyWritingStep_;
     //! The next communicated energy calculation step

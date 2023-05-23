@@ -46,6 +46,10 @@
 
 #include "config.h"
 
+#include <array>
+#include <optional>
+#include <type_traits>
+
 #if GMX_GPU_CUDA
 #    include <cuda_runtime.h>
 #endif
@@ -58,13 +62,11 @@
 #    include "gromacs/gpu_utils/gmxsycl.h"
 #endif
 
+#include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/enumerationhelpers.h"
 
 //! Constant used to help minimize preprocessed code
 static constexpr bool c_binarySupportsGpus = (GMX_GPU != 0);
-//! Whether \ref DeviceInformation can be serialized for sending via MPI.
-static constexpr bool c_canSerializeDeviceInformation =
-        (!GMX_GPU_OPENCL && !GMX_GPU_SYCL); /*NOLINT(misc-redundant-expression)*/
 
 //! Possible results of the GPU detection/check.
 enum class DeviceStatus : int
@@ -99,6 +101,8 @@ enum class DeviceStatus : int
     IncompatibleLevelZeroAndOneApi2022,
     //! \brief AMD RDNA devices (gfx10xx, gfx11xx) with 32-wide execution are not supported with OpenCL,
     IncompatibleOclAmdRdna,
+    //! \brief RDNA not targeted (SYCL)
+    IncompatibleAmdRdnaNotTargeted,
     //! Enumeration size
     Count
 };
@@ -126,7 +130,11 @@ static const gmx::EnumerationArray<DeviceStatus, const char*> c_deviceStateStrin
     "unavailable",
     "not in set of targeted devices",
     "incompatible (Level Zero backend is not stable with oneAPI 2022.0)", // Issue #4354
-    "incompatible (AMD RDNA devices are not supported)"                   // Issue #4521
+    "incompatible (AMD RDNA devices are not supported)",                  // Issue #4521
+    // clang-format off
+    // NOLINTNEXTLINE(bugprone-suspicious-missing-comma)
+    "incompatible (please recompile with GMX" "_HIPSYCL_ENABLE_AMD_RDNA_SUPPORT)"
+    // clang-format on
 };
 
 //! Device vendors
@@ -140,8 +148,10 @@ enum class DeviceVendor : int
     Amd = 2,
     //! Intel
     Intel = 3,
+    //! Apple
+    Apple = 4,
     //! Enumeration size
-    Count = 4
+    Count = 5
 };
 
 
@@ -159,6 +169,17 @@ struct DeviceInformation
     int id;
     //! Device vendor.
     DeviceVendor deviceVendor;
+    /*! \brief Warp/sub-group sizes supported by the device.
+     *
+     * \ref DeviceInformation must be serializable in CUDA, so we cannot use \c std::vector here.
+     * Arbitrarily limiting to 10. FixedCapacityVector uses pointers internally, so no good either. */
+    std::array<int, 10>      supportedSubGroupSizesData;
+    int                      supportedSubGroupSizesSize;
+    gmx::ArrayRef<const int> supportedSubGroupSizes() const
+    {
+        return { supportedSubGroupSizesData.data(),
+                 supportedSubGroupSizesData.data() + supportedSubGroupSizesSize };
+    }
 #if GMX_GPU_CUDA
     //! CUDA device properties.
     cudaDeviceProp prop;
@@ -174,7 +195,16 @@ struct DeviceInformation
     size_t         maxWorkGroupSize;    //!< Workgroup total size limit (CL_DEVICE_MAX_WORK_GROUP_SIZE).
 #elif GMX_GPU_SYCL
     sycl::device syclDevice;
+    //! CUDA CC major for NVIDIA devices, generation code for AMD (gfx90a -> 9), not set for Intel (yet)
+    std::optional<int> hardwareVersionMajor;
+    //! CUDA CC minor for NVIDIA devices, major architecture(?) code for AMD (gfx90a -> 0), not set for Intel (yet)
+    std::optional<int> hardwareVersionMinor;
+    //! CUDA CC minor for NVIDIA devices, device code for AMD (gfx90a -> a -> 10), not set for Intel (yet)
+    std::optional<int> hardwareVersionPatch;
 #endif
 };
+
+//! Whether \ref DeviceInformation can be serialized for sending via MPI.
+static constexpr bool c_canSerializeDeviceInformation = std::is_trivial_v<DeviceInformation>;
 
 #endif // GMX_HARDWARE_DEVICE_INFORMATION_H

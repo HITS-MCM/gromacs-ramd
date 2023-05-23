@@ -42,10 +42,7 @@
 #include "gromacs/gmxana/gmx_ana.h"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/units.h"
-#include "gromacs/math/vec.h"
-#include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/utility/arraysize.h"
-#include "gromacs/utility/smalloc.h"
 
 static real pot(real x, real qq, real c6, real cn, int npow)
 {
@@ -92,12 +89,12 @@ int gmx_sigeps(int argc, char* argv[])
     t_filenm          fnm[] = { { efXVG, "-o", "potje", ffWRITE } };
     gmx_output_env_t* oenv;
 #define NFILE asize(fnm)
-    const char* legend[] = { "Lennard-Jones", "Buckingham" };
-    FILE*       fp;
-    int         i;
-    gmx_bool    bBham;
-    real        qq, x, oldx, minimum, mval, dp[2];
-    int         cur = 0;
+    std::array<std::string, 2> legend = { "Lennard-Jones", "Buckingham" };
+    FILE*                      fp;
+    int                        i;
+    gmx_bool                   bBham;
+    real                       qq, x, oldx, minimum, mval, dp[2];
+    int                        cur = 0;
 #define next (1 - cur)
 
     if (!parse_common_args(
@@ -148,7 +145,7 @@ int gmx_sigeps(int argc, char* argv[])
     qq = qi * qj;
 
     fp = xvgropen(ftp2fn(efXVG, NFILE, fnm), "Potential", "r (nm)", "E (kJ/mol)", oenv);
-    xvgr_legend(fp, asize(legend), legend, oenv);
+    xvgrLegend(fp, legend, oenv);
     if (sig == 0)
     {
         sig = 0.25;

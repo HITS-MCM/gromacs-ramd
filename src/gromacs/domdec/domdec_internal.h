@@ -44,19 +44,19 @@
 
 #include "config.h"
 
+#include "gromacs/domdec/dlbtiming.h"
 #include "gromacs/domdec/domdec.h"
 #include "gromacs/domdec/domdec_struct.h"
 #include "gromacs/mdlib/updategroupscog.h"
 #include "gromacs/timing/cyclecounter.h"
 #include "gromacs/topology/block.h"
+#include "gromacs/utility/listoflists.h"
 
 struct t_commrec;
 
 /*! \cond INTERNAL */
 
 #define DD_NLOAD_MAX 9
-
-struct BalanceRegion;
 
 namespace gmx
 {
@@ -99,8 +99,8 @@ struct gmx_domdec_comm_dim_t
     bool receiveInPlace = false;
 };
 
-/*! \brief Load balancing data along a dim used on the master rank of that dim */
-struct RowMaster
+/*! \brief Load balancing data along a dim used on the main rank of that dim */
+struct RowCoordinator
 {
     struct Bounds
     {
@@ -132,7 +132,7 @@ struct RowMaster
 struct DDCellsizesWithDlb
 {
     /**< Cell row root struct, only available on the first rank in a row */
-    std::unique_ptr<RowMaster> rowMaster;
+    std::unique_ptr<RowCoordinator> rowCoordinator;
     /**< The cell sizes, in fractions, along a row, not available on the first rank in a row */
     std::vector<real> fracRow;
     /**< The lower corner, in fractions, in triclinic space */
@@ -155,7 +155,7 @@ typedef struct domdec_load
     /**< The number of load recordings */
     int nload = 0;
     /**< Scan of the sum of load over dimensions */
-    float* load = nullptr;
+    std::vector<float> load;
     /**< The sum of the load over the ranks up to our current dimension */
     float sum = 0;
     /**< The maximum over the ranks contributing to \p sum */
@@ -175,10 +175,6 @@ typedef struct domdec_load
 /*! \brief Data needed to sort an atom to the desired location in the local state */
 typedef struct gmx_cgsort
 {
-    /**< Neighborsearch grid cell index */
-    int nsc = 0;
-    /**< Global atom/charge group index */
-    int ind_gl = 0;
     /**< Local atom/charge group index */
     int ind = 0;
 } gmx_cgsort_t;
@@ -300,11 +296,11 @@ typedef struct gmx_ddpme
     /**< The number of PME ranks/domains in this dimension */
     int nslab = 0;
     /**< Cell sizes for determining the PME comm. with SLB */
-    real* slb_dim_f = nullptr;
+    std::vector<real> slb_dim_f;
     /**< The minimum pp node location, size nslab */
-    int* pp_min = nullptr;
+    std::vector<int> pp_min;
     /**< The maximum pp node location, size nslab */
-    int* pp_max = nullptr;
+    std::vector<int> pp_max;
     /**< The maximum shift for coordinate redistribution in PME */
     int maxshift = 0;
 } gmx_ddpme_t;
@@ -502,7 +498,10 @@ struct DDSettings
 };
 
 /*! \brief Information on how the DD ranks are set up */
-struct DDRankSetup
+// The following suppression suppresses an error: "declaration uses
+// identifier '__i0', which is a reserved identifier" which does not
+// make sense from the code, but is not yet a known clang-tidy bug.
+struct DDRankSetup //NOLINT(bugprone-reserved-identifier,google-readability-braces-around-statements,readability-braces-around-statements)
 {
     /**< The rank ordering */
     gmx::DdRankOrder rankOrder;
@@ -574,7 +573,7 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
 
     /* Data for the optional filtering of communication of atoms for bonded interactions */
     /**< Links between atoms through bonded interactions */
-    t_blocka* bondedLinks = nullptr;
+    std::unique_ptr<gmx::ListOfLists<int>> bondedLinks;
 
     /* The DLB state, possible values are defined above */
     DlbState dlbState;
@@ -584,7 +583,7 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
     int ddPartioningCountFirstDlbOff = 0;
 
     /* Cell sizes for static load balancing, first index cartesian */
-    real** slb_frac = nullptr;
+    std::array<std::vector<real>, DIM> slb_frac;
 
     /**< Information about the simulated system */
     DDSystemInfo systemInfo;
@@ -643,10 +642,16 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
      * would violate this restriction. */
     int maxpulse = 0;
 
-    /** Which cg distribution is stored on the master node,
+    /** The step interval for algorithms that require global communication
+     *  such as DLB and the computation the extent of unbound dimensions
+     * (i.e. dimensions without PBC and without walls).
+     */
+    int nstDDGlobalComm = 0;
+
+    /** Which cg distribution is stored on the main node,
      *  stored as DD partitioning call count.
      */
-    int64_t master_cg_ddp_count = 0;
+    int64_t main_cg_ddp_count = 0;
 
     /** The number of cg's received from the direct neighbors */
     std::array<int, DD_MAXZONE> zone_ncg1 = { 0 };
@@ -682,18 +687,23 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
 
     /* Stuff for load communication */
     /**< The recorded load data */
-    domdec_load_t* load = nullptr;
+    std::vector<domdec_load_t> load;
     /**< The number of MPI ranks sharing the GPU our rank is using */
     int nrank_gpu_shared = 0;
 #if GMX_MPI
     /**< The MPI load communicator */
-    MPI_Comm* mpi_comm_load = nullptr;
+    std::vector<MPI_Comm> mpi_comm_load;
     /**< The MPI load communicator for ranks sharing a GPU */
     MPI_Comm mpi_comm_gpu_shared;
 #endif
 
     /**< Struct for timing the force load balancing region */
-    BalanceRegion* balanceRegion = nullptr;
+    BalanceRegion balanceRegion;
+
+#if GMX_MPI
+    /**< MPI data type corresponding to rvec */
+    MPI_Datatype mpiRVec;
+#endif
 
     /* Cycle counters over nstlist steps */
     /**< Total cycles counted */
@@ -754,13 +764,6 @@ struct gmx_domdec_comm_t // NOLINT (clang-analyzer-optin.performance.Padding)
  * TODO: It should be possible to remove this now that the group scheme is removed
  */
 static const int zone_perm[3][4] = { { 0, 0, 0, 0 }, { 1, 0, 0, 0 }, { 3, 0, 1, 2 } };
-
-/*! \brief DD zone reordering to Cartesian order
- *
- * Index to reorder the zone such that the end up in Cartesian order
- * with dimension index 0 major and dimension index 2 minor.
- */
-static const int zone_reorder_cartesian[DD_MAXZONE] = { 0, 1, 3, 2, 5, 4, 6, 7 };
 
 /* dd_zo and dd_zp3 is set up such that i zones with non-zero
  * components see only j zones with that component 0.

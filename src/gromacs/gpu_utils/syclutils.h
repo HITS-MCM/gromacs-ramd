@@ -42,7 +42,6 @@
 
 #include <string>
 
-#include "gromacs/gpu_utils/gmxsycl.h"
 #include "gromacs/gpu_utils/gputraits.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
@@ -50,19 +49,6 @@
 
 class DeviceStream;
 enum class GpuApiCallBehavior;
-
-/*! \internal
- * \brief SYCL GPU runtime data
- *
- * The device runtime data is meant to hold objects associated with a GROMACS rank's
- * (thread or process) use of a single device (multiple devices per rank is not
- * implemented). These objects should be constructed at the point where a device
- * gets assigned to a rank and released at when this assignment is no longer valid
- * (i.e. at cleanup in the current implementation).
- */
-struct gmx_device_runtime_data_t
-{
-};
 
 #ifndef DOXYGEN
 
@@ -90,8 +76,7 @@ public:
      * \param config       Work-group configuration.
      * \param deviceStream \c DeviceStream to use.
      */
-    virtual sycl::event launch(const KernelLaunchConfig& /*config*/,
-                               const DeviceStream& /*deviceStream*/) = 0;
+    virtual void launch(const KernelLaunchConfig& /*config*/, const DeviceStream& /*deviceStream*/) = 0;
 };
 
 
@@ -163,8 +148,8 @@ inline void launchGpuKernel(void*                     kernel,
                             const char* /*kernelName*/,
                             const void* /*kernelArgs*/)
 {
-    auto*       kernelFunctor = reinterpret_cast<ISyclKernelFunctor*>(kernel);
-    sycl::event event         = kernelFunctor->launch(config, deviceStream);
+    auto* kernelFunctor = reinterpret_cast<ISyclKernelFunctor*>(kernel);
+    kernelFunctor->launch(config, deviceStream);
 }
 
 /* To properly mark function as [[noreturn]], we must do it everywhere it is declared, which

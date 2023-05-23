@@ -50,11 +50,11 @@
 
 #include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/hardware/device_management.h"
+#include "gromacs/math/tests/testarrayrefs.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/real.h"
 
-#include "gromacs/math/tests/testarrayrefs.h"
 #include "testutils/test_hardware_environment.h"
 
 #include "devicetransfers.h"
@@ -97,7 +97,10 @@ ArrayRef<char> charArrayRefFromArray(T* data, size_t size)
 
 //! Does a device transfer of \c input to the device in \c gpuInfo, and back to \c output.
 template<typename T>
-void runTest(const DeviceInformation& deviceInfo, ArrayRef<T> input, ArrayRef<T> output)
+void runTest(const DeviceContext&     deviceContext,
+             const DeviceInformation& deviceInfo,
+             ArrayRef<T>              input,
+             ArrayRef<T>              output)
 {
     // Convert the views of input and output to flat non-const chars,
     // so that there's no templating when we call doDeviceTransfers.
@@ -106,7 +109,7 @@ void runTest(const DeviceInformation& deviceInfo, ArrayRef<T> input, ArrayRef<T>
 
     ASSERT_EQ(inputRef.size(), outputRef.size());
 
-    doDeviceTransfers(deviceInfo, inputRef, outputRef);
+    doDeviceTransfers(deviceContext, deviceInfo, inputRef, outputRef);
     compareViews(input, output);
 }
 
@@ -201,13 +204,13 @@ TYPED_TEST(HostAllocatorTestCopyable, TransfersWithoutPinningWork)
 {
     for (const auto& testDevice : getTestHardwareEnvironment()->getTestDeviceList())
     {
-        setActiveDevice(testDevice->deviceInfo());
+        testDevice->activate();
         typename TestFixture::VectorType input;
         resizeAndFillInput(&input, 3, 1);
         typename TestFixture::VectorType output;
         output.resizeWithPadding(input.size());
 
-        runTest(testDevice->deviceInfo(), makeArrayRef(input), makeArrayRef(output));
+        runTest(testDevice->deviceContext(), testDevice->deviceInfo(), makeArrayRef(input), makeArrayRef(output));
     }
 }
 
@@ -291,15 +294,15 @@ TYPED_TEST(HostAllocatorTestNoMem, Comparison)
     EXPECT_NE(AllocatorType{}, AllocatorType{ PinningPolicy::PinnedIfSupported });
 }
 
-#if GMX_GPU_CUDA
+#if GMX_GPU_CUDA || GMX_GPU_SYCL
 
-// Policy suitable for pinning is only supported for a CUDA build
+// Policy suitable for pinning is only supported for a CUDA and SYCL build
 
-TYPED_TEST(HostAllocatorTestCopyable, TransfersWithPinningWorkWithCuda)
+TYPED_TEST(HostAllocatorTestCopyable, TransfersWithPinningWorkWithDevice)
 {
     for (const auto& testDevice : getTestHardwareEnvironment()->getTestDeviceList())
     {
-        setActiveDevice(testDevice->deviceInfo());
+        testDevice->activate();
         typename TestFixture::VectorType input;
         changePinningPolicy(&input, PinningPolicy::PinnedIfSupported);
         resizeAndFillInput(&input, 3, 1);
@@ -307,9 +310,15 @@ TYPED_TEST(HostAllocatorTestCopyable, TransfersWithPinningWorkWithCuda)
         changePinningPolicy(&output, PinningPolicy::PinnedIfSupported);
         output.resizeWithPadding(input.size());
 
-        runTest(testDevice->deviceInfo(), makeArrayRef(input), makeArrayRef(output));
+        runTest(testDevice->deviceContext(), testDevice->deviceInfo(), makeArrayRef(input), makeArrayRef(output));
     }
 }
+
+#endif
+
+#if GMX_GPU_CUDA
+
+// While we can allocate pinned memory with SYCL, we don't support isHostMemoryPinned yet. See #4522
 
 //! Helper function for wrapping a call to isHostMemoryPinned.
 template<typename VectorType>
@@ -323,7 +332,7 @@ TYPED_TEST(HostAllocatorTestCopyable, ManualPinningOperationsWorkWithCuda)
 {
     for (const auto& testDevice : getTestHardwareEnvironment()->getTestDeviceList())
     {
-        setActiveDevice(testDevice->deviceInfo());
+        testDevice->activate();
         typename TestFixture::VectorType input;
         changePinningPolicy(&input, PinningPolicy::PinnedIfSupported);
         EXPECT_TRUE(input.get_allocator().pinningPolicy() == PinningPolicy::PinnedIfSupported);

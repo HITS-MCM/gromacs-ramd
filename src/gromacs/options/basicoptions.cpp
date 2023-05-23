@@ -40,7 +40,7 @@
  */
 #include "gmxpre.h"
 
-#include "basicoptions.h"
+#include "gromacs/options/basicoptions.h"
 
 #include <cerrno>
 #include <cstdio>
@@ -592,7 +592,7 @@ Any EnumOptionStorage::normalizeValue(const int& value) const
 void EnumOptionStorage::initConverter(ConverterType* converter)
 {
     converter->addConverter<std::string>([this](const std::string& value) {
-        return findEnumValue(this->allowed_, value) - this->allowed_.begin();
+        return static_cast<int>(findEnumValue(this->allowed_, value) - this->allowed_.begin());
     });
 }
 
@@ -627,7 +627,8 @@ AbstractOptionStorage* createEnumOptionStorage(const AbstractOption& option,
                                                int                   defaultValueIfSet,
                                                std::unique_ptr<IOptionValueStore<int>> store)
 {
-    return new EnumOptionStorage(option, enumValues, count, defaultValue, defaultValueIfSet, move(store));
+    return new EnumOptionStorage(
+            option, enumValues, count, defaultValue, defaultValueIfSet, std::move(store));
 }
 //! \endcond
 

@@ -1,0 +1,50 @@
+GROMACS 2022.6 release notes
+----------------------------
+
+This version was released on TODO, 2023. These release notes
+document the changes that have taken place in GROMACS since the
+previous 2022.5 version, to fix known issues. It also incorporates all
+fixes made in version 2021.7 and earlier, which you can find described
+in the :ref:`release-notes`.
+
+.. Note to developers!
+   Please use """"""" to underline the individual entries for fixed issues in the subfolders,
+   otherwise the formatting on the webpage is messed up.
+   Also, please use the syntax :issue:`number` to reference issues on GitLab, without
+   a space between the colon and number!
+
+Fixes where mdrun could behave incorrectly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Fix CUDA PME spread in multi-GPU runs (with >=3 GPUs)
+"""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Due to incorrect indexing of the second grid, spread could give incorrect
+with when separate PME ranks are used and pipelining is enabled.
+Runs with >=3 GPUs with direct GPU communication enabled
+(``GMX_ENABLE_DIRECT_GPU_COMM`` env. var.) are affected.
+
+:issue:`4732`
+
+
+Fix missing synchronization in GPU PME pipelining
+"""""""""""""""""""""""""""""""""""""""""""""""""
+
+A missing synchronization could have caused incorrect long-range PME electrostatics
+forces/energies to be produced when GPU PME pipelining was used.
+
+Only runs with >=3 GPUs and with direct GPU communication enabled 
+(``GMX_ENABLE_DIRECT_GPU_COMM`` env. var.) are affected.
+
+:issue:`4734`
+
+
+Fixes for ``gmx`` tools
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Fixes that affect portability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Miscellaneous
+^^^^^^^^^^^^^
+

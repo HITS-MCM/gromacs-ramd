@@ -81,7 +81,7 @@
  *     are not split (much), but the rolling chunks are small;
  *   - with large inputs NTHREAD_Z=1 is 2-3% faster (on CC>=5.0)
  */
-#define NTHREAD_Z (GMX_NBNXN_PRUNE_KERNEL_J4_CONCURRENCY)
+#define NTHREAD_Z (GMX_NBNXN_PRUNE_KERNEL_JPACKED_CONCURRENCY)
 #define THREADS_PER_BLOCK (c_clSize * c_clSize * NTHREAD_Z)
 // we want 100% occupancy, so max threads/block
 #define MIN_BLOCKS_PER_MP (GMX_CUDA_MAX_THREADS_PER_MP / THREADS_PER_BLOCK)
@@ -103,28 +103,42 @@
  */
 template<bool haveFreshList>
 __launch_bounds__(THREADS_PER_BLOCK, MIN_BLOCKS_PER_MP) __global__
-        void nbnxn_kernel_prune_cuda(NBAtomDataGpu    atdat,
-                                     NBParamGpu       nbparam,
-                                     Nbnxm::gpu_plist plist,
-                                     int              numParts,
-                                     int              part)
+        void nbnxn_kernel_prune_cuda(NBAtomDataGpu atdat, NBParamGpu nbparam, Nbnxm::gpu_plist plist, int numParts)
 #ifdef FUNCTION_DECLARATION_ONLY
                 ; /* Only do function declaration, omit the function body. */
 
 // Add extern declarations so each translation unit understands that
 // there will be a definition provided.
 extern template __global__ void
-nbnxn_kernel_prune_cuda<true>(const NBAtomDataGpu, const NBParamGpu, const Nbnxm::gpu_plist, int, int);
+nbnxn_kernel_prune_cuda<true>(const NBAtomDataGpu, const NBParamGpu, const Nbnxm::gpu_plist, int);
 extern template __global__ void
-nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnxm::gpu_plist, int, int);
+nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnxm::gpu_plist, int);
 #else
 {
 
+    // Get part for this kernel from global memory. Each block has its own copy to allow asynchronous incrementation.
+    int part = plist.d_rollingPruningPart[blockIdx.x];
+    __syncthreads();
+
+    // Single thread per block increments the block's copy of the part index
+    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0)
+    {
+        plist.d_rollingPruningPart[blockIdx.x] = (part + 1) % numParts;
+    }
+
+    // Kernel has been launched with max number of blocks across all passes (plist.nsci/numParts),
+    // but the last pass will require 1 less block, so extra block should return early.
+    size_t numSciInPart = (plist.nsci - part) / numParts;
+    if (blockIdx.x >= numSciInPart)
+    {
+        return;
+    }
+
     /* convenience variables */
-    const nbnxn_sci_t* pl_sci    = plist.sci;
-    nbnxn_cj4_t*       pl_cj4    = plist.cj4;
-    const float4*      xq        = atdat.xq;
-    const float3*      shift_vec = asFloat3(atdat.shiftVec);
+    const nbnxn_sci_t* pl_sci      = plist.sci;
+    nbnxn_cj_packed_t* pl_cjPacked = plist.cjPacked;
+    const float4*      xq          = atdat.xq;
+    const float3*      shift_vec   = asFloat3(atdat.shiftVec);
 
     float rlistOuter_sq = nbparam.rlistOuter_sq;
     float rlistInner_sq = nbparam.rlistInner_sq;
@@ -172,9 +186,9 @@ nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnx
 
     nbnxn_sci_t nb_sci =
             pl_sci[bidx * numParts + part]; /* my i super-cluster's index = sciOffset + current bidx * numParts + part */
-    int sci        = nb_sci.sci;           /* super-cluster */
-    int cij4_start = nb_sci.cj4_ind_start; /* first ...*/
-    int cij4_end   = nb_sci.cj4_ind_end;   /* and last index of j clusters */
+    int sci            = nb_sci.sci;           /* super-cluster */
+    int cijPackedBegin = nb_sci.cjPackedBegin; /* first ...*/
+    int cijPackedEnd   = nb_sci.cjPackedEnd;   /* and last index of j clusters */
 
     // We may need only a subset of threads active for preloading i-atoms
     // depending on the super-cluster and cluster / thread-block size.
@@ -195,16 +209,16 @@ nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnx
 
     /* loop over the j clusters = seen by any of the atoms in the current super-cluster;
      * The loop stride NTHREAD_Z ensures that consecutive warps-pairs are assigned
-     * consecutive j4's entries.
+     * consecutive jPacked's entries.
      */
-    for (int j4 = cij4_start + tidxz; j4 < cij4_end; j4 += NTHREAD_Z)
+    for (int jPacked = cijPackedBegin + tidxz; jPacked < cijPackedEnd; jPacked += NTHREAD_Z)
     {
         unsigned int imaskFull, imaskCheck, imaskNew;
 
         if (haveFreshList)
         {
             /* Read the mask from the list transferred from the CPU */
-            imaskFull = pl_cj4[j4].imei[widx].imask;
+            imaskFull = pl_cjPacked[jPacked].imei[widx].imask;
             /* We attempt to prune all pairs present in the original list */
             imaskCheck = imaskFull;
             imaskNew   = 0;
@@ -212,9 +226,9 @@ nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnx
         else
         {
             /* Read the mask from the "warp-pruned" by rlistOuter mask array */
-            imaskFull = plist.imask[j4 * c_nbnxnGpuClusterpairSplit + widx];
+            imaskFull = plist.imask[jPacked * c_nbnxnGpuClusterpairSplit + widx];
             /* Read the old rolling pruned mask, use as a base for new */
-            imaskNew = pl_cj4[j4].imei[widx].imask;
+            imaskNew = pl_cjPacked[jPacked].imei[widx].imask;
             /* We only need to check pairs with different mask */
             imaskCheck = (imaskNew ^ imaskFull);
         }
@@ -226,7 +240,8 @@ nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnx
                 /* Pre-load cj into shared memory on both warps separately */
                 if ((tidxj == 0 || tidxj == 4) && tidxi < c_nbnxnGpuJgroupSize)
                 {
-                    cjs[tidxi + tidxj * c_nbnxnGpuJgroupSize / c_splitClSize] = pl_cj4[j4].cj[tidxi];
+                    cjs[tidxi + tidxj * c_nbnxnGpuJgroupSize / c_splitClSize] =
+                            pl_cjPacked[jPacked].cj[tidxi];
                 }
                 __syncwarp(c_fullWarpMask);
             }
@@ -238,7 +253,7 @@ nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnx
                 {
                     unsigned int mask_ji = (1U << (jm * c_nbnxnGpuNumClusterPerSupercluster));
                     int cj = c_preloadCj ? cjs[jm + (tidxj & 4) * c_nbnxnGpuJgroupSize / c_splitClSize]
-                                         : pl_cj4[j4].cj[jm];
+                                         : pl_cjPacked[jPacked].cj[jm];
                     int aj = cj * c_clSize + tidxj;
 
                     /* load j atom data */
@@ -282,10 +297,10 @@ nbnxn_kernel_prune_cuda<false>(const NBAtomDataGpu, const NBParamGpu, const Nbnx
             if (haveFreshList)
             {
                 /* copy the list pruned to rlistOuter to a separate buffer */
-                plist.imask[j4 * c_nbnxnGpuClusterpairSplit + widx] = imaskFull;
+                plist.imask[jPacked * c_nbnxnGpuClusterpairSplit + widx] = imaskFull;
             }
             /* update the imask with only the pairs up to rlistInner */
-            plist.cj4[j4].imei[widx].imask = imaskNew;
+            plist.cjPacked[jPacked].imei[widx].imask = imaskNew;
         }
         if (c_preloadCj)
         {

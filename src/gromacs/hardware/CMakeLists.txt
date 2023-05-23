@@ -39,6 +39,7 @@ gmx_add_libgromacs_sources(
     hardwaretopology.cpp
     printhardware.cpp
     identifyavx512fmaunits.cpp
+    simd_support.cpp
     )
 
 if(GMX_GPU_OPENCL)
@@ -53,22 +54,23 @@ elseif(GMX_GPU_CUDA)
         # Must add these files so they can include device_information.h
         device_management_common.cpp
         detecthardware.cpp
-	)
+        )
 elseif(GMX_GPU_SYCL)
     gmx_add_libgromacs_sources(
         device_management_sycl.cpp
-    )
+        device_management_sycl_intel_device_ids.cpp
+        )
     _gmx_add_files_to_property(SYCL_SOURCES
         device_management_sycl.cpp
         # Must add these files so they can include device_information.h
         device_management.cpp
         device_management_common.cpp
         detecthardware.cpp
-	)
+        )
 else()
     gmx_add_libgromacs_sources(
         device_management.cpp
-    )
+        )
 endif()
 
 # Source files have the following private module dependencies.
@@ -83,17 +85,13 @@ target_include_directories(hardware INTERFACE
 target_link_libraries(hardware INTERFACE
                       legacy_api
                       )
+# The interface conveys transitive dependence on other module(s)
+target_link_libraries(hardware INTERFACE utility)
 
 # TODO: when hardware is an OBJECT target
 #target_link_libraries(hardware PUBLIC legacy_api)
 #target_link_libraries(hardware PRIVATE common)
 
-# Module dependencies
-# hardware interfaces convey transitive dependence on these modules.
-#target_link_libraries(hardware PUBLIC
-target_link_libraries(hardware INTERFACE
-                      utility
-                      )
 # Source files have the following private module dependencies.
 #target_link_libraries(hardware PRIVATE tng_io)
 # TODO: Explicitly link specific modules.

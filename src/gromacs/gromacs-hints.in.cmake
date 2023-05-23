@@ -34,6 +34,7 @@
 SET(CMAKE_C_COMPILER  "@CMAKE_C_COMPILER@" CACHE FILEPATH "C compiler used for GROMACS.")
 SET(CMAKE_CXX_COMPILER "@CMAKE_CXX_COMPILER@" CACHE FILEPATH "CXX compiler used for GROMACS.")
 SET(CMAKE_LINKER "@CMAKE_LINKER@" CACHE FILEPATH "Linker used for GROMACS.")
-# The following are only relevant in Mac OS X environments.
-SET(CMAKE_OSX_DEPLOYMENT_TARGET "@CMAKE_OSX_DEPLOYMENT_TARGET@" CACHE STRING "GROMACS Deployment target.")
-SET(CMAKE_OSX_ARCHITECTURES "@CMAKE_OSX_ARCHITECTURES@" CACHE STRING "GROMACS architectures.")
+SET(GMX_CMAKE_VERSION "@CMAKE_VERSION@" "Version of CMake used to build these CMake config files.")
+@_gmx_mpi_config@
+@_gmx_osx_config@
+@_gmx_cuda_config@
