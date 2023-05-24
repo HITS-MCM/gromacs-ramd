@@ -14,47 +14,43 @@ pipeline {
   stages {
     stage('Build') {
       parallel {
-        stage('gcc-8') {
+        stage('gcc') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-8'
+              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-22.04'
             }
           }
           steps {
             sh '''
-              mkdir -p build-gcc-8
-              cd build-gcc-8
-              cmake -DGMX_BUILD_OWN_FFTW=ON ..
-              make 2>&1 |tee make.out
+              cmake -DGMX_BUILD_OWN_FFTW=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -B build-gcc
+              cmake --build build-gcc 2>&1 |tee build-gcc/make.out
             '''
           }
           post {
             always {
               recordIssues enabledForFailure: true, aggregatingResults: false,
-                tool: gcc(id: 'gcc-8', pattern: 'build-gcc-8/make.out')
+                tool: gcc(id: 'gcc', pattern: 'build-gcc/make.out')
             }
           }
         }
-        stage('clang-8') {
+        stage('clang') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.2-clang-8'
+              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-22.04'
             }
           }
           steps {
             sh '''
-              mkdir -p build-clang-8
-              cd build-clang-8
-              cmake -DGMX_BUILD_OWN_FFTW=ON ..
-              make 2>&1 |tee make.out
+              cmake -DGMX_BUILD_OWN_FFTW=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -B build-clang
+              cmake --build build-clang 2>&1 |tee build-clang/make.out
             '''
           }
           post {
             always {
               recordIssues enabledForFailure: true, aggregatingResults: false,
-                tool: gcc(id: 'clang-8', pattern: 'build-clang-8/make.out')
+                tool: gcc(id: 'clang', pattern: 'build-clang/make.out')
             }
           }
         }
@@ -62,42 +58,42 @@ pipeline {
     }
     stage('Test') {
       parallel {
-        stage('gcc-8') {
+        stage('gcc') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.2-gcc-8'
+              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-22.04'
             }
           }
           steps {
-            sh 'cd build-gcc-8 && make check'
+            sh 'cmake --build build-gcc --target check'
           }
           post {
             always {
               step([
                 $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
-                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc-8/Testing/Temporary/*.xml']]
+                tools: [[$class: 'GoogleTestType', pattern: 'build-gcc/Testing/Temporary/*.xml']]
               ])
             }
           }
         }
-        stage('clang-8') {
+        stage('clang') {
           agent {
             docker {
               reuseNode true
-              image 'braintwister/ubuntu-18.04-cuda-10.2-clang-8'
+              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-22.04'
             }
           }
           steps {
-            sh 'cd build-clang-8 && make check'
+            sh 'cmake --build build-clang --target check'
           }
           post {
             always {
               step([
                 $class: 'XUnitPublisher',
                 thresholds: [[$class: 'FailedThreshold', unstableThreshold: '1']],
-                tools: [[$class: 'GoogleTestType', pattern: 'build-clang-8/Testing/Temporary/*.xml']]
+                tools: [[$class: 'GoogleTestType', pattern: 'build-clang/Testing/Temporary/*.xml']]
               ])
             }
           }
@@ -106,9 +102,6 @@ pipeline {
     }
   }
   post {
-    success {
-      mail to: 'bernd.doser@h-its.org', subject: "SUCCESS: ${currentBuild.fullDisplayName}", body: "Success: ${env.BUILD_URL}"
-    }
     failure {
       mail to: 'bernd.doser@h-its.org', subject: "FAILURE: ${currentBuild.fullDisplayName}", body: "Failure: ${env.BUILD_URL}"
     }
