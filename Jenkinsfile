@@ -66,7 +66,7 @@ pipeline {
             }
           }
           steps {
-            sh 'cd build-gcc && make check'
+            sh 'cmake --build build-gcc --target check'
           }
           post {
             always {
@@ -86,7 +86,7 @@ pipeline {
             }
           }
           steps {
-            sh 'cd build-clang && make check'
+            sh 'cmake --build build-clang --target check'
           }
           post {
             always {
