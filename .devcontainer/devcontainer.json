@@ -6,13 +6,18 @@
         "--security-opt", "seccomp=unconfined"
     ],
 
-    // Set *default* container specific settings.json values on container create.
-    "settings": {},
-
     // Add the IDs of extensions you want installed when the container is created.
-    "extensions": [
-        "ms-vscode.cpptools-extension-pack"
-    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "alefragnani.numbered-bookmarks",
+                "mechatroner.rainbow-csv",
+                "mhutchie.git-graph",
+                "ms-vscode.cpptools-extension-pack",
+                "streetsidesoftware.code-spell-checker"
+            ]
+        }
+    },
 
     // Use 'forwardPorts' to make a list of ports inside the container available locally.
     // "forwardPorts": [],
