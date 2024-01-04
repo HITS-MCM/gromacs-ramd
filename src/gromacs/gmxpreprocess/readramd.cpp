@@ -46,7 +46,7 @@
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/smalloc.h"
 
-void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, warninp_t wi)
+void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, WarningHandler* wi)
 {
     ramdparams->seed = get_eint(inp, "ramd-seed", 1234, wi);
     ramdparams->ngroup = get_eint(inp, "ramd-ngroups", 1, wi);
