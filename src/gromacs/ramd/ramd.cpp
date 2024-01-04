@@ -86,7 +86,7 @@ RAMD::RAMD(const RAMDParams&           params,
         direction[g] = random_spherical_direction_generator();
     }
 
-    if (MASTER(cr) and opt2bSet("-ramd", nfile, fnm))
+    if (MAIN(cr) and opt2bSet("-ramd", nfile, fnm))
     {
         auto filename = std::string(opt2fn("-ramd", nfile, fnm));
 
@@ -116,7 +116,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     t_pbc pbc;
     set_pbc(&pbc, pull->pbcType, forceProviderInput.box_);
 
-    if (MASTER(cr) and out and (*pstep % params.eval_freq == 0))
+    if (MAIN(cr) and out and (*pstep % params.eval_freq == 0))
     {
         fprintf(out, "%.4f", forceProviderInput.t_);
     }
@@ -129,7 +129,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             com_rec_prev[g] = pull->group[g * 2 + 1].x;
             com_lig_prev[g] = pull->group[g * 2 + 2].x;
 
-            if (MASTER(cr) and out)
+            if (MAIN(cr) and out)
             {
                 DVec curr_dist_vect;
                 pbc_dx_d(&pbc, com_lig_prev[g], com_rec_prev[g], curr_dist_vect);
@@ -140,7 +140,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     }
     else if (*pstep % params.eval_freq == 0)
     {
-        if (MASTER(cr) and debug)
+        if (MAIN(cr) and debug)
         {
             fprintf(debug, "==== RAMD ==== evaluation %ld\n", *pstep);
         }
@@ -152,7 +152,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
             auto curr_dist = std::sqrt(curr_dist_vect.norm2());
 
-            if (MASTER(cr) and debug)
+            if (MAIN(cr) and debug)
             {
                 fprintf(debug, "==== RAMD ==== group %d\n", g);
                 fprintf(debug, "==== RAMD ==== COM ligand position at [%g, %g, %g]\n",
@@ -164,7 +164,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                         curr_dist);
             }
 
-            if (MASTER(cr) and out)
+            if (MAIN(cr) and out)
             {
                 fprintf(out, "\t%g", curr_dist);
             }
@@ -175,7 +175,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 if (!params.connected_ligands) {
                     direction[g] = DVec(0.0, 0.0, 0.0);
                 }
-                if (MASTER(cr))
+                if (MAIN(cr))
                 {
                     fprintf(this->log, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
                             g, *pstep);
@@ -189,7 +189,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             pbc_dx_d(&pbc, com_lig_curr - com_rec_curr, com_lig_prev[g] - com_rec_prev[g], walk_dist_vect);
             auto walk_dist = std::sqrt(walk_dist_vect.norm2());
 
-            if (MASTER(cr) and debug)
+            if (MAIN(cr) and debug)
             {
                 fprintf(debug, "==== RAMD ==== Previous COM ligand position at [%g, %g, %g]\n",
                         com_lig_prev[g][0], com_lig_prev[g][1], com_lig_prev[g][2]);
@@ -204,7 +204,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             if (walk_dist < params.group[0].r_min_dist)
             {
                 direction[g] = random_spherical_direction_generator();
-                if (MASTER(cr) and debug)
+                if (MAIN(cr) and debug)
                 {
                     fprintf(debug, "==== RAMD ==== New random direction is [%g, %g, %g]\n",
                             direction[g][0], direction[g][1], direction[g][2]);
@@ -216,7 +216,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
-    if (MASTER(cr) and (*pstep % params.eval_freq == 0))
+    if (MAIN(cr) and (*pstep % params.eval_freq == 0))
     {
         if (out)
         {
