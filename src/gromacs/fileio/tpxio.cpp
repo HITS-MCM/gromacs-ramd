@@ -92,7 +92,7 @@
  * merging with mainstream GROMACS, set this tag string back to
  * TPX_TAG_RELEASE, and instead add an element to tpxv.
  */
-static const std::string tpx_tag = TPX_TAG_RELEASE;
+static const std::string tpx_tag = "RAMD";
 
 /*! \brief Enum of values that describe the contents of a tpr file
  * whose format matches a version number
