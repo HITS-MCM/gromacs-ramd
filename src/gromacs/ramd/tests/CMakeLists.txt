@@ -37,4 +37,9 @@ gmx_add_unit_test(RAMDTest ramd-test
     randomsphericaldirectiongenerator.cpp
 )
 
-target_link_libraries(ramd-test PRIVATE ramd muparser)
+# Source files have the following dependencies on library infrastructure.
+target_link_libraries(ramd-test PRIVATE
+    math
+    muparser
+    ramd
+)
