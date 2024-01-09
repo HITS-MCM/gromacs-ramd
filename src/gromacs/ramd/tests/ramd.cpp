@@ -60,7 +60,7 @@ protected:
 
     RAMDParams params;
     std::unique_ptr<RAMD> ramd;
-    CommrecHandle cr;
+    std::unique_ptr<t_commrec> cr;
     pull_t pull;
     t_pull_coord coord_params;
 
@@ -77,7 +77,7 @@ protected:
         params.old_angle_dist = false;
         params.eval_freq = 1;
 
-        cr = init_commrec(MPI_COMM_WORLD);
+        cr = std::make_unique<t_commrec>();
 
         t_filenm fnm[] = {
             { efXVG, "-ramd", "ramd", ffOPTWR }
