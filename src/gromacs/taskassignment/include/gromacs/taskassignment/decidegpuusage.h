@@ -87,6 +87,8 @@ struct DevelopmentFeatureFlags
     bool enableGpuPmeDecomposition = false;
     //! True if CUDA Graphs are enabled
     bool enableCudaGraphs = false;
+    //! True if NVSHMEM can be used for GPU communication
+    bool enableNvshmem = false;
 };
 
 
@@ -109,6 +111,7 @@ class MDAtoms;
  * \param[in] buildSupportsNonbondedOnGpu  Whether GROMACS was built with GPU support.
  * \param[in] nonbondedOnGpuIsUseful       Whether computing nonbonded interactions on a GPU is
  *                                         useful for this calculation.
+ * \param[in] binaryReproducibilityRequested  Whether binary reprocibility was requested
  * \param[in] numRanksPerSimulation        The number of ranks in each simulation.
  *
  * \returns    Whether the simulation will run nonbonded tasks on GPUs.
@@ -121,6 +124,7 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(TaskTarget              non
                                                      EmulateGpuNonbonded     emulateGpuNonbonded,
                                                      bool buildSupportsNonbondedOnGpu,
                                                      bool nonbondedOnGpuIsUseful,
+                                                     bool binaryReproducibilityRequested,
                                                      int  numRanksPerSimulation);
 
 /*! \brief Decide whether this thread-MPI simulation will run
@@ -175,6 +179,7 @@ bool decideWhetherToUseGpusForPmeWithThreadMpi(bool                    useGpuFor
  * \param[in]  emulateGpuNonbonded         Whether we will emulate GPU calculation of nonbonded interactions.
  * \param[in]  buildSupportsNonbondedOnGpu Whether GROMACS was build with GPU support.
  * \param[in]  nonbondedOnGpuIsUseful      Whether computing nonbonded interactions on a GPU is useful for this calculation.
+ * \param[in] binaryReproducibilityRequested  Whether binary reprocibility was requested
  * \param[in]  gpusWereDetected            Whether compatible GPUs were detected on any node.
  *
  * \returns    Whether the simulation will run nonbonded and PME tasks, respectively, on GPUs.
@@ -186,6 +191,7 @@ bool decideWhetherToUseGpusForNonbonded(TaskTarget              nonbondedTarget,
                                         EmulateGpuNonbonded     emulateGpuNonbonded,
                                         bool                    buildSupportsNonbondedOnGpu,
                                         bool                    nonbondedOnGpuIsUseful,
+                                        bool                    binaryReproducibilityRequested,
                                         bool                    gpusWereDetected);
 
 /*! \brief Decide whether the simulation will try to run tasks of

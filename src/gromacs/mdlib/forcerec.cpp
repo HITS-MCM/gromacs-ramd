@@ -536,7 +536,7 @@ static std::vector<bondedtable_t> make_bonded_tables(FILE*                      
                 // being recognized and used for table 1.
                 std::string patternToFind = gmx::formatString("_%s%d.%s", tabext, i, ftp2ext(efXVG));
                 bool        madeTable     = false;
-                for (gmx::index j = 0; j < tabbfnm.ssize() && !madeTable; ++j)
+                for (gmx::Index j = 0; j < tabbfnm.ssize() && !madeTable; ++j)
                 {
                     if (gmx::endsWith(tabbfnm[j], patternToFind))
                     {
@@ -779,6 +779,9 @@ void init_forcerec(FILE*                            fplog,
     forcerec->rc_scaling = inputrec.pressureCouplingOptions.refcoord_scaling;
     copy_rvec(inputrec.posres_com, forcerec->posres_com);
     copy_rvec(inputrec.posres_comB, forcerec->posres_comB);
+
+    forcerec->haveBoxDeformation = ir_haveBoxDeformation(inputrec);
+
     forcerec->rlist                  = cutoff_inf(inputrec.rlist);
     forcerec->ljpme_combination_rule = inputrec.ljpme_combination_rule;
 

@@ -254,7 +254,7 @@ Performance and Run Control
 ``GMX_FORCE_GPU_AWARE_MPI``
         Override the result of build- and runtime GPU-aware MPI detection and force the use of
         direct GPU MPI communication. Aimed at cases where the user knows that the MPI library is
-        GPU-aware, but |GROMACS| is not able to detect this. Note that only CUDA and SYCL builds 
+        GPU-aware, but |Gromacs| is not able to detect this. Note that only CUDA and SYCL builds 
         support such functionality.
 
 ``GMX_FORCE_UPDATE_DEFAULT_CPU``
@@ -299,6 +299,24 @@ Performance and Run Control
         runtime permits this variable to be different for different ranks. Cannot be used
         in conjunction with ``mdrun -gputasks``. Has all the same requirements as ``mdrun -gputasks``.
 
+.. _HeFFTe docs: https://mkstoyanov.bitbucket.io/heffte/structheffte_1_1plan__options.html
+
+``GMX_HEFFTE_RESHAPE_ALGORITHM``
+        Sets ``heffte::plan_options::reshape_algorithm`` to ``p2p`` (the default) or ``p2p_plined``, ``alltoallv``, or ``alltoall``.
+        See the `HeFFTe docs`_ for details.
+
+``GMX_HEFFTE_USE_GPU_AWARE``
+        Sets ``heffte::plan_options::use_gpu_aware`` to ``true`` (the default) or ``false``.
+        See the `HeFFTe docs`_ for details.
+
+``GMX_HEFFTE_USE_PENCILS``
+        Sets ``heffte::plan_options::use_pencils`` to ``true`` or ``false`` (the default).
+        See the `HeFFTe docs`_ for details.
+
+``GMX_HEFFTE_USE_REORDER``
+        Sets ``heffte::plan_options::use_reorder`` to ``true`` (the default) or ``false``.
+        See the `HeFFTe docs`_ for details.
+
 ``GMX_IGNORE_FSYNC_FAILURE_ENV``
         allow :ref:`gmx mdrun` to continue even if
         a file is missing.
@@ -337,7 +355,7 @@ Performance and Run Control
 ``GMX_NBNXN_SIMD_4XN``
         force the use of 4xN SIMD CPU non-bonded kernels,
         mutually exclusive of ``GMX_NBNXN_SIMD_2XNN``.
-
+	
 ``GMX_NO_CART_REORDER``
         used in initializing domain decomposition communicators. Rank reordering
         is default, but can be switched off with this environment variable.
@@ -401,6 +419,11 @@ Performance and Run Control
         should contain multiple masses used for test particle insertion into a cavity.
         The center of mass of the last atoms is used for insertion into the cavity.
 
+``GMX_VERLET_BUFFER_PRESSURE_TOLERANCE``
+        sets the maximum tolerated error in the pressure in bar for the
+        automated tuning of the Verlet pair-list buffering. Can only be used
+        with system where this tolerance has not been set using the mdp parameter.
+        
 ``GMX_VERLET_BUFFER_RES``
         resolution of buffer size in Verlet cutoff scheme.  The default value is
         0.001, but can be overridden with this environment variable.
@@ -428,6 +451,8 @@ compilation of OpenCL kernels, but they are also used in device selection.
 
 ..
    Please keep these in alphabetical order!
+
+
 
 ``GMX_OCL_DEBUG``
         Use in conjunction with ``OCL_FORCE_CPU`` or with an AMD device.
@@ -468,6 +493,11 @@ compilation of OpenCL kernels, but they are also used in device selection.
         kernels from a custom location. Use it only if you want to
         override |Gromacs| default behavior, or if you want to test
         your own kernels.
+
+``GMX_OCL_FORCE_AMD_WAVEFRONT64``
+        Force the use of Wave64 mode on AMD devices. This allows using
+        OpenCL on RDNA-family devices, but is not recommended.
+        For development use only.
 
 ``GMX_OCL_FORCE_CPU``
         Force the selection of a CPU device instead of a GPU.  This

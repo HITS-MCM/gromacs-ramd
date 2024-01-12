@@ -181,10 +181,10 @@ public:
     bool useGpuBonded = false;
     //! If update and constraint solving is performed on GPU.
     bool useGpuUpdate = false;
-    //! If X buffer operations are performed on GPU.
-    bool useGpuXBufferOps = false;
-    //! If F buffer operations are performed on GPU.
-    bool useGpuFBufferOps = false;
+    //! If X buffer operations are allowed on GPU (actual use depends on other activities that step).
+    bool useGpuXBufferOpsWhenAllowed = false;
+    //! If F buffer operations are allowed on GPU (actual use depends on other activities that step).
+    bool useGpuFBufferOpsWhenAllowed = false;
     //! If PP domain decomposition is active.
     bool havePpDomainDecomposition = false;
     //! If domain decomposition halo exchange is performed on CPU (in CPU-only runs or with staged GPU communication).
@@ -207,6 +207,8 @@ public:
     bool useMts = false;
     //! Whether a GPU graph should be used to execute steps in the MD loop if run conditions allow.
     bool useMdGpuGraph = false;
+    //! Whether to use NVSHMEM enabled GPU initiated communication.
+    bool useNvshmem = false;
 
     //! Whether PME GPU is active on this PP rank (note that currently only PP ranks use SimulationWorkload)
 #if !defined(_MSC_VER) // MSVC does not support __attribute__

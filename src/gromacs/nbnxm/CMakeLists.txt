@@ -52,6 +52,7 @@ file(GLOB NBNXM_SOURCES
     pairlist.cpp
     pairlistparams.cpp
     pairlistset.cpp
+    pairlistwork.cpp
     pairlist_tuning.cpp
     pairsearch.cpp
     prunekerneldispatch.cpp
@@ -59,6 +60,7 @@ file(GLOB NBNXM_SOURCES
     kernels_reference/kernel_gpu_ref.cpp
     kernels_reference/kernel_ref.cpp
     kernels_reference/kernel_ref_prune.cpp
+    simd_prune_kernel.cpp
     # Benchmark source files
     # TODO these should not be in libgromacs
     benchmark/bench_setup.cpp

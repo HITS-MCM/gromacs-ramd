@@ -149,25 +149,38 @@ void init_gtc_state(t_state* state, int ngtc, int nnhpres, int nhchainlength)
 
 
 /* Checkpoint code relies on this function having no effect if
-   state->natoms is > 0 and passed as natoms. */
-void state_change_natoms(t_state* state, int natoms)
+   numAtoms_ is > 0 and passed as numAtoms. */
+void t_state::changeNumAtoms(const int numAtoms)
 {
-    state->natoms = natoms;
+    numAtoms_ = numAtoms;
 
     /* We need padding, since we might use SIMD access, but the
      * containers here all ensure that. */
-    if (state->flags & enumValueToBitMask(StateEntry::X))
+    if (hasEntry(StateEntry::X))
     {
-        state->x.resizeWithPadding(natoms);
+        x.resizeWithPadding(numAtoms);
     }
-    if (state->flags & enumValueToBitMask(StateEntry::V))
+    if (hasEntry(StateEntry::V))
     {
-        state->v.resizeWithPadding(natoms);
+        v.resizeWithPadding(numAtoms);
     }
-    if (state->flags & enumValueToBitMask(StateEntry::Cgp))
+    if (hasEntry(StateEntry::Cgp))
     {
-        state->cg_p.resizeWithPadding(natoms);
+        cg_p.resizeWithPadding(numAtoms);
     }
+}
+
+void t_state::addEntry(const StateEntry entry)
+{
+    setFlags(flags_ | enumValueToBitMask(entry));
+}
+
+void t_state::setFlags(const int flags)
+{
+    flags_ = flags;
+
+    // Ensure potential new vectors added to flags_ have the correct size
+    changeNumAtoms(numAtoms_);
 }
 
 namespace
@@ -269,24 +282,24 @@ void comp_state(const t_state* st1, const t_state* st2, gmx_bool bRMSD, real fto
     int i, j, nc;
 
     fprintf(stdout, "comparing flags\n");
-    cmp_int(stdout, "flags", -1, st1->flags, st2->flags);
+    cmp_int(stdout, "flags", -1, st1->flags(), st2->flags());
     fprintf(stdout, "comparing box\n");
     cmp_rvecs(stdout, "box", DIM, st1->box, st2->box, FALSE, ftol, abstol);
     fprintf(stdout, "comparing box_rel\n");
     cmp_rvecs(stdout, "box_rel", DIM, st1->box_rel, st2->box_rel, FALSE, ftol, abstol);
     fprintf(stdout, "comparing boxv\n");
     cmp_rvecs(stdout, "boxv", DIM, st1->boxv, st2->boxv, FALSE, ftol, abstol);
-    if (st1->flags & enumValueToBitMask(StateEntry::SVirPrev))
+    if (st1->hasEntry(StateEntry::SVirPrev))
     {
         fprintf(stdout, "comparing shake vir_prev\n");
         cmp_rvecs(stdout, "svir_prev", DIM, st1->svir_prev, st2->svir_prev, FALSE, ftol, abstol);
     }
-    if (st1->flags & enumValueToBitMask(StateEntry::FVirPrev))
+    if (st1->hasEntry(StateEntry::FVirPrev))
     {
         fprintf(stdout, "comparing force vir_prev\n");
         cmp_rvecs(stdout, "fvir_prev", DIM, st1->fvir_prev, st2->fvir_prev, FALSE, ftol, abstol);
     }
-    if (st1->flags & enumValueToBitMask(StateEntry::PressurePrevious))
+    if (st1->hasEntry(StateEntry::PressurePrevious))
     {
         fprintf(stdout, "comparing prev_pres\n");
         cmp_rvecs(stdout, "pres_prev", DIM, st1->pres_prev, st2->pres_prev, FALSE, ftol, abstol);
@@ -317,25 +330,23 @@ void comp_state(const t_state* st1, const t_state* st2, gmx_bool bRMSD, real fto
         }
     }
 
-    cmp_int(stdout, "natoms", -1, st1->natoms, st2->natoms);
-    if (st1->natoms == st2->natoms)
+    cmp_int(stdout, "natoms", -1, st1->numAtoms(), st2->numAtoms());
+    if (st1->numAtoms() == st2->numAtoms())
     {
-        if ((st1->flags & enumValueToBitMask(StateEntry::X))
-            && (st2->flags & enumValueToBitMask(StateEntry::X)))
+        if (st1->hasEntry(StateEntry::X) && st2->hasEntry(StateEntry::X))
         {
             fprintf(stdout, "comparing x\n");
-            cmp_rvecs(stdout, "x", st1->natoms, st1->x.rvec_array(), st2->x.rvec_array(), bRMSD, ftol, abstol);
+            cmp_rvecs(stdout, "x", st1->numAtoms(), st1->x.rvec_array(), st2->x.rvec_array(), bRMSD, ftol, abstol);
         }
-        if ((st1->flags & enumValueToBitMask(StateEntry::V))
-            && (st2->flags & enumValueToBitMask(StateEntry::V)))
+        if (st1->hasEntry(StateEntry::V) && st2->hasEntry(StateEntry::V))
         {
             fprintf(stdout, "comparing v\n");
-            cmp_rvecs(stdout, "v", st1->natoms, st1->v.rvec_array(), st2->v.rvec_array(), bRMSD, ftol, abstol);
+            cmp_rvecs(stdout, "v", st1->numAtoms(), st1->v.rvec_array(), st2->v.rvec_array(), bRMSD, ftol, abstol);
         }
     }
 }
 
-rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::index n)
+rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::Index n)
 {
     GMX_ASSERT(v.ssize() >= n, "We can't copy more elements than the vector size");
 
@@ -344,7 +355,7 @@ rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::index n)
     snew(dest, n);
 
     const rvec* vPtr = as_rvec_array(v.data());
-    for (gmx::index i = 0; i < n; i++)
+    for (gmx::Index i = 0; i < n; i++)
     {
         copy_rvec(vPtr[i], dest[i]);
     }
@@ -353,11 +364,11 @@ rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::index n)
 }
 
 t_state::t_state() :
-    natoms(0),
+    numAtoms_(0),
+    flags_(0),
     ngtc(0),
     nnhpres(0),
     nhchainlength(0),
-    flags(0),
     fep_state(0),
     lambda{ { 0 } },
 

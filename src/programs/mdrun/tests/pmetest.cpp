@@ -273,8 +273,7 @@ MessageStringCollector PmeTest::getSkipMessagesIfNecessary(const CommandLine& co
                 const bool pmeDecompositionActive = (getenv("GMX_GPU_PME_DECOMPOSITION") != nullptr);
                 messages.appendIf(!pmeDecompositionActive,
                                   "it targets PME decomposition, but that is not enabled");
-                // The check below only handles CUDA, see #4638
-                GpuAwareMpiStatus gpuAwareMpiStatus = checkMpiCudaAwareSupport();
+                GpuAwareMpiStatus gpuAwareMpiStatus = s_hwinfo->minGpuAwareMpiStatus;
                 const bool        gpuAwareMpiActive = gpuAwareMpiStatus == GpuAwareMpiStatus::Forced
                                                || gpuAwareMpiStatus == GpuAwareMpiStatus::Supported;
                 messages.appendIf(!gpuAwareMpiActive,
@@ -290,7 +289,7 @@ MessageStringCollector PmeTest::getSkipMessagesIfNecessary(const CommandLine& co
         static constexpr bool sc_gpuBuildSyclWithoutGpuFft =
                 // NOLINTNEXTLINE(misc-redundant-expression)
                 (GMX_GPU_SYCL != 0) && (GMX_GPU_FFT_MKL == 0) && (GMX_GPU_FFT_ROCFFT == 0)
-                && (GMX_GPU_FFT_VKFFT == 0) && (GMX_GPU_FFT_DBFFT == 0); // NOLINT(misc-redundant-expression)
+                && (GMX_GPU_FFT_VKFFT == 0) && (GMX_GPU_FFT_BBFFT == 0); // NOLINT(misc-redundant-expression)
         messages.appendIf(commandLineTargetsPmeFftOnGpu && sc_gpuBuildSyclWithoutGpuFft,
                           "it targets GPU execution of FFT work, which is not supported in the "
                           "current build");

@@ -66,8 +66,10 @@
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/mdatom.h"
+#include "gromacs/mdtypes/multipletimestepping.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pbcutil/pbc.h"
+#include "gromacs/taskassignment/include/gromacs/taskassignment/decidesimulationworkload.h"
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/topology/mtop_atomloops.h"
 #include "gromacs/topology/mtop_lookup.h"
@@ -927,39 +929,39 @@ static void init_adir(gmx_shellfc_t*            shfc,
                   gmx::ConstraintVariable::Deriv_FlexCon);
 }
 
-void relax_shell_flexcon(FILE*                         fplog,
-                         const t_commrec*              cr,
-                         const gmx_multisim_t*         ms,
-                         gmx_bool                      bVerbose,
-                         gmx_enfrot*                   enforcedRotation,
-                         int64_t                       mdstep,
-                         const t_inputrec*             inputrec,
-                         gmx::ImdSession*              imdSession,
-                         pull_t*                       pull_work,
-                         gmx_bool                      bDoNS,
-                         int                           force_flags,
-                         const gmx_localtop_t*         top,
-                         gmx::Constraints*             constr,
-                         gmx_enerdata_t*               enerd,
-                         int                           natoms,
-                         ArrayRefWithPadding<RVec>     xPadded,
-                         ArrayRefWithPadding<RVec>     vPadded,
-                         const matrix                  box,
-                         ArrayRef<real>                lambda,
-                         const history_t*              hist,
-                         gmx::ForceBuffersView*        f,
-                         tensor                        force_vir,
-                         const t_mdatoms&              md,
-                         CpuPpLongRangeNonbondeds*     longRangeNonbondeds,
-                         t_nrnb*                       nrnb,
-                         gmx_wallcycle*                wcycle,
-                         gmx_shellfc_t*                shfc,
-                         t_forcerec*                   fr,
-                         gmx::MdrunScheduleWorkload*   runScheduleWork,
-                         double                        t,
-                         rvec                          mu_tot,
-                         gmx::VirtualSitesHandler*     vsite,
-                         const DDBalanceRegionHandler& ddBalanceRegionHandler)
+void relax_shell_flexcon(FILE*                             fplog,
+                         const t_commrec*                  cr,
+                         const gmx_multisim_t*             ms,
+                         gmx_bool                          bVerbose,
+                         gmx_enfrot*                       enforcedRotation,
+                         int64_t                           mdstep,
+                         const t_inputrec*                 inputrec,
+                         const gmx::MDModulesNotifiers&    mdModulesNotifiers,
+                         gmx::ImdSession*                  imdSession,
+                         pull_t*                           pull_work,
+                         gmx_bool                          bDoNS,
+                         const gmx_localtop_t*             top,
+                         gmx::Constraints*                 constr,
+                         gmx_enerdata_t*                   enerd,
+                         int                               natoms,
+                         ArrayRefWithPadding<RVec>         xPadded,
+                         ArrayRefWithPadding<RVec>         vPadded,
+                         const matrix                      box,
+                         ArrayRef<real>                    lambda,
+                         const history_t*                  hist,
+                         gmx::ForceBuffersView*            f,
+                         tensor                            force_vir,
+                         const t_mdatoms&                  md,
+                         CpuPpLongRangeNonbondeds*         longRangeNonbondeds,
+                         t_nrnb*                           nrnb,
+                         gmx_wallcycle*                    wcycle,
+                         gmx_shellfc_t*                    shfc,
+                         t_forcerec*                       fr,
+                         const gmx::MdrunScheduleWorkload& runScheduleWork,
+                         double                            t,
+                         rvec                              mu_tot,
+                         gmx::VirtualSitesHandler*         vsite,
+                         const DDBalanceRegionHandler&     ddBalanceRegionHandler)
 {
     real Epot[2], df[2];
     real sf_dir, invdt;
@@ -1019,8 +1021,13 @@ void relax_shell_flexcon(FILE*                         fplog,
          * before do_force is called, which normally puts all
          * charge groups in the box.
          */
-        put_atoms_in_box_omp(
-                fr->pbcType, box, x.subArray(0, md.homenr), gmx_omp_nthreads_get(ModuleMultiThread::Default));
+        put_atoms_in_box_omp(fr->pbcType,
+                             box,
+                             fr->haveBoxDeformation,
+                             inputrec->deform,
+                             x.subArray(0, md.homenr),
+                             v.empty() ? ArrayRef<RVec>() : v.subArray(0, md.homenr),
+                             gmx_omp_nthreads_get(ModuleMultiThread::Default));
     }
 
     if (nflexcon)
@@ -1051,12 +1058,13 @@ void relax_shell_flexcon(FILE*                         fplog,
     {
         pr_rvecs(debug, 0, "x b4 do_force", as_rvec_array(x.data()), homenr);
     }
-    int                   shellfc_flags = force_flags | (bVerbose ? GMX_FORCE_ENERGY : 0);
     gmx::ForceBuffersView forceViewInit = gmx::ForceBuffersView(forceWithPadding[Min], {}, false);
+
     do_force(fplog,
              cr,
              ms,
              *inputrec,
+             mdModulesNotifiers,
              nullptr,
              enforcedRotation,
              imdSession,
@@ -1067,6 +1075,7 @@ void relax_shell_flexcon(FILE*                         fplog,
              top,
              box,
              xPadded,
+             vPadded.unpaddedArrayRef(),
              hist,
              &forceViewInit,
              force_vir,
@@ -1080,7 +1089,6 @@ void relax_shell_flexcon(FILE*                         fplog,
              t,
              nullptr,
              longRangeNonbondeds,
-             (bDoNS ? GMX_FORCE_NS : 0) | shellfc_flags,
              ddBalanceRegionHandler);
 
     sf_dir = 0;
@@ -1150,6 +1158,13 @@ void relax_shell_flexcon(FILE*                         fplog,
         fprintf(debug, "SHELLSTEP %s\n", gmx_step_str(mdstep, sbuf));
     }
 
+    // For subsequent calls of do_force() on search steps we need to turn off the
+    // the corresponding stepWork flag to avoid executing any (remaining) search-related
+    // operations in do_force().
+    // This copy can be removed when the doPairSearch() call is moved out of do_force().
+    gmx::MdrunScheduleWorkload runScheduleWorkWithoutNS = runScheduleWork;
+    runScheduleWorkWithoutNS.stepWork.doNeighborSearch  = false;
+
     /* First check whether we should do shells, or whether the force is
      * low enough even without minimization.
      */
@@ -1194,10 +1209,12 @@ void relax_shell_flexcon(FILE*                         fplog,
         }
         /* Try the new positions */
         gmx::ForceBuffersView forceViewTry = gmx::ForceBuffersView(forceWithPadding[Try], {}, false);
+
         do_force(fplog,
                  cr,
                  ms,
                  *inputrec,
+                 mdModulesNotifiers,
                  nullptr,
                  enforcedRotation,
                  imdSession,
@@ -1208,6 +1225,7 @@ void relax_shell_flexcon(FILE*                         fplog,
                  top,
                  box,
                  posWithPadding[Try],
+                 {},
                  hist,
                  &forceViewTry,
                  force_vir,
@@ -1215,13 +1233,12 @@ void relax_shell_flexcon(FILE*                         fplog,
                  enerd,
                  lambda,
                  fr,
-                 runScheduleWork,
+                 runScheduleWorkWithoutNS,
                  vsite,
                  mu_tot,
                  t,
                  nullptr,
                  longRangeNonbondeds,
-                 shellfc_flags,
                  ddBalanceRegionHandler);
         accumulatePotentialEnergies(enerd, lambda, inputrec->fepvals.get());
         if (gmx_debug_at)

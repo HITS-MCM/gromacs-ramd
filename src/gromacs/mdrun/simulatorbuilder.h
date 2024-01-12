@@ -40,8 +40,9 @@
 #ifndef GMX_MDRUN_SIMULATORBUILDER_H
 #define GMX_MDRUN_SIMULATORBUILDER_H
 
-#include <memory>
+#include <cstdio>
 
+#include <memory>
 
 class energyhistory_t;
 class gmx_ekindata_t;
@@ -185,16 +186,16 @@ class Profiling
 public:
     //! Build profiling information collection.
     Profiling(t_nrnb* nrnb, gmx_walltime_accounting* walltimeAccounting, gmx_wallcycle* wallCycle) :
-        nrnb(nrnb), wallCycle(wallCycle), walltimeAccounting(walltimeAccounting)
+        nrnb_(nrnb), wallCycle_(wallCycle), wallTimeAccounting_(walltimeAccounting)
     {
     }
 
     //! Handle to datastructure.
-    t_nrnb* nrnb;
+    t_nrnb* nrnb_;
     //! Handle to wallcycle stuff.
-    gmx_wallcycle* wallCycle;
+    gmx_wallcycle* wallCycle_;
     //! Handle to wallcycle time accounting stuff.
-    gmx_walltime_accounting* walltimeAccounting;
+    gmx_walltime_accounting* wallTimeAccounting_;
 };
 
 /*! \brief
@@ -205,14 +206,14 @@ class ConstraintsParam
 public:
     //! Build collection with handle to actual objects.
     ConstraintsParam(Constraints* constraints, gmx_enfrot* enforcedRotation, VirtualSitesHandler* vSite) :
-        constr(constraints), enforcedRotation(enforcedRotation), vsite(vSite)
+        constr(constraints), enforcedRotation_(enforcedRotation), vsite(vSite)
     {
     }
 
     //! Handle to constraint object.
     Constraints* constr;
     //! Handle to information about using enforced rotation.
-    gmx_enfrot* enforcedRotation;
+    gmx_enfrot* enforcedRotation_;
     //! Handle to vsite stuff.
     VirtualSitesHandler* vsite;
 };
@@ -225,7 +226,7 @@ class LegacyInput
 public:
     //! Build collection from legacy input data.
     LegacyInput(int filenamesSize, const t_filenm* filenamesData, t_inputrec* inputRec, t_forcerec* forceRec) :
-        numFile(filenamesSize), filenames(filenamesData), inputrec(inputRec), forceRec(forceRec)
+        numFile(filenamesSize), filenames(filenamesData), inputrec(inputRec), forceRec_(forceRec)
     {
     }
 
@@ -236,7 +237,7 @@ public:
     //! Handle to simulation input record.
     t_inputrec* inputrec;
     //! Handle to simulation force record.
-    t_forcerec* forceRec;
+    t_forcerec* forceRec_;
 };
 
 /*! \brief SimulatorBuilder parameter type for InteractiveMD.
@@ -249,10 +250,10 @@ class InteractiveMD
 {
 public:
     //! Create handle to IMD information.
-    explicit InteractiveMD(ImdSession* imdSession) : imdSession(imdSession) {}
+    explicit InteractiveMD(ImdSession* imdSession) : imdSession_(imdSession) {}
 
     //! Internal handle to IMD info.
-    ImdSession* imdSession;
+    ImdSession* imdSession_;
 };
 
 class SimulatorModules
@@ -286,10 +287,10 @@ class IonSwapping
 {
 public:
     //! Create handle.
-    IonSwapping(t_swap* ionSwap) : ionSwap(ionSwap) {}
+    IonSwapping(t_swap* ionSwap) : ionSwap_(ionSwap) {}
 
     //! Internal storage for handle.
-    t_swap* ionSwap;
+    t_swap* ionSwap_;
 };
 
 /*! \brief
@@ -300,16 +301,16 @@ class TopologyData
 public:
     //! Build collection from simulation data.
     TopologyData(const gmx_mtop_t& globalTopology, gmx_localtop_t* localTopology, MDAtoms* mdAtoms) :
-        top_global(globalTopology), localTopology(localTopology), mdAtoms(mdAtoms)
+        globalTopology_(globalTopology), localTopology_(localTopology), mdAtoms_(mdAtoms)
     {
     }
 
     //! Handle to global simulation topology.
-    const gmx_mtop_t& top_global;
+    const gmx_mtop_t& globalTopology_;
     //! Handle to local simulation topology.
-    gmx_localtop_t* localTopology;
+    gmx_localtop_t* localTopology_;
     //! Handle to information about MDAtoms.
-    MDAtoms* mdAtoms;
+    MDAtoms* mdAtoms_;
 };
 
 /*! \brief

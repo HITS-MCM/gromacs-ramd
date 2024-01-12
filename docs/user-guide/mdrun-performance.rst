@@ -1148,7 +1148,7 @@ Known limitations
 - Multiple ranks (hence multiple GPUs) computing PME have limited support:
   experimental PME decomposition in hybrid mode (``-pmefft cpu``) with
   CUDA from the 2022 release and full GPU PME decomposition since the
-  2023 release with CUDA or SYCL (when GROMACS is built with
+  2023 release with CUDA or SYCL (when |Gromacs| is built with
   :ref:`cuFFTMp <cufftmp installation>` or
   :ref:`HeFFTe <heffte installation>`).
 
@@ -1157,7 +1157,7 @@ Known limitations
 
 - LJ PME is not supported on GPUs.
 
-- When GROMACS is built with SYCL using oneAPI for AMD/NVIDIA GPUs, only
+- When |Gromacs| is built with SYCL using oneAPI for AMD/NVIDIA GPUs, only
   hybrid mode (``-pmefft cpu``) is supported. Fully-offloaded PME is supported
   when using oneAPI for Intel GPUs and hipSYCL for AMD/NVIDIA GPUs.
 
@@ -1387,7 +1387,7 @@ Currently supported hardware architectures are:
 - Intel iGPUs.
 
 Make sure that you have the latest drivers installed. For AMD GPUs,
-the compute-oriented `ROCm <https://rocm.github.io/>`_ stack is recommended;
+the compute-oriented `ROCm <https://rocm.docs.amd.com/en/latest/>`_ stack is recommended;
 alternatively, the AMDGPU-PRO stack is also compatible; using the outdated
 and unsupported ``fglrx`` proprietary driver and runtime is not recommended (but
 for certain older hardware that may be the only way to obtain support).
@@ -1501,6 +1501,9 @@ Run setup
   * it is necessary to be able to use GPU-resident mode;
   * and most force fields have been parametrized with only bonds involving hydrogens constrained.
 
+* You can often increase the time-step to 4 fs by repartitioning hydrogen
+  masses using the ``mass-repartition-factor`` mdp option. This does not
+  affect equilibrium distributions, but makes dynamics slightly slower.
 * You can increase the time-step to 4 or 5 fs when using virtual interaction
   sites (``gmx pdb2gmx -vsite h``).
 * For massively parallel runs with PME, you might need to try different numbers
@@ -1537,6 +1540,9 @@ Checking and improving performance
     * especially with multi-GPU runs, the automatic increasing of ``nstlist`` at ``mdrun``
       startup can be conservative and larger value is often be optimal
       (e.g. ``nstlist=200-300`` with PME and default Verlet buffer tolerance).
+
+    * odd values of nstlist should be avoided when using CUDA Graphs
+      to minimize the overhead associated with graph instantiation.
 
 * If ``Comm. energies`` takes a lot of time (a note will be printed in the log
   file), increase ``nstcalcenergy``.

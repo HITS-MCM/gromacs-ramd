@@ -66,10 +66,10 @@
 #include "pairlistsets.h"
 #define INCLUDE_KERNELFUNCTION_TABLES
 #include "kernels_reference/kernel_ref.h"
-#ifdef GMX_NBNXN_SIMD_2XNN
+#if GMX_HAVE_NBNXM_SIMD_2XMM
 #    include "kernels_simd_2xmm/kernels.h"
 #endif
-#ifdef GMX_NBNXN_SIMD_4XN
+#if GMX_HAVE_NBNXM_SIMD_4XM
 #    include "kernels_simd_4xm/kernels.h"
 #endif
 #undef INCLUDE_FUNCTION_TABLES
@@ -264,7 +264,7 @@ static void nbnxn_kernel_cpu(const PairlistSet&             pairlistSet,
     int gmx_unused nthreads = gmx_omp_nthreads_get(ModuleMultiThread::Nonbonded);
     wallcycle_sub_start(wcycle, WallCycleSubCounter::NonbondedClear);
 #pragma omp parallel for schedule(static) num_threads(nthreads)
-    for (gmx::index nb = 0; nb < pairlists.ssize(); nb++)
+    for (gmx::Index nb = 0; nb < pairlists.ssize(); nb++)
     {
         // Presently, the kernels do not call C++ code that can throw,
         // so no need for a try/catch pair in this OpenMP region.
@@ -294,14 +294,15 @@ static void nbnxn_kernel_cpu(const PairlistSet&             pairlistSet,
                 case Nbnxm::KernelType::Cpu4x4_PlainC:
                     nbnxn_kernel_noener_ref[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
-#ifdef GMX_NBNXN_SIMD_2XNN
+#if GMX_HAVE_NBNXM_SIMD_2XMM
                 case Nbnxm::KernelType::Cpu4xN_Simd_2xNN:
-                    nbnxm_kernel_noener_simd_2xmm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
+                    gmx::nbnxmKernelNoenerSimd2xmm[coulkt][vdwkt](
+                            pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
 #endif
-#ifdef GMX_NBNXN_SIMD_4XN
+#if GMX_HAVE_NBNXM_SIMD_4XM
                 case Nbnxm::KernelType::Cpu4xN_Simd_4xN:
-                    nbnxm_kernel_noener_simd_4xm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
+                    gmx::nbnxmKernelNoenerSimd4xm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
 #endif
                 default: GMX_RELEASE_ASSERT(false, "Unsupported kernel architecture");
@@ -318,14 +319,14 @@ static void nbnxn_kernel_cpu(const PairlistSet&             pairlistSet,
                 case Nbnxm::KernelType::Cpu4x4_PlainC:
                     nbnxn_kernel_ener_ref[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
-#ifdef GMX_NBNXN_SIMD_2XNN
+#if GMX_HAVE_NBNXM_SIMD_2XMM
                 case Nbnxm::KernelType::Cpu4xN_Simd_2xNN:
-                    nbnxm_kernel_ener_simd_2xmm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
+                    gmx::nbnxmKernelEnerSimd2xmm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
 #endif
-#ifdef GMX_NBNXN_SIMD_4XN
+#if GMX_HAVE_NBNXM_SIMD_4XM
                 case Nbnxm::KernelType::Cpu4xN_Simd_4xN:
-                    nbnxm_kernel_ener_simd_4xm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
+                    gmx::nbnxmKernelEnerSimd4xm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
 #endif
                 default: GMX_RELEASE_ASSERT(false, "Unsupported kernel architecture");
@@ -344,17 +345,18 @@ static void nbnxn_kernel_cpu(const PairlistSet&             pairlistSet,
                     unrollj = c_nbnxnCpuIClusterSize;
                     nbnxn_kernel_energrp_ref[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
-#ifdef GMX_NBNXN_SIMD_2XNN
+#if GMX_HAVE_NBNXM_SIMD_2XMM
                 case Nbnxm::KernelType::Cpu4xN_Simd_2xNN:
                     unrollj = GMX_SIMD_REAL_WIDTH / 2;
-                    nbnxm_kernel_energrp_simd_2xmm[coulkt][vdwkt](
+                    gmx::nbnxmKernelEnergrpSimd2xmm[coulkt][vdwkt](
                             pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
 #endif
-#ifdef GMX_NBNXN_SIMD_4XN
+#if GMX_HAVE_NBNXM_SIMD_4XM
                 case Nbnxm::KernelType::Cpu4xN_Simd_4xN:
                     unrollj = GMX_SIMD_REAL_WIDTH;
-                    nbnxm_kernel_energrp_simd_4xm[coulkt][vdwkt](pairlist, nbat, &ic, shiftVecPointer, out);
+                    gmx::nbnxmKernelEnergrpSimd4xm[coulkt][vdwkt](
+                            pairlist, nbat, &ic, shiftVecPointer, out);
                     break;
 #endif
                 default: GMX_RELEASE_ASSERT(false, "Unsupported kernel architecture");
@@ -400,7 +402,7 @@ static void accountFlops(t_nrnb*                    nrnb,
         enr_nbnxn_kernel_ljc = eNR_NBNXN_LJ_RF;
     }
     else if ((!usingGpuKernels && nbv.kernelSetup().ewaldExclusionType == Nbnxm::EwaldExclusionType::Analytical)
-             || (usingGpuKernels && Nbnxm::gpu_is_kernel_ewald_analytical(nbv.gpu_nbv)))
+             || (usingGpuKernels && Nbnxm::gpu_is_kernel_ewald_analytical(nbv.gpuNbv())))
     {
         enr_nbnxn_kernel_ljc = eNR_NBNXN_LJ_EWALD;
     }
@@ -462,7 +464,7 @@ void nonbonded_verlet_t::dispatchNonbondedKernel(gmx::InteractionLocality       
         case Nbnxm::KernelType::Cpu4xN_Simd_2xNN:
             nbnxn_kernel_cpu(pairlistSet,
                              kernelSetup(),
-                             nbat.get(),
+                             nbat_.get(),
                              ic,
                              shiftvec,
                              stepWork,
@@ -473,18 +475,18 @@ void nonbonded_verlet_t::dispatchNonbondedKernel(gmx::InteractionLocality       
             break;
 
         case Nbnxm::KernelType::Gpu8x8x8:
-            Nbnxm::gpu_launch_kernel(gpu_nbv, stepWork, iLocality);
+            Nbnxm::gpu_launch_kernel(gpuNbv_, stepWork, iLocality);
             break;
 
         case Nbnxm::KernelType::Cpu8x8x8_PlainC:
             nbnxn_kernel_gpu_ref(pairlistSet.gpuList(),
-                                 nbat.get(),
+                                 nbat_.get(),
                                  &ic,
                                  shiftvec,
                                  stepWork,
                                  clearF,
-                                 nbat->out[0].f,
-                                 nbat->out[0].fshift.data(),
+                                 nbat_->out[0].f,
+                                 nbat_->out[0].fshift.data(),
                                  CoulombSR.data(),
                                  repulsionDispersionSR.data());
             break;
@@ -492,5 +494,8 @@ void nonbonded_verlet_t::dispatchNonbondedKernel(gmx::InteractionLocality       
         default: GMX_RELEASE_ASSERT(false, "Invalid nonbonded kernel type passed!");
     }
 
-    accountFlops(nrnb, pairlistSet, *this, ic, stepWork);
+    if (nrnb)
+    {
+        accountFlops(nrnb, pairlistSet, *this, ic, stepWork);
+    }
 }

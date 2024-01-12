@@ -44,15 +44,19 @@ gmx_add_gtest_executable(trajectoryanalysis-test
         dssp.cpp
         extract_cluster.cpp
         freevolume.cpp
+        gyrate.cpp
+        hbond.cpp
         msd.cpp
         pairdist.cpp
         rdf.cpp
         sasa.cpp
         select.cpp
+        scattering.cpp
         surfacearea.cpp
         topologyinformation.cpp
         trajectory.cpp
         unionfind.cpp
+        $<TARGET_OBJECTS:mdrun_objlib>
         )
 gmx_register_gtest_test(TrajectoryAnalysisUnitTests trajectoryanalysis-test SLOW_TEST)
 target_link_libraries(trajectoryanalysis-test PRIVATE analysisdata-test-shared)

@@ -566,6 +566,16 @@ static real do_pairs_general(int                                 ftype,
 
     if (fr->efep != FreeEnergyPerturbationType::No)
     {
+        if (atomIsPerturbed.empty())
+        {
+            // There are no perturbed atoms, chargeB is the same as chargeA
+            chargeB = chargeA;
+        }
+        else
+        {
+            GMX_ASSERT(nbonds == 0 || !chargeB.empty(), "With perturbed atoms we need chargeB");
+        }
+
         /* Lambda factor for state A=1-lambda and B=lambda */
         LFC[0] = 1.0 - lambda[static_cast<int>(FreeEnergyPerturbationCouplingType::Coul)];
         LFV[0] = 1.0 - lambda[static_cast<int>(FreeEnergyPerturbationCouplingType::Vdw)];
@@ -597,7 +607,7 @@ static real do_pairs_general(int                                 ftype,
             etiNR == 3,
             "Pair-interaction code that uses GROMACS interaction tables supports exactly 3 tables");
     GMX_ASSERT(
-            fr->pairsTable->interaction == TableInteraction::ElectrostaticVdwRepulsionVdwDispersion,
+            fr->pairsTable->interaction_ == TableInteraction::ElectrostaticVdwRepulsionVdwDispersion,
             "Pair interaction kernels need a table with Coulomb, repulsion and dispersion entries");
 
     const real epsfac = fr->ic->epsfac;

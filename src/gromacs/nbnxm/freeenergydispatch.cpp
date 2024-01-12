@@ -45,7 +45,6 @@
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/forceoutput.h"
-#include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/interaction_const.h"
 #include "gromacs/mdtypes/md_enums.h"
 #include "gromacs/mdtypes/nblist.h"
@@ -107,7 +106,7 @@ void FreeEnergyDispatch::setupFepThreadedForceBuffer(const int numAtomsForce, co
         setReductionMaskFromFepPairlist(
                 *pairlistSets.pairlistSet(gmx::InteractionLocality::Local).fepLists()[th],
                 &threadForceBuffer);
-        if (pairlistSets.params().haveMultipleDomains)
+        if (pairlistSets.params().haveMultipleDomains_)
         {
             setReductionMaskFromFepPairlist(
                     *pairlistSets.pairlistSet(gmx::InteractionLocality::NonLocal).fepLists()[th],
@@ -122,7 +121,7 @@ void FreeEnergyDispatch::setupFepThreadedForceBuffer(const int numAtomsForce, co
 
 void nonbonded_verlet_t::setupFepThreadedForceBuffer(const int numAtomsForce)
 {
-    if (!pairlistSets_->params().haveFep)
+    if (!pairlistSets_->params().haveFep_)
     {
         return;
     }
@@ -156,7 +155,6 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                               gmx::ArrayRef<const real>                        chargeB,
                               gmx::ArrayRef<const int>                         typeA,
                               gmx::ArrayRef<const int>                         typeB,
-                              t_lambda*                                        fepvals,
                               gmx::ArrayRef<const real>                        lambda,
                               const bool                           clearForcesAndEnergies,
                               gmx::ThreadedForceBuffer<gmx::RVec>* threadedForceBuffer,
@@ -187,7 +185,7 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
                "Number of lists should be same as number of NB threads");
 
 #pragma omp parallel for schedule(static) num_threads(nbl_fep.ssize())
-    for (gmx::index th = 0; th < nbl_fep.ssize(); th++)
+    for (gmx::Index th = 0; th < nbl_fep.ssize(); th++)
     {
         try
         {
@@ -233,7 +231,8 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
     /* If we do foreign lambda and we have soft-core interactions
      * we have to recalculate the (non-linear) energies contributions.
      */
-    if (fepvals->n_lambda > 0 && stepWork.computeDhdl && haveSoftCore(*ic.softCoreParameters))
+    if (enerd->foreignLambdaTerms.numLambdas() > 0 && stepWork.computeDhdl
+        && haveSoftCore(*ic.softCoreParameters))
     {
         gmx::StepWorkload stepWorkForeignEnergies = stepWork;
         stepWorkForeignEnergies.computeForces     = false;
@@ -244,16 +243,18 @@ void dispatchFreeEnergyKernel(gmx::ArrayRef<const std::unique_ptr<t_nblist>>   n
         const int kernelFlags = (donb_flags & ~(GMX_NONBONDED_DO_FORCE | GMX_NONBONDED_DO_SHIFTFORCE))
                                 | GMX_NONBONDED_DO_FOREIGNLAMBDA;
 
-        for (gmx::index i = 0; i < 1 + enerd->foreignLambdaTerms.numLambdas(); i++)
+        for (gmx::Index i = 0; i < 1 + enerd->foreignLambdaTerms.numLambdas(); i++)
         {
             std::fill(std::begin(dvdl_nb), std::end(dvdl_nb), 0);
-            for (int j = 0; j < static_cast<int>(FreeEnergyPerturbationCouplingType::Count); j++)
+            for (auto fepct : gmx::EnumerationWrapper<FreeEnergyPerturbationCouplingType>{})
             {
-                lam_i[j] = (i == 0 ? lambda[j] : fepvals->all_lambda[j][i - 1]);
+                const int j = static_cast<int>(fepct);
+
+                lam_i[j] = (i == 0 ? lambda[j] : enerd->foreignLambdaTerms.foreignLambdas(fepct)[i - 1]);
             }
 
 #pragma omp parallel for schedule(static) num_threads(nbl_fep.ssize())
-            for (gmx::index th = 0; th < nbl_fep.ssize(); th++)
+            for (gmx::Index th = 0; th < nbl_fep.ssize(); th++)
             {
                 try
                 {
@@ -322,18 +323,17 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
                                                    gmx::ArrayRef<const real>      chargeB,
                                                    gmx::ArrayRef<const int>       typeA,
                                                    gmx::ArrayRef<const int>       typeB,
-                                                   t_lambda*                      fepvals,
                                                    gmx::ArrayRef<const real>      lambda,
                                                    gmx_enerdata_t*                enerd,
                                                    const gmx::StepWorkload&       stepWork,
                                                    t_nrnb*                        nrnb,
                                                    gmx_wallcycle*                 wcycle)
 {
-    GMX_ASSERT(pairlistSets.params().haveFep, "We should have a free-energy pairlist");
+    GMX_ASSERT(pairlistSets.params().haveFep_, "We should have a free-energy pairlist");
 
     wallcycle_sub_start(wcycle, WallCycleSubCounter::NonbondedFep);
 
-    const int numLocalities = (pairlistSets.params().haveMultipleDomains ? 2 : 1);
+    const int numLocalities = (pairlistSets.params().haveMultipleDomains_ ? 2 : 1);
     // The first call to dispatchFreeEnergyKernel() should clear the buffers. Clearing happens
     // inside that function to avoid an extra OpenMP parallel region here. We need a boolean
     // to track the need for clearing.
@@ -359,7 +359,6 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
                                      chargeB,
                                      typeA,
                                      typeB,
-                                     fepvals,
                                      lambda,
                                      clearForcesAndEnergies,
                                      &threadedForceBuffer_,
@@ -375,7 +374,7 @@ void FreeEnergyDispatch::dispatchFreeEnergyKernels(const PairlistSets& pairlistS
             // With a non-empty pairlist we do this in dispatchFreeEnergyKernel()
             // to avoid the overhead of an extra openMP parallel loop
 #pragma omp parallel for schedule(static) num_threads(fepPairlists.ssize())
-            for (gmx::index th = 0; th < fepPairlists.ssize(); th++)
+            for (gmx::Index th = 0; th < fepPairlists.ssize(); th++)
             {
                 try
                 {
@@ -424,13 +423,12 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernels(const gmx::ArrayRefWithPaddin
                                                    gmx::ArrayRef<const real>      chargeB,
                                                    gmx::ArrayRef<const int>       typeA,
                                                    gmx::ArrayRef<const int>       typeB,
-                                                   t_lambda*                      fepvals,
                                                    gmx::ArrayRef<const real>      lambda,
                                                    gmx_enerdata_t*                enerd,
                                                    const gmx::StepWorkload&       stepWork,
                                                    t_nrnb*                        nrnb)
 {
-    if (!pairlistSets_->params().haveFep)
+    if (!pairlistSets_->params().haveFep_)
     {
         return;
     }
@@ -450,7 +448,6 @@ void nonbonded_verlet_t::dispatchFreeEnergyKernels(const gmx::ArrayRefWithPaddin
                                                    chargeB,
                                                    typeA,
                                                    typeB,
-                                                   fepvals,
                                                    lambda,
                                                    enerd,
                                                    stepWork,

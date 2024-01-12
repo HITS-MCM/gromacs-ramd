@@ -117,7 +117,7 @@ const char* const g_specifyEverythingFormatString =
 constexpr bool c_gpuBuildSyclWithoutGpuFft =
         // NOLINTNEXTLINE(misc-redundant-expression)
         (GMX_GPU_SYCL != 0) && (GMX_GPU_FFT_MKL == 0) && (GMX_GPU_FFT_ROCFFT == 0)
-        && (GMX_GPU_FFT_VKFFT == 0) && (GMX_GPU_FFT_DBFFT == 0); // NOLINT(misc-redundant-expression)
+        && (GMX_GPU_FFT_VKFFT == 0) && (GMX_GPU_FFT_BBFFT == 0); // NOLINT(misc-redundant-expression)
 
 bool decideWhetherToUseGpusForNonbondedWithThreadMpi(const TaskTarget        nonbondedTarget,
                                                      const bool              haveAvailableDevices,
@@ -125,11 +125,12 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(const TaskTarget        non
                                                      const EmulateGpuNonbonded emulateGpuNonbonded,
                                                      const bool buildSupportsNonbondedOnGpu,
                                                      const bool nonbondedOnGpuIsUseful,
+                                                     const bool binaryReproducibilityRequested,
                                                      const int  numRanksPerSimulation)
 {
     // First, exclude all cases where we can't run NB on GPUs.
     if (nonbondedTarget == TaskTarget::Cpu || emulateGpuNonbonded == EmulateGpuNonbonded::Yes
-        || !nonbondedOnGpuIsUseful || !buildSupportsNonbondedOnGpu)
+        || !nonbondedOnGpuIsUseful || binaryReproducibilityRequested || !buildSupportsNonbondedOnGpu)
     {
         // If the user required NB on GPUs, we issue an error later.
         return false;
@@ -142,8 +143,8 @@ bool decideWhetherToUseGpusForNonbondedWithThreadMpi(const TaskTarget        non
         // Specifying -gputasks requires specifying everything.
         if (nonbondedTarget == TaskTarget::Auto || numRanksPerSimulation < 1)
         {
-            GMX_THROW(InconsistentInputError(
-                    formatString(g_specifyEverythingFormatString, "-nb and -ntmpi")));
+            GMX_THROW(InconsistentInputError(formatString(
+                    g_specifyEverythingFormatString, GMX_THREAD_MPI ? "-nb and -ntmpi" : "-nb")));
         }
         return true;
     }
@@ -312,6 +313,7 @@ bool decideWhetherToUseGpusForNonbonded(const TaskTarget          nonbondedTarge
                                         const EmulateGpuNonbonded emulateGpuNonbonded,
                                         const bool                buildSupportsNonbondedOnGpu,
                                         const bool                nonbondedOnGpuIsUseful,
+                                        const bool                binaryReproducibilityRequested,
                                         const bool                gpusWereDetected)
 {
     if (nonbondedTarget == TaskTarget::Cpu)
@@ -368,13 +370,25 @@ bool decideWhetherToUseGpusForNonbonded(const TaskTarget          nonbondedTarge
         return false;
     }
 
+    if (binaryReproducibilityRequested)
+    {
+        if (nonbondedTarget == TaskTarget::Gpu)
+        {
+            GMX_THROW(InconsistentInputError(
+                    "Nonbonded interactions on the GPU and binary reprocibility were required. "
+                    "These requirements are not compatible."));
+        }
+
+        return false;
+    }
+
     if (!userGpuTaskAssignment.empty())
     {
         // Specifying -gputasks requires specifying everything.
         if (nonbondedTarget == TaskTarget::Auto)
         {
-            GMX_THROW(InconsistentInputError(
-                    formatString(g_specifyEverythingFormatString, "-nb and -ntmpi")));
+            GMX_THROW(InconsistentInputError(formatString(
+                    g_specifyEverythingFormatString, GMX_THREAD_MPI ? "-nb and -ntmpi" : "-nb")));
         }
 
         return true;
@@ -441,8 +455,9 @@ bool decideWhetherToUseGpusForPme(const bool              useGpuForNonbonded,
         // Specifying -gputasks requires specifying everything.
         if (pmeTarget == TaskTarget::Auto)
         {
-            GMX_THROW(InconsistentInputError(formatString(
-                    g_specifyEverythingFormatString, "all of -nb, -pme, and -ntmpi"))); // TODO ntmpi?
+            GMX_THROW(InconsistentInputError(
+                    formatString(g_specifyEverythingFormatString,
+                                 GMX_THREAD_MPI ? "all of -nb, -pme, and -ntmpi" : "-nb and -pme")));
         }
 
         return true;
@@ -624,6 +639,8 @@ bool decideWhetherToUseGpuForUpdate(const bool           isDomainDecomposition,
     const bool pmeSpreadGatherUsesCpu = (pmeRunMode == PmeRunMode::CPU);
 
     std::string errorMessage;
+    // Flag to set if we do not want to log the error with `-update auto` (e.g., for non-GPU build)
+    bool silenceWarningMessageWithUpdateAuto = forceCpuUpdateDefault;
 
     if (isDomainDecomposition)
     {
@@ -663,14 +680,19 @@ bool decideWhetherToUseGpuForUpdate(const bool           isDomainDecomposition,
     {
         errorMessage +=
                 "Either PME or short-ranged non-bonded interaction tasks must run on the GPU.\n";
+        silenceWarningMessageWithUpdateAuto = true;
     }
     if (!gpusWereDetected)
     {
         errorMessage += "Compatible GPUs must have been found.\n";
+        silenceWarningMessageWithUpdateAuto = true;
     }
     if (!(GMX_GPU_CUDA || GMX_GPU_SYCL))
     {
         errorMessage += "Only CUDA and SYCL builds are supported.\n";
+        // Silence clang-analyzer deadcode.DeadStores warning about ignoring the previous assignments
+        GMX_UNUSED_VALUE(silenceWarningMessageWithUpdateAuto);
+        silenceWarningMessageWithUpdateAuto = true;
     }
     if (inputrec.eI != IntegrationAlgorithm::MD)
     {
@@ -692,6 +714,10 @@ bool decideWhetherToUseGpuForUpdate(const bool           isDomainDecomposition,
     if (inputrec.cos_accel != 0 || inputrec.useConstantAcceleration)
     {
         errorMessage += "Acceleration is not supported.\n";
+    }
+    if (ir_haveBoxDeformation(inputrec))
+    {
+        errorMessage += "Box deformation is not supported.\n";
     }
     if (usingPmeOrEwald(inputrec.coulombtype) && inputrec.epsilon_surface != 0)
     {
@@ -762,7 +788,7 @@ bool decideWhetherToUseGpuForUpdate(const bool           isDomainDecomposition,
 
     if (!errorMessage.empty())
     {
-        if (updateTarget == TaskTarget::Auto && !forceCpuUpdateDefault)
+        if (updateTarget == TaskTarget::Auto && !silenceWarningMessageWithUpdateAuto)
         {
             GMX_LOG(mdlog.info)
                     .asParagraph()

@@ -99,7 +99,6 @@ struct gmx_fft
     int              ndim;       /**< Number of dimensions in FFT  */
     int              nx;         /**< Length of X transform        */
     int              ny;         /**< Length of Y transform        */
-    int              nz;         /**< Length of Z transform        */
     int              real_fft;   /**< 1 if real FFT, otherwise 0   */
     DFTI_DESCRIPTOR* inplace[3]; /**< in-place FFT                 */
     DFTI_DESCRIPTOR* ooplace[4]; /**< out-of-place FFT             */
@@ -154,12 +153,12 @@ int gmx_fft_init_1d(gmx_fft_t* pfft, int nxInt, gmx_fft_flag gmx_unused flags)
 
     if (status == 0)
     {
-        DftiSetValue(fft->ooplace[0], DFTI_PLACEMENT, DFTI_NOT_INPLACE);
+        status = DftiSetValue(fft->ooplace[0], DFTI_PLACEMENT, DFTI_NOT_INPLACE);
     }
 
     if (status == 0)
     {
-        DftiCommitDescriptor(fft->ooplace[0]);
+        status = DftiCommitDescriptor(fft->ooplace[0]);
     }
 
 

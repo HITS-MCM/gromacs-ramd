@@ -69,6 +69,7 @@ import argparse
 import collections
 import collections.abc
 import copy
+import os
 import packaging.version
 import shlex
 import typing
@@ -205,6 +206,7 @@ _docs_extra_packages = [
     "mscgen",
     "m4",
     "openssh-client",
+    "plantuml",
     "texinfo",
     "texlive-latex-base",
     "texlive-latex-extra",
@@ -364,9 +366,15 @@ def get_compiler(
             compiler = compiler_build_stage.runtime(_from="oneapi")
             # Prepare the toolchain (needed only for builds done within the Dockerfile, e.g.
             # OpenMPI builds, which don't currently work for other reasons)
+            oneapi_version_major = int(args.oneapi.split(".")[0])
+            if oneapi_version_major < 2023:
+                path = f"/opt/intel/oneapi/compiler/{args.oneapi}/linux/bin/intel64"
+            else:
+                path = f"/opt/intel/oneapi/compiler/{args.oneapi}/linux/bin"
+
             oneapi_toolchain = hpccm.toolchain(
-                CC=f"/opt/intel/oneapi/compiler/{args.oneapi}/linux/bin/intel64/icx",
-                CXX=f"/opt/intel/oneapi/compiler/{args.oneapi}/linux/bin/intel64/icpx",
+                CC=f"{path}/icx",
+                CXX=f"{path}/icpx",
             )
             setattr(compiler, "toolchain", oneapi_toolchain)
 
@@ -487,6 +495,38 @@ def get_mpi(args, compiler, ucx):
         return None
 
 
+def get_oneapi_plugins(args):
+    # To get this token, register at https://developer.codeplay.com/ and generate new API token on the "Setting" page.
+    # Then place the toke in this environment variable when building the container.
+    token = os.getenv("CODEPLAY_API_TOKEN")
+    blocks = []
+
+    def _add_plugin(variant):
+        if args.oneapi is None:
+            raise RuntimeError("Cannot install oneAPI plugins without oneAPI.")
+        if token is None:
+            raise RuntimeError(
+                "Need CODEPLAY_API_TOKEN env. variable to install oneAPI plugins"
+            )
+        backend_version = {"nvidia": args.cuda, "amd": args.rocm}[variant]
+        url = f"https://developer.codeplay.com/api/v1/products/download?product=oneapi&variant={variant}&filters[]=linux&filters[]={backend_version}&aat={token}"
+        outfile = f"/tmp/oneapi_plugin_{variant}.sh"
+        blocks.append(
+            hpccm.primitives.shell(
+                commands=[
+                    f"wget --content-disposition '{url}' --output-document '{outfile}'",
+                    f"bash '{outfile}' --yes",
+                ]
+            )
+        )
+
+    if args.oneapi_plugin_nvidia:
+        _add_plugin("nvidia")
+    if args.oneapi_plugin_amd:
+        _add_plugin("amd")
+    return blocks
+
+
 def get_clfft(args):
     if args.clfft is not None:
         return hpccm.building_blocks.generic_cmake(
@@ -536,15 +576,30 @@ def get_nvhpcsdk(args):
 def get_hipsycl(args):
     if args.hipsycl is None:
         return None
-    if args.llvm is None:
-        raise RuntimeError("Can not build hipSYCL without LLVM")
     if args.rocm is None:
         raise RuntimeError("hipSYCL requires the ROCm packages")
+    if args.llvm is None:
+        # We're using ROCm LLVM in this case, which is not compatible with CUDA
+        if args.cuda is not None:
+            raise RuntimeError("Can not build hipSYCL with CUDA and no upstream LLVM")
 
-    cmake_opts = [
-        "-DCMAKE_C_COMPILER=clang-{}".format(args.llvm),
-        "-DCMAKE_CXX_COMPILER=clang++-{}".format(args.llvm),
-        "-DLLVM_DIR=/usr/lib/llvm-{}/cmake/".format(args.llvm),
+    if args.llvm is not None:
+        cmake_opts = [
+            "-DCMAKE_C_COMPILER=clang-{}".format(args.llvm),
+            "-DCMAKE_CXX_COMPILER=clang++-{}".format(args.llvm),
+            "-DLLVM_DIR=/usr/lib/llvm-{}/cmake/".format(args.llvm),
+        ]
+    else:
+        cmake_opts = [
+            "-DCMAKE_C_COMPILER=/opt/rocm/bin/amdclang",
+            "-DCMAKE_CXX_COMPILER=/opt/rocm/bin/amdclang++",
+            "-DLLVM_DIR=/opt/rocm/llvm/lib/cmake/llvm",
+            "-DWITH_SSCP_COMPILER=OFF",
+            "-DWITH_OPENCL_BACKEND=OFF",
+            "-DWITH_LEVEL_ZERO_BACKEND=OFF",
+        ]
+
+    cmake_opts += [
         "-DCMAKE_PREFIX_PATH=/opt/rocm/lib/cmake",
         "-DWITH_ROCM_BACKEND=ON",
     ]
@@ -572,8 +627,8 @@ def get_hipsycl(args):
         hipsycl_version_opts["commit"] = args.hipsycl
 
     return hpccm.building_blocks.generic_cmake(
-        repository="https://github.com/illuhad/hipSYCL.git",
-        directory="/var/tmp/hipSYCL",
+        repository="https://github.com/AdaptiveCpp/AdaptiveCpp.git",
+        directory="/var/tmp/AdaptiveCpp",
         prefix="/usr/local",
         recursive=True,
         cmake_opts=["-DCMAKE_BUILD_TYPE=Release", *cmake_opts],
@@ -1148,11 +1203,13 @@ def build_stages(args) -> typing.Iterable["hpccm.Stage"]:
         os_packages += ["libboost-fiber-dev"]
     building_blocks["extra_packages"] = []
     if args.intel_compute_runtime:
+        repo = {
+            "22.04": "deb [arch=amd64] https://repositories.intel.com/graphics/ubuntu jammy arc",
+            "20.04": "deb [arch=amd64] https://repositories.intel.com/graphics/ubuntu focal main",
+        }
         building_blocks["extra_packages"] += hpccm.building_blocks.packages(
             apt_keys=["https://repositories.intel.com/graphics/intel-graphics.key"],
-            apt_repositories=[
-                f"deb [arch=amd64] https://repositories.intel.com/graphics/ubuntu focal main"
-            ],
+            apt_repositories=[repo[args.ubuntu]],
         )
         os_packages += _intel_compute_runtime_extra_packages
 
@@ -1187,6 +1244,8 @@ def build_stages(args) -> typing.Iterable["hpccm.Stage"]:
                 f'echo "CUDA Version {cuda_version_str}" > /usr/local/cuda/version.txt'
             ]
         )
+
+    building_blocks["oneapi_plugins"] = get_oneapi_plugins(args)
 
     building_blocks["clfft"] = get_clfft(args)
 

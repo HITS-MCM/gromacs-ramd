@@ -41,9 +41,11 @@
 
 #include <array>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "gromacs/timing/cyclecounter.h"
+#include "gromacs/timing/instrumentation.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/enumerationhelpers.h"
 
@@ -129,6 +131,7 @@ enum class WallCycleSubCounter : int
     NBSGridNonLocal,
     NBSSearchLocal,
     NBSSearchNonLocal,
+    GpuBondedListUpdate,
     Listed,
     ListedFep,
     Restraints,
@@ -161,6 +164,137 @@ enum class WallCycleSubCounter : int
     Count
 };
 
+template<int maxLength, typename Container>
+static constexpr bool checkStringsLengths(const Container& strings)
+{
+    // NOLINTNEXTLINE(readability-use-anyofallof) // std::all_of is constexpr only since C++20
+    for (const char* str : strings)
+    {
+        if (std::char_traits<char>::length(str) > maxLength)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Each name should not exceed 22 printing characters
+   (ie. terminating null can be twentieth) */
+static const char* enumValuetoString(WallCycleCounter enumValue)
+{
+    constexpr gmx::EnumerationArray<WallCycleCounter, const char*> wallCycleCounterNames = {
+        "Run",
+        "Step",
+        "PP during PME",
+        "Domain decomp.",
+        "DD comm. load",
+        "DD comm. bounds",
+        "Vsite constr.",
+        "Send X to PME",
+        "Neighbor search",
+        "Launch PP GPU ops.",
+        "Comm. coord.",
+        "Force",
+        "Wait + Comm. F",
+        "PME mesh",
+        "PME GPU mesh",
+        "PME redist. X/F",
+        "PME spread",
+        "PME gather",
+        "PME 3D-FFT",
+        "PME 3D-FFT Comm.",
+        "PME solve LJ",
+        "PME solve Elec",
+        "Wait PME GPU D2H",
+        "PME 3D-FFT",
+        "PME solve",
+        "Wait PME GPU gather",
+        "Reduce GPU PME F",
+        "Launch PME GPU ops.",
+        "Wait PME Recv. PP X",
+        "Wait PME GPU spread",
+        "Wait GPU FFT to PME",
+        "PME Halo exch comm",
+        "PME wait for PP",
+        "Wait + Recv. PME F",
+        "Wait Bonded GPU",
+        "Wait GPU NB nonloc.",
+        "Wait GPU NB local",
+        "Wait GPU state copy",
+        "NB X/F buffer ops.",
+        "Vsite spread",
+        "COM pull force",
+        "AWH",
+        "Write traj.",
+        "Update",
+        "Constraints",
+        "Comm. energies",
+        "Enforced rotation",
+        "Add rot. forces",
+        "Position swapping",
+        "IMD",
+        "MD Graph",
+        "Test"
+    };
+    static_assert(checkStringsLengths<22>(wallCycleCounterNames));
+    return wallCycleCounterNames[enumValue];
+}
+
+// Clang complains about this function not used in builds without subcounters
+// clang-format off
+CLANG_DIAGNOSTIC_IGNORE(-Wunneeded-internal-declaration)
+// clang-format on
+static const char* enumValuetoString(WallCycleSubCounter enumValue)
+{
+    constexpr gmx::EnumerationArray<WallCycleSubCounter, const char*> wallCycleSubCounterNames = {
+        "DD redist.",
+        "DD NS grid + sort",
+        "DD setup comm.",
+        "DD make top.",
+        "DD make constr.",
+        "DD top. other",
+        "DD GPU ops.",
+        "NS grid local",
+        "NS grid non-local",
+        "NS search local",
+        "NS search non-local",
+        "GPU Bonded list update",
+        "Bonded F",
+        "Bonded-FEP F",
+        "Restraints F",
+        "Listed buffer ops.",
+        "NB pruning",
+        "NB F kernel",
+        "NB F clear",
+        "NB FEP",
+        "NB FEP reduction",
+        "Launch GPU NB tasks",
+        "Launch GPU Bonded",
+        "Launch state copy",
+        "Ewald F correction",
+        "NB X buffer ops.",
+        "NB F buffer ops.",
+        "Clear force buffer",
+        "Launch GPU NB X ops.",
+        "Launch GPU NB F ops.",
+        "Launch GPU Comm. X",
+        "Launch GPU Comm. F",
+        "Launch GPU update",
+        "Launch PME GPU FFT",
+        "Graph wait pre-capture",
+        "Graph capture",
+        "Graph instantiate/upd.",
+        "Graph wait pre-launch",
+        "Graph launch",
+        "Constraints Comm.", // constraints communication time, note that this counter will contain load imbalance
+        "Test subcounter"
+    };
+    static_assert(checkStringsLengths<22>(wallCycleSubCounterNames));
+    return wallCycleSubCounterNames[enumValue];
+}
+CLANG_DIAGNOSTIC_RESET
+
+
 //! Number of all main counters.
 static constexpr int sc_numWallCycleCounters = static_cast<int>(WallCycleCounter::Count);
 //! Number of all subcyclecounters.
@@ -171,34 +305,73 @@ static constexpr int sc_numWallCycleCountersSquared = sc_numWallCycleCounters * 
 static constexpr bool sc_useCycleSubcounters = GMX_CYCLE_SUBCOUNTERS;
 //! Whether wallcycle debugging is enabled.
 constexpr bool sc_enableWallcycleDebug = (DEBUG_WCYCLE != 0);
-//! Maximum depth of counters for debugging.
-static constexpr int sc_maxWallCycleDepth = sc_enableWallcycleDebug ? 6 : 0;
 
-
+//! Counters for an individual wallcycle timing region
 struct wallcc_t
 {
-    int          n;
-    gmx_cycles_t c;
+    //! Counter for number of times this timing region has been opened
+    int n = 0;
+    //! Counter for total number of cycles in this timing region
+    gmx_cycles_t c = 0;
+    //! Start time (in cycles) for the last time this timing region was opened
     gmx_cycles_t start;
 };
 
 struct gmx_wallcycle
 {
+    /*! \brief Methods used when debugging wallcycle counting
+     *
+     *  \todo Make these private when the functions they are called
+     *  from become class methods. */
+    //! \{
+    //! Check the start preconditions
+    void checkStart(WallCycleCounter ewc);
+    //! Check the stop preconditions
+    void checkStop(WallCycleCounter ewc);
+    //! \}
+
+public:
+    //! Storage for wallcycle counters
     gmx::EnumerationArray<WallCycleCounter, wallcc_t> wcc;
-    /* did we detect one or more invalid cycle counts */
-    bool haveInvalidCount;
-    /* variables for testing/debugging */
-    bool                                                 wc_barrier;
-    std::vector<wallcc_t>                                wcc_all;
-    int                                                  wc_depth;
-    std::array<WallCycleCounter, sc_maxWallCycleDepth>   counterlist;
-    int                                                  count_depth;
-    bool                                                 isMainRank;
-    WallCycleCounter                                     ewc_prev;
-    gmx_cycles_t                                         cycle_prev;
-    int64_t                                              reset_counters;
-    const t_commrec*                                     cr;
+    //! The step count at which counter reset will happen
+    int64_t reset_counters;
+    //! Storage for wallcycle subcounters
     gmx::EnumerationArray<WallCycleSubCounter, wallcc_t> wcsc;
+
+    // The remaining fields are only used in special cases or in
+    // printing summary output.
+
+    //! Commrec for communicator used when using wallcycle barriers
+    const t_commrec* cr;
+
+    //! Used when doing "all" wallcycle counting
+    //! \{
+    //! All counters
+    std::vector<wallcc_t> wcc_all;
+    //! Counter depth
+    int wc_depth = 0;
+    //! Previous counter index
+    WallCycleCounter ewc_prev = WallCycleCounter::Count;
+    //! Previous cycle count value
+    gmx_cycles_t cycle_prev;
+    //! \}
+
+    //! Did we detect one or more invalid cycle counts?
+    bool haveInvalidCount = false;
+    //! Add extra barriers during testing
+    bool wc_barrier = false;
+
+    //! Used when debugging wallcycle counting
+    //! \{
+    //! Maximum depth of counters
+    static constexpr int sc_maxDepth = sc_enableWallcycleDebug ? 6 : 0;
+    //! Counters
+    std::array<WallCycleCounter, sc_maxDepth> counterlist;
+    //! Counter depth
+    int count_depth = 0;
+    //! Whether this rank is the main rank of the simulation
+    bool isMainRank = false;
+    //! \}
 };
 
 //! Returns if cycle counting is supported
@@ -227,14 +400,14 @@ inline void wallcycle_all_stop(gmx_wallcycle* wc, WallCycleCounter ewc, gmx_cycl
     wc->wcc_all[prev * sc_numWallCycleCounters + current].c += cycle - wc->cycle_prev;
 }
 
-//! Start debug for wallcycle counter.
-void debug_start_check(gmx_wallcycle* wc, WallCycleCounter ewc);
-//! End debug for wallcycle counter.
-void debug_stop_check(gmx_wallcycle* wc, WallCycleCounter ewc);
-
 //! Starts the cycle counter (and increases the call count)
 inline void wallcycle_start(gmx_wallcycle* wc, WallCycleCounter ewc)
 {
+    if (ewc >= WallCycleCounter::Step)
+    {
+        traceRangeStart(enumValuetoString(ewc), static_cast<int>(ewc));
+    }
+
     if (wc == nullptr)
     {
         return;
@@ -244,7 +417,7 @@ inline void wallcycle_start(gmx_wallcycle* wc, WallCycleCounter ewc)
 
     if constexpr (sc_enableWallcycleDebug)
     {
-        debug_start_check(wc, ewc);
+        wc->checkStart(ewc);
     }
     gmx_cycles_t cycle = gmx_cycles_read();
     wc->wcc[ewc].start = cycle;
@@ -276,6 +449,11 @@ inline void wallcycle_start_nocount(gmx_wallcycle* wc, WallCycleCounter ewc)
 //! Stop the cycle count for ewc , returns the last cycle count
 inline double wallcycle_stop(gmx_wallcycle* wc, WallCycleCounter ewc)
 {
+    if (ewc >= WallCycleCounter::Step)
+    {
+        traceRangeEnd();
+    }
+
     gmx_cycles_t cycle, last;
 
     if (wc == nullptr)
@@ -287,7 +465,7 @@ inline double wallcycle_stop(gmx_wallcycle* wc, WallCycleCounter ewc)
 
     if constexpr (sc_enableWallcycleDebug)
     {
-        debug_stop_check(wc, ewc);
+        wc->checkStop(ewc);
     }
 
     /* When processes or threads migrate between cores, the cycle counting
@@ -356,6 +534,8 @@ inline void wallcycle_sub_start(gmx_wallcycle* wc, WallCycleSubCounter ewcs)
 {
     if constexpr (sc_useCycleSubcounters)
     {
+        traceSubRangeStart(enumValuetoString(ewcs), static_cast<int>(ewcs));
+
         if (wc != nullptr)
         {
             wc->wcsc[ewcs].start = gmx_cycles_read();
@@ -381,6 +561,8 @@ inline void wallcycle_sub_stop(gmx_wallcycle* wc, WallCycleSubCounter ewcs)
 {
     if constexpr (sc_useCycleSubcounters)
     {
+        traceSubRangeEnd();
+
         if (wc != nullptr)
         {
             wc->wcsc[ewcs].c += gmx_cycles_read() - wc->wcsc[ewcs].start;

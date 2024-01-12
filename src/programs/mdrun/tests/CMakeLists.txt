@@ -107,6 +107,7 @@ gmx_add_gtest_executable(${exename} MPI
         tabulated_bonded_interactions.cpp
         freezegroups.cpp
         constantacceleration.cpp
+        boxdeformation.cpp
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
     )
@@ -120,6 +121,7 @@ set(exename "mdrun-single-rank-algorithms-test")
 
 gmx_add_gtest_executable(${exename}
     CPP_SOURCE_FILES
+        dispersion_correction.cpp
         ewaldsurfaceterm.cpp
         orires.cpp
         # pseudo-library for code for mdrun
@@ -322,6 +324,22 @@ gmx_add_gtest_executable(${exename}
         # pseudo-library for code for mdrun
         $<TARGET_OBJECTS:mdrun_objlib>
 )
+target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
+target_link_libraries(${exename} PRIVATE legacy_modules)
+gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)
+
+# End-to-end test for enforced rotation ("rotational pulling") functionality
+set(testname "MdrunRotationTests")
+set(exename "mdrun-rotation-test")
+
+gmx_add_gtest_executable(${exename}
+        CPP_SOURCE_FILES
+        # files with code for tests
+        pull_rotation.cpp
+        # pseudo-library for code for mdrun
+        $<TARGET_OBJECTS:mdrun_objlib>
+)
+target_include_directories(${exename} PRIVATE ${PROJECT_SOURCE_DIR}/src/gromacs/math/include)
 target_link_libraries(${exename} PRIVATE mdrun_test_infrastructure)
 target_link_libraries(${exename} PRIVATE legacy_modules)
 gmx_register_gtest_test(${testname} ${exename} OPENMP_THREADS 2 INTEGRATION_TEST IGNORE_LEAKS QUICK_GPU_TEST)

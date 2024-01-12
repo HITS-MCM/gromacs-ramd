@@ -172,7 +172,6 @@ if (SPHINX_FOUND)
         # PNG formated plot files that don't need to be converted into PNG
         # for the web page.
         reference-manual/plots/GMX_logos/gmx_falcon_blue.png
-        reference-manual/plots/adress.png
         reference-manual/plots/plotje.png
         reference-manual/plots/xvgr.png
         )
@@ -223,6 +222,7 @@ if (SPHINX_FOUND)
         reference-manual/special/membrane-embedding.rst
         reference-manual/special/mimic-qmmm.rst
         reference-manual/special/density-guided-simulation.rst
+        reference-manual/special/colvars.rst
         # Analysis chapter
         reference-manual/analysis/analysis.rst
         reference-manual/analysis/using-groups.rst
@@ -364,7 +364,20 @@ if (SPHINX_FOUND)
         install-guide/index.rst
         reference-manual/plots/GMX_logos/gmx_logo_blue.svg
         release-notes/index.rst
+        release-notes/2024/major/highlights.rst
+        release-notes/2024/major/features.rst
+        release-notes/2024/major/performance.rst
+        release-notes/2024/major/tools.rst
+        release-notes/2024/major/bugs-fixed.rst
+        release-notes/2024/major/removed-functionality.rst
+        release-notes/2024/major/deprecated-functionality.rst
+        release-notes/2024/major/portability.rst
+        release-notes/2024/major/miscellaneous.rst
+        release-notes/2024/major/api.rst
         release-notes/2023/2023.1.rst
+        release-notes/2023/2023.2.rst
+        release-notes/2023/2023.3.rst
+        release-notes/2023/2023.4.rst
         release-notes/2023/major/highlights.rst
         release-notes/2023/major/features.rst
         release-notes/2023/major/performance.rst
@@ -577,7 +590,6 @@ if (SPHINX_FOUND)
             gmxapi/index.rst
             gmxapi/userguide/install.rst
             gmxapi/userguide/usage.rst
-            gmxapi/userguide/userguide.rst
     )
 
     if (GMX_PYTHON_PACKAGE)

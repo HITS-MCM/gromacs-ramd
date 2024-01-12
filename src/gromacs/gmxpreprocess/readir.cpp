@@ -396,8 +396,9 @@ void check_ir(const char*                    mdparin,
         if (EI_TPI(ir->eI))
         {
             /* With TPI we set the pairlist cut-off later using the radius of the insterted molecule */
-            ir->verletbuf_tol = 0;
-            ir->rlist         = rc_max;
+            ir->verletbuf_tol                 = 0;
+            ir->verletBufferPressureTolerance = 0;
+            ir->rlist                         = rc_max;
         }
         else if (ir->verletbuf_tol <= 0)
         {
@@ -419,9 +420,25 @@ void check_ir(const char*                    mdparin,
                         "buffer. The cluster pair list does have a buffering effect, but choosing "
                         "a larger rlist might be necessary for good energy conservation.");
             }
+
+            if (ir->verletBufferPressureTolerance > 0)
+            {
+                if (ir->nstlist > 1)
+                {
+                    wi->addNote(
+                            "verlet-buffer-pressure-tolerance is ignored when "
+                            "verlet-buffer-tolerance < 0");
+                }
+                ir->verletBufferPressureTolerance = -1;
+            }
         }
         else
         {
+            if (ir->verletBufferPressureTolerance == 0)
+            {
+                wi->addError("verlet-buffer-pressure-tolerance cannot be exactly 0");
+            }
+
             if (ir->rlist > rc_max)
             {
                 wi->addNote(
@@ -1386,12 +1403,9 @@ void check_ir(const char*                    mdparin,
         sprintf(warn_buf,
                 "The %s barostat does not generate any strictly correct ensemble, "
                 "and should not be used for new production simulations (in our opinion). "
-                "For isotropic scaling we would recommend the %s barostat that also "
-                "ensures fast relaxation without oscillations, and for anisotropic "
-                "scaling you likely want to use the %s barostat.",
+                "We recommend using the %s barostat instead.",
                 enumValueToString(ir->pressureCouplingOptions.epc),
-                enumValueToString(PressureCoupling::CRescale),
-                enumValueToString(PressureCoupling::ParrinelloRahman));
+                enumValueToString(PressureCoupling::CRescale));
         wi->addWarning(warn_buf);
     }
 
@@ -1401,6 +1415,21 @@ void check_ir(const char*                    mdparin,
         wi->addNote(
                 "Old option for pressure coupling given: "
                 "changing \"Isotropic\" to \"Berendsen\"\n");
+    }
+
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::CRescale)
+    {
+        switch (ir->pressureCouplingOptions.epct)
+        {
+            case PressureCouplingType::Isotropic:
+            case PressureCouplingType::SemiIsotropic:
+            case PressureCouplingType::SurfaceTension: break; // supported
+            default:
+                sprintf(err_buf,
+                        "C-rescale does not support pressure coupling type %s yet\n",
+                        enumValueToString(ir->pressureCouplingOptions.epct));
+                wi->addError(err_buf);
+        }
     }
 
     if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
@@ -1733,6 +1762,24 @@ void check_ir(const char*                    mdparin,
     if (ir->cos_accel != 0.0 && ir->eI != IntegrationAlgorithm::MD)
     {
         wi->addError("cos-acceleration is only supported by integrator = md");
+    }
+
+    // do checks on the initialization of the flow profile with deform
+    if (ir_haveBoxDeformation(*ir) && !opts->deformInitFlow)
+    {
+        if (opts->bGenVel)
+        {
+            wi->addError(
+                    "When the box is deformed and velocities are generated, the flow profile "
+                    "should be initialized by setting deform-init-flow=yes");
+        }
+        else if (!ir->bContinuation)
+        {
+            wi->addNote(
+                    "Unless the velocities in the initial configuration already obey the flow "
+                    "profile, the flow profile should be initialized by setting "
+                    "deform-init-flow=yes when using the deform option");
+        }
     }
 }
 
@@ -2243,6 +2290,8 @@ void get_ir(const char*     mdparin,
             ir->useMts = false;
         }
     }
+    printStringNoNewline(&inp, "factor by which to increase the mass of the lightest atoms");
+    ir->massRepartitionFactor = get_ereal(&inp, "mass-repartition-factor", 1.0, wi);
     printStringNoNewline(&inp, "mode for center of mass motion removal");
     ir->comm_mode = getEnum<ComRemovalAlgorithm>(&inp, "comm-mode", wi);
     printStringNoNewline(&inp, "number of steps for center of mass motion removal");
@@ -2307,9 +2356,13 @@ void get_ir(const char*     mdparin,
     ir->pbcType       = static_cast<PbcType>(get_eeenum(&inp, "pbc", pbcTypesNamesChar.data(), wi));
     ir->bPeriodicMols = getEnum<Boolean>(&inp, "periodic-molecules", wi) != Boolean::No;
     printStringNoNewline(&inp,
-                         "Allowed energy error due to the Verlet buffer in kJ/mol/ps per atom,");
+                         "Allowed energy drift due to the Verlet buffer in kJ/mol/ps per atom,");
     printStringNoNewline(&inp, "a value of -1 means: use rlist");
     ir->verletbuf_tol = get_ereal(&inp, "verlet-buffer-tolerance", 0.005, wi);
+    printStringNoNewline(
+            &inp,
+            "Allowed error in the average pressure due to the Verlet buffer for LJ interactions");
+    ir->verletBufferPressureTolerance = get_ereal(&inp, "verlet-buffer-pressure-tolerance", 0.5, wi);
     printStringNoNewline(&inp, "nblist cut-off");
     ir->rlist = get_ereal(&inp, "rlist", 1.0, wi);
     printStringNoNewline(&inp, "long-range cut-off for switched potentials");
@@ -2376,7 +2429,7 @@ void get_ir(const char*     mdparin,
     ir->pressureCouplingOptions.epct       = getEnum<PressureCouplingType>(&inp, "pcoupltype", wi);
     ir->pressureCouplingOptions.nstpcouple = get_eint(&inp, "nstpcouple", -1, wi);
     printStringNoNewline(&inp, "Time constant (ps), compressibility (1/bar) and reference P (bar)");
-    ir->pressureCouplingOptions.tau_p = get_ereal(&inp, "tau-p", 1.0, wi);
+    ir->pressureCouplingOptions.tau_p = get_ereal(&inp, "tau-p", 5.0, wi);
     setStringEntry(&inp, "compressibility", dumstr[0], nullptr);
     setStringEntry(&inp, "ref-p", dumstr[1], nullptr);
     printStringNoNewline(&inp, "Scaling of reference coordinates, No, All or COM");
@@ -2591,6 +2644,7 @@ void get_ir(const char*     mdparin,
     setStringEntry(&inp, "freezedim", inputrecStrings->frdim, nullptr);
     ir->cos_accel = get_ereal(&inp, "cos-acceleration", 0, wi);
     setStringEntry(&inp, "deform", inputrecStrings->deform, nullptr);
+    opts->deformInitFlow = (getEnum<Boolean>(&inp, "deform-init-flow", wi) != Boolean::No);
 
     /* simulated tempering variables */
     printStringNewline(&inp, "simulated tempering variables");
@@ -3084,7 +3138,7 @@ int getGroupIndex(const std::string& s, gmx::ArrayRef<const IndexGroup> indexGro
     }
 
     gmx_fatal(FARGS,
-              "Group %s referenced in the .mdp file was not found in the index file.\n"
+              "Group %s referenced in the .mdp file was not found in the list of index groups.\n"
               "Group names must match either [moleculetype] names or custom index group\n"
               "names, in which case you must supply an index file to the '-n' option\n"
               "of grompp.",
@@ -3269,11 +3323,11 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, gmx::ArrayRef<cons
     snew(na_vcm, groups.groups[SimulationAtomGroupType::MassCenterVelocityRemoval].size() + 1);
     snew(nrdf_vcm_sub, groups.groups[SimulationAtomGroupType::MassCenterVelocityRemoval].size() + 1);
 
-    for (gmx::index i = 0; i < gmx::ssize(groups.groups[SimulationAtomGroupType::TemperatureCoupling]); i++)
+    for (gmx::Index i = 0; i < gmx::ssize(groups.groups[SimulationAtomGroupType::TemperatureCoupling]); i++)
     {
         nrdf_tc[i] = 0;
     }
-    for (gmx::index i = 0;
+    for (gmx::Index i = 0;
          i < gmx::ssize(groups.groups[SimulationAtomGroupType::MassCenterVelocityRemoval]) + 1;
          i++)
     {
@@ -3452,7 +3506,7 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, gmx::ArrayRef<cons
          * translation is removed and 6 when rotation is removed as well.
          * Note that we do not and should not include the rest group here.
          */
-        for (gmx::index j = 0;
+        for (gmx::Index j = 0;
              j < gmx::ssize(groups.groups[SimulationAtomGroupType::MassCenterVelocityRemoval]);
              j++)
         {
@@ -3474,12 +3528,12 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, gmx::ArrayRef<cons
             }
         }
 
-        for (gmx::index i = 0;
+        for (gmx::Index i = 0;
              i < gmx::ssize(groups.groups[SimulationAtomGroupType::TemperatureCoupling]);
              i++)
         {
             /* Count the number of atoms of TC group i for every VCM group */
-            for (gmx::index j = 0;
+            for (gmx::Index j = 0;
                  j < gmx::ssize(groups.groups[SimulationAtomGroupType::MassCenterVelocityRemoval]) + 1;
                  j++)
             {
@@ -3499,7 +3553,7 @@ static void calc_nrdf(const gmx_mtop_t* mtop, t_inputrec* ir, gmx::ArrayRef<cons
              */
             nrdf_uc    = nrdf_tc[i];
             nrdf_tc[i] = 0;
-            for (gmx::index j = 0;
+            for (gmx::Index j = 0;
                  j < gmx::ssize(groups.groups[SimulationAtomGroupType::MassCenterVelocityRemoval]) + 1;
                  j++)
             {
@@ -3782,9 +3836,13 @@ static void processEnsembleTemperature(t_inputrec* ir, const bool allAtomsCouple
             }
             else if (doSimulatedAnnealing(*ir) && ir->opts.ngtc > 1)
             {
+                // We could support ensemble temperature if all annealing groups have the same
+                // temperature, but that is bug-prone, so we don't implement that.
                 fprintf(stderr,
                         "Simulated tempering is used with multiple T-coupling groups: setting the "
                         "ensemble temperature to not available\n");
+                ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::NotAvailable;
+                ir->ensembleTemperature        = -1;
             }
             else if (doSimulatedAnnealing(*ir) || ir->bSimTemp)
             {
@@ -5144,6 +5202,46 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, WarningH
     if (ir->bDoAwh && !haveConstantEnsembleTemperature(*ir))
     {
         wi->addError("With AWH a constant ensemble temperature is required");
+    }
+
+    if (ir_haveBoxDeformation(*ir))
+    {
+        if (EI_DYNAMICS(ir->eI) && ir->eI != IntegrationAlgorithm::MD
+            && (EI_SD(ir->eI) || ir->etc != TemperatureCoupling::No))
+        {
+            sprintf(warn_buf,
+                    "With all integrators except for %s, the whole velocity including the flow "
+                    "driven by the deform option is scaled by the thermostat (note that the "
+                    "reported kinetic energies and temperature are always computed excluding the "
+                    "flow profile)",
+                    enumValueToString(IntegrationAlgorithm::MD));
+            wi->addNote(warn_buf);
+        }
+
+        if (ir->opts.ngtc != 1)
+        {
+            wi->addError("With box deformation, a single temperature coupling group is required");
+        }
+    }
+
+    int numAccelerationAlgorithms = 0;
+    if (ir->useConstantAcceleration)
+    {
+        numAccelerationAlgorithms++;
+    }
+    if (ir->cos_accel != 0)
+    {
+        numAccelerationAlgorithms++;
+    }
+    if (ir_haveBoxDeformation(*ir))
+    {
+        numAccelerationAlgorithms++;
+    }
+    if (numAccelerationAlgorithms > 1)
+    {
+        wi->addError(
+                "Only one of the following three non-equilibrium methods is supported at a time: "
+                "constant acceleration groups, cosine acceleration, box deformation");
     }
 
     check_disre(*sys);

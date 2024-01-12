@@ -58,7 +58,7 @@ static int numGrids(const GridSet::DomainSetup& domainSetup)
 {
     // One grid for the test particle, one for the rest
     static constexpr int sc_numGridsForTestParticleInsertion = 2;
-    if (domainSetup.doTestParticleInsertion)
+    if (domainSetup.doTestParticleInsertion_)
     {
         return sc_numGridsForTestParticleInsertion;
     }
@@ -80,8 +80,8 @@ GridSet::DomainSetup::DomainSetup(const PbcType             pbcType,
                                   const bool                doTestParticleInsertion,
                                   const ivec*               numDDCells,
                                   const gmx_domdec_zones_t* ddZones) :
-    pbcType(pbcType),
-    doTestParticleInsertion(doTestParticleInsertion),
+    pbcType_(pbcType),
+    doTestParticleInsertion_(doTestParticleInsertion),
     haveMultipleDomains(numDDCells != nullptr
                         && (*numDDCells)[XX] * (*numDDCells)[YY] * (*numDDCells)[ZZ] > 1),
     zones(ddZones)
@@ -160,7 +160,6 @@ void GridSet::putOnGrid(const matrix                   box,
 {
     Nbnxm::Grid& grid               = grids_[gridIndex];
     const int    cellOffset         = getGridOffset(grids_, gridIndex);
-    const int    n                  = atomRange.size();
     real         maxAtomGroupRadius = NAN;
 
     if (gridIndex == 0)
@@ -192,40 +191,56 @@ void GridSet::putOnGrid(const matrix                   box,
     /* We always use the home zone (grid[0]) for setting the cell size,
      * since determining densities for non-local zones is difficult.
      */
-    const int ddZone = (domainSetup_.doTestParticleInsertion ? 0 : gridIndex);
-    // grid data used in GPU transfers inherits the gridset pinning policy
-    auto pinPolicy = gridSetData_.cells.get_allocator().pinningPolicy();
-    grid.setDimensions(
-            ddZone, n - numAtomsMoved, lowerCorner, upperCorner, atomDensity, maxAtomGroupRadius, haveFep_, pinPolicy);
+    const int ddZone = (domainSetup_.doTestParticleInsertion_ ? 0 : gridIndex);
 
-    for (GridWork& work : gridWork_)
+    /* The search grid/cells should be optimized to be as close to cubic
+     * as possible. This is not possible to achieve in a single go
+     * in cases where the particles are not distributed homogeneously.
+     * Thus we put the particles on the 2D-grid in 1 or 2 iterations for zone 0.
+     * We first generate a grid that is optimal for a homogeneous particle
+     * density. We then compute the effective grid density. If this is more
+     * than a factor 1.5 higher than the homogeneous density, we use a finer grid
+     * based on the newly computed density.
+     */
+    const real c_gridDensityRatioThreshold = 1.5_real;
+    const bool optimizeDensity             = (ddZone == 0 && !atomRange.empty());
+    real       gridDensityRatio            = 0;
+    int        iteration                   = 0;
+
+    while (iteration == 0
+           || (optimizeDensity && iteration == 1 && gridDensityRatio > c_gridDensityRatioThreshold))
     {
-        work.numAtomsPerColumn.resize(grid.numColumns() + 1);
-    }
-
-    /* Make space for the new cell indices */
-    gridSetData_.cells.resize(*atomRange.end());
-
-    const int nthread = gmx_omp_nthreads_get(ModuleMultiThread::Pairsearch);
-    GMX_ASSERT(nthread > 0, "We expect the OpenMP thread count to be set");
-
-#pragma omp parallel for num_threads(nthread) schedule(static)
-    for (int thread = 0; thread < nthread; thread++)
-    {
-        try
+        if (iteration == 1)
         {
-            Grid::calcColumnIndices(grid.dimensions(),
-                                    updateGroupsCog,
-                                    atomRange,
-                                    x,
-                                    ddZone,
-                                    move,
-                                    thread,
-                                    nthread,
-                                    gridSetData_.cells,
-                                    gridWork_[thread].numAtomsPerColumn);
+            /* The effective 2D grid density is higher than the uniform density.
+             * So we need to increase the 3D density, but we only know about
+             * the density in 2D. If the inhomogeneity is 2D only (unlikely),
+             * we need to correct with a factor gridDensityRatio. If we have
+             * a sphere-like concentration of particles, the correction factor
+             * should be gridDensityRatio^3/2. We use the average exponent.
+             */
+            atomDensity *= std::pow(gridDensityRatio, 1.25_real);
         }
-        GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
+
+        const bool computeGridDensityRatio = (iteration == 0 && optimizeDensity);
+
+        gridDensityRatio = generateAndFill2DGrid(&grid,
+                                                 gridWork_,
+                                                 &gridSetData_.cells,
+                                                 lowerCorner,
+                                                 upperCorner,
+                                                 updateGroupsCog,
+                                                 atomRange,
+                                                 &atomDensity,
+                                                 maxAtomGroupRadius,
+                                                 haveFep_,
+                                                 x,
+                                                 ddZone,
+                                                 move,
+                                                 numAtomsMoved,
+                                                 computeGridDensityRatio);
+
+        iteration++;
     }
 
     /* Copy the already computed cell indices to the grid and sort, when needed */

@@ -22,9 +22,9 @@ gromacs:hipsycl-rocm:configure:
     CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     CMAKE_SIMD_OPTIONS: "-DGMX_SIMD=AVX2_256"
     CMAKE_BUILD_TYPE_OPTIONS: "-DCMAKE_BUILD_TYPE=RelWithAssert"
-    CMAKE_GPU_OPTIONS: "-DGMX_GPU=SYCL -DGMX_SYCL_HIPSYCL=ON -DHIPSYCL_TARGETS='hip:gfx900' -DGMX_GPU_FFT_LIBRARY=rocFFT"
+    CMAKE_GPU_OPTIONS: "-DGMX_GPU=SYCL -DGMX_SYCL=ACPP -DHIPSYCL_TARGETS=hip:gfx906,gfx1034 -DGMX_GPU_FFT_LIBRARY=vkFFT"
     # Unset COMPILER_LAUNCHER (previously set to ccache) because it conflicts with hipSYCL's syclcc-launcher
-    CMAKE_EXTRA_OPTIONS: "-DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER="
+    CMAKE_EXTRA_OPTIONS: "-DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER= -DGMX_INSTALL_LEGACY_API=ON"
     COMPILER_MAJOR_VERSION: 15
 
 gromacs:hipsycl-rocm:build:
@@ -42,58 +42,39 @@ gromacs:hipsycl-rocm:build:
   needs:
     - job: gromacs:hipsycl-rocm:configure
 
-
-gromacs:hipsycl-rocm-nightly:configure:
-  extends:
-    - .gromacs:base:configure
-    - .use-clang:base
-    - .use-sycl
-    - .rules:nightly-not-for-release
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-22.04-llvm-15-cuda-11.7.1-hipsycl-0.9.4-rocm-5.3.3
-  variables:
-    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
-    CMAKE_SIMD_OPTIONS: "-DGMX_SIMD=AVX2_256"
-    CMAKE_BUILD_TYPE_OPTIONS: "-DCMAKE_BUILD_TYPE=RelWithAssert"
-    CMAKE_GPU_OPTIONS: "-DGMX_GPU=SYCL -DGMX_SYCL_HIPSYCL=ON -DHIPSYCL_TARGETS='hip:gfx906'"
-    # Unset COMPILER_LAUNCHER (previously set to ccache) because it conflicts with hipSYCL's syclcc-launcher
-    CMAKE_EXTRA_OPTIONS: "-DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER="
-    COMPILER_MAJOR_VERSION: 15
-
-gromacs:hipsycl-rocm-nightly:build:
-  extends:
-    - .variables:default
-    - .gromacs:base:build
-    - .before_script:default
-    # Not using ccache because it plays poorly with syclcc-launcher
-    - .rules:nightly-not-for-release
-  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-22.04-llvm-15-cuda-11.7.1-hipsycl-0.9.4-rocm-5.3.3
-  variables:
-    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
-  tags:
-    - k8s-scilifelab
-  needs:
-    - job: gromacs:hipsycl-rocm-nightly:configure
-
-gromacs:hipsycl-rocm-nightly:test:
+gromacs:hipsycl-rocm:test:
   extends:
     - .variables:default
     - .gromacs:base:test
-    # Not using ccache because it plays poorly with syclcc-launcher
-    - .rules:nightly-not-for-release
+    - .rules:post-merge-acceptance
   image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-22.04-llvm-15-cuda-11.7.1-hipsycl-0.9.4-rocm-5.3.3
   variables:
     CMAKE: /usr/local/cmake-3.18.4/bin/cmake
-    # The following two variables are not used by k8s, since this job runs on a separate host
-    # But it's easier to set them up and use the existing scripts for job preparation that rely on them
     KUBERNETES_EXTENDED_RESOURCE_NAME: "amd.com/gpu"
-    KUBERNETES_EXTENDED_RESOURCE_LIMIT: 2
-    GMX_TEST_LABELS: "QuickGpuTest" # |SlowGpuTest" TODO: Enable Slow tests when LLVM with https://reviews.llvm.org/D131884 is used (ROCm 5.4 maybe)
+    KUBERNETES_EXTENDED_RESOURCE_LIMIT: 1
+    GMX_TEST_LABELS: "QuickGpuTest|SlowGpuTest"
   tags:
-    - amd-gpu-gfx906
+    - k8s-scilifelab
   needs:
-    - job: gromacs:hipsycl-rocm-nightly:build
+    - job: gromacs:hipsycl-rocm:build
 
-# TODO: Enable regression tests when LLVM with https://reviews.llvm.org/D131884 is used (ROCm 5.4 maybe)
+gromacs:hipsycl-rocm:regressiontest:
+  extends:
+    - .variables:default
+    - .gromacs:base:regressiontest
+    - .rules:post-merge-acceptance
+  image: ${CI_REGISTRY}/gromacs/gromacs/ci-ubuntu-22.04-llvm-15-cuda-11.7.1-hipsycl-0.9.4-rocm-5.3.3
+  variables:
+    CMAKE: /usr/local/cmake-3.18.4/bin/cmake
+    REGRESSIONTEST_TOTAL_RANK_NUMBER: 1
+    REGRESSIONTEST_OMP_RANK_NUMBER: 2
+    KUBERNETES_EXTENDED_RESOURCE_NAME: "amd.com/gpu"
+    KUBERNETES_EXTENDED_RESOURCE_LIMIT: 1
+  tags:
+    - k8s-scilifelab
+  needs:
+    - job: gromacs:hipsycl-rocm:build
+    - job: regressiontests:prepare
 
 
 gromacs:hipsycl-nvidia-mpi:configure:
@@ -108,7 +89,7 @@ gromacs:hipsycl-nvidia-mpi:configure:
     CMAKE: /usr/local/cmake-3.18.4/bin/cmake
     CMAKE_SIMD_OPTIONS: "-DGMX_SIMD=AVX2_256"
     CMAKE_BUILD_TYPE_OPTIONS: "-DCMAKE_BUILD_TYPE=RelWithAssert"
-    CMAKE_GPU_OPTIONS: "-DGMX_GPU=SYCL -DGMX_SYCL_HIPSYCL=ON -DHIPSYCL_TARGETS='cuda:sm_50,sm_52,sm_60,sm_61,sm_70,sm_75' -DGMX_GPU_FFT_LIBRARY=VkFFT"
+    CMAKE_GPU_OPTIONS: "-DGMX_GPU=SYCL -DGMX_SYCL=ACPP -DHIPSYCL_TARGETS='cuda:sm_50,sm_52,sm_60,sm_61,sm_70,sm_75' -DGMX_GPU_FFT_LIBRARY=VkFFT"
     # Unset COMPILER_LAUNCHER (previously set to ccache) because it conflicts with hipSYCL's syclcc-launcher
     CMAKE_EXTRA_OPTIONS: "-DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER="
     COMPILER_MAJOR_VERSION: 15

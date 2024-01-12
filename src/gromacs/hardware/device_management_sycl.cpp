@@ -57,13 +57,63 @@
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
+#include "gromacs/utility/mpiinfo.h"
 #include "gromacs/utility/strconvert.h"
 #include "gromacs/utility/stringutil.h"
+#include "gromacs/utility/unique_cptr.h"
 
 #include "device_information.h"
 
+
+static std::optional<std::tuple<int, int>> parseHardwareVersionNvidia(const std::string& archName)
+{
+    // archName could be either '8.6' (DPC++) or 'sm_86' (AdaptiveCpp/hipSYCL)
+    try
+    {
+        if (gmx::startsWith(archName, "sm_"))
+        {
+            int numericCCBegin = 3; // first character after sm_
+            int numericCCEnd   = archName.length();
+            if (numericCCEnd - numericCCBegin >= 2)
+            {
+                std::string majorStr = archName.substr(numericCCBegin, numericCCEnd - numericCCBegin - 1);
+                std::string minorStr = archName.substr(numericCCEnd - 1, 1);
+                const int   major    = gmx::fromStdString<int>(majorStr);
+                const int   minor    = gmx::fromStdString<int>(minorStr);
+                return std::make_tuple(major, minor);
+            }
+        }
+        else if (gmx::contains(archName, "."))
+        {
+            const std::vector<std::string> ccTokens = gmx::splitDelimitedString(archName, '.');
+            if (ccTokens.size() == 2)
+            {
+                const int major = gmx::fromStdString<int>(ccTokens[0]);
+                const int minor = gmx::fromStdString<int>(ccTokens[1]);
+                return std::make_tuple(major, minor);
+            }
+        }
+    }
+    catch (gmx::InvalidInputError)
+    {
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+
 static std::optional<std::tuple<int, int>> getHardwareVersionNvidia(const sycl::device& device)
 {
+    /* First, check device::info::version:
+     * - AdaptiveCpp/hipSYCL supports that since AdaptiveCpp 2023.10.0 (merged in July 2023),
+     * - Intel DPC++ supports that since 2023.2.0 (merged in July 2023).
+     * If device::info::version cannot be parsed, fall back on backend-specific solutions.
+     * Fallbacks can be removed once we no longer support older versions. */
+    const std::string deviceVersion = device.get_info<sycl::info::device::version>();
+    if (auto result = parseHardwareVersionNvidia(deviceVersion); result.has_value())
+    {
+        return result;
+    }
 #if (GMX_SYCL_HIPSYCL && GMX_HIPSYCL_HAVE_CUDA_TARGET) // hipSYCL uses CUDA Runtime API
     const int             nativeDeviceId = sycl::get_native<sycl::backend::cuda>(device);
     struct cudaDeviceProp prop;
@@ -79,25 +129,8 @@ static std::optional<std::tuple<int, int>> getHardwareVersionNvidia(const sycl::
 #elif (GMX_SYCL_DPCPP && defined(SYCL_EXT_ONEAPI_BACKEND_CUDA))
     // oneAPI uses CUDA Driver API, but does not link the application to it
     // Instead, we have to use info::device::backend_version, and parse it
-    const std::string              ccStr = device.get_info<sycl::info::device::backend_version>();
-    const std::vector<std::string> ccTokens = gmx::splitDelimitedString(ccStr, '.');
-    if (ccTokens.size() == 2)
-    {
-        try
-        {
-            const int major = gmx::fromStdString<int>(ccTokens[0]);
-            const int minor = gmx::fromStdString<int>(ccTokens[1]);
-            return std::make_tuple(major, minor);
-        }
-        catch (gmx::InvalidInputError)
-        {
-            return std::nullopt;
-        }
-    }
-    else
-    {
-        return std::nullopt;
-    }
+    const std::string ccStr = device.get_info<sycl::info::device::backend_version>();
+    return parseHardwareVersionNvidia(ccStr);
 #else
     GMX_UNUSED_VALUE(device);
     return std::nullopt;
@@ -106,7 +139,7 @@ static std::optional<std::tuple<int, int>> getHardwareVersionNvidia(const sycl::
 
 static std::optional<std::tuple<int, int, int>> parseHardwareVersionAmd(const std::string& archName)
 {
-    // archName is something like 'gfx90a:sramecc+:xnack-'
+    // archName is something like 'gfx90a:sramecc+:xnack-' or 'gfx1034'
     std::vector<std::string> archNameTokens = gmx::splitDelimitedString(archName, ':');
     if (!gmx::startsWith(archNameTokens[0], "gfx"))
     {
@@ -146,7 +179,18 @@ static std::optional<std::tuple<int, int, int>> parseHardwareVersionAmd(const st
 
 static std::optional<std::tuple<int, int, int>> getHardwareVersionAmd(const sycl::device& device)
 {
+    /* First, check device::info::version:
+     * - AdaptiveCpp/hipSYCL supports that since AdaptiveCpp 2023.10.0 (merged in July 2023),
+     * - Intel DPC++ supports that since 2023.2.0 (merged in July 2023).
+     * If device::info::version cannot be parsed, fall back to backend-specific solutions.
+     * Fallbacks can be removed once we no longer support older versions. */
+    const std::string deviceVersion = device.get_info<sycl::info::device::version>();
+    if (auto result = parseHardwareVersionAmd(deviceVersion); result.has_value())
+    {
+        return result;
+    }
 #if (GMX_SYCL_HIPSYCL && GMX_HIPSYCL_HAVE_HIP_TARGET)
+    // Fall back on the native device query
     const int              nativeDeviceId = sycl::get_native<sycl::backend::hip>(device);
     struct hipDeviceProp_t prop;
     hipError_t             status = hipGetDeviceProperties(&prop, nativeDeviceId);
@@ -158,8 +202,8 @@ static std::optional<std::tuple<int, int, int>> getHardwareVersionAmd(const sycl
     // gcnArch is deprecated, so we have to parse gcnArchName
     return parseHardwareVersionAmd(prop.gcnArchName);
 #elif (GMX_SYCL_DPCPP)
-    // DPC++ puts architecture in the device name field, which is fine
-    const std::string deviceName = device.get_info<sycl::info::device::name>(); // gfx1032 or something
+    // Device name might contain the desired string, but it depends on the ROCm version
+    const std::string deviceName = device.get_info<sycl::info::device::version>();
     return parseHardwareVersionAmd(deviceName);
 #else
     GMX_UNUSED_VALUE(device);
@@ -169,7 +213,15 @@ static std::optional<std::tuple<int, int, int>> getHardwareVersionAmd(const sycl
 
 static std::optional<std::tuple<int, int, int>> getHardwareVersionIntel(const sycl::device& device)
 {
-    // For Intel, we have to parse and match PCI Express device ID
+    // ext::intel::info::device::device_id is supported since oneAPI 2023.1
+#if defined(SYCL_EXT_INTEL_DEVICE_INFO) && SYCL_EXT_INTEL_DEVICE_INFO >= 5
+    if (device.has(sycl::aspect::ext_intel_device_id))
+    {
+        auto pciId = device.get_info<sycl::ext::intel::info::device::device_id>();
+        return getIntelHardwareVersionFromPciExpressID(pciId);
+    }
+#endif
+    // Otherwise, try to find PCI ID in the device string. That only works for old drivers
     const std::string deviceName = device.get_info<sycl::info::device::name>();
     // Find " [0xABCD]" and extract 0xABCD:
     const size_t prefixStart = deviceName.find(" [0x");
@@ -190,8 +242,31 @@ static std::optional<std::tuple<int, int, int>> getHardwareVersionIntel(const sy
     {
         return std::nullopt;
     }
+
     // Now, find the matching device
     return getIntelHardwareVersionFromPciExpressID(pciId);
+}
+
+static gmx::GpuAwareMpiStatus getDeviceGpuAwareMpiStatus(const sycl::backend backend)
+{
+    if (GMX_LIB_MPI == 0)
+    {
+        return gmx::GpuAwareMpiStatus::NotSupported;
+    }
+    switch (backend)
+    {
+#if GMX_SYCL_DPCPP
+        case sycl::backend::opencl: return gmx::GpuAwareMpiStatus::NotSupported;
+        case sycl::backend::ext_oneapi_level_zero: return gmx::checkMpiZEAwareSupport();
+        case sycl::backend::ext_oneapi_cuda: return gmx::checkMpiCudaAwareSupport();
+        case sycl::backend::ext_oneapi_hip: return gmx::checkMpiHipAwareSupport();
+#elif GMX_SYCL_ACPP
+        case sycl::backend::cuda: return gmx::checkMpiCudaAwareSupport();
+        case sycl::backend::hip: return gmx::checkMpiHipAwareSupport();
+        case sycl::backend::level_zero: return gmx::checkMpiZEAwareSupport();
+#endif
+        default: return gmx::GpuAwareMpiStatus::NotSupported;
+    }
 }
 
 void warnWhenDeviceNotTargeted(const gmx::MDLogger& /* mdlog */, const DeviceInformation& /* deviceInfo */)
@@ -246,14 +321,6 @@ static DeviceStatus isDeviceCompatible(const sycl::device&           syclDevice,
             // While some kernels (leapfrog) can run without shared/local memory, this is a bad sign
             return DeviceStatus::Incompatible;
         }
-
-#if GMX_SYCL_DPCPP && defined(__INTEL_LLVM_COMPILER) && (__INTEL_LLVM_COMPILER == 20220000)
-        if (syclDevice.get_backend() == sycl::backend::ext_oneapi_level_zero)
-        {
-            // See Issue #4354
-            return DeviceStatus::IncompatibleLevelZeroAndOneApi2022;
-        }
-#endif
 
 // Ensure any changes are in sync with nbnxm_sycl_kernel.h
 #if GMX_GPU_NB_CLUSTER_SIZE == 4
@@ -331,18 +398,22 @@ static bool isDeviceFunctional(const sycl::device& syclDevice, std::string* erro
     static const int numThreads = 8;
     try
     {
-        sycl::queue          queue(syclDevice);
-        sycl::buffer<int, 1> buffer(numThreads);
+        sycl::queue                                     queue(syclDevice);
+        std::unique_ptr<int, std::function<void(int*)>> buffer = {
+            sycl::malloc_device<int>(numThreads, queue), [=](int* ptr) { sycl::free(ptr, queue); }
+        };
+        int* d_buffer = buffer.get();
         queue.submit([&](sycl::handler& cgh) {
-                 auto           d_buffer = buffer.get_access(cgh, sycl::write_only, sycl::no_init);
                  sycl::range<1> range{ numThreads };
                  cgh.parallel_for<DummyKernel>(
                          range, [=](sycl::id<1> threadId) { d_buffer[threadId] = threadId.get(0); });
              }).wait_and_throw();
-        const auto h_Buffer = buffer.get_access<sycl::access_mode::read>();
+
+        std::vector<int> h_buffer(numThreads);
+        queue.copy<int>(d_buffer, h_buffer.data(), numThreads).wait_and_throw();
         for (int i = 0; i < numThreads; i++)
         {
-            if (h_Buffer[i] != i)
+            if (h_buffer[i] != i)
             {
                 if (errorMessage != nullptr)
                 {
@@ -400,9 +471,10 @@ static DeviceStatus checkDevice(size_t deviceId, const DeviceInformation& device
 /* In DPC++, the same physical device can appear as different virtual devices provided
  * by different backends (e.g., the same GPU can be accessible via both OpenCL and L0).
  * Thus, using devices from two backends is more likely to be a user error than the
- * desired behavior. In this function, we choose the backend with the most compatible
- * devices. In case of a tie, we choose OpenCL (if present), or some arbitrary backend
- * among those with the most devices.
+ * desired behavior. In this function, we choose L0 if the MPI library is Intel MPI and
+ * the user has opted into using its GPU-aware functionality. Otherwise, we choose the
+ * backend with the most compatible devices. In case of a tie, we choose OpenCL (if
+ * present), or some arbitrary backend among those with the most devices.
  *
  * In hipSYCL, this problem is unlikely to manifest. It has (as of 2021-03-03) another
  * issues: D2D copy between different backends is not allowed. We don't use D2D in
@@ -422,6 +494,19 @@ static std::optional<sycl::backend> chooseBestBackend(const std::vector<std::uni
             const sycl::backend backend = deviceInfo->syclDevice.get_platform().get_backend();
             ++countDevicesByBackend[backend];
         }
+    }
+    // Prefer L0 backend if GROMACS might be using GPU-aware Intel MPI.
+    if (const gmx::GpuAwareMpiStatus status = gmx::checkMpiZEAwareSupport();
+        gmx::usingIntelMpi()
+        && ((status == gmx::GpuAwareMpiStatus::Supported) || (status == gmx::GpuAwareMpiStatus::Forced)))
+    {
+        if (countDevicesByBackend[sycl::backend::ext_oneapi_level_zero] > 0)
+        {
+            return sycl::backend::ext_oneapi_level_zero;
+        }
+        // If we get here, then no devices with L0 backend were
+        // detected. This can be fine if the user is not running a
+        // simulation that will use GPU-aware MPI.
     }
     // If we have devices from more than one backend...
     if (countDevicesByBackend.size() > 1)
@@ -462,17 +547,35 @@ static std::vector<sycl::device> partitionDevices(const std::vector<sycl::device
     for (const auto& device : devices)
     {
         using sycl::info::partition_property, sycl::info::partition_affinity_domain;
-        try
+        // Get the partition affinity domains supported by this device for
+        // partitioning into at least two sub-devices along that affinity domain.
+        const std::vector<partition_affinity_domain> supportedPartitionAffinityDomains =
+                device.get_info<sycl::info::device::partition_affinity_domains>();
+        // In principle, the above information is enough to decide
+        // whether to attempt NUMA-based device partitioning. But the
+        // driver changed in late 2023 to show PVC tiles as devices by
+        // default and other infrastructure is still catching up. So
+        // we make a further check that some sub-devices exist.
+        const unsigned int subDeviceCount =
+                device.get_info<sycl::info::device::partition_max_sub_devices>();
+        // Can this device be partitioned into two or more sub-devices along NUMA domains?
+        if ((subDeviceCount > 0)
+            && (std::find(supportedPartitionAffinityDomains.begin(),
+                          supportedPartitionAffinityDomains.end(),
+                          partition_affinity_domain::numa)
+                != supportedPartitionAffinityDomains.end()))
         {
             /* Split the device along NUMA domains into sub-devices.
-             * For multi-tile Intel GPUs, this corresponds to individual tiles.
-             * All other devices tested don't support partitioning and throw sycl::exception. */
-            const auto subDevices =
+             * For multi-tile Intel GPUs, this corresponds to
+             * individual tiles.  If create_sub_devices() is called
+             * for a device that does not support NUMA-based partitioning
+             * it would throw, but the above logic avoids that. */
+            const std::vector<sycl::device> subDevices =
                     device.create_sub_devices<partition_property::partition_by_affinity_domain>(
                             partition_affinity_domain::numa);
             retVal.insert(retVal.end(), subDevices.begin(), subDevices.end());
         }
-        catch (const sycl::exception&)
+        else
         {
             retVal.push_back(device);
         }
@@ -500,6 +603,8 @@ std::vector<std::unique_ptr<DeviceInformation>> findDevices()
         deviceInfos[i]->syclDevice = syclDevice;
         deviceInfos[i]->deviceVendor =
                 getDeviceVendor(syclDevice.get_info<sycl::info::device::vendor>().c_str());
+
+        deviceInfos[i]->gpuAwareMpiStatus = getDeviceGpuAwareMpiStatus(syclDevice.get_backend());
 
         deviceInfos[i]->supportedSubGroupSizesSize = 0;
         try

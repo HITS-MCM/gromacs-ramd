@@ -83,7 +83,15 @@ int64_t calcTargetUpdateInterval(const AwhParams& awhParams, const AwhBiasParams
      */
     switch (awhBiasParams.targetDistribution())
     {
-        case AwhTargetType::Constant: numStepsUpdateTarget = 0; break;
+        case AwhTargetType::Constant:
+            /* If the target distribution should be scaled by the friction metric,
+             * set numStepsUpdateTarget below */
+            if (!awhBiasParams.scaleTargetByMetric())
+            {
+                numStepsUpdateTarget = 0;
+                break;
+            }
+            [[fallthrough]];
         case AwhTargetType::Cutoff:
         case AwhTargetType::Boltzmann:
             /* Updating the target generally requires updating the whole grid so to keep the cost
@@ -237,6 +245,8 @@ BiasParams::BiasParams(const AwhParams&          awhParams,
     numStepsUpdateTarget_(calcTargetUpdateInterval(awhParams, awhBiasParams)),
     numStepsCheckCovering_(calcCheckCoveringInterval(awhParams, dimParams, gridAxis)),
     eTarget(awhBiasParams.targetDistribution()),
+    scaleTargetByMetric(awhBiasParams.scaleTargetByMetric()),
+    targetMetricScalingLimit(awhBiasParams.targetMetricScalingLimit()),
     freeEnergyCutoffInKT(beta * awhBiasParams.targetCutoff()),
     temperatureScaleFactor(awhBiasParams.targetBetaScaling()),
     idealWeighthistUpdate(eTarget != AwhTargetType::LocalBoltzmann),
@@ -247,7 +257,7 @@ BiasParams::BiasParams(const AwhParams&          awhParams,
     initialHistogramSize(
             getInitialHistogramSizeEstimate(awhBiasParams, gridAxis, beta, numStepsSampleCoord_ * mdTimeStep)),
     convolveForce(awhParams.potential() == AwhPotentialType::Convolved),
-    biasIndex(biasIndex),
+    biasIndex_(biasIndex),
     disableUpdateSkips_(disableUpdateSkips == DisableUpdateSkips::yes)
 {
     if (beta <= 0)

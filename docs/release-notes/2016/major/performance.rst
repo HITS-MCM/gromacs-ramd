@@ -24,7 +24,7 @@ Improved support for OpenCL devices
 The OpenCL support is now fully compatible with all intra- and
 inter-node parallelization mode, including MPI, thread-MPI, and GPU
 sharing by PP ranks. (The previous limitations were caused by bugs in high-level
-GROMACS code.)
+|Gromacs| code.)
 
 Additionally some prefetching in the short-ranged kernels (similar to
 that in the CUDA code) that had been disabled was found to be useful
@@ -104,7 +104,7 @@ force update did a lot of vector operations without SIMD that are
 now fully replaced by SIMD operations.
 
 Added SIMD implementation of Lennard-Jones 1-4 interactions
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""-
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 The gives a few factors speed improvement. The main improvement comes
 from simplified analytical LJ instead of tables; SIMD helps a bit.
 

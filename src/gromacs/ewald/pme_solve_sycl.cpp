@@ -61,25 +61,29 @@ using mode = sycl::access_mode;
  * \tparam     subGroupSize             Describes the width of a SYCL subgroup
  */
 template<GridOrdering gridOrdering, bool computeEnergyAndVirial, int subGroupSize>
-auto makeSolveKernel(sycl::handler&                    cgh,
-                     DeviceAccessor<float, mode::read> a_splineModuli,
-                     SolveKernelParams                 solveKernelParams,
-                     OptionalAccessor<float, mode::read_write, computeEnergyAndVirial> a_virialAndEnergy,
-                     DeviceAccessor<float, mode::read_write> a_fourierGrid)
+auto makeSolveKernel(sycl::handler& cgh,
+                     const float* __restrict__ gm_splineModuli,
+                     SolveKernelParams solveKernelParams,
+                     float* __restrict__ gm_virialAndEnergy,
+                     float* __restrict__ gm_fourierGrid_)
 {
-    a_splineModuli.bind(cgh);
-    if constexpr (computeEnergyAndVirial)
-    {
-        a_virialAndEnergy.bind(cgh);
-    }
-    a_fourierGrid.bind(cgh);
-
     /* Reduce 7 outputs per warp in the shared memory */
     const int stride =
             8; // this is c_virialAndEnergyCount==7 rounded up to power of 2 for convenience, hence the assert
     static_assert(c_virialAndEnergyCount == 7);
-    const int                           reductionBufferSize = c_solveMaxWarpsPerBlock * stride;
-    sycl_2020::local_accessor<float, 1> sm_virialAndEnergy(sycl::range<1>(reductionBufferSize), cgh);
+    const int reductionBufferSize = c_solveMaxWarpsPerBlock * stride;
+
+    // Help compiler eliminate local buffer when it is unused.
+    auto sm_virialAndEnergy = [&]() {
+        if constexpr (computeEnergyAndVirial)
+        {
+            return sycl::local_accessor<float, 1>(sycl::range<1>(reductionBufferSize), cgh);
+        }
+        else
+        {
+            return nullptr;
+        }
+    }();
 
     /* Each thread works on one cell of the Fourier space complex 3D grid (gm_grid).
      * Each block handles up to c_solveMaxWarpsPerBlock * subGroupSize cells -
@@ -113,11 +117,11 @@ auto makeSolveKernel(sycl::handler&                    cgh,
 
         /* Global memory pointers */
         const float* __restrict__ gm_splineValueMajor =
-                a_splineModuli.get_pointer() + solveKernelParams.splineValuesOffset[majorDim];
+                gm_splineModuli + solveKernelParams.splineValuesOffset[majorDim];
         const float* __restrict__ gm_splineValueMiddle =
-                a_splineModuli.get_pointer() + solveKernelParams.splineValuesOffset[middleDim];
+                gm_splineModuli + solveKernelParams.splineValuesOffset[middleDim];
         const float* __restrict__ gm_splineValueMinor =
-                a_splineModuli.get_pointer() + solveKernelParams.splineValuesOffset[minorDim];
+                gm_splineModuli + solveKernelParams.splineValuesOffset[minorDim];
         // The Fourier grid is allocated as float values, even though
         // it logically contains complex values. (It also can be
         // the same memory as the real grid for in-place transforms.)
@@ -131,7 +135,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
         // fail because of this mismatch. So, we extract the
         // underlying global_ptr and use that to construct
         // sycl::float2 values when needed.
-        sycl::global_ptr<float> gm_fourierGrid = a_fourierGrid.get_pointer();
+        sycl::global_ptr<float> gm_fourierGrid = gm_fourierGrid_;
 
         /* Various grid sizes and indices */
         const int localOffsetMinor  = solveKernelParams.kOffsets[minorDim];
@@ -249,7 +253,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
                 SYCL_ASSERT(m2k != 0.0F);
                 float denom = m2k * float(M_PI) * solveKernelParams.boxVolume * gm_splineValueMajor[kMajor]
                               * gm_splineValueMiddle[kMiddle] * gm_splineValueMinor[kMinor];
-                SYCL_ASSERT(sycl_2020::isfinite(denom));
+                SYCL_ASSERT(sycl::isfinite(denom));
                 SYCL_ASSERT(denom != 0.0F);
 
                 const float tmp1   = sycl::exp(-solveKernelParams.ewaldFactor * m2k);
@@ -296,13 +300,13 @@ auto makeSolveKernel(sycl::handler&                    cgh,
             sycl::sub_group sg = itemIdx.get_sub_group();
 
             /* Making pair sums */
-            virxx += sycl_2020::shift_left(sg, virxx, 1);
-            viryy += sycl_2020::shift_right(sg, viryy, 1);
-            virzz += sycl_2020::shift_left(sg, virzz, 1);
-            virxy += sycl_2020::shift_right(sg, virxy, 1);
-            virxz += sycl_2020::shift_left(sg, virxz, 1);
-            viryz += sycl_2020::shift_right(sg, viryz, 1);
-            energy += sycl_2020::shift_left(sg, energy, 1);
+            virxx += sycl::shift_group_left(sg, virxx, 1);
+            viryy += sycl::shift_group_right(sg, viryy, 1);
+            virzz += sycl::shift_group_left(sg, virzz, 1);
+            virxy += sycl::shift_group_right(sg, virxy, 1);
+            virxz += sycl::shift_group_left(sg, virxz, 1);
+            viryz += sycl::shift_group_right(sg, viryz, 1);
+            energy += sycl::shift_group_left(sg, energy, 1);
             if (threadLocalId & 1)
             {
                 virxx = viryy; // virxx now holds virxx and viryy pair sums
@@ -311,10 +315,10 @@ auto makeSolveKernel(sycl::handler&                    cgh,
             }
 
             /* Making quad sums */
-            virxx += sycl_2020::shift_left(sg, virxx, 2);
-            virzz += sycl_2020::shift_right(sg, virzz, 2);
-            virxz += sycl_2020::shift_left(sg, virxz, 2);
-            energy += sycl_2020::shift_right(sg, energy, 2);
+            virxx += sycl::shift_group_left(sg, virxx, 2);
+            virzz += sycl::shift_group_right(sg, virzz, 2);
+            virxz += sycl::shift_group_left(sg, virxz, 2);
+            energy += sycl::shift_group_right(sg, energy, 2);
             if (threadLocalId & 2)
             {
                 virxx = virzz; // virxx now holds quad sums of virxx, virxy, virzz and virxy
@@ -322,8 +326,8 @@ auto makeSolveKernel(sycl::handler&                    cgh,
             }
 
             /* Making octet sums */
-            virxx += sycl_2020::shift_left(sg, virxx, 4);
-            virxz += sycl_2020::shift_right(sg, virxz, 4);
+            virxx += sycl::shift_group_left(sg, virxx, 4);
+            virxz += sycl::shift_group_right(sg, virxz, 4);
             if (threadLocalId & 4)
             {
                 virxx = virxz; // virxx now holds all 7 components' octet sums + unused paddings
@@ -333,7 +337,7 @@ auto makeSolveKernel(sycl::handler&                    cgh,
 #pragma unroll
             for (int delta = 8; delta < width; delta <<= 1)
             {
-                virxx += sycl_2020::shift_left(sg, virxx, delta);
+                virxx += sycl::shift_group_left(sg, virxx, delta);
             }
             /* Now first 7 threads of each warp have the full output contributions in virxx */
 
@@ -373,13 +377,13 @@ auto makeSolveKernel(sycl::handler&                    cgh,
 #pragma unroll
                 for (int delta = stride; delta < subGroupSize; delta <<= 1)
                 {
-                    output += sycl_2020::shift_left(sg, output, delta);
+                    output += sycl::shift_group_left(sg, output, delta);
                 }
                 /* Final output */
                 if (validComponentIndex)
                 {
-                    SYCL_ASSERT(sycl_2020::isfinite(output));
-                    atomicFetchAdd(a_virialAndEnergy[componentIndex], output);
+                    SYCL_ASSERT(sycl::isfinite(output));
+                    atomicFetchAdd(gm_virialAndEnergy[componentIndex], output);
                 }
             }
         }
@@ -440,10 +444,10 @@ void PmeSolveKernel<gridOrdering, computeEnergyAndVirial, gridIndex, subGroupSiz
     q.submit(GMX_SYCL_DISCARD_EVENT[&](sycl::handler & cgh) {
         auto kernel = makeSolveKernel<gridOrdering, computeEnergyAndVirial, subGroupSize>(
                 cgh,
-                gridParams_->d_splineModuli[gridIndex],
+                gridParams_->d_splineModuli[gridIndex].get_pointer(),
                 solveKernelParams_,
-                constParams_->d_virialAndEnergy[gridIndex],
-                gridParams_->d_fftComplexGrid[gridIndex]);
+                constParams_->d_virialAndEnergy[gridIndex].get_pointer(),
+                gridParams_->d_fftComplexGrid[gridIndex].get_pointer());
         cgh.parallel_for<KernelNameType>(range, kernel);
     });
 

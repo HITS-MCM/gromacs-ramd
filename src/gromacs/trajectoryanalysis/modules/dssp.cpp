@@ -46,10 +46,13 @@
 #include "dssp.h"
 
 #include <algorithm>
+#include <bitset>
 #include <fstream>
 #include <iostream>
 #include <set>
 
+#include "gromacs/analysisdata/analysisdata.h"
+#include "gromacs/analysisdata/modules/plot.h"
 #include "gromacs/fileio/gmxfio.h"
 #include "gromacs/math/units.h"
 #include "gromacs/options/basicoptions.h"
@@ -63,6 +66,7 @@
 #include "gromacs/trajectoryanalysis/topologyinformation.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
+#include "gromacs/utility/pleasecite.h"
 
 namespace gmx
 {
@@ -143,9 +147,21 @@ struct ResInfo
      */
     gmx::EnumerationArray<BackboneAtomTypes, size_t> backboneIndices_ = { 0, 0, 0, 0, 0 };
     /*! \brief
+     * Bitset of atoms' status. Used to minimize misinterpretation of data.
+     */
+    std::bitset<static_cast<size_t>(BackboneAtomTypes::Count)> backboneIndicesStatus_{ 0x0 };
+    /*! \brief
      * Function that returns atom's index based on specific atom type.
      */
     std::size_t getIndex(BackboneAtomTypes atomTypeName) const;
+    /*! \brief
+     * Function that returns atom's status based on specific atom type. Used to minimize misinterpretation of data.
+     */
+    bool hasIndex(BackboneAtomTypes atomTypeName) const;
+    /*! \brief
+     * Function that sets atom's index and status based on specific atom type.
+     */
+    void setIndex(BackboneAtomTypes atomTypeName, std::size_t index);
     //! Constant value that defines maximum amount of donors and acceptors per residue.
     static constexpr std::size_t sc_maxDonorsPerResidue = 2;
     //! Pointer to t_resinfo which contains full information about this specific residue.
@@ -171,6 +187,17 @@ std::size_t ResInfo::getIndex(BackboneAtomTypes atomTypeName) const
     return backboneIndices_[atomTypeName];
 }
 
+bool ResInfo::hasIndex(BackboneAtomTypes atomTypeName) const
+{
+    return backboneIndicesStatus_.test(static_cast<std::size_t>(atomTypeName));
+}
+
+void ResInfo::setIndex(BackboneAtomTypes atomTypeName, std::size_t index)
+{
+    backboneIndices_[atomTypeName] = index;
+    backboneIndicesStatus_.set(static_cast<std::size_t>(atomTypeName));
+}
+
 //! Enum of secondary structures' types.
 enum class SecondaryStructureTypes : std::size_t
 {
@@ -188,9 +215,23 @@ enum class SecondaryStructureTypes : std::size_t
 
 };
 
-//! String values corresponding to secondary structures' types.
+//! String values (symbols) corresponding to secondary structures' types.
 const gmx::EnumerationArray<SecondaryStructureTypes, const char> c_secondaryStructureTypeNames = {
     { '~', '=', 'S', 'T', 'P', 'I', 'G', 'E', 'B', 'H' }
+};
+
+//! String values (full) corresponding to secondary structures' types.
+const gmx::EnumerationArray<SecondaryStructureTypes, const char*> c_secondaryStructureTypeNamesFull = {
+    { "Loops",
+      "Breaks",
+      "Bends",
+      "Turns",
+      "PP_Helices",
+      "π-Helices",
+      "3⏨-Helices",
+      "β-Strands",
+      "β-Bridges",
+      "α-Helices" }
 };
 
 //! Enum of turns' types.
@@ -252,6 +293,20 @@ enum class PPStretches : std::size_t
 //! String values corresponding to neighbor-search modes.
 const gmx::EnumerationArray<PPStretches, const char*> c_PPStretchesNames = { { "shortened",
                                                                                "default" } };
+
+/*! \brief
+ * Enum of various modes of hydrogen bond definition.
+ */
+enum class HBondDefinition : std::size_t
+{
+    Energy = 0,
+    Geometry,
+    Count
+};
+
+//! String values corresponding to hydrogen bond definition modes.
+const gmx::EnumerationArray<HBondDefinition, const char*> c_HBondDefinition = { { "energy",
+                                                                                  "geometry" } };
 
 /*! \brief
  * Describes and manipulates secondary structure attributes of a residue.
@@ -421,7 +476,10 @@ public:
     /*! \brief
      * Function that parses topology to construct vector containing information about the residues.
      */
-    void analyseTopology(const TopologyInformation& top, const Selection& sel, const HydrogenMode& transferredHMode);
+    void analyseTopology(const TopologyInformation& top,
+                         const Selection&           sel,
+                         const HydrogenMode&        transferredHMode,
+                         bool                       clearStructure);
     /*! \brief
      * Function that checks if topologyVector_ is empty. Used after parsing topology data. If it is
      * empty after running analyseTopology(), then some error has occurred.
@@ -435,10 +493,11 @@ public:
                                      bool              transferredNbsMode,
                                      real              transferredCutoff,
                                      bool              transferredPiHelicesPreference,
-                                     PPStretches       transferredPolyProStretch);
+                                     PPStretches       transferredPolyProStretch,
+                                     HBondDefinition   transferredHbDef);
 
 private:
-    //! Function that parses information from a frame to determine hydrogen bonds patterns.
+    //! Function that parses information from a frame to determine hydrogen bonds (via energy or geometry calculation) patterns.
     void analyzeHydrogenBondsInFrame(const t_trxframe& fr, const t_pbc* pbc, bool nBSmode, real cutoff);
     /*! \brief
      * Function that provides a simple test if a h-bond exists within two residues of specific indices.
@@ -486,13 +545,21 @@ private:
     void calculateBends(const t_trxframe& fr, const t_pbc* pbc);
 
     /*! \brief
-     * Function that Checks if H-Bond exist according to DSSP algorithm
+     * Function that checks if H-Bond exist according to DSSP algorithm
      * kCouplingConstant = 27.888,  //  = 332 * 0.42 * 0.2
      * E = k * (1/rON + 1/rCH - 1/rOH - 1/rCN) where CO comes from one AA and NH from another
      * if R is in A
      * Hbond exists if E < -0.5
      */
     void calculateHBondEnergy(ResInfo* Donor, ResInfo* Acceptor, const t_trxframe& fr, const t_pbc* pbc);
+    /*! \brief
+     * Function that checks if H-Bond exist according to HBOND algorithm
+     * H-Bond exists if distance between Donor and Acceptor
+     * d <= 0.35 nm
+     * and Hydrogen-Donor-Acceptor angle
+     * α is < 30°.
+     */
+    void calculateHBondGeometry(ResInfo* Donor, ResInfo* Acceptor, const t_trxframe& fr, const t_pbc* pbc);
     //! Vector that contains h-bond pattern information-manipulating class for each residue in selection.
     std::vector<SecondaryStructuresData> secondaryStructuresStatusVector_;
     //! Vector of ResInfo struct that contains all important information from topology about residues in the protein structure.
@@ -507,26 +574,28 @@ private:
     //! exceeding which a hydrogen bond between these two residues will be impossible.
     const float minimalCAdistance_ = 9.0F;
     //! Boolean value that indicates the priority of calculating pi-helices.
-    bool piHelixPreference_ = false;
+    bool piHelicesPreference_ = false;
     //! Enum value for creating hydrogen atoms mode. Very useful for structures without hydrogen atoms. Set in initial options.
     HydrogenMode hMode_ = HydrogenMode::Gromacs;
     //! Enum value that defines polyproline helix stretch. Can be only equal to 2 or 3. Set in initial options.
     PPStretches polyProStretch_ = PPStretches::Default;
+    //! Enum value that defines hydrogen bond definition. Set in initial options.
+    HBondDefinition hbDef_ = HBondDefinition::Energy;
 };
 
 void SecondaryStructures::analyseTopology(const TopologyInformation& top,
                                           const Selection&           sel,
-                                          const HydrogenMode&        transferredHMode)
+                                          const HydrogenMode&        transferredHMode,
+                                          bool                       clearStructure)
 {
     hMode_ = transferredHMode;
     int resicompare =
             top.atoms()->atom[static_cast<std::size_t>(*(sel.atomIndices().begin()))].resind - 1;
-    for (gmx::ArrayRef<const int>::iterator ai = sel.atomIndices().begin(); ai != sel.atomIndices().end();
-         ++ai)
+    for (const auto& ai : sel.atomIndices())
     {
-        if (resicompare != top.atoms()->atom[static_cast<std::size_t>(*ai)].resind)
+        if (resicompare != top.atoms()->atom[static_cast<std::size_t>(ai)].resind)
         {
-            resicompare = top.atoms()->atom[static_cast<std::size_t>(*ai)].resind;
+            resicompare = top.atoms()->atom[static_cast<std::size_t>(ai)].resind;
             topologyVector_.emplace_back();
             topologyVector_.back().info_ = &(top.atoms()->resinfo[resicompare]);
             std::string residueName      = *(topologyVector_.back().info_->name);
@@ -535,32 +604,43 @@ void SecondaryStructures::analyseTopology(const TopologyInformation& top,
                 topologyVector_.back().isProline_ = true;
             }
         }
-        std::string atomName(*(top.atoms()->atomname[static_cast<std::size_t>(*ai)]));
+        std::string atomName(*(top.atoms()->atomname[static_cast<std::size_t>(ai)]));
         if (atomName == c_backboneAtomTypeNames[BackboneAtomTypes::AtomCA])
         {
-            topologyVector_.back().backboneIndices_[BackboneAtomTypes::AtomCA] = *ai;
+            topologyVector_.back().setIndex(BackboneAtomTypes::AtomCA, ai);
         }
         else if (atomName == c_backboneAtomTypeNames[BackboneAtomTypes::AtomC])
         {
-            topologyVector_.back().backboneIndices_[BackboneAtomTypes::AtomC] = *ai;
+            topologyVector_.back().setIndex(BackboneAtomTypes::AtomC, ai);
         }
         else if (atomName == c_backboneAtomTypeNames[BackboneAtomTypes::AtomO])
         {
-            topologyVector_.back().backboneIndices_[BackboneAtomTypes::AtomO] = *ai;
+            topologyVector_.back().setIndex(BackboneAtomTypes::AtomO, ai);
         }
         else if (atomName == c_backboneAtomTypeNames[BackboneAtomTypes::AtomN])
         {
-            topologyVector_.back().backboneIndices_[BackboneAtomTypes::AtomN] = *ai;
+            topologyVector_.back().setIndex(BackboneAtomTypes::AtomN, ai);
             if (hMode_ == HydrogenMode::Dssp)
             {
-                topologyVector_.back().backboneIndices_[BackboneAtomTypes::AtomH] = *ai;
+                topologyVector_.back().setIndex(BackboneAtomTypes::AtomH, ai);
             }
         }
         else if (hMode_ == HydrogenMode::Gromacs
                  && atomName == c_backboneAtomTypeNames[BackboneAtomTypes::AtomH])
         {
-            topologyVector_.back().backboneIndices_[BackboneAtomTypes::AtomH] = *ai;
+            topologyVector_.back().setIndex(BackboneAtomTypes::AtomH, ai);
         }
+    }
+    if (clearStructure)
+    {
+        auto isCorrupted = [](const ResInfo& Res) -> bool {
+            return !Res.hasIndex(BackboneAtomTypes::AtomCA) || !Res.hasIndex(BackboneAtomTypes::AtomC)
+                   || !Res.hasIndex(BackboneAtomTypes::AtomO) || !Res.hasIndex(BackboneAtomTypes::AtomN)
+                   || !Res.hasIndex(BackboneAtomTypes::AtomH);
+        };
+        auto corruptedResidues =
+                std::remove_if(topologyVector_.begin(), topologyVector_.end(), isCorrupted);
+        topologyVector_.erase(corruptedResidues, topologyVector_.end());
     }
     for (std::size_t i = 1; i < topologyVector_.size(); ++i)
     {
@@ -602,10 +682,23 @@ void SecondaryStructures::analyzeHydrogenBondsInFrame(const t_trxframe& fr, cons
             {
                 continue;
             }
-            calculateHBondEnergy(donor, acceptor, fr, pbc);
-            if (acceptor->info_ != donor->nextResi_->info_)
+            switch (hbDef_)
             {
-                calculateHBondEnergy(acceptor, donor, fr, pbc);
+                case HBondDefinition::Energy:
+                    calculateHBondEnergy(donor, acceptor, fr, pbc);
+                    if (acceptor->info_ != donor->nextResi_->info_)
+                    {
+                        calculateHBondEnergy(acceptor, donor, fr, pbc);
+                    }
+                    break;
+                case HBondDefinition::Geometry:
+                    calculateHBondGeometry(donor, acceptor, fr, pbc);
+                    if (acceptor->info_ != donor->nextResi_->info_)
+                    {
+                        calculateHBondGeometry(acceptor, donor, fr, pbc);
+                    }
+                    break;
+                default: continue;
             }
         }
     }
@@ -615,17 +708,23 @@ void SecondaryStructures::analyzeHydrogenBondsInFrame(const t_trxframe& fr, cons
         {
             for (std::size_t acceptor = donor + 1; acceptor < frameVector_.size(); ++acceptor)
             {
-                if (calculateAtomicDistances(frameVector_[donor].getIndex(BackboneAtomTypes::AtomCA),
-                                             frameVector_[acceptor].getIndex(BackboneAtomTypes::AtomCA),
-                                             fr,
-                                             pbc)
-                    < minimalCAdistance_)
+                switch (hbDef_)
                 {
-                    calculateHBondEnergy(&frameVector_[donor], &frameVector_[acceptor], fr, pbc);
-                    if (acceptor != donor + 1)
-                    {
-                        calculateHBondEnergy(&frameVector_[acceptor], &frameVector_[donor], fr, pbc);
-                    }
+                    case HBondDefinition::Energy:
+                        calculateHBondEnergy(&frameVector_[donor], &frameVector_[acceptor], fr, pbc);
+                        if (acceptor != donor + 1)
+                        {
+                            calculateHBondEnergy(&frameVector_[acceptor], &frameVector_[donor], fr, pbc);
+                        }
+                        break;
+                    case HBondDefinition::Geometry:
+                        calculateHBondGeometry(&frameVector_[donor], &frameVector_[acceptor], fr, pbc);
+                        if (acceptor != donor + 1)
+                        {
+                            calculateHBondGeometry(&frameVector_[acceptor], &frameVector_[donor], fr, pbc);
+                        }
+                        break;
+                    default: continue;
                 }
             }
         }
@@ -635,10 +734,16 @@ void SecondaryStructures::analyzeHydrogenBondsInFrame(const t_trxframe& fr, cons
 
 bool SecondaryStructures::hasHBondBetween(std::size_t donor, std::size_t acceptor) const
 {
-    return ((frameVector_[donor].acceptor_[0] == frameVector_[acceptor].info_
-             && frameVector_[donor].acceptorEnergy_[0] < hBondEnergyCutOff_)
-            || (frameVector_[donor].acceptor_[1] == frameVector_[acceptor].info_
-                && frameVector_[donor].acceptorEnergy_[1] < hBondEnergyCutOff_));
+    for (std::size_t i = 0; i < ResInfo::sc_maxDonorsPerResidue; ++i)
+    {
+        if (frameVector_[donor].acceptor_[i] == frameVector_[acceptor].info_
+            && (frameVector_[donor].acceptorEnergy_[i] < hBondEnergyCutOff_
+                || hbDef_ == HBondDefinition::Geometry))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool SecondaryStructures::noChainBreaksBetween(std::size_t residueA, std::size_t residueB) const
@@ -830,7 +935,7 @@ void SecondaryStructures::analyzeTurnsAndHelicesPatterns()
                         {
                             empty = secondaryStructuresStatusVector_[j + k].getSecondaryStructure()
                                             <= SecondaryStructureTypes::Helix_5
-                                    || (piHelixPreference_
+                                    || (piHelicesPreference_
                                         && secondaryStructuresStatusVector_[j + k].getSecondaryStructure()
                                                    == SecondaryStructureTypes::Helix_4);
                         }
@@ -878,15 +983,17 @@ std::string SecondaryStructures::performPatternSearch(const t_trxframe& fr,
                                                       bool              transferredNbsMode,
                                                       real              transferredCutoff,
                                                       bool        transferredPiHelicesPreference,
-                                                      PPStretches transferredPolyProStretch)
+                                                      PPStretches transferredPolyProStretch,
+                                                      HBondDefinition transferredHbDef)
 {
     GMX_RELEASE_ASSERT(
             !topologyVector_.empty(),
             "Invalid usage of this function. You have to load topology information before. Run "
             "analyseTopology(...) first.");
-    frameVector_       = topologyVector_;
-    piHelixPreference_ = transferredPiHelicesPreference;
-    polyProStretch_    = transferredPolyProStretch;
+    frameVector_         = topologyVector_;
+    piHelicesPreference_ = transferredPiHelicesPreference;
+    polyProStretch_      = transferredPolyProStretch;
+    hbDef_               = transferredHbDef;
     secondaryStructuresStatusVector_.resize(0);
     secondaryStructuresStatusVector_.resize(frameVector_.size());
     secondaryStructuresStringLine_.resize(0);
@@ -906,19 +1013,6 @@ std::string SecondaryStructures::performPatternSearch(const t_trxframe& fr,
                 == static_cast<SecondaryStructureTypes>(i))
             {
                 secondaryStructuresStringLine_[j] = c_secondaryStructureTypeNames[i];
-            }
-        }
-    }
-    if (piHelixPreference_)
-    {
-        for (std::size_t j = 0; j < secondaryStructuresStatusVector_.size(); ++j)
-        {
-            if (secondaryStructuresStatusVector_[j].getSecondaryStructure() == SecondaryStructureTypes::Helix_5
-                && secondaryStructuresStatusVector_[j].getSecondaryStructure()
-                           == SecondaryStructureTypes::Helix_4)
-            {
-                secondaryStructuresStringLine_[j] =
-                        c_secondaryStructureTypeNames[SecondaryStructureTypes::Helix_5];
             }
         }
     }
@@ -1016,18 +1110,30 @@ void SecondaryStructures::calculateDihedrals(const t_trxframe& fr, const t_pbc* 
     std::vector<float> psi(frameVector_.size(), 360);
     for (std::size_t i = 1; i + 1 < frameVector_.size(); ++i)
     {
-        phi[i] = calculateDihedralAngle(frameVector_[i - 1].getIndex(BackboneAtomTypes::AtomC),
-                                        frameVector_[i].getIndex(BackboneAtomTypes::AtomN),
-                                        frameVector_[i].getIndex(BackboneAtomTypes::AtomCA),
-                                        frameVector_[i].getIndex(BackboneAtomTypes::AtomC),
-                                        fr,
-                                        pbc);
-        psi[i] = calculateDihedralAngle(frameVector_[i].getIndex(BackboneAtomTypes::AtomN),
-                                        frameVector_[i].getIndex(BackboneAtomTypes::AtomCA),
-                                        frameVector_[i].getIndex(BackboneAtomTypes::AtomC),
-                                        frameVector_[i + 1].getIndex(BackboneAtomTypes::AtomN),
-                                        fr,
-                                        pbc);
+        if (frameVector_[i - 1].hasIndex(BackboneAtomTypes::AtomC)
+            && frameVector_[i].hasIndex(BackboneAtomTypes::AtomN)
+            && frameVector_[i].hasIndex(BackboneAtomTypes::AtomCA)
+            && frameVector_[i].hasIndex(BackboneAtomTypes::AtomC))
+        {
+            phi[i] = calculateDihedralAngle(frameVector_[i - 1].getIndex(BackboneAtomTypes::AtomC),
+                                            frameVector_[i].getIndex(BackboneAtomTypes::AtomN),
+                                            frameVector_[i].getIndex(BackboneAtomTypes::AtomCA),
+                                            frameVector_[i].getIndex(BackboneAtomTypes::AtomC),
+                                            fr,
+                                            pbc);
+        }
+        if (frameVector_[i].hasIndex(BackboneAtomTypes::AtomN)
+            && frameVector_[i].hasIndex(BackboneAtomTypes::AtomCA)
+            && frameVector_[i].hasIndex(BackboneAtomTypes::AtomC)
+            && frameVector_[i + 1].hasIndex(BackboneAtomTypes::AtomN))
+        {
+            psi[i] = calculateDihedralAngle(frameVector_[i].getIndex(BackboneAtomTypes::AtomN),
+                                            frameVector_[i].getIndex(BackboneAtomTypes::AtomCA),
+                                            frameVector_[i].getIndex(BackboneAtomTypes::AtomC),
+                                            frameVector_[i + 1].getIndex(BackboneAtomTypes::AtomN),
+                                            fr,
+                                            pbc);
+        }
     }
     for (std::size_t i = 1; i + 3 < frameVector_.size(); ++i)
     {
@@ -1138,17 +1244,24 @@ void SecondaryStructures::calculateBends(const t_trxframe& fr, const t_pbc* pbc)
     const float bendDegreeMax = 360.0;
     const float maxDist       = 2.5; // note, in Angstrom
     float       degree        = 0;
-    float       vdot          = 0;
-    float       vprod         = 0;
     gmx::RVec   vecAB{ 0, 0, 0 };
     gmx::RVec   vecAC{ 0, 0, 0 };
     for (std::size_t i = 0; i + 1 < frameVector_.size(); ++i)
     {
-        if (calculateAtomicDistances(frameVector_[i].getIndex(BackboneAtomTypes::AtomC),
-                                     frameVector_[i + 1].getIndex(BackboneAtomTypes::AtomN),
-                                     fr,
-                                     pbc)
-            > maxDist)
+        if (frameVector_[i].hasIndex(BackboneAtomTypes::AtomC)
+            && frameVector_[i + 1].hasIndex(BackboneAtomTypes::AtomN))
+        {
+            if (calculateAtomicDistances(frameVector_[i].getIndex(BackboneAtomTypes::AtomC),
+                                         frameVector_[i + 1].getIndex(BackboneAtomTypes::AtomN),
+                                         fr,
+                                         pbc)
+                > maxDist)
+            {
+                secondaryStructuresStatusVector_[i].setBreak(&secondaryStructuresStatusVector_[i + 1]);
+                secondaryStructuresStatusVector_[i + 1].setBreak(&secondaryStructuresStatusVector_[i]);
+            }
+        }
+        else
         {
             secondaryStructuresStatusVector_[i].setBreak(&secondaryStructuresStatusVector_[i + 1]);
             secondaryStructuresStatusVector_[i + 1].setBreak(&secondaryStructuresStatusVector_[i]);
@@ -1175,16 +1288,7 @@ void SecondaryStructures::calculateBends(const t_trxframe& fr, const t_pbc* pbc)
                fr.x[frameVector_[i + 2].getIndex(BackboneAtomTypes::AtomCA)],
                fr.x[frameVector_[i].getIndex(BackboneAtomTypes::AtomCA)],
                vecAC.as_vec());
-        vdot  = dot(vecAB, vecAC) * gmx::c_nm2A * gmx::c_nm2A;
-        vprod = calculateAtomicDistances(frameVector_[i - 2].getIndex(BackboneAtomTypes::AtomCA),
-                                         frameVector_[i].getIndex(BackboneAtomTypes::AtomCA),
-                                         fr,
-                                         pbc)
-                * calculateAtomicDistances(frameVector_[i].getIndex(BackboneAtomTypes::AtomCA),
-                                           frameVector_[i + 2].getIndex(BackboneAtomTypes::AtomCA),
-                                           fr,
-                                           pbc);
-        degree = std::acos(vdot / vprod) * gmx::c_rad2Deg;
+        degree = gmx_angle(vecAB, vecAC) * gmx::c_rad2Deg;
         if (degree != bendDegreeMax and degree > bendDegreeMin)
         {
             secondaryStructuresStatusVector_[i].setSecondaryStructureType(SecondaryStructureTypes::Bend);
@@ -1197,106 +1301,178 @@ void SecondaryStructures::calculateHBondEnergy(ResInfo*          donor,
                                                const t_trxframe& fr,
                                                const t_pbc*      pbc)
 {
-    // Values are taken from original DSSP algorithm, file Secondary.cpp from https://github.com/PDB-REDO/libcifpp/releases/tag/v3.0.0
-    const float kCouplingConstant   = 27.888;
-    const float minimalAtomDistance = 0.5;
-    const float minEnergy           = -9.9;
-    float       HbondEnergy         = 0;
-    float       distanceNO          = 0;
-    float       distanceHC          = 0;
-    float       distanceHO          = 0;
-    float       distanceNC          = 0;
     if (!(donor->isProline_)
-        && (acceptor->getIndex(BackboneAtomTypes::AtomC)
-            && acceptor->getIndex(BackboneAtomTypes::AtomO) && donor->getIndex(BackboneAtomTypes::AtomN)
-            && (donor->getIndex(BackboneAtomTypes::AtomH) || hMode_ == HydrogenMode::Dssp)))
+        && (acceptor->hasIndex(BackboneAtomTypes::AtomC) && acceptor->hasIndex(BackboneAtomTypes::AtomO)
+            && donor->hasIndex(BackboneAtomTypes::AtomN) && donor->hasIndex(BackboneAtomTypes::AtomH)))
     {
-        distanceNO = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomN),
-                                              acceptor->getIndex(BackboneAtomTypes::AtomO),
-                                              fr,
-                                              pbc);
-        distanceNC = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomN),
-                                              acceptor->getIndex(BackboneAtomTypes::AtomC),
-                                              fr,
-                                              pbc);
-        if (hMode_ == HydrogenMode::Dssp)
+        if (calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomCA),
+                                     acceptor->getIndex(BackboneAtomTypes::AtomCA),
+                                     fr,
+                                     pbc)
+            < minimalCAdistance_)
         {
-            if (donor->prevResi_ != nullptr && donor->prevResi_->getIndex(BackboneAtomTypes::AtomC)
-                && donor->prevResi_->getIndex(BackboneAtomTypes::AtomO))
+            float distanceHO = 0;
+            float distanceHC = 0;
+            float distanceNO = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomN),
+                                                        acceptor->getIndex(BackboneAtomTypes::AtomO),
+                                                        fr,
+                                                        pbc);
+            float distanceNC = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomN),
+                                                        acceptor->getIndex(BackboneAtomTypes::AtomC),
+                                                        fr,
+                                                        pbc);
+            if (hMode_ == HydrogenMode::Dssp)
             {
-                gmx::RVec atomH  = fr.x[donor->getIndex(BackboneAtomTypes::AtomH)];
-                gmx::RVec prevCO = fr.x[donor->prevResi_->getIndex(BackboneAtomTypes::AtomC)];
-                prevCO -= fr.x[donor->prevResi_->getIndex(BackboneAtomTypes::AtomO)];
-                float prevCODist =
-                        calculateAtomicDistances(donor->prevResi_->getIndex(BackboneAtomTypes::AtomC),
-                                                 donor->prevResi_->getIndex(BackboneAtomTypes::AtomO),
-                                                 fr,
-                                                 pbc);
-                atomH += prevCO / prevCODist;
-                distanceHO = calculateAtomicDistances(
-                        atomH, acceptor->getIndex(BackboneAtomTypes::AtomO), fr, pbc);
-                distanceHC = calculateAtomicDistances(
-                        atomH, acceptor->getIndex(BackboneAtomTypes::AtomC), fr, pbc);
+                if (donor->prevResi_ != nullptr && donor->prevResi_->getIndex(BackboneAtomTypes::AtomC)
+                    && donor->prevResi_->getIndex(BackboneAtomTypes::AtomO))
+                {
+                    gmx::RVec atomH  = fr.x[donor->getIndex(BackboneAtomTypes::AtomH)];
+                    gmx::RVec prevCO = fr.x[donor->prevResi_->getIndex(BackboneAtomTypes::AtomC)];
+                    prevCO -= fr.x[donor->prevResi_->getIndex(BackboneAtomTypes::AtomO)];
+                    float prevCODist = calculateAtomicDistances(
+                            donor->prevResi_->getIndex(BackboneAtomTypes::AtomC),
+                            donor->prevResi_->getIndex(BackboneAtomTypes::AtomO),
+                            fr,
+                            pbc);
+                    atomH += prevCO / prevCODist;
+                    distanceHO = calculateAtomicDistances(
+                            atomH, acceptor->getIndex(BackboneAtomTypes::AtomO), fr, pbc);
+                    distanceHC = calculateAtomicDistances(
+                            atomH, acceptor->getIndex(BackboneAtomTypes::AtomC), fr, pbc);
+                }
+                else
+                {
+                    distanceHO = distanceNO;
+                    distanceHC = distanceNC;
+                }
             }
             else
             {
-                distanceHO = distanceNO;
-                distanceHC = distanceNC;
+                distanceHO = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomH),
+                                                      acceptor->getIndex(BackboneAtomTypes::AtomO),
+                                                      fr,
+                                                      pbc);
+                distanceHC = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomH),
+                                                      acceptor->getIndex(BackboneAtomTypes::AtomC),
+                                                      fr,
+                                                      pbc);
+            }
+            // Values are taken from original DSSP algorithm, file Secondary.cpp from https://github.com/PDB-REDO/libcifpp/releases/tag/v3.0.0
+            float       HbondEnergy         = 0;
+            const float minEnergy           = -9.9;
+            const float minimalAtomDistance = 0.5;
+            const float kCouplingConstant   = 27.888;
+            if ((distanceNO < minimalAtomDistance) || (distanceHC < minimalAtomDistance)
+                || (distanceHO < minimalAtomDistance) || (distanceNC < minimalAtomDistance))
+            {
+                HbondEnergy = minEnergy;
+            }
+            else
+            {
+                HbondEnergy =
+                        kCouplingConstant
+                        * ((1 / distanceNO) + (1 / distanceHC) - (1 / distanceHO) - (1 / distanceNC));
+            }
+            if (HbondEnergy < donor->acceptorEnergy_[0])
+            {
+                donor->acceptor_[1]       = donor->acceptor_[0];
+                donor->acceptorEnergy_[1] = donor->acceptorEnergy_[0];
+                donor->acceptor_[0]       = acceptor->info_;
+                donor->acceptorEnergy_[0] = HbondEnergy;
+            }
+            else if (HbondEnergy < donor->acceptorEnergy_[1])
+            {
+                donor->acceptor_[1]       = acceptor->info_;
+                donor->acceptorEnergy_[1] = HbondEnergy;
+            }
+
+            if (HbondEnergy < acceptor->donorEnergy_[0])
+            {
+                acceptor->donor_[1]       = acceptor->donor_[0];
+                acceptor->donorEnergy_[1] = acceptor->donorEnergy_[0];
+                acceptor->donor_[0]       = donor->info_;
+                acceptor->donorEnergy_[0] = HbondEnergy;
+            }
+            else if (HbondEnergy < acceptor->donorEnergy_[1])
+            {
+                acceptor->donor_[1]       = donor->info_;
+                acceptor->donorEnergy_[1] = HbondEnergy;
             }
         }
-        else
-        {
-            distanceHO = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomH),
-                                                  acceptor->getIndex(BackboneAtomTypes::AtomO),
-                                                  fr,
-                                                  pbc);
-            distanceHC = calculateAtomicDistances(donor->getIndex(BackboneAtomTypes::AtomH),
-                                                  acceptor->getIndex(BackboneAtomTypes::AtomC),
-                                                  fr,
-                                                  pbc);
-        }
-        if ((distanceNO < minimalAtomDistance) || (distanceHC < minimalAtomDistance)
-            || (distanceHO < minimalAtomDistance) || (distanceNC < minimalAtomDistance))
-        {
-            HbondEnergy = minEnergy;
-        }
-        else
-        {
-            HbondEnergy = kCouplingConstant
-                          * ((1 / distanceNO) + (1 / distanceHC) - (1 / distanceHO) - (1 / distanceNC));
-        }
-    }
-    if (HbondEnergy < donor->acceptorEnergy_[0])
-    {
-        donor->acceptor_[1]       = donor->acceptor_[0];
-        donor->acceptorEnergy_[1] = donor->acceptorEnergy_[0];
-        donor->acceptor_[0]       = acceptor->info_;
-        donor->acceptorEnergy_[0] = HbondEnergy;
-    }
-    else if (HbondEnergy < donor->acceptorEnergy_[1])
-    {
-        donor->acceptor_[1]       = acceptor->info_;
-        donor->acceptorEnergy_[1] = HbondEnergy;
-    }
-
-    if (HbondEnergy < acceptor->donorEnergy_[0])
-    {
-        acceptor->donor_[1]       = acceptor->donor_[0];
-        acceptor->donorEnergy_[1] = acceptor->donorEnergy_[0];
-        acceptor->donor_[0]       = donor->info_;
-        acceptor->donorEnergy_[0] = HbondEnergy;
-    }
-    else if (HbondEnergy < acceptor->donorEnergy_[1])
-    {
-        acceptor->donor_[1]       = donor->info_;
-        acceptor->donorEnergy_[1] = HbondEnergy;
     }
 }
 
+void SecondaryStructures::calculateHBondGeometry(ResInfo*          donor,
+                                                 ResInfo*          acceptor,
+                                                 const t_trxframe& fr,
+                                                 const t_pbc*      pbc)
+{
+    if (!(donor->isProline_)
+        && (acceptor->hasIndex(BackboneAtomTypes::AtomC) && acceptor->hasIndex(BackboneAtomTypes::AtomO)
+            && donor->hasIndex(BackboneAtomTypes::AtomN) && donor->hasIndex(BackboneAtomTypes::AtomH)))
+    {
+        gmx::RVec vectorNO = { 0, 0, 0 };
+        pbc_dx(pbc,
+               fr.x[acceptor->getIndex(BackboneAtomTypes::AtomO)],
+               fr.x[donor->getIndex(BackboneAtomTypes::AtomN)],
+               vectorNO.as_vec());
+        // Value is taken from the HBOND algorithm.
+        const float c_rMaxDistanceNM_ = 0.35;
+        if (vectorNO.norm() <= c_rMaxDistanceNM_)
+        {
+            gmx::RVec vectorH = fr.x[donor->getIndex(BackboneAtomTypes::AtomH)];
+            if (hMode_ == HydrogenMode::Dssp)
+            {
+                if (donor->prevResi_ != nullptr && donor->prevResi_->getIndex(BackboneAtomTypes::AtomC)
+                    && donor->prevResi_->getIndex(BackboneAtomTypes::AtomO))
+                {
+
+                    gmx::RVec prevCO = fr.x[donor->prevResi_->getIndex(BackboneAtomTypes::AtomC)];
+                    prevCO -= fr.x[donor->prevResi_->getIndex(BackboneAtomTypes::AtomO)];
+                    float prevCODist = calculateAtomicDistances(
+                            donor->prevResi_->getIndex(BackboneAtomTypes::AtomC),
+                            donor->prevResi_->getIndex(BackboneAtomTypes::AtomO),
+                            fr,
+                            pbc);
+                    vectorH += prevCO / prevCODist;
+                }
+            }
+            gmx::RVec vectorNH = { 0, 0, 0 };
+            pbc_dx(pbc, vectorH, fr.x[donor->getIndex(BackboneAtomTypes::AtomN)], vectorNH.as_vec());
+            // Values are taken from the HBOND algorithm.
+            float       degree            = 0;
+            const float c_angleMaxDegree_ = 30;
+            degree                        = gmx_angle(vectorNO, vectorNH) * gmx::c_rad2Deg;
+            if (degree <= c_angleMaxDegree_)
+            {
+                if (donor->acceptor_[0] == nullptr)
+                {
+                    donor->acceptor_[0] = acceptor->info_;
+                }
+                else if (donor->acceptor_[1] == nullptr)
+                {
+                    donor->acceptor_[1] = donor->acceptor_[0];
+                    donor->acceptor_[0] = acceptor->info_;
+                }
+
+                if (acceptor->donor_[0] == nullptr)
+                {
+                    acceptor->donor_[0] = donor->info_;
+                }
+                else if (acceptor->donor_[1] == nullptr)
+                {
+                    acceptor->donor_[1] = acceptor->donor_[0];
+                    acceptor->donor_[0] = donor->info_;
+                }
+            }
+        }
+    }
+}
 
 class Dssp : public TrajectoryAnalysisModule
 {
 public:
+    Dssp();
     void initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* settings) override;
     void optionsFinished(TrajectoryAnalysisSettings* settings) override;
     void initAnalysis(const TrajectoryAnalysisSettings& settings, const TopologyInformation& top) override;
@@ -1309,22 +1485,35 @@ private:
     //! Selections for DSSP output. Set in initial options.
     Selection sel_;
     //! Boolean value for Preferring P-Helices mode. Set in initial options.
-    bool polyProHelices_ = true;
+    bool piHelicesPreference_ = false;
     //! Enum value for creating hydrogen atoms mode. Very useful for structures without hydrogen atoms. Set in initial options.
     HydrogenMode hMode_ = HydrogenMode::Gromacs;
     //! Boolean value determines different calculation methods for searching neighbor residues. Set in initial options.
     bool nBSmode_ = true;
+    //! Boolean value determines the removal of defective residues from the structure. Set in initial options.
+    bool clearStructure_ = false;
     //! Real value that defines maximum distance from residue to its neighbor residue.
     real cutoff_ = 0.9;
     //! Enum value that defines polyproline helix stretch. Set in initial options.
     PPStretches polyProStretch_ = PPStretches::Default;
+    //! Enum value that defines hydrogen bond definition. Set in initial options.
+    HBondDefinition hbDef_ = HBondDefinition::Energy;
     //! String value that defines output filename. Set in initial options.
     std::string fnmDSSPOut_ = "dssp.dat";
+    //! String value that defines plot output filename. Set in initial options.
+    std::string fnmPlotOut_;
     //! Class that calculates h-bond patterns in secondary structure map based on original DSSP algorithm.
     SecondaryStructures patternSearch_;
     //! A storage that contains DSSP info_ from different frames.
     DsspStorage storage_;
+    //! Data container for raw data of number of secondary structures per frame.
+    AnalysisData ssNumPerFrame_;
 };
+
+Dssp::Dssp()
+{
+    registerAnalysisDataset(&ssNumPerFrame_, "secondaryStructuresNum");
+}
 
 void Dssp::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* settings)
 {
@@ -1332,14 +1521,35 @@ void Dssp::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* s
         "[THISMODULE] allows using the DSSP algorithm (namely, by detecting specific patterns of "
         "hydrogen bonds between amino acid residues) "
         "to determine the secondary structure of a protein.[PAR]"
+        "One-symbol secondary structure designations that are used in the output file:[PAR]"
+        "[TT]H[tt] — [GRK]alpha[grk]-helix;[PAR]"
+        "[TT]B[tt] — residue in isolated [GRK]beta[grk]-bridge;[PAR]"
+        "[TT]E[tt] — extended strand that participates in [GRK]beta[grk]-ladder;[PAR]"
+        "[TT]G[tt] — 3[SUB]10[sub]-helix;[PAR]"
+        "[TT]I[tt] — [GRK]pi[grk]-helix;[PAR]"
+        "[TT]P[tt] — [GRK]kappa[grk]-helix (poly-proline II helix);[PAR]"
+        "[TT]S[tt] — bend;[PAR]"
+        "[TT]T[tt] — hydrogen-bonded turn;[PAR]"
+        "[TT]=[tt] — break;[PAR]"
+        "[TT]~[tt] — loop (no special secondary structure designation).[PAR]"
+        "[TT]-num[tt] allows you to get a plot of the number of secondary structures of each type "
+        "as a function of time at the output.[PAR]"
         "[TT]-hmode[tt] selects between using hydrogen atoms directly from the structure "
         "(\"gromacs\" option) and using hydrogen pseudo-atoms based on C and O atom coordinates of "
-        "previous residue (\"dssp\" option).[PAR]"
+        "previous residue (\"dssp\" option). You should always use the \"dssp\" option for "
+        "structures "
+        "with absent hydrogen atoms![PAR]"
+        "[TT]-hbond[tt] selects between different definitions of hydrogen bond. \"energy\" means "
+        "the calculation of a hydrogen bond using the electrostatic interaction energy and "
+        "\"geometry\" means the calculation of the hydrogen bond using geometric criterion "
+        "for the existence of a hydrogen bond.[PAR]"
         "[TT]-nb[tt] allows using GROMACS neighbor-search method to find residue pairs that may "
-        "have a "
-        "hydrogen bond instead of simply iterating over the residues among themselves.[PAR]"
+        "have a hydrogen bond instead of simply iterating over the residues among themselves.[PAR]"
         "[TT]-cutoff[tt] is a real value that defines maximum distance from residue to its "
         "neighbor residue used in [TT]-nb[tt]. Minimum (and also recommended) value is 0.9.[PAR]"
+        "[TT]-clear[tt] allows you to ignore the analysis of the secondary structure residues "
+        "that are missing one or more critical atoms (CA, C, N, O or H). Always use this option "
+        "together with [TT]-hmode dssp[tt] for structures that lack hydrogen atoms![PAR]"
         "[TT]-pihelix[tt] changes pattern-search algorithm towards preference of pi-helices.[PAR]"
         "[TT]-ppstretch[tt] defines stretch value of polyproline-helices. \"shortened\" means "
         "stretch with size 2 and \"default\" means stretch with size 3.[PAR]"
@@ -1358,6 +1568,13 @@ void Dssp::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* s
                                .defaultBasename("dssp")
                                .filetype(OptionFileType::GenericData)
                                .description("Filename for DSSP output"));
+    options->addOption(FileNameOption("num")
+                               .filetype(OptionFileType::Plot)
+                               .outputFile()
+                               .store(&fnmPlotOut_)
+                               .defaultBasename("num")
+                               .description("Output file name for secondary structures statistics "
+                                            "for the trajectory"));
     options->addOption(SelectionOption("sel").store(&sel_).defaultSelectionText("Protein").description(
             "Group for DSSP"));
     options->addOption(EnumOption<HydrogenMode>("hmode")
@@ -1365,12 +1582,22 @@ void Dssp::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings* s
                                .defaultValue(HydrogenMode::Gromacs)
                                .enumValue(c_HydrogenModeNames)
                                .description("Hydrogens pseudoatoms creating mode"));
+    options->addOption(
+            EnumOption<HBondDefinition>("hbond")
+                    .store(&hbDef_)
+                    .defaultValue(HBondDefinition::Energy)
+                    .enumValue(c_HBondDefinition)
+                    .description("Selects between different definitions of hydrogen bond"));
     options->addOption(BooleanOption("nb").store(&nBSmode_).defaultValue(true).description(
             "Use GROMACS neighbor-search method"));
     options->addOption(RealOption("cutoff").store(&cutoff_).required().defaultValue(0.9).description(
             "Distance from residue to its neighbor residue in neighbor search. Must be >= 0.9"));
+    options->addOption(BooleanOption("clear")
+                               .store(&clearStructure_)
+                               .defaultValue(false)
+                               .description("Clear defective residues from the structure"));
     options->addOption(
-            BooleanOption("pihelix").store(&polyProHelices_).defaultValue(true).description("Prefer Pi Helices"));
+            BooleanOption("pihelix").store(&piHelicesPreference_).defaultValue(false).description("Prefer Pi Helices"));
     options->addOption(EnumOption<PPStretches>("ppstretch")
                                .store(&polyProStretch_)
                                .defaultValue(PPStretches::Default)
@@ -1387,9 +1614,9 @@ void Dssp::optionsFinished(TrajectoryAnalysisSettings* /* settings */)
     }
 }
 
-void Dssp::initAnalysis(const TrajectoryAnalysisSettings& /* settings */, const TopologyInformation& top)
+void Dssp::initAnalysis(const TrajectoryAnalysisSettings& settings, const TopologyInformation& top)
 {
-    patternSearch_.analyseTopology(top, sel_, hMode_);
+    patternSearch_.analyseTopology(top, sel_, hMode_, clearStructure_);
 
     if (patternSearch_.topologyIsIncorrect())
     {
@@ -1402,20 +1629,50 @@ void Dssp::initAnalysis(const TrajectoryAnalysisSettings& /* settings */, const 
         }
         GMX_THROW(InconsistentInputError(errorDesc));
     }
+
+    if (!fnmPlotOut_.empty())
+    {
+        ssNumPerFrame_.setColumnCount(0, static_cast<std::size_t>(SecondaryStructureTypes::Count));
+        AnalysisDataPlotModulePointer plotm(new AnalysisDataPlotModule(settings.plotSettings()));
+        plotm->setFileName(fnmPlotOut_);
+        plotm->setTitle("Number of Secondary Structures");
+        plotm->setXAxisIsTime();
+        plotm->setYLabel("Secondary Structures");
+        for (const auto& i : c_secondaryStructureTypeNamesFull)
+        {
+            plotm->appendLegend(i);
+        }
+        plotm->setYFormat(10, 0);
+        ssNumPerFrame_.addModule(plotm);
+    }
 }
 
 void Dssp::initAfterFirstFrame(const TrajectoryAnalysisSettings& /* settings */, const t_trxframe& /* fr */)
 {
 }
 
-void Dssp::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAnalysisModuleData* /* pdata */)
+void Dssp::analyzeFrame(int frnr, const t_trxframe& fr, t_pbc* pbc, TrajectoryAnalysisModuleData* pdata)
 {
+    AnalysisDataHandle dhNum_ = pdata->dataHandle(ssNumPerFrame_);
     storage_.addData(frnr,
                      patternSearch_.performPatternSearch(
-                             fr, pbc, nBSmode_, cutoff_, polyProHelices_, polyProStretch_));
+                             fr, pbc, nBSmode_, cutoff_, piHelicesPreference_, polyProStretch_, hbDef_));
+    if (!fnmPlotOut_.empty())
+    {
+        dhNum_.startFrame(frnr, fr.time);
+        const std::string& temp = storage_.getData().back().dsspData_;
+        for (std::size_t i = 0; i < static_cast<std::size_t>(SecondaryStructureTypes::Count); ++i)
+        {
+            dhNum_.setPoint(i, std::count(temp.begin(), temp.end(), c_secondaryStructureTypeNames[i]));
+        }
+        dhNum_.finishFrame();
+    }
 }
 
-void Dssp::finishAnalysis(int /*nframes*/) {}
+void Dssp::finishAnalysis(int /*nframes*/)
+{
+    please_cite(stdout, "Kabsch1983");
+}
 
 void Dssp::writeOutput()
 {

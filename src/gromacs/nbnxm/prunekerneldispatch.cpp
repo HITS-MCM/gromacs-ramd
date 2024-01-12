@@ -35,8 +35,6 @@
 #include "gmxpre.h"
 
 #include "kernels_reference/kernel_ref_prune.h"
-#include "kernels_simd_2xmm/kernel_prune.h"
-#include "kernels_simd_4xm/kernel_prune.h"
 
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/nbnxm/nbnxm.h"
@@ -48,6 +46,7 @@
 #include "nbnxm_simd.h"
 #include "pairlistset.h"
 #include "pairlistsets.h"
+#include "simd_prune_kernel.h"
 
 void PairlistSets::dispatchPruneKernel(const gmx::InteractionLocality iLocality,
                                        const nbnxn_atomdata_t*        nbat,
@@ -64,7 +63,7 @@ void PairlistSet::dispatchPruneKernel(const nbnxn_atomdata_t* nbat, gmx::ArrayRe
                "Here we should either have an empty ci list or ciOuter should be >= ci");
 
     int gmx_unused nthreads = gmx_omp_nthreads_get(ModuleMultiThread::Nonbonded);
-    GMX_ASSERT(nthreads == static_cast<gmx::index>(cpuLists_.size()),
+    GMX_ASSERT(nthreads == static_cast<gmx::Index>(cpuLists_.size()),
                "The number of threads should match the number of lists");
 #pragma omp parallel for schedule(static) num_threads(nthreads)
     for (int i = 0; i < nthreads; i++)
@@ -73,14 +72,14 @@ void PairlistSet::dispatchPruneKernel(const nbnxn_atomdata_t* nbat, gmx::ArrayRe
 
         switch (getClusterDistanceKernelType(params_.pairlistType, *nbat))
         {
-#ifdef GMX_NBNXN_SIMD_4XN
+#if GMX_SIMD && GMX_HAVE_NBNXM_SIMD_4XM
             case ClusterDistanceKernelType::CpuSimd_4xM:
-                nbnxn_kernel_prune_4xn(nbl, nbat, shift_vec, rlistInner);
+                nbnxmSimdPruneKernel<KernelLayout::r4xM>(nbl, *nbat, shift_vec, rlistInner);
                 break;
 #endif
-#ifdef GMX_NBNXN_SIMD_2XNN
+#if GMX_SIMD && GMX_HAVE_NBNXM_SIMD_2XMM
             case ClusterDistanceKernelType::CpuSimd_2xMM:
-                nbnxn_kernel_prune_2xnn(nbl, nbat, shift_vec, rlistInner);
+                nbnxmSimdPruneKernel<KernelLayout::r2xMM>(nbl, *nbat, shift_vec, rlistInner);
                 break;
 #endif
             case ClusterDistanceKernelType::CpuPlainC:
@@ -94,7 +93,7 @@ void PairlistSet::dispatchPruneKernel(const nbnxn_atomdata_t* nbat, gmx::ArrayRe
 void nonbonded_verlet_t::dispatchPruneKernelCpu(const gmx::InteractionLocality iLocality,
                                                 gmx::ArrayRef<const gmx::RVec> shift_vec) const
 {
-    pairlistSets_->dispatchPruneKernel(iLocality, nbat.get(), shift_vec);
+    pairlistSets_->dispatchPruneKernel(iLocality, nbat_.get(), shift_vec);
 }
 
 void nonbonded_verlet_t::dispatchPruneKernelGpu(int64_t step)
@@ -106,7 +105,7 @@ void nonbonded_verlet_t::dispatchPruneKernelGpu(int64_t step)
             (pairlistSets().numStepsWithPairlist(step) % (2 * pairlistSets().params().mtsFactor) == 0);
 
     Nbnxm::gpu_launch_kernel_pruneonly(
-            gpu_nbv,
+            gpuNbv_,
             stepIsEven ? gmx::InteractionLocality::Local : gmx::InteractionLocality::NonLocal,
             pairlistSets().params().numRollingPruningParts);
 

@@ -93,7 +93,7 @@ void updateCorrelationGridHistory(CorrelationGridHistory* correlationGridHistory
     gmx::ArrayRef<CorrelationBlockDataHistory> blockDataBuffer = correlationGridHistory->blockDataBuffer;
 
     /* Store the grid in a linear array */
-    gmx::index bufferIndex = 0;
+    gmx::Index bufferIndex = 0;
     const int tensorSize = correlationGrid.tensors()[0].blockDataList()[0].correlationIntegral().size();
     for (const CorrelationTensor& tensor : correlationGrid.tensors())
     {

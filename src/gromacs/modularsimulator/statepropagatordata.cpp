@@ -180,18 +180,17 @@ StatePropagatorData::StatePropagatorData(int                numAtoms,
     if (haveDDAtomOrdering(*cr))
     {
         dd_init_local_state(*cr->dd, globalState, localState);
-        stateHasVelocities = ((localState->flags & enumValueToBitMask(StateEntry::V)) != 0);
+        stateHasVelocities = localState->hasEntry(StateEntry::V);
         setLocalState(localState);
     }
     else
     {
-        state_change_natoms(globalState, globalState->natoms);
-        f_.resize(globalState->natoms);
-        localNAtoms_ = globalState->natoms;
+        f_.resize(globalState->numAtoms());
+        localNAtoms_ = globalState->numAtoms();
         x_           = globalState->x;
         v_           = globalState->v;
         copy_mat(globalState->box, box_);
-        stateHasVelocities = ((globalState->flags & enumValueToBitMask(StateEntry::V)) != 0);
+        stateHasVelocities = globalState->hasEntry(StateEntry::V);
         previousX_.resizeWithPadding(localNAtoms_);
         ddpCount_ = globalState->ddp_count;
         copyPosition();
@@ -327,9 +326,9 @@ int StatePropagatorData::totalNumAtoms() const
 
 t_state* StatePropagatorData::localState()
 {
-    localState_->flags = enumValueToBitMask(StateEntry::X) | enumValueToBitMask(StateEntry::V)
-                         | enumValueToBitMask(StateEntry::Box);
-    state_change_natoms(localState_, localNAtoms_);
+    localState_->setFlags(enumValueToBitMask(StateEntry::X) | enumValueToBitMask(StateEntry::V)
+                          | enumValueToBitMask(StateEntry::Box));
+    localState_->changeNumAtoms(localNAtoms_);
     std::swap(localState_->x, x_);
     std::swap(localState_->v, v_);
     copy_mat(box_, localState_->box);
@@ -341,9 +340,9 @@ t_state* StatePropagatorData::localState()
 
 std::unique_ptr<t_state> StatePropagatorData::copyLocalState(std::unique_ptr<t_state> copy)
 {
-    copy->flags = enumValueToBitMask(StateEntry::X) | enumValueToBitMask(StateEntry::V)
-                  | enumValueToBitMask(StateEntry::Box);
-    state_change_natoms(copy.get(), localNAtoms_);
+    copy->setFlags(enumValueToBitMask(StateEntry::X) | enumValueToBitMask(StateEntry::V)
+                   | enumValueToBitMask(StateEntry::Box));
+    copy->changeNumAtoms(localNAtoms_);
     copy->x = x_;
     copy->v = v_;
     copy_mat(box_, copy->box);
@@ -356,7 +355,7 @@ std::unique_ptr<t_state> StatePropagatorData::copyLocalState(std::unique_ptr<t_s
 void StatePropagatorData::setLocalState(t_state* state)
 {
     localState_  = state;
-    localNAtoms_ = state->natoms;
+    localNAtoms_ = state->numAtoms();
     previousX_.resizeWithPadding(localNAtoms_);
     std::swap(x_, state->x);
     std::swap(v_, state->v);
@@ -451,8 +450,8 @@ void StatePropagatorData::Element::saveState()
         localStateBackup_->fep_state    = freeEnergyPerturbationData_->currentFEPState();
         ArrayRef<const real> lambdaView = freeEnergyPerturbationData_->constLambdaView();
         std::copy(lambdaView.begin(), lambdaView.end(), localStateBackup_->lambda.begin());
-        localStateBackup_->flags |=
-                enumValueToBitMask(StateEntry::Lambda) | enumValueToBitMask(StateEntry::FepState);
+        localStateBackup_->addEntry(StateEntry::Lambda);
+        localStateBackup_->addEntry(StateEntry::FepState);
     }
     localStateBackupValid_ = true;
 }

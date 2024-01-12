@@ -122,6 +122,13 @@ public:
          gmx_wallcycle*           wcycle);
     //! \brief Destructor, non-default needed for freeing device-side buffers
     ~Impl();
+
+    /*! \brief Update flag that tells whether there are bonded interactions suitable for the GPU.
+     *
+     * Intended to be called early during search steps so domainWork flags can be populated.
+     */
+    void updateHaveInteractions(const InteractionDefinitions& idef);
+
     /*! \brief Update lists of interactions from idef suitable for the GPU,
      * using the data structures prepared for PP work.
      *
@@ -166,7 +173,7 @@ private:
     std::array<HostInteractionList, F_NRE> iLists_;
 
     //! Tells whether there are any interaction in iLists.
-    bool haveInteractions_;
+    bool haveInteractions_ = false;
     //! Interaction lists on the device.
     std::array<DeviceBuffer<t_iatom>, F_NRE> d_iAtoms_      = {};
     std::array<int, F_NRE>                   d_iAtomsAlloc_ = {};

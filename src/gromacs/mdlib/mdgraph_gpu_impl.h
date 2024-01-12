@@ -56,7 +56,7 @@ enum class GraphState : int
     Invalid,      //!< Invalid, i.e before recording has started (including after reset)
     Recording,    //!< Recording is underway and has not yet finished
     Recorded,     //!< Recording has finished, but graph is not yet instantiated
-    Instantiated, //!< Instatiated and ready to launch
+    Instantiated, //!< Instantiated and ready to launch
     Count         //!< Number of valid values
 };
 
@@ -66,7 +66,7 @@ public:
     /*! \brief Create MD graph object
      * \param [in] deviceStreamManager  Device stream manager object
      * \param [in] simulationWork       Simulation workload structure
-     * \param [in] mpiComm             MPI communicator for PP domain decomposition
+     * \param [in] mpiComm              MPI communicator for PP domain decomposition
      * \param [in] evenOrOddStep        Whether this graph corresponds to even or odd step
      * \param [in] wcycle               Wall cycle timer object
      */
@@ -132,6 +132,14 @@ n device
      */
     GpuEventSynchronizer* getPpTaskCompletionEvent();
 
+#if GMX_GPU_CUDA
+    using Graph         = cudaGraph_t;
+    using GraphInstance = cudaGraphExec_t;
+#else
+    using Graph         = void*;
+    using GraphInstance = void*;
+#endif
+
 private:
     /*! \brief Collective operation to enqueue events from all PP ranks to a stream on PP rank 0
      * \param [in] event   Event to enqueue, valid on all PP ranks
@@ -147,9 +155,9 @@ private:
     void enqueueRank0EventToAllPpStreams(GpuEventSynchronizer* event, const DeviceStream& stream);
 
     //! Captured graph object
-    cudaGraph_t graph_;
+    Graph graph_;
     //! Instantiated graph object
-    cudaGraphExec_t instance_;
+    GraphInstance instance_;
     //! Whether graph has already been created
     bool graphCreated_ = false;
     //! Whether graph is capturing in this step
@@ -178,8 +186,6 @@ private:
     int ppRank_ = 0;
     //! Number of PP ranks in use
     int ppSize_ = 1;
-    //! CUDA status object
-    cudaError_t stat_;
     //! Temporary event used for forking and joining streams in graph
     std::unique_ptr<GpuEventSynchronizer> helperEvent_;
     //! Whether step is even or odd, where different graphs are used for each
@@ -196,6 +202,8 @@ private:
     bool graphInstanceAllocated_ = false;
     //! State of graph
     GraphState graphState_ = GraphState::Invalid;
+    //! Whether a perormance bug workaround is needed in graph update/reinstantiation
+    bool needOldDriverTransferWorkaround_ = false;
 };
 
 } // namespace gmx

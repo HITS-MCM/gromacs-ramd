@@ -71,10 +71,11 @@ std::vector<real> linearCombination(real alpha, ArrayRef<const real> a, real bet
     GMX_ASSERT(a.size() == b.size(),
                "Input vectors have to have the same size to evaluate their linear combination.");
     std::vector<real> result(a.size());
-    std::transform(
-            std::begin(a), std::end(a), std::begin(b), std::begin(result), [alpha, beta](auto a, auto b) {
-                return alpha * a + beta * b;
-            });
+    std::transform(std::begin(a),
+                   std::end(a),
+                   std::begin(b),
+                   std::begin(result),
+                   [alpha, beta](auto elemA, auto elemB) { return alpha * elemA + beta * elemB; });
     return result;
 }
 
@@ -230,7 +231,7 @@ real NelderMeadSimplex::orientedLength() const
 
 void NelderMeadSimplex::updateCentroidAndReflectionPoint()
 {
-    // intialize with first vertex, then add up all other vertex coordinates
+    // initialize with first vertex, then add up all other vertex coordinates
     // expect last one
     centroidWithoutWorstPoint_ =
             std::accumulate(std::next(std::begin(simplex_)),

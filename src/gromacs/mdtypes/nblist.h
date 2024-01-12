@@ -50,7 +50,7 @@ struct t_nblist
     std::vector<int> jjnr;       /* The j-atom list                       */
     std::vector<int> excl_fep;   /* Exclusions for FEP with Verlet scheme */
 
-    int numExclusionsWithinRlist; /* The number of exclusions at distance < rlist */
+    int numExclusionsWithinRlist = 0; /* The number of exclusions at distance < rlist */
 };
 
 #endif /* GMX_MDTYPES_NBLIST_H */

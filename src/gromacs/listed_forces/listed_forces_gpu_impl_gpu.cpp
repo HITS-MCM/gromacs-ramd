@@ -49,6 +49,7 @@
 #include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/devicebuffer.h"
 #include "gromacs/hardware/device_information.h"
+#include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/nbnxm/gpu_types_common.h"
 #include "gromacs/timing/wallcycle.h"
@@ -184,7 +185,7 @@ static void convertIlistToNbnxnOrder(const InteractionList& src,
 
     dest->iatoms.resize(src.size());
 
-    // TODO use OpenMP to parallelise this loop
+#pragma omp parallel for num_threads(gmx_omp_nthreads_get(ModuleMultiThread::Bonded)) schedule(static)
     for (int i = 0; i < src.size(); i += 1 + numAtomsPerInteraction)
     {
         dest->iatoms[i] = src.iatoms[i];
@@ -209,6 +210,25 @@ static inline int roundUpToFactor(const int input, const int factor)
     return (input + (factor - remainder));
 }
 
+void ListedForcesGpu::Impl::updateHaveInteractions(const InteractionDefinitions& idef)
+{
+    haveInteractions_ = false;
+
+    for (int fType : fTypesOnGpu)
+    {
+        /* Perturbation is not implemented in the GPU bonded kernels.
+         * But instead of doing all interactions on the CPU, we can
+         * still easily handle the types that have no perturbed
+         * interactions on the GPU. */
+        if (!idef.il[fType].empty() && !fTypeHasPerturbedEntries(idef, fType))
+        {
+            haveInteractions_ = true;
+            return;
+        }
+    }
+}
+
+
 // TODO Consider whether this function should be a factory method that
 // makes an object that is the only one capable of the device
 // operations needed for the lifetime of an interaction list. This
@@ -228,9 +248,9 @@ void ListedForcesGpu::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<cons
                                                                    DeviceBuffer<RVec>   d_fPtr,
                                                                    DeviceBuffer<RVec>   d_fShiftPtr)
 {
-    // TODO wallcycle sub start
-    haveInteractions_ = false;
-    int fTypesCounter = 0;
+    wallcycle_sub_start(wcycle_, WallCycleSubCounter::GpuBondedListUpdate);
+    bool haveGpuInteractions = false;
+    int  fTypesCounter       = 0;
 
     for (int fType : fTypesOnGpu)
     {
@@ -242,7 +262,7 @@ void ListedForcesGpu::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<cons
          * interactions on the GPU. */
         if (!idef.il[fType].empty() && !fTypeHasPerturbedEntries(idef, fType))
         {
-            haveInteractions_ = true;
+            haveGpuInteractions = true;
 
             convertIlistToNbnxnOrder(idef.il[fType], &iList, NRAL(fType), nbnxnAtomOrder);
         }
@@ -308,7 +328,10 @@ void ListedForcesGpu::Impl::updateInteractionListsAndDeviceBuffers(ArrayRef<cons
     kernelBuffers_.d_forceParams = d_forceParams_;
     kernelBuffers_.d_vTot        = d_vTot_;
 
-    // TODO wallcycle sub stop
+    GMX_RELEASE_ASSERT(haveGpuInteractions == haveInteractions_,
+                       "inconsistent haveInteractions flags encountered.");
+
+    wallcycle_sub_stop(wcycle_, WallCycleSubCounter::GpuBondedListUpdate);
 }
 
 void ListedForcesGpu::Impl::setPbc(PbcType pbcType, const matrix box, bool canMoleculeSpanPbc)
@@ -382,6 +405,11 @@ ListedForcesGpu::ListedForcesGpu(const gmx_ffparams_t&    ffparams,
 }
 
 ListedForcesGpu::~ListedForcesGpu() = default;
+
+void ListedForcesGpu::updateHaveInteractions(const InteractionDefinitions& idef)
+{
+    impl_->updateHaveInteractions(idef);
+}
 
 void ListedForcesGpu::updateInteractionListsAndDeviceBuffers(ArrayRef<const int> nbnxnAtomOrder,
                                                              const InteractionDefinitions& idef,

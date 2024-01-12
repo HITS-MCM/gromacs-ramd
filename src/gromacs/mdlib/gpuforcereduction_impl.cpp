@@ -61,8 +61,11 @@ GpuForceReduction::Impl::Impl(const DeviceContext& deviceContext,
     deviceStream_(deviceStream),
     nbnxmForceToAdd_(),
     rvecForceToAdd_(),
+    forcesReadyNvshmemFlags(nullptr),
+    forcesReadyNvshmemFlagsCounter(0),
     wcycle_(wcycle)
 {
+    cellInfo_.d_cell = nullptr;
 }
 
 void GpuForceReduction::Impl::reinit(DeviceBuffer<Float3>  baseForcePtr,
@@ -107,6 +110,13 @@ void GpuForceReduction::Impl::registerRvecForce(DeviceBuffer<RVec> forcePtr)
     rvecForceToAdd_ = forcePtr;
 };
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static, readability-non-const-parameter)
+void GpuForceReduction::Impl::registerForcesReadyNvshmemFlags(DeviceBuffer<uint64_t> syncObj)
+{
+    GMX_ASSERT(syncObj, "Input force for reduction has no data");
+    forcesReadyNvshmemFlags = syncObj;
+}
+
 void GpuForceReduction::Impl::addDependency(GpuEventSynchronizer* dependency)
 {
     GMX_ASSERT(dependency != nullptr, "Force reduction dependency synchronizer should not be NULL");
@@ -130,6 +140,11 @@ void GpuForceReduction::Impl::execute()
 
         const bool addRvecForce = static_cast<bool>(rvecForceToAdd_); // True iff initialized
 
+        if (addRvecForce && forcesReadyNvshmemFlags)
+        {
+            forcesReadyNvshmemFlagsCounter++;
+        }
+
         launchForceReductionKernel(numAtoms_,
                                    atomStart_,
                                    addRvecForce,
@@ -138,7 +153,9 @@ void GpuForceReduction::Impl::execute()
                                    rvecForceToAdd_,
                                    baseForce_,
                                    cellInfo_.d_cell,
-                                   deviceStream_);
+                                   deviceStream_,
+                                   forcesReadyNvshmemFlags,
+                                   forcesReadyNvshmemFlagsCounter);
     }
     else
     {
@@ -162,6 +179,11 @@ void GpuForceReduction::Impl::execute()
 
     wallcycle_sub_stop(wcycle_, WallCycleSubCounter::LaunchGpuNBFBufOps);
     wallcycle_stop(wcycle_, WallCycleCounter::LaunchGpuPp);
+}
+
+GpuForceReduction::Impl::~Impl()
+{
+    freeDeviceBuffer(&cellInfo_.d_cell);
 }
 
 GpuForceReduction::GpuForceReduction(const DeviceContext& deviceContext,
@@ -195,9 +217,17 @@ void GpuForceReduction::reinit(DeviceBuffer<RVec>    baseForcePtr,
 {
     impl_->reinit(baseForcePtr, numAtoms, cell, atomStart, accumulate, completionMarker);
 }
+
 void GpuForceReduction::execute()
 {
     impl_->execute();
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static, readability-non-const-parameter)
+void GpuForceReduction::registerForcesReadyNvshmemFlags(DeviceBuffer<uint64_t> syncObj)
+{
+    GMX_ASSERT(syncObj, "force sync object is NULL");
+    impl_->registerForcesReadyNvshmemFlags(syncObj);
 }
 
 GpuForceReduction::~GpuForceReduction() = default;

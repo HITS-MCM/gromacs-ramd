@@ -53,6 +53,25 @@
 template<bool doPruneNBL, bool doCalcEnergies, enum Nbnxm::ElecType elecType, enum Nbnxm::VdwType vdwType, int subGroupSize>
 class NbnxmKernel;
 
+/*! \brief Macro to control the enablement of manually-packed Float3 structure.
+ *
+ * If enabled (default), the explicit packed math will be used on devices where
+ * it is known to be beneficial (currently, AMD MI250X / gfx90a).
+ * If disabled, packed math will never be explicitly  used.
+ *
+ * This only controls the use of AmdPackedFloat3 datastructure, not the layout
+ * of fCi buffer.
+ *
+ * See issue #4854 */
+#define GMX_NBNXM_ENABLE_PACKED_FLOAT3 1
+
+
+#if (GMX_NBNXM_ENABLE_PACKED_FLOAT3 && defined(__AMDGCN__) && defined(__gfx90a__))
+using FCiFloat3 = AmdPackedFloat3;
+#else
+using FCiFloat3 = Float3;
+#endif
+
 namespace Nbnxm
 {
 
@@ -363,16 +382,16 @@ static inline void reduceForceJShuffle(Float3                   f,
     static_assert(c_clSize == 8 || c_clSize == 4);
     sycl::sub_group sg = itemIdx.get_sub_group();
 
-    f[0] += sycl_2020::shift_left(sg, f[0], 1);
-    f[1] += sycl_2020::shift_right(sg, f[1], 1);
-    f[2] += sycl_2020::shift_left(sg, f[2], 1);
+    f[0] += sycl::shift_group_left(sg, f[0], 1);
+    f[1] += sycl::shift_group_right(sg, f[1], 1);
+    f[2] += sycl::shift_group_left(sg, f[2], 1);
     if (tidxi & 1)
     {
         f[0] = f[1];
     }
 
-    f[0] += sycl_2020::shift_left(sg, f[0], 2);
-    f[2] += sycl_2020::shift_right(sg, f[2], 2);
+    f[0] += sycl::shift_group_left(sg, f[0], 2);
+    f[2] += sycl::shift_group_right(sg, f[2], 2);
     if (tidxi & 2)
     {
         f[0] = f[2];
@@ -380,7 +399,7 @@ static inline void reduceForceJShuffle(Float3                   f,
 
     if constexpr (c_clSize == 8)
     {
-        f[0] += sycl_2020::shift_left(sg, f[0], 4);
+        f[0] += sycl::shift_group_left(sg, f[0], 4);
     }
 
     if (tidxi < 3)
@@ -500,10 +519,11 @@ static inline void reduceForceJ(sycl::local_ptr<float>   sm_buf,
  * Note that this reduction is unoptimized and some of the barrier synchronization
  * used could be avoided on >=8-wide architectures.
  */
-static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
-                                                const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                                const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                                const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
+template<typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float>   sm_buf,
+                                                const FCiBufferWrapperX& fCiBufX,
+                                                const FCiBufferWrapperY& fCiBufY,
+                                                const FCiBufferWrapperZ& fCiBufZ,
                                                 const bool               calcFShift,
                                                 const sycl::nd_item<3>   itemIdx,
                                                 const int                tidxi,
@@ -522,9 +542,9 @@ static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxi;
         // Store i-forces in local memory
-        sm_buf[tidx]                 = fCiBufX[ciOffset];
-        sm_buf[bufStride + tidx]     = fCiBufY[ciOffset];
-        sm_buf[2 * bufStride + tidx] = fCiBufZ[ciOffset];
+        sm_buf[tidx]                 = fCiBufX(ciOffset);
+        sm_buf[bufStride + tidx]     = fCiBufY(ciOffset);
+        sm_buf[2 * bufStride + tidx] = fCiBufZ(ciOffset);
         itemIdx.barrier(fence_space::local_space);
 
         // Reduce the initial c_clSize values for each i atom to half every step by using c_clSize * i threads.
@@ -574,8 +594,8 @@ static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
                  * but it is unlikely to make a big difference and thus was not evaluated.
                  */
                 auto sg = itemIdx.get_sub_group();
-                fShiftBuf += sycl_2020::shift_left(sg, fShiftBuf, 1);
-                fShiftBuf += sycl_2020::shift_left(sg, fShiftBuf, 2);
+                fShiftBuf += sycl::shift_group_left(sg, fShiftBuf, 1);
+                fShiftBuf += sycl::shift_group_left(sg, fShiftBuf, 2);
                 if (tidxi == 0)
                 {
                     atomicFetchAdd(a_fShift[shift][tidxj], fShiftBuf);
@@ -603,18 +623,19 @@ static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
  * Three steps (e.g., AMD CDNA, c_clSize == 8, subGroupSize == 64): similar to the two-step
  * approach, but we have two times less atomicFetchAdd's.
  */
-template<int numShuffleReductionSteps>
-static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                                 const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                                 const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
-                                                 const bool               calcFShift,
-                                                 const sycl::nd_item<3>   itemIdx,
-                                                 const int                tidxi,
-                                                 const int                tidxj,
-                                                 const int                sci,
-                                                 const int                shift,
-                                                 sycl::global_ptr<Float3> a_f,
-                                                 sycl::global_ptr<Float3> a_fShift)
+template<int numShuffleReductionSteps, typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+typename std::enable_if_t<numShuffleReductionSteps != 1, void> static inline reduceForceIAndFShiftShuffles(
+        const FCiBufferWrapperX& fCiBufX,
+        const FCiBufferWrapperY& fCiBufY,
+        const FCiBufferWrapperZ& fCiBufZ,
+        const bool               calcFShift,
+        const sycl::nd_item<3>   itemIdx,
+        const int                tidxi,
+        const int                tidxj,
+        const int                sci,
+        const int                shift,
+        sycl::global_ptr<Float3> a_f,
+        sycl::global_ptr<Float3> a_fShift)
 {
     const sycl::sub_group sg = itemIdx.get_sub_group();
     static_assert(numShuffleReductionSteps == 2 || numShuffleReductionSteps == 3);
@@ -631,9 +652,9 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
     for (int ciOffset = 0; ciOffset < c_nbnxnGpuNumClusterPerSupercluster; ciOffset++)
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxj;
-        float     fx   = fCiBufX[ciOffset];
-        float     fy   = fCiBufY[ciOffset];
-        float     fz   = fCiBufZ[ciOffset];
+        float     fx   = fCiBufX(ciOffset);
+        float     fy   = fCiBufY(ciOffset);
+        float     fz   = fCiBufZ(ciOffset);
 
         // Transpose values so DPP-based reduction can be used later
         fx = sycl::select_from_group(sg, fx, tidxi * c_clSize + tidxj);
@@ -689,21 +710,21 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
     for (int ciOffset = 0; ciOffset < c_nbnxnGpuNumClusterPerSupercluster; ciOffset++)
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxi;
-        float     fx   = fCiBufX[ciOffset];
-        float     fy   = fCiBufY[ciOffset];
-        float     fz   = fCiBufZ[ciOffset];
+        float     fx   = fCiBufX(ciOffset);
+        float     fy   = fCiBufY(ciOffset);
+        float     fz   = fCiBufZ(ciOffset);
 
         // First reduction step
-        fx += sycl_2020::shift_left(sg, fx, c_clSize);
-        fy += sycl_2020::shift_right(sg, fy, c_clSize);
-        fz += sycl_2020::shift_left(sg, fz, c_clSize);
+        fx += sycl::shift_group_left(sg, fx, c_clSize);
+        fy += sycl::shift_group_right(sg, fy, c_clSize);
+        fz += sycl::shift_group_left(sg, fz, c_clSize);
         if (tidxj & 1)
         {
             fx = fy;
         }
         // Second reduction step
-        fx += sycl_2020::shift_left(sg, fx, 2 * c_clSize);
-        fz += sycl_2020::shift_right(sg, fz, 2 * c_clSize);
+        fx += sycl::shift_group_left(sg, fx, 2 * c_clSize);
+        fz += sycl::shift_group_right(sg, fz, 2 * c_clSize);
         if (tidxj & 2)
         {
             fx = fz;
@@ -711,7 +732,7 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
         // Third reduction step if possible
         if constexpr (numShuffleReductionSteps == 3)
         {
-            fx += sycl_2020::shift_left(sg, fx, 4 * c_clSize);
+            fx += sycl::shift_group_left(sg, fx, 4 * c_clSize);
         }
         // Threads 0,1,2 (and 4,5,6 in case of numShuffleReductionSteps == 2) increment X, Y, Z for their sub-groups
         if ((tidxj & threadBitMask) < 3)
@@ -748,18 +769,19 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
  * is poorly handled by some hardware (e.g., Intel Gen9-11 and Xe LP). This can be remediated
  * by using local memory reduction after shuffles, but that's a TODO.
  */
-template<>
-inline void reduceForceIAndFShiftShuffles<1>(const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                             const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                             const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
-                                             const bool               calcFShift,
-                                             const sycl::nd_item<3>   itemIdx,
-                                             const int                tidxi,
-                                             const int                tidxj,
-                                             const int                sci,
-                                             const int                shift,
-                                             sycl::global_ptr<Float3> a_f,
-                                             sycl::global_ptr<Float3> a_fShift)
+template<int numShuffleReductionSteps, typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+typename std::enable_if_t<numShuffleReductionSteps == 1, void> static inline reduceForceIAndFShiftShuffles(
+        const FCiBufferWrapperX& fCiBufX,
+        const FCiBufferWrapperY& fCiBufY,
+        const FCiBufferWrapperZ& fCiBufZ,
+        const bool               calcFShift,
+        const sycl::nd_item<3>   itemIdx,
+        const int                tidxi,
+        const int                tidxj,
+        const int                sci,
+        const int                shift,
+        sycl::global_ptr<Float3> a_f,
+        sycl::global_ptr<Float3> a_fShift)
 {
     const sycl::sub_group sg = itemIdx.get_sub_group();
     SYCL_ASSERT(sg.get_max_local_range()[0] >= 2 * c_clSize
@@ -772,13 +794,13 @@ inline void reduceForceIAndFShiftShuffles<1>(const float fCiBufX[c_nbnxnGpuNumCl
     for (int ciOffset = 0; ciOffset < c_nbnxnGpuNumClusterPerSupercluster; ciOffset++)
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxi;
-        float     fx   = fCiBufX[ciOffset];
-        float     fy   = fCiBufY[ciOffset];
-        float     fz   = fCiBufZ[ciOffset];
+        float     fx   = fCiBufX(ciOffset);
+        float     fy   = fCiBufY(ciOffset);
+        float     fz   = fCiBufZ(ciOffset);
         // First reduction step
-        fx += sycl_2020::shift_left(sg, fx, c_clSize);
-        fy += sycl_2020::shift_right(sg, fy, c_clSize);
-        fz += sycl_2020::shift_left(sg, fz, c_clSize);
+        fx += sycl::shift_group_left(sg, fx, c_clSize);
+        fy += sycl::shift_group_right(sg, fy, c_clSize);
+        fz += sycl::shift_group_left(sg, fz, c_clSize);
         if (tidxj & 1)
         {
             fx = fy;
@@ -821,12 +843,12 @@ inline void reduceForceIAndFShiftShuffles<1>(const float fCiBufX[c_nbnxnGpuNumCl
  *
  * This implementation works only with power of two array sizes.
  */
-template<bool useShuffleReduction, int subGroupSize>
-static inline void reduceForceIAndFShift(sycl::local_ptr<float> sm_buf,
-                                         const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                         const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                         const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
-                                         const bool  calcFShift,
+template<bool useShuffleReduction, int subGroupSize, typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+static inline void reduceForceIAndFShift(sycl::local_ptr<float>   sm_buf,
+                                         const FCiBufferWrapperX& fCiBufX,
+                                         const FCiBufferWrapperY& fCiBufY,
+                                         const FCiBufferWrapperZ& fCiBufZ,
+                                         const bool               calcFShift,
                                          const sycl::nd_item<3>   itemIdx,
                                          const int                tidxi,
                                          const int                tidxj,
@@ -857,70 +879,40 @@ static inline void reduceForceIAndFShift(sycl::local_ptr<float> sm_buf,
  *
  */
 template<int subGroupSize, bool doPruneNBL, bool doCalcEnergies, enum ElecType elecType, enum VdwType vdwType>
-static auto nbnxmKernel(sycl::handler&                                            cgh,
-                        DeviceAccessor<Float4, mode::read>                        a_xq,
-                        DeviceAccessor<Float3, mode::read_write>                  a_f,
-                        DeviceAccessor<Float3, mode::read>                        a_shiftVec,
-                        DeviceAccessor<Float3, mode::read_write>                  a_fShift,
-                        OptionalAccessor<float, mode::read_write, doCalcEnergies> a_energyElec,
-                        OptionalAccessor<float, mode::read_write, doCalcEnergies> a_energyVdw,
-                        DeviceAccessor<nbnxn_cj_packed_t, doPruneNBL ? mode::read_write : mode::read> a_plistCJPacked,
-                        DeviceAccessor<nbnxn_sci_t, mode::read>                     a_plistSci,
-                        DeviceAccessor<nbnxn_excl_t, mode::read>                    a_plistExcl,
-                        OptionalAccessor<Float2, mode::read, ljComb<vdwType>>       a_ljComb,
-                        OptionalAccessor<int, mode::read, !ljComb<vdwType>>         a_atomTypes,
-                        OptionalAccessor<Float2, mode::read, !ljComb<vdwType>>      a_nbfp,
-                        OptionalAccessor<Float2, mode::read, ljEwald<vdwType>>      a_nbfpComb,
-                        OptionalAccessor<float, mode::read, elecEwaldTab<elecType>> a_coulombTab,
-                        const int                                                   numTypes,
-                        const float                                                 rCoulombSq,
-                        const float                                                 rVdwSq,
-                        const float                                                 twoKRf,
-                        const float                                                 ewaldBeta,
-                        const float                                                 rlistOuterSq,
-                        const float                                                 ewaldShift,
-                        const float                                                 epsFac,
-                        const float                                                 ewaldCoeffLJ_2,
-                        const float                                                 cRF,
-                        const shift_consts_t                                        dispersionShift,
-                        const shift_consts_t                                        repulsionShift,
-                        const switch_consts_t                                       vdwSwitch,
-                        const float                                                 rVdwSwitch,
-                        const float                                                 ljEwaldShift,
-                        const float                                                 coulombTabScale,
-                        const bool                                                  calcShift)
+static auto nbnxmKernel(sycl::handler& cgh,
+                        const Float4* __restrict__ gm_xq,
+                        Float3* __restrict__ gm_f,
+                        const Float3* __restrict__ gm_shiftVec,
+                        Float3* __restrict__ gm_fShift,
+                        float* __restrict__ gm_energyElec,
+                        float* __restrict__ gm_energyVdw,
+                        nbnxn_cj_packed_t* __restrict__ gm_plistCJPacked,
+                        const nbnxn_sci_t* __restrict__ gm_plistSci,
+                        const nbnxn_excl_t* __restrict__ gm_plistExcl,
+                        const Float2* __restrict__ gm_ljComb /* used iff ljComb<vdwType> */,
+                        const int* __restrict__ gm_atomTypes /* used iff !ljComb<vdwType> */,
+                        const Float2* __restrict__ gm_nbfp /* used iff !ljComb<vdwType> */,
+                        const Float2* __restrict__ gm_nbfpComb /* used iff ljEwald<vdwType> */,
+                        const float* __restrict__ gm_coulombTab /* used iff elecEwaldTab<elecType> */,
+                        const int             numTypes,
+                        const float           rCoulombSq,
+                        const float           rVdwSq,
+                        const float           twoKRf,
+                        const float           ewaldBeta,
+                        const float           rlistOuterSq,
+                        const float           ewaldShift,
+                        const float           epsFac,
+                        const float           ewaldCoeffLJ_2,
+                        const float           cRF,
+                        const shift_consts_t  dispersionShift,
+                        const shift_consts_t  repulsionShift,
+                        const switch_consts_t vdwSwitch,
+                        const float           rVdwSwitch,
+                        const float           ljEwaldShift,
+                        const float           coulombTabScale,
+                        const bool            calcShift)
 {
     static constexpr EnergyFunctionProperties<elecType, vdwType> props;
-
-    a_xq.bind(cgh);
-    a_f.bind(cgh);
-    a_shiftVec.bind(cgh);
-    a_fShift.bind(cgh);
-    if constexpr (doCalcEnergies)
-    {
-        a_energyElec.bind(cgh);
-        a_energyVdw.bind(cgh);
-    }
-    a_plistCJPacked.bind(cgh);
-    a_plistSci.bind(cgh);
-    a_plistExcl.bind(cgh);
-    if constexpr (!props.vdwComb)
-    {
-        a_atomTypes.bind(cgh);
-        a_nbfp.bind(cgh);
-    }
-    else
-    {
-        a_ljComb.bind(cgh);
-    }
-    if constexpr (props.vdwEwald)
-    {
-        a_nbfpComb.bind(cgh);
-    }
-    if constexpr (props.elecEwaldTab)
-    {
-        a_coulombTab.bind(cgh);
-    }
 
     // The post-prune j-i cluster-pair organization is linked to how exclusion and interaction mask
     // data is stored. Currently, this is ideally suited for 32-wide subgroup size but slightly less
@@ -942,13 +934,13 @@ static auto nbnxmKernel(sycl::handler&                                          
     constexpr bool useShuffleReductionForceJ = gmx::isPowerOfTwo(c_nbnxnGpuNumClusterPerSupercluster);
 
     // Local memory buffer for i x+q pre-loading
-    sycl_2020::local_accessor<Float4, 1> sm_xq(
+    sycl::local_accessor<Float4, 1> sm_xq(
             sycl::range<1>(c_nbnxnGpuNumClusterPerSupercluster * c_clSize), cgh);
 
     auto sm_atomTypeI = [&]() {
         if constexpr (!props.vdwComb)
         {
-            return sycl_2020::local_accessor<int, 1>(
+            return sycl::local_accessor<int, 1>(
                     sycl::range<1>(c_nbnxnGpuNumClusterPerSupercluster * c_clSize), cgh);
         }
         else
@@ -960,7 +952,7 @@ static auto nbnxmKernel(sycl::handler&                                          
     auto sm_ljCombI = [&]() {
         if constexpr (props.vdwComb)
         {
-            return sycl_2020::local_accessor<Float2, 1>(
+            return sycl::local_accessor<Float2, 1>(
                     sycl::range<1>(c_nbnxnGpuNumClusterPerSupercluster * c_clSize), cgh);
         }
         else
@@ -983,7 +975,7 @@ static auto nbnxmKernel(sycl::handler&                                          
     constexpr int  sm_reductionBufferSize       = haveAnyLocalMemoryForceReduction
                                                           ? c_clSize * c_clSize * DIM
                                                           : (needExtraElementForReduction ? 1 : 0);
-    sycl_2020::local_accessor<float, 1> sm_reductionBuffer(sycl::range<1>(sm_reductionBufferSize), cgh);
+    sycl::local_accessor<float, 1> sm_reductionBuffer(sycl::range<1>(sm_reductionBufferSize), cgh);
 
     /* Flag to control the calculation of exclusion forces in the kernel
      * We do that with Ewald (elec/vdw) and RF. Cut-off only has exclusion for energy terms. */
@@ -1009,17 +1001,25 @@ static auto nbnxmKernel(sycl::handler&                                          
         // and in cases where prunedClusterPairSize != subGroupSize we can't use it anyway
         const unsigned imeiIdx = tidx / prunedClusterPairSize;
 
-        float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
-        float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
-        float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
+#if defined(__SYCL_DEVICE_ONLY__) && defined(__AMDGCN__)
+        FCiFloat3 fCiBuf_[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
         for (int i = 0; i < c_nbnxnGpuNumClusterPerSupercluster; i++)
         {
-            fCiBufX[i] = float(0.0F);
-            fCiBufY[i] = float(0.0F);
-            fCiBufZ[i] = float(0.0F);
+            fCiBuf_[i] = { 0.0F, 0.0F, 0.0F };
         }
+        auto fCiBufX = [&](auto i) -> float& { return fCiBuf_[i][XX]; };
+        auto fCiBufY = [&](auto i) -> float& { return fCiBuf_[i][YY]; };
+        auto fCiBufZ = [&](auto i) -> float& { return fCiBuf_[i][ZZ]; };
+#else
+        float fCiBufX_[c_nbnxnGpuNumClusterPerSupercluster] = { 0.0F }; // i force buffer
+        float fCiBufY_[c_nbnxnGpuNumClusterPerSupercluster] = { 0.0F }; // i force buffer
+        float fCiBufZ_[c_nbnxnGpuNumClusterPerSupercluster] = { 0.0F }; // i force buffer
+        auto  fCiBufX = [&](auto i) -> float& { return fCiBufX_[i]; };
+        auto  fCiBufY = [&](auto i) -> float& { return fCiBufY_[i]; };
+        auto  fCiBufZ = [&](auto i) -> float& { return fCiBufZ_[i]; };
+#endif
 
-        const nbnxn_sci_t nbSci          = a_plistSci[bidx];
+        const nbnxn_sci_t nbSci          = gm_plistSci[bidx];
         const int         sci            = nbSci.sci;
         const int         cijPackedBegin = nbSci.cjPackedBegin;
         const int         cijPackedEnd   = nbSci.cjPackedEnd;
@@ -1040,8 +1040,8 @@ static auto nbnxmKernel(sycl::handler&                                          
                 const int ai       = ci * c_clSize + tidxi;
                 const int cacheIdx = (tidxj + i) * c_clSize + tidxi;
 
-                const Float3 shift = a_shiftVec[nbSci.shift];
-                Float4       xqi   = a_xq[ai];
+                const Float3 shift = gm_shiftVec[nbSci.shift];
+                Float4       xqi   = gm_xq[ai];
                 xqi += Float4(shift[0], shift[1], shift[2], 0.0F);
                 xqi[3] *= epsFac;
                 sm_xq[cacheIdx] = xqi;
@@ -1049,12 +1049,12 @@ static auto nbnxmKernel(sycl::handler&                                          
                 if constexpr (!props.vdwComb)
                 {
                     // Pre-load the i-atom types into shared memory
-                    sm_atomTypeI[cacheIdx] = a_atomTypes[ai];
+                    sm_atomTypeI[cacheIdx] = gm_atomTypes[ai];
                 }
                 else
                 {
                     // Pre-load the LJ combination parameters into shared memory
-                    sm_ljCombI[cacheIdx] = a_ljComb[ai];
+                    sm_ljCombI[cacheIdx] = gm_ljComb[ai];
                 }
             }
         }
@@ -1074,7 +1074,7 @@ static auto nbnxmKernel(sycl::handler&                                          
         if constexpr (doCalcEnergies && doExclusionForces)
         {
             if (nbSci.shift == gmx::c_centralShiftIndex
-                && a_plistCJPacked[cijPackedBegin].cj[0] == sci * c_nbnxnGpuNumClusterPerSupercluster)
+                && gm_plistCJPacked[cijPackedBegin].cj[0] == sci * c_nbnxnGpuNumClusterPerSupercluster)
             {
                 // we have the diagonal: add the charge and LJ self interaction energy term
                 for (int i = 0; i < c_nbnxnGpuNumClusterPerSupercluster; i++)
@@ -1088,8 +1088,8 @@ static auto nbnxmKernel(sycl::handler&                                          
                     if constexpr (props.vdwEwald)
                     {
                         energyVdw +=
-                                a_nbfp[a_atomTypes[(sci * c_nbnxnGpuNumClusterPerSupercluster + i) * c_clSize + tidxi]
-                                       * (numTypes + 1)][0];
+                                gm_nbfp[gm_atomTypes[(sci * c_nbnxnGpuNumClusterPerSupercluster + i) * c_clSize + tidxi]
+                                        * (numTypes + 1)][0];
                     }
                 }
                 /* divide the self term(s) equally over the j-threads, then multiply with the coefficients. */
@@ -1119,16 +1119,16 @@ static auto nbnxmKernel(sycl::handler&                                          
         // loop over the j clusters = seen by any of the atoms in the current super-cluster
         for (int jPacked = cijPackedBegin; jPacked < cijPackedEnd; jPacked += 1)
         {
-            unsigned imask = UNIFORM_LOAD_CLUSTER_PAIR_DATA(a_plistCJPacked[jPacked].imei[imeiIdx].imask);
+            unsigned imask = UNIFORM_LOAD_CLUSTER_PAIR_DATA(gm_plistCJPacked[jPacked].imei[imeiIdx].imask);
             if (!doPruneNBL && !imask)
             {
                 continue;
             }
             const int wexclIdx =
-                    UNIFORM_LOAD_CLUSTER_PAIR_DATA(a_plistCJPacked[jPacked].imei[imeiIdx].excl_ind);
+                    UNIFORM_LOAD_CLUSTER_PAIR_DATA(gm_plistCJPacked[jPacked].imei[imeiIdx].excl_ind);
 
             static_assert(gmx::isPowerOfTwo(prunedClusterPairSize));
-            const unsigned wexcl = a_plistExcl[wexclIdx].pair[tidx & (prunedClusterPairSize - 1)];
+            const unsigned wexcl = gm_plistExcl[wexclIdx].pair[tidx & (prunedClusterPairSize - 1)];
 // Unrolling has been verified to improve performance on AMD
 #if defined __AMDGCN__
 #    pragma unroll c_nbnxnGpuJgroupSize
@@ -1142,11 +1142,11 @@ static auto nbnxmKernel(sycl::handler&                                          
                     continue;
                 }
                 unsigned  maskJI = (1U << (jm * c_nbnxnGpuNumClusterPerSupercluster));
-                const int cj     = a_plistCJPacked[jPacked].cj[jm];
+                const int cj     = gm_plistCJPacked[jPacked].cj[jm];
                 const int aj     = cj * c_clSize + tidxj;
 
                 // load j atom data
-                const Float4 xqj = a_xq[aj];
+                const Float4 xqj = gm_xq[aj];
 
                 const Float3 xj(xqj[0], xqj[1], xqj[2]);
                 const float  qj = xqj[3];
@@ -1154,11 +1154,11 @@ static auto nbnxmKernel(sycl::handler&                                          
                 Float2       ljCombJ;   // Only needed if (props.vdwComb)
                 if constexpr (props.vdwComb)
                 {
-                    ljCombJ = a_ljComb[aj];
+                    ljCombJ = gm_ljComb[aj];
                 }
                 else
                 {
-                    atomTypeJ = a_atomTypes[aj];
+                    atomTypeJ = gm_atomTypes[aj];
                 }
 
                 Float3 fCjBuf(0.0F, 0.0F, 0.0F);
@@ -1207,7 +1207,7 @@ static auto nbnxmKernel(sycl::handler&                                          
                             {
                                 /* LJ 6*C6 and 12*C12 */
                                 atomTypeI = sm_atomTypeI[i * c_clSize + tidxi];
-                                c6c12     = a_nbfp[numTypes * atomTypeI + atomTypeJ];
+                                c6c12     = gm_nbfp[numTypes * atomTypeI + atomTypeJ];
                             }
                             else
                             {
@@ -1280,7 +1280,7 @@ static auto nbnxmKernel(sycl::handler&                                          
                             }
                             if constexpr (props.vdwEwald)
                             {
-                                ljEwaldComb<doCalcEnergies, vdwType>(a_nbfpComb.get_pointer(),
+                                ljEwaldComb<doCalcEnergies, vdwType>(gm_nbfpComb,
                                                                      ljEwaldShift,
                                                                      atomTypeI,
                                                                      atomTypeJ,
@@ -1338,7 +1338,7 @@ static auto nbnxmKernel(sycl::handler&                                          
                                 fInvR += qi * qj
                                          * (pairExclMask * r2Inv
                                             - interpolateCoulombForceR(
-                                                    a_coulombTab.get_pointer(), coulombTabScale, r2 * rInv))
+                                                    gm_coulombTab, coulombTabScale, r2 * rInv))
                                          * rInv;
                             }
 
@@ -1366,9 +1366,13 @@ static auto nbnxmKernel(sycl::handler&                                          
                             /* accumulate j forces in registers */
                             fCjBuf -= forceIJ;
                             /* accumulate i forces in registers */
-                            fCiBufX[i] += forceIJ[0];
-                            fCiBufY[i] += forceIJ[1];
-                            fCiBufZ[i] += forceIJ[2];
+#if defined(__SYCL_DEVICE_ONLY__) && defined(__AMDGCN__)
+                            fCiBuf_[i] += FCiFloat3(forceIJ);
+#else
+                            fCiBufX(i) += forceIJ[0];
+                            fCiBufY(i) += forceIJ[1];
+                            fCiBufZ(i) += forceIJ[2];
+#endif
                         } // (r2 < rCoulombSq) && notExcluded
                     }     // (imask & maskJI)
                     /* shift the mask bit by 1 */
@@ -1376,31 +1380,21 @@ static auto nbnxmKernel(sycl::handler&                                          
                 } // for (int i = 0; i < c_nbnxnGpuNumClusterPerSupercluster; i++)
                 /* reduce j forces */
                 reduceForceJ<useShuffleReductionForceJ>(
-                        sm_reductionBuffer, fCjBuf, itemIdx, tidxi, tidxj, aj, a_f.get_pointer());
+                        sm_reductionBuffer, fCjBuf, itemIdx, tidxi, tidxj, aj, gm_f);
             } // for (int jm = 0; jm < c_nbnxnGpuJgroupSize; jm++)
             if constexpr (doPruneNBL)
             {
                 /* Update the imask with the new one which does not contain the
                  * out of range clusters anymore. */
-                a_plistCJPacked[jPacked].imei[imeiIdx].imask = imask;
+                gm_plistCJPacked[jPacked].imei[imeiIdx].imask = imask;
             }
         } // for (int jPacked = cijPackedBegin; jPacked < cijPackedEnd; jPacked += 1)
 
         /* skip central shifts when summing shift forces */
         const bool doCalcShift = (calcShift && nbSci.shift != gmx::c_centralShiftIndex);
 
-        reduceForceIAndFShift<useShuffleReductionForceI, subGroupSize>(sm_reductionBuffer,
-                                                                       fCiBufX,
-                                                                       fCiBufY,
-                                                                       fCiBufZ,
-                                                                       doCalcShift,
-                                                                       itemIdx,
-                                                                       tidxi,
-                                                                       tidxj,
-                                                                       sci,
-                                                                       nbSci.shift,
-                                                                       a_f.get_pointer(),
-                                                                       a_fShift.get_pointer());
+        reduceForceIAndFShift<useShuffleReductionForceI, subGroupSize>(
+                sm_reductionBuffer, fCiBufX, fCiBufY, fCiBufZ, doCalcShift, itemIdx, tidxi, tidxj, sci, nbSci.shift, gm_f, gm_fShift);
 
         if constexpr (doCalcEnergies)
         {
@@ -1412,8 +1406,8 @@ static auto nbnxmKernel(sycl::handler&                                          
 
             if (tidx == 0)
             {
-                atomicFetchAdd(a_energyVdw[0], energyVdwGroup);
-                atomicFetchAdd(a_energyElec[0], energyElecGroup);
+                atomicFetchAdd(gm_energyVdw[0], energyVdwGroup);
+                atomicFetchAdd(gm_energyElec[0], energyElecGroup);
             }
         }
     };
@@ -1468,41 +1462,42 @@ void launchNbnxmKernelHelper(NbnxmGpu* nb, const gmx::StepWorkload& stepWork, co
     GMX_ASSERT(doPruneNBL == (plist->haveFreshList && !nb->didPrune[iloc]), "Wrong template called");
     GMX_ASSERT(doCalcEnergies == stepWork.computeEnergy, "Wrong template called");
 
-    chooseAndLaunchNbnxmKernel<subGroupSize, doPruneNBL, doCalcEnergies>(nbp->elecType,
-                                                                         nbp->vdwType,
-                                                                         deviceStream,
-                                                                         plist->nsci,
-                                                                         adat->xq,
-                                                                         adat->f,
-                                                                         adat->shiftVec,
-                                                                         adat->fShift,
-                                                                         adat->eElec,
-                                                                         adat->eLJ,
-                                                                         plist->cjPacked,
-                                                                         plist->sci,
-                                                                         plist->excl,
-                                                                         adat->ljComb,
-                                                                         adat->atomTypes,
-                                                                         nbp->nbfp,
-                                                                         nbp->nbfp_comb,
-                                                                         nbp->coulomb_tab,
-                                                                         adat->numTypes,
-                                                                         nbp->rcoulomb_sq,
-                                                                         nbp->rvdw_sq,
-                                                                         nbp->two_k_rf,
-                                                                         nbp->ewald_beta,
-                                                                         nbp->rlistOuter_sq,
-                                                                         nbp->sh_ewald,
-                                                                         nbp->epsfac,
-                                                                         nbp->ewaldcoeff_lj * nbp->ewaldcoeff_lj,
-                                                                         nbp->c_rf,
-                                                                         nbp->dispersion_shift,
-                                                                         nbp->repulsion_shift,
-                                                                         nbp->vdw_switch,
-                                                                         nbp->rvdw_switch,
-                                                                         nbp->sh_lj_ewald,
-                                                                         nbp->coulomb_tab_scale,
-                                                                         stepWork.computeVirial);
+    chooseAndLaunchNbnxmKernel<subGroupSize, doPruneNBL, doCalcEnergies>(
+            nbp->elecType,
+            nbp->vdwType,
+            deviceStream,
+            plist->nsci,
+            adat->xq.get_pointer(),
+            adat->f.get_pointer(),
+            adat->shiftVec.get_pointer(),
+            adat->fShift.get_pointer(),
+            adat->eElec.get_pointer(),
+            adat->eLJ.get_pointer(),
+            plist->cjPacked.get_pointer(),
+            plist->sci.get_pointer(),
+            plist->excl.get_pointer(),
+            adat->ljComb.get_pointer(),
+            adat->atomTypes.get_pointer(),
+            nbp->nbfp.get_pointer(),
+            nbp->nbfp_comb.get_pointer(),
+            nbp->coulomb_tab.get_pointer(),
+            adat->numTypes,
+            nbp->rcoulomb_sq,
+            nbp->rvdw_sq,
+            nbp->two_k_rf,
+            nbp->ewald_beta,
+            nbp->rlistOuter_sq,
+            nbp->sh_ewald,
+            nbp->epsfac,
+            nbp->ewaldcoeff_lj * nbp->ewaldcoeff_lj,
+            nbp->c_rf,
+            nbp->dispersion_shift,
+            nbp->repulsion_shift,
+            nbp->vdw_switch,
+            nbp->rvdw_switch,
+            nbp->sh_lj_ewald,
+            nbp->coulomb_tab_scale,
+            stepWork.computeVirial);
 }
 
 } // namespace Nbnxm

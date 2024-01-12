@@ -96,9 +96,9 @@ public:
                     const gmx_domdec_zones_t* ddZones);
 
         //! The type of PBC
-        PbcType pbcType;
+        PbcType pbcType_;
         //! Tells whether we are doing test-particle insertion
-        bool doTestParticleInsertion;
+        bool doTestParticleInsertion_;
         //! Are there multiple domains?
         bool haveMultipleDomains;
         //! Are there multiple domains along each dimension?
@@ -154,6 +154,9 @@ public:
 
     //! Sets the order of the local atoms to the order grid atom ordering
     void setLocalAtomOrder();
+
+    //! Return a single grid
+    const Grid& grid(size_t idx) const { return grids_[idx]; }
 
     //! Returns the list of grids
     gmx::ArrayRef<const Grid> grids() const { return grids_; }

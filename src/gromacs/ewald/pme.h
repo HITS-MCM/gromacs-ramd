@@ -350,6 +350,16 @@ inline bool pme_gpu_task_enabled(const gmx_pme_t* pme)
     return (pme != nullptr) && (pme_run_mode(pme) != PmeRunMode::CPU);
 }
 
+/*! \libinternal \brief
+ * Sets the nvshmem usage status, and allocates required structs
+ * if NVSHMEM should be used.
+ *
+ * \param[in] pmeGpu             The PME GPU structure.
+ * \param[in] useNvshmem         should use NVSHMEM.
+ */
+GPU_FUNC_QUALIFIER void pme_gpu_use_nvshmem(PmeGpu* GPU_FUNC_ARGUMENT(pmeGpu),
+                                            bool    GPU_FUNC_ARGUMENT(useNvshmem)) GPU_FUNC_TERM;
+
 /*! \brief Returns the block size requirement
  *
  * The GPU version of PME requires that the coordinates array have a
@@ -406,14 +416,15 @@ GPU_FUNC_QUALIFIER void pme_gpu_prepare_computation(gmx_pme_t*     GPU_FUNC_ARGU
  * \param[in] useGpuDirectComm               Whether direct GPU PME-PP communication is active
  * \param[in]  pmeCoordinateReceiverGpu      Coordinate receiver object, which must be valid when
  *                                           direct GPU PME-PP communication is active
+ * \param[in] useMdGpuGraph                  Whether MD GPU Graph is in use.
  */
-GPU_FUNC_QUALIFIER void pme_gpu_launch_spread(
-        gmx_pme_t*                     GPU_FUNC_ARGUMENT(pme),
-        GpuEventSynchronizer*          GPU_FUNC_ARGUMENT(xReadyOnDevice),
-        gmx_wallcycle*                 GPU_FUNC_ARGUMENT(wcycle),
-        real                           GPU_FUNC_ARGUMENT(lambdaQ),
-        bool                           GPU_FUNC_ARGUMENT(useGpuDirectComm),
-        gmx::PmeCoordinateReceiverGpu* GPU_FUNC_ARGUMENT(pmeCoordinateReceiverGpu)) GPU_FUNC_TERM;
+GPU_FUNC_QUALIFIER void pme_gpu_launch_spread(gmx_pme_t*            GPU_FUNC_ARGUMENT(pme),
+                                              GpuEventSynchronizer* GPU_FUNC_ARGUMENT(xReadyOnDevice),
+                                              gmx_wallcycle*        GPU_FUNC_ARGUMENT(wcycle),
+                                              real                  GPU_FUNC_ARGUMENT(lambdaQ),
+                                              bool GPU_FUNC_ARGUMENT(useGpuDirectComm),
+                                              gmx::PmeCoordinateReceiverGpu* GPU_FUNC_ARGUMENT(pmeCoordinateReceiverGpu),
+                                              bool GPU_FUNC_ARGUMENT(useMdGpuGraph)) GPU_FUNC_TERM;
 
 /*! \brief
  * Launches middle stages of PME (FFT R2C, solving, FFT C2R) either on GPU or on CPU, depending on the run mode.
@@ -433,10 +444,12 @@ pme_gpu_launch_complex_transforms(gmx_pme_t*               GPU_FUNC_ARGUMENT(pme
  * \param[in] pme               The PME data structure.
  * \param[in] wcycle            The wallclock counter.
  * \param[in] lambdaQ           The Coulomb lambda to use when calculating the results.
+ * \param[in] computeVirial     Whether this is a virial step.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_launch_gather(const gmx_pme_t* GPU_FUNC_ARGUMENT(pme),
                                               gmx_wallcycle*   GPU_FUNC_ARGUMENT(wcycle),
-                                              real GPU_FUNC_ARGUMENT(lambdaQ)) GPU_FUNC_TERM;
+                                              real             GPU_FUNC_ARGUMENT(lambdaQ),
+                                              bool GPU_FUNC_ARGUMENT(computeVirial)) GPU_FUNC_TERM;
 
 /*! \brief
  * Attempts to complete PME GPU tasks.
@@ -495,12 +508,12 @@ GPU_FUNC_QUALIFIER void pme_gpu_wait_and_reduce(gmx_pme_t*               GPU_FUN
  * \todo Rename this function to *clear* -- it clearly only does output resetting
  * and we should be clear about what the function does..
  *
- * \param[in] pme              The PME data structure.
- * \param[in] useMdGpuGraph    Whether MD GPU Graph is in use.
- * \param[in] wcycle           The wallclock counter.
+ * \param[in] pme                            The PME data structure.
+ * \param[in] gpuGraphWithSeparatePmeRank    Whether MD GPU Graph with separate PME rank is in use.
+ * \param[in] wcycle                         The wallclock counter.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_reinit_computation(const gmx_pme_t* GPU_FUNC_ARGUMENT(pme),
-                                                   bool           GPU_FUNC_ARGUMENT(useMdGpuGraph),
+                                                   bool GPU_FUNC_ARGUMENT(gpuGraphWithSeparatePmeRank),
                                                    gmx_wallcycle* GPU_FUNC_ARGUMENT(wcycle)) GPU_FUNC_TERM;
 
 /*! \brief Set pointer to device copy of coordinate data.

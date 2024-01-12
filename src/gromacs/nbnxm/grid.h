@@ -128,7 +128,7 @@ struct BoundingBox
         float y;
         //! z coordinate
         float z;
-        //! padding, unused, but should be set to avoid operations on unitialized data
+        //! padding, unused, but should be set to avoid operations on uninitialized data
         float padding;
     };
 
@@ -332,12 +332,22 @@ public:
         }
     }
 
-    //! Sets the grid dimensions
+    /*! \brief Sets the grid dimensions
+     *
+     * \param[in] ddZone           The domain decomposition zone index
+     * \param[in] numAtoms         The number of atoms to put onto this grid
+     * \param[in] lowerCorner      The minimum Cartesian coordinates of the grid
+     * \param[in] upperCorner      The maximum Cartesian coordinates of the grid
+     * \param[in,out] atomDensity  The atom density, will be computed when <= 0
+     * \param[in] maxAtomGroupRadius  The maximum radius of atom groups
+     * \param[in] haveFep          Whether non-bonded parameters are perturbed
+     * \param[in] pinningPolicy    The pinning policy for memory
+     */
     void setDimensions(int                ddZone,
                        int                numAtoms,
                        gmx::RVec          lowerCorner,
                        gmx::RVec          upperCorner,
-                       real               atomDensity,
+                       real*              atomDensity,
                        real               maxAtomGroupRadius,
                        bool               haveFep,
                        gmx::PinningPolicy pinningPolicy);
@@ -452,6 +462,42 @@ private:
     //! Total number of clusters, used for printing
     int numClustersTotal_;
 };
+
+/*! \brief Sets the 2D search grid dimensions puts the atoms on the 2D grid
+ *
+ * \param[in,out] grid      The pair search grid for one DD zone
+ * \param[in,out] gridWork  Working data for each thread
+ * \param[in,out] cells     The grid cell list
+ * \param[in] lowerCorner   The minimum Cartesian coordinates of the grid
+ * \param[in] upperCorner   The maximum Cartesian coordinates of the grid
+ * \param[in] updateGroupsCog  The center of geometry of update groups, can be nullptr
+ * \param[in] atomRange     The range of atoms to put on this grid
+ * \param[in,out] atomDensity  The atom density, will be computed when <= 0
+ * \param[in] maxAtomGroupRadius  The maximum radius of atom groups
+ * \param[in] haveFep       Whether non-bonded parameters are perturbed
+ * \param[in] x             The coordinates of the atoms
+ * \param[in] ddZone        The domain decomposition zone
+ * \param[in] move          Tells whether atoms have moved to another DD domain
+ * \param[in] numAtomsMoved  The number of atoms that moved to another DD domain
+ * \param[in] computeGridDensityRatio  When true, return the grid density ratio
+ *
+ * \returns When \p computeGridDensityRatio==true, the ratio of the effective 2D grid density and the uniform grid density
+ */
+real generateAndFill2DGrid(Grid*                          grid,
+                           gmx::ArrayRef<GridWork>        gridWork,
+                           gmx::HostVector<int>*          cells,
+                           const rvec                     lowerCorner,
+                           const rvec                     upperCorner,
+                           const gmx::UpdateGroupsCog*    updateGroupsCog,
+                           gmx::Range<int>                atomRange,
+                           real*                          atomDensity,
+                           real                           maxAtomGroupRadius,
+                           bool                           haveFep,
+                           gmx::ArrayRef<const gmx::RVec> x,
+                           int                            ddZone,
+                           const int*                     move,
+                           int                            numAtomsMoved,
+                           bool                           computeGridDensityRatio);
 
 } // namespace Nbnxm
 

@@ -450,11 +450,9 @@ static yyconst flex_int16_t yy_chk[151] = {
 /*
  * This file is part of the GROMACS molecular simulation package.
  *
- * Copyright (c) 2009,2010,2011,2012,2013 by the GROMACS development team.
- * Copyright (c) 2014,2015,2016, by the GROMACS development team, led by
- * Mark Abraham, David van der Spoel, Berk Hess, and Erik Lindahl,
- * and including many others, as listed in the AUTHORS file in the
- * top-level source directory and at http://www.gromacs.org.
+ * Copyright 2009- The GROMACS Authors
+ * and the project initiators Erik Lindahl, Berk Hess and David van der Spoel.
+ * Consult the AUTHORS/COPYING files and https://www.gromacs.org for details.
  *
  * GROMACS is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -468,7 +466,7 @@ static yyconst flex_int16_t yy_chk[151] = {
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with GROMACS; if not, see
- * http://www.gnu.org/licenses, or write to the Free Software Foundation,
+ * https://www.gnu.org/licenses, or write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA.
  *
  * If you want to redistribute modifications to GROMACS, please
@@ -477,10 +475,10 @@ static yyconst flex_int16_t yy_chk[151] = {
  * consider code for inclusion in the official distribution, but
  * derived work must not be called official GROMACS. Details are found
  * in the README & COPYING files - if they are missing, get the
- * official version at http://www.gromacs.org.
+ * official version at https://www.gromacs.org.
  *
  * To help us fund GROMACS development, we humbly ask that you cite
- * the research papers on the package. Check out http://www.gromacs.org.
+ * the research papers on the package. Check out https://www.gromacs.org.
  */
 /*! \cond \internal \file scanner.l
  * \brief
@@ -660,9 +658,9 @@ static int input(yyscan_t yyscanner);
 /* This used to be an fputs(), but since the string might contain NUL's,
  * we now use fwrite().
  */
-#    define ECHO                                     \
-        do                                           \
-        {                                            \
+#    define ECHO                                          \
+        do                                                \
+        {                                                 \
             if (std::fwrite(yytext, yyleng, 1, yyout)) {} \
         } while (0)
 #endif
@@ -671,32 +669,32 @@ static int input(yyscan_t yyscanner);
  * is returned in "result".
  */
 #ifndef YY_INPUT
-#    define YY_INPUT(buf, result, max_size)                                        \
-        if (YY_CURRENT_BUFFER_LVALUE->yy_is_interactive)                           \
-        {                                                                          \
-            int    c = '*';                                                        \
-            size_t n;                                                              \
-            for (n = 0; n < max_size && (c = std::getc(yyin)) != EOF && c != '\n'; ++n) \
-                buf[n] = (char)c;                                                  \
-            if (c == '\n')                                                         \
-                buf[n++] = (char)c;                                                \
-            if (c == EOF && std::ferror(yyin))                                          \
-                YY_FATAL_ERROR("input in flex scanner failed");                    \
-            result = n;                                                            \
-        }                                                                          \
-        else                                                                       \
-        {                                                                          \
-            errno = 0;                                                             \
-            while ((result = std::fread(buf, 1, max_size, yyin)) == 0 && std::ferror(yyin))  \
-            {                                                                      \
-                if (errno != EINTR)                                                \
-                {                                                                  \
-                    YY_FATAL_ERROR("input in flex scanner failed");                \
-                    break;                                                         \
-                }                                                                  \
-                errno = 0;                                                         \
-                std::clearerr(yyin);                                                    \
-            }                                                                      \
+#    define YY_INPUT(buf, result, max_size)                                                 \
+        if (YY_CURRENT_BUFFER_LVALUE->yy_is_interactive)                                    \
+        {                                                                                   \
+            int    c = '*';                                                                 \
+            size_t n;                                                                       \
+            for (n = 0; n < max_size && (c = std::getc(yyin)) != EOF && c != '\n'; ++n)     \
+                buf[n] = (char)c;                                                           \
+            if (c == '\n')                                                                  \
+                buf[n++] = (char)c;                                                         \
+            if (c == EOF && std::ferror(yyin))                                              \
+                YY_FATAL_ERROR("input in flex scanner failed");                             \
+            result = n;                                                                     \
+        }                                                                                   \
+        else                                                                                \
+        {                                                                                   \
+            errno = 0;                                                                      \
+            while ((result = std::fread(buf, 1, max_size, yyin)) == 0 && std::ferror(yyin)) \
+            {                                                                               \
+                if (errno != EINTR)                                                         \
+                {                                                                           \
+                    YY_FATAL_ERROR("input in flex scanner failed");                         \
+                    break;                                                                  \
+                }                                                                           \
+                errno = 0;                                                                  \
+                std::clearerr(yyin);                                                        \
+            }                                                                               \
         }
 
 
@@ -1733,7 +1731,7 @@ static void _gmx_sel_yyensure_buffer_stack(yyscan_t yyscanner)
         if (!yyg->yy_buffer_stack)
             YY_FATAL_ERROR("out of dynamic memory in _gmx_sel_yyensure_buffer_stack()");
 
-	std::memset(yyg->yy_buffer_stack, 0, num_to_alloc * sizeof(struct yy_buffer_state*));
+        std::memset(yyg->yy_buffer_stack, 0, num_to_alloc * sizeof(struct yy_buffer_state*));
 
         yyg->yy_buffer_stack_max = num_to_alloc;
         yyg->yy_buffer_stack_top = 0;
@@ -1753,9 +1751,9 @@ static void _gmx_sel_yyensure_buffer_stack(yyscan_t yyscanner)
             YY_FATAL_ERROR("out of dynamic memory in _gmx_sel_yyensure_buffer_stack()");
 
         /* zero only the new slots.*/
-	std::memset(yyg->yy_buffer_stack + yyg->yy_buffer_stack_max,
-               0,
-               grow_size * sizeof(struct yy_buffer_state*));
+        std::memset(yyg->yy_buffer_stack + yyg->yy_buffer_stack_max,
+                    0,
+                    grow_size * sizeof(struct yy_buffer_state*));
         yyg->yy_buffer_stack_max = num_to_alloc;
     }
 }

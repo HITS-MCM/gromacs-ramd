@@ -88,7 +88,7 @@ static void copyMovedAtomsToBufferPerAtom(gmx::ArrayRef<const int> move,
 {
     int pos_vec[DIM * 2] = { 0 };
 
-    for (gmx::index i = 0; i < move.ssize(); i++)
+    for (gmx::Index i = 0; i < move.ssize(); i++)
     {
         /* Skip moved atoms */
         const int m = move[i];
@@ -109,7 +109,7 @@ static void copyMovedUpdateGroupCogs(gmx::ArrayRef<const int>       move,
 {
     int pos_vec[DIM * 2] = { 0 };
 
-    for (gmx::index g = 0; g < move.ssize(); g++)
+    for (gmx::Index g = 0; g < move.ssize(); g++)
     {
         /* Skip moved atoms */
         const int m = move[g];
@@ -130,7 +130,7 @@ static void clear_and_mark_ind(gmx::ArrayRef<const int> move,
                                gmx_ga2la_t*             ga2la,
                                int*                     cell_index)
 {
-    for (gmx::index a = 0; a < move.ssize(); a++)
+    for (gmx::Index a = 0; a < move.ssize(); a++)
     {
         if (move[a] >= 0)
         {
@@ -223,20 +223,20 @@ static void print_cg_move(FILE*               fplog,
 
 static void rotate_state_atom(t_state* state, int a)
 {
-    if (state->flags & enumValueToBitMask(StateEntry::X))
+    if (state->hasEntry(StateEntry::X))
     {
         auto x = makeArrayRef(state->x);
         /* Rotate the complete state; for a rectangular box only */
         x[a][YY] = state->box[YY][YY] - x[a][YY];
         x[a][ZZ] = state->box[ZZ][ZZ] - x[a][ZZ];
     }
-    if (state->flags & enumValueToBitMask(StateEntry::V))
+    if (state->hasEntry(StateEntry::V))
     {
         auto v   = makeArrayRef(state->v);
         v[a][YY] = -v[a][YY];
         v[a][ZZ] = -v[a][ZZ];
     }
-    if (state->flags & enumValueToBitMask(StateEntry::Cgp))
+    if (state->hasEntry(StateEntry::Cgp))
     {
         auto cg_p   = makeArrayRef(state->cg_p);
         cg_p[a][YY] = -cg_p[a][YY];
@@ -535,17 +535,35 @@ static void calcGroupMove(FILE*                     fplog,
 
 static void applyPbcAndSetMoveFlags(const gmx::UpdateGroupsCog&     updateGroupsCog,
                                     gmx::ArrayRef<const PbcAndFlag> pbcAndFlags,
+                                    const bool                      haveBoxDeformation,
+                                    const matrix                    boxDeformationRate,
                                     int                             atomBegin,
                                     int                             atomEnd,
                                     gmx::ArrayRef<gmx::RVec>        atomCoords,
+                                    gmx::ArrayRef<gmx::RVec>        atomVelocities,
                                     gmx::ArrayRef<int>              move)
 {
-    for (int a = atomBegin; a < atomEnd; a++)
+    if (!haveBoxDeformation)
     {
-        const PbcAndFlag& pbcAndFlag = pbcAndFlags[updateGroupsCog.cogIndex(a)];
-        rvec_inc(atomCoords[a], pbcAndFlag.pbcShift);
-        /* Temporarily store the flag in move */
-        move[a] = pbcAndFlag.moveFlag;
+        for (int a = atomBegin; a < atomEnd; a++)
+        {
+            const PbcAndFlag& pbcAndFlag = pbcAndFlags[updateGroupsCog.cogIndex(a)];
+            rvec_inc(atomCoords[a], pbcAndFlag.pbcShift);
+            /* Temporarily store the flag in move */
+            move[a] = pbcAndFlag.moveFlag;
+        }
+    }
+    else
+    {
+        for (int a = atomBegin; a < atomEnd; a++)
+        {
+            const PbcAndFlag& pbcAndFlag = pbcAndFlags[updateGroupsCog.cogIndex(a)];
+            rvec_inc(atomCoords[a], pbcAndFlag.pbcShift);
+            // Correct the velocity for the position change along the flow profile
+            correctVelocityForDisplacement<false>(boxDeformationRate, atomVelocities[a], pbcAndFlag.pbcShift);
+            /* Temporarily store the flag in move */
+            move[a] = pbcAndFlag.moveFlag;
+        }
     }
 }
 
@@ -566,8 +584,8 @@ void dd_redistribute_cg(FILE*         fplog,
     }
 
     // Positions are always present, so there's nothing to flag
-    bool bV   = (state->flags & enumValueToBitMask(StateEntry::V)) != 0;
-    bool bCGP = (state->flags & enumValueToBitMask(StateEntry::Cgp)) != 0;
+    const bool bV   = state->hasEntry(StateEntry::V);
+    const bool bCGP = state->hasEntry(StateEntry::Cgp);
 
     DDBufferAccess<int> moveBuffer(comm->intBuffer, dd->numHomeAtoms);
     gmx::ArrayRef<int>  move = moveBuffer.buffer;
@@ -648,9 +666,12 @@ void dd_redistribute_cg(FILE*         fplog,
                 const int numHomeAtoms = comm->atomRanges.numHomeAtoms();
                 applyPbcAndSetMoveFlags(updateGroupsCog,
                                         pbcAndFlags,
+                                        comm->systemInfo.haveBoxDeformation,
+                                        comm->systemInfo.boxDeformationRate,
                                         (thread * numHomeAtoms) / nthread,
                                         ((thread + 1) * numHomeAtoms) / nthread,
                                         state->x,
+                                        state->v,
                                         move);
             }
             else
@@ -694,7 +715,7 @@ void dd_redistribute_cg(FILE*         fplog,
             std::vector<int>& cggl_flag = comm->cggl_flag[mc];
 
             /* TODO: See if we can use push_back instead */
-            if ((nat[mc] + 1) * DD_CGIBS > gmx::index(cggl_flag.size()))
+            if ((nat[mc] + 1) * DD_CGIBS > gmx::Index(cggl_flag.size()))
             {
                 cggl_flag.resize((nat[mc] + 1) * DD_CGIBS);
             }
@@ -938,7 +959,7 @@ void dd_redistribute_cg(FILE*         fplog,
             else
             {
                 /* Reallocate the buffers if necessary  */
-                if ((nat[mc] + 1) * DD_CGIBS > gmx::index(comm->cggl_flag[mc].size()))
+                if ((nat[mc] + 1) * DD_CGIBS > gmx::Index(comm->cggl_flag[mc].size()))
                 {
                     comm->cggl_flag[mc].resize((nat[mc] + 1) * DD_CGIBS);
                 }

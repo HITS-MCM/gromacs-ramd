@@ -47,6 +47,7 @@
 #include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/mdlib/boxdeformation.h"
 #include "gromacs/mdlib/coupling.h"
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/simulationsignal.h"
@@ -78,13 +79,38 @@
 #include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/snprintf.h"
 
-static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
+template<bool haveBoxDeformation>
+static void calc_ke_part_normal(const matrix                   deform,
+                                gmx::ArrayRef<const gmx::RVec> x,
+                                gmx::ArrayRef<const gmx::RVec> v,
+                                const matrix                   box,
                                 const t_grpopts*               opts,
                                 const t_mdatoms*               md,
                                 gmx_ekindata_t*                ekind,
                                 t_nrnb*                        nrnb,
                                 gmx_bool                       bEkinAveVel)
 {
+    matrix gmx_unused deformFlowMatrix;
+    if constexpr (haveBoxDeformation)
+    {
+        GMX_ASSERT(ekind->systemMomenta, "Need system momenta with box deformation");
+
+        if (opts->ngtc != 1)
+        {
+            // With box deformation we can only correct Ekin of the whole system for COM motion.
+            // grompp now does this check, but we could have read an old tpr file.
+            gmx_fatal(FARGS,
+                      "With box deformation a single temperature coupling group is required.");
+        }
+
+        gmx::setBoxDeformationFlowMatrix(deform, box, deformFlowMatrix);
+    }
+    else
+    {
+        GMX_UNUSED_VALUE(deform);
+        GMX_UNUSED_VALUE(box);
+    }
+
     int                         g;
     gmx::ArrayRef<t_grp_tcstat> tcstat = ekind->tcstat;
 
@@ -108,7 +134,15 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
         }
     }
     ekind->dekindl_old = ekind->dekindl;
-    int nthread        = gmx_omp_nthreads_get(ModuleMultiThread::Update);
+    if constexpr (haveBoxDeformation)
+    {
+        ekind->systemMomenta->momentumOldHalfStep = ekind->systemMomenta->momentumHalfStep;
+        ekind->systemMomenta->momentumFullStep.clear();
+        ekind->systemMomenta->momentumHalfStep.clear();
+    }
+
+    // NOLINTNEXTLINE(readability-misleading-indentation)
+    const int nthread = gmx_omp_nthreads_get(ModuleMultiThread::Update);
 
 #pragma omp parallel for num_threads(nthread) schedule(static)
     for (int thread = 0; thread < nthread; thread++)
@@ -135,6 +169,14 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
         }
         *dekindl_sum = 0.0;
 
+        SystemMomentum* systemMomentumWork;
+        if constexpr (haveBoxDeformation)
+        {
+            systemMomentumWork = ekind->systemMomentumWork[thread].get();
+            systemMomentumWork->clear();
+        }
+
+        // NOLINTNEXTLINE(readability-misleading-indentation)
         gt = 0;
         for (n = start_t; n < end_t; n++)
         {
@@ -144,17 +186,42 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
             }
             hm = 0.5 * md->massT[n];
 
+            gmx::RVec vn = v[n];
+            if constexpr (haveBoxDeformation)
+            {
+                // Subtract the deformation flow profile.
+                // Note that this profile does not have a universal zero point. This means
+                // that the zero point chosen here affects the kinetic energy. We correct
+                // for this later by subtracting the velocity of the whole system which
+                // we compute below as well.
+                for (d = 0; (d < DIM); d++)
+                {
+                    vn[d] -= iprod(x[n], deformFlowMatrix[d]);
+                }
+            }
+
+            // NOLINTNEXTLINE(readability-misleading-indentation)
             for (d = 0; (d < DIM); d++)
             {
                 for (m = 0; (m < DIM); m++)
                 {
                     /* if we're computing a full step velocity, v[d] has v(t).  Otherwise, v(t+dt/2) */
-                    ekin_sum[gt][m][d] += hm * v[n][m] * v[n][d];
+                    ekin_sum[gt][m][d] += hm * vn[m] * vn[d];
+                }
+
+                if constexpr (haveBoxDeformation)
+                {
+                    systemMomentumWork->momentum[d] += md->massT[n] * vn[d];
                 }
             }
             if (md->nMassPerturbed && md->bPerturbed[n])
             {
-                *dekindl_sum += 0.5 * (md->massB[n] - md->massA[n]) * iprod(v[n], v[n]);
+                *dekindl_sum += 0.5 * (md->massB[n] - md->massA[n]) * iprod(vn, vn);
+            }
+
+            if constexpr (haveBoxDeformation)
+            {
+                systemMomentumWork->mass += md->massT[n];
             }
         }
     }
@@ -167,10 +234,24 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
             if (bEkinAveVel)
             {
                 m_add(tcstat[g].ekinf, ekind->ekin_work[thread][g], tcstat[g].ekinf);
+
+                if constexpr (haveBoxDeformation)
+                {
+                    ekind->systemMomenta->momentumFullStep.momentum +=
+                            ekind->systemMomentumWork[thread]->momentum;
+                    ekind->systemMomenta->momentumFullStep.mass += ekind->systemMomentumWork[thread]->mass;
+                }
             }
             else
             {
                 m_add(tcstat[g].ekinh, ekind->ekin_work[thread][g], tcstat[g].ekinh);
+
+                if constexpr (haveBoxDeformation)
+                {
+                    ekind->systemMomenta->momentumHalfStep.momentum +=
+                            ekind->systemMomentumWork[thread]->momentum;
+                    ekind->systemMomenta->momentumHalfStep.mass += ekind->systemMomentumWork[thread]->mass;
+                }
             }
         }
 
@@ -178,6 +259,11 @@ static void calc_ke_part_normal(gmx::ArrayRef<const gmx::RVec> v,
     }
 
     inc_nrnb(nrnb, eNR_EKIN, md->homenr);
+
+    if constexpr (!haveBoxDeformation)
+    {
+        GMX_UNUSED_VALUE(x);
+    }
 }
 
 static void calc_ke_part_visc(const matrix                   box,
@@ -257,7 +343,9 @@ static void calc_ke_part_visc(const matrix                   box,
     inc_nrnb(nrnb, eNR_EKIN, homenr);
 }
 
-static void calc_ke_part(gmx::ArrayRef<const gmx::RVec> x,
+static void calc_ke_part(const bool                     haveBoxDeformation,
+                         const matrix                   deform,
+                         gmx::ArrayRef<const gmx::RVec> x,
                          gmx::ArrayRef<const gmx::RVec> v,
                          const matrix                   box,
                          const t_grpopts*               opts,
@@ -268,11 +356,59 @@ static void calc_ke_part(gmx::ArrayRef<const gmx::RVec> x,
 {
     if (ekind->cosacc.cos_accel == 0)
     {
-        calc_ke_part_normal(v, opts, md, ekind, nrnb, bEkinAveVel);
+        if (haveBoxDeformation)
+        {
+            calc_ke_part_normal<true>(deform, x, v, box, opts, md, ekind, nrnb, bEkinAveVel);
+        }
+        else
+        {
+            calc_ke_part_normal<false>(deform, x, v, box, opts, md, ekind, nrnb, bEkinAveVel);
+        }
     }
     else
     {
         calc_ke_part_visc(box, x, v, opts, md, ekind, nrnb, bEkinAveVel);
+    }
+}
+
+static void correctEkin(matrix ekin, const SystemMomentum& systemMomentum)
+{
+    GMX_ASSERT(systemMomentum.mass > 0, "Expect a postive system mass");
+    const double halfInvMass = 0.5 / systemMomentum.mass;
+
+    for (int d1 = 0; d1 < DIM; d1++)
+    {
+        for (int d2 = 0; d2 < DIM; d2++)
+        {
+            ekin[d1][d2] -= systemMomentum.momentum[d1] * systemMomentum.momentum[d2] * halfInvMass;
+        }
+    }
+}
+
+static void correctEkinForBoxDeformation(gmx_ekindata_t* ekind,
+                                         const bool      haveEkinFromAverageVelocities,
+                                         const bool      correctEkinHOld)
+{
+    if (haveEkinFromAverageVelocities)
+    {
+        for (auto& tcstat : ekind->tcstat)
+        {
+            correctEkin(tcstat.ekinf, ekind->systemMomenta->momentumFullStep);
+        }
+    }
+    else
+    {
+        if (correctEkinHOld)
+        {
+            for (auto& tcstat : ekind->tcstat)
+            {
+                correctEkin(tcstat.ekinh_old, ekind->systemMomenta->momentumOldHalfStep);
+            }
+        }
+        for (auto& tcstat : ekind->tcstat)
+        {
+            correctEkin(tcstat.ekinh, ekind->systemMomenta->momentumHalfStep);
+        }
     }
 }
 
@@ -331,7 +467,7 @@ void compute_globals(gmx_global_stat*               gstat,
     {
         if (!bReadEkin)
         {
-            calc_ke_part(x, v, box, &(ir->opts), mdatoms, ekind, nrnb, bEkinAveVel);
+            calc_ke_part(fr->haveBoxDeformation, ir->deform, x, v, box, &(ir->opts), mdatoms, ekind, nrnb, bEkinAveVel);
         }
     }
 
@@ -372,6 +508,11 @@ void compute_globals(gmx_global_stat*               gstat,
                 wallcycle_stop(wcycle, WallCycleCounter::MoveE);
             }
             signalCoordinator->finalizeSignals();
+
+            if (fr->haveBoxDeformation && bTemp && !bReadEkin)
+            {
+                correctEkinForBoxDeformation(ekind, bEkinAveVel, *bSumEkinhOld);
+            }
             *bSumEkinhOld = FALSE;
         }
     }
@@ -512,63 +653,63 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
     /* The entries in the state in the tpx file might not correspond
      * with what is needed, so we correct this here.
      */
-    state->flags = 0;
+    int flags = 0;
     if (ir->efep != FreeEnergyPerturbationType::No || ir->bExpanded)
     {
-        state->flags |= enumValueToBitMask(StateEntry::Lambda);
-        state->flags |= enumValueToBitMask(StateEntry::FepState);
+        flags |= enumValueToBitMask(StateEntry::Lambda);
+        flags |= enumValueToBitMask(StateEntry::FepState);
     }
-    state->flags |= enumValueToBitMask(StateEntry::X);
-    GMX_RELEASE_ASSERT(state->x.size() == state->natoms,
+    flags |= enumValueToBitMask(StateEntry::X);
+    GMX_RELEASE_ASSERT(state->x.size() == state->numAtoms(),
                        "We should start a run with an initialized state->x");
     if (EI_DYNAMICS(ir->eI))
     {
-        state->flags |= enumValueToBitMask(StateEntry::V);
+        flags |= enumValueToBitMask(StateEntry::V);
     }
 
     state->nnhpres = 0;
     if (ir->pbcType != PbcType::No)
     {
-        state->flags |= enumValueToBitMask(StateEntry::Box);
+        flags |= enumValueToBitMask(StateEntry::Box);
         if (shouldPreserveBoxShape(ir->pressureCouplingOptions, ir->deform))
         {
-            state->flags |= enumValueToBitMask(StateEntry::BoxRel);
+            flags |= enumValueToBitMask(StateEntry::BoxRel);
         }
         if ((ir->pressureCouplingOptions.epc == PressureCoupling::ParrinelloRahman)
             || (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk))
         {
-            state->flags |= enumValueToBitMask(StateEntry::BoxV);
+            flags |= enumValueToBitMask(StateEntry::BoxV);
             if (!useModularSimulator)
             {
-                state->flags |= enumValueToBitMask(StateEntry::PressurePrevious);
+                flags |= enumValueToBitMask(StateEntry::PressurePrevious);
             }
         }
         if (inputrecNptTrotter(ir) || (inputrecNphTrotter(ir)))
         {
             state->nnhpres = 1;
-            state->flags |= enumValueToBitMask(StateEntry::Nhpresxi);
-            state->flags |= enumValueToBitMask(StateEntry::Nhpresvxi);
-            state->flags |= enumValueToBitMask(StateEntry::SVirPrev);
-            state->flags |= enumValueToBitMask(StateEntry::FVirPrev);
-            state->flags |= enumValueToBitMask(StateEntry::Veta);
-            state->flags |= enumValueToBitMask(StateEntry::Vol0);
+            flags |= enumValueToBitMask(StateEntry::Nhpresxi);
+            flags |= enumValueToBitMask(StateEntry::Nhpresvxi);
+            flags |= enumValueToBitMask(StateEntry::SVirPrev);
+            flags |= enumValueToBitMask(StateEntry::FVirPrev);
+            flags |= enumValueToBitMask(StateEntry::Veta);
+            flags |= enumValueToBitMask(StateEntry::Vol0);
         }
         if (ir->pressureCouplingOptions.epc == PressureCoupling::Berendsen
             || ir->pressureCouplingOptions.epc == PressureCoupling::CRescale)
         {
-            state->flags |= enumValueToBitMask(StateEntry::BarosInt);
+            flags |= enumValueToBitMask(StateEntry::BarosInt);
         }
     }
 
     if (ir->etc == TemperatureCoupling::NoseHoover)
     {
-        state->flags |= enumValueToBitMask(StateEntry::Nhxi);
-        state->flags |= enumValueToBitMask(StateEntry::Nhvxi);
+        flags |= enumValueToBitMask(StateEntry::Nhxi);
+        flags |= enumValueToBitMask(StateEntry::Nhvxi);
     }
 
     if (ir->etc == TemperatureCoupling::VRescale || ir->etc == TemperatureCoupling::Berendsen)
     {
-        state->flags |= enumValueToBitMask(StateEntry::ThermInt);
+        flags |= enumValueToBitMask(StateEntry::ThermInt);
     }
 
     init_gtc_state(state, state->ngtc, state->nnhpres, ir->opts.nhchainlength); /* allocate the space for nose-hoover chains */
@@ -582,6 +723,8 @@ void set_state_entries(t_state* state, const t_inputrec* ir, bool useModularSimu
 
     if (ir->pull && ir->pull->bSetPbcRefToPrevStepCOM)
     {
-        state->flags |= enumValueToBitMask(StateEntry::PullComPrevStep);
+        flags |= enumValueToBitMask(StateEntry::PullComPrevStep);
     }
+
+    state->setFlags(flags);
 }

@@ -66,6 +66,7 @@ class ArrayRefWithPadding;
 class Constraints;
 class ForceBuffersView;
 class ImdSession;
+struct MDModulesNotifiers;
 class MdrunScheduleWorkload;
 class VirtualSitesHandler;
 } // namespace gmx
@@ -96,10 +97,10 @@ void relax_shell_flexcon(FILE*                               log,
                          gmx_enfrot*                         enforcedRotation,
                          int64_t                             mdstep,
                          const t_inputrec*                   inputrec,
+                         const gmx::MDModulesNotifiers&      mdModulesNotifiers,
                          gmx::ImdSession*                    imdSession,
                          pull_t*                             pull_work,
                          gmx_bool                            bDoNS,
-                         int                                 force_flags,
                          const gmx_localtop_t*               top,
                          gmx::Constraints*                   constr,
                          gmx_enerdata_t*                     enerd,
@@ -117,7 +118,7 @@ void relax_shell_flexcon(FILE*                               log,
                          gmx_wallcycle*                      wcycle,
                          gmx_shellfc_t*                      shfc,
                          t_forcerec*                         fr,
-                         gmx::MdrunScheduleWorkload*         runScheduleWork,
+                         const gmx::MdrunScheduleWorkload&   runScheduleWork,
                          double                              t,
                          rvec                                mu_tot,
                          gmx::VirtualSitesHandler*           vsite,

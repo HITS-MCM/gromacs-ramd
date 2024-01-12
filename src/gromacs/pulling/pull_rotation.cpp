@@ -615,7 +615,7 @@ real add_rot_forces(gmx_enfrot* er, gmx::ArrayRef<gmx::RVec> force, const t_comm
         gmx_enfrotgrp* erg = &ergRef;
         Vrot += erg->V; /* add the local parts from the nodes */
         const auto& localRotationGroupIndex = erg->atomSet->localIndex();
-        for (gmx::index l = 0; l < localRotationGroupIndex.ssize(); l++)
+        for (gmx::Index l = 0; l < localRotationGroupIndex.ssize(); l++)
         {
             /* Get the right index of the local force */
             int ii = localRotationGroupIndex[l];
@@ -1304,12 +1304,12 @@ static void swap_col(double** mat, int i, int j)
 
 
 /* Eigenvectors are stored in columns of eigen_vec */
-static void diagonalize_symmetric(double** matrix, double** eigen_vec, double eigenval[3])
+static void diagonalize_symmetric(double** mat, double** eigen_vec, double eigenval[3])
 {
     int n_rot;
 
 
-    jacobi(matrix, 3, eigenval, eigen_vec, &n_rot);
+    jacobi(mat, 3, eigenval, eigen_vec, &n_rot);
 
     /* sort in ascending order */
     if (eigenval[0] > eigenval[1])
@@ -2046,7 +2046,7 @@ static real do_flex2_lowlevel(gmx_enfrotgrp*                 erg,
     const auto& localRotationGroupIndex      = erg->atomSet->localIndex();
     const auto& collectiveRotationGroupIndex = erg->atomSet->collectiveIndex();
 
-    for (gmx::index j = 0; j < localRotationGroupIndex.ssize(); j++)
+    for (gmx::Index j = 0; j < localRotationGroupIndex.ssize(); j++)
     {
         /* Local index of a rotation group atom  */
         ii = localRotationGroupIndex[j];
@@ -2305,7 +2305,7 @@ static real do_flex_lowlevel(gmx_enfrotgrp* erg,
     const auto& localRotationGroupIndex      = erg->atomSet->localIndex();
     const auto& collectiveRotationGroupIndex = erg->atomSet->collectiveIndex();
 
-    for (gmx::index j = 0; j < localRotationGroupIndex.ssize(); j++)
+    for (gmx::Index j = 0; j < localRotationGroupIndex.ssize(); j++)
     {
         /* Local index of a rotation group atom  */
         int ii = localRotationGroupIndex[j];
@@ -2995,7 +2995,7 @@ static void do_radial_motion_pf(gmx_enfrotgrp*                 erg,
     /* Each process calculates the forces on its local atoms */
     const auto& localRotationGroupIndex      = erg->atomSet->localIndex();
     const auto& collectiveRotationGroupIndex = erg->atomSet->collectiveIndex();
-    for (gmx::index j = 0; j < localRotationGroupIndex.ssize(); j++)
+    for (gmx::Index j = 0; j < localRotationGroupIndex.ssize(); j++)
     {
         /* Local index of a rotation group atom  */
         int ii = localRotationGroupIndex[j];
@@ -3184,7 +3184,7 @@ static void do_radial_motion2(gmx_enfrotgrp*                 erg,
     /* Each process calculates the forces on its local atoms */
     const auto& localRotationGroupIndex      = erg->atomSet->localIndex();
     const auto& collectiveRotationGroupIndex = erg->atomSet->collectiveIndex();
-    for (gmx::index j = 0; j < localRotationGroupIndex.ssize(); j++)
+    for (gmx::Index j = 0; j < localRotationGroupIndex.ssize(); j++)
     {
         if (bPF)
         {
@@ -3692,8 +3692,7 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
                                                 const gmx::MdrunOptions&    mdrunOptions,
                                                 const gmx::StartingBehavior startingBehavior)
 {
-    int   nat_max = 0;       /* Size of biggest rotation group */
-    rvec* x_pbc   = nullptr; /* Space for the pbc-correct atom positions */
+    int nat_max = 0; /* Size of biggest rotation group */
 
     if (MAIN(cr) && mdrunOptions.verbose)
     {
@@ -3707,7 +3706,7 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
     er->restartWithAppending = (startingBehavior == gmx::StartingBehavior::RestartWithAppending);
 
     /* When appending, skip first output to avoid duplicate entries in the data files */
-    er->bOut = er->restartWithAppending;
+    er->bOut = !er->restartWithAppending;
 
     if (MAIN(cr) && er->bOut)
     {
@@ -3736,13 +3735,16 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
         er->out_slabs = open_slab_out(opt2fn("-rs", nfile, fnm), er);
     }
 
+    /* Space for the pbc-correct atom positions */
+    std::vector<gmx::RVec> x_pbc;
+
     if (MAIN(cr))
     {
         /* Remove pbc, make molecule whole.
          * When ir->bContinuation=TRUE this has already been done, but ok. */
-        snew(x_pbc, mtop.natoms);
-        copy_rvecn(globalState->x.rvec_array(), x_pbc, 0, mtop.natoms);
-        do_pbc_first_mtop(nullptr, ir->pbcType, globalState->box, &mtop, x_pbc);
+        x_pbc.resize(mtop.natoms);
+        std::copy(globalState->x.begin(), globalState->x.end(), x_pbc.begin());
+        do_pbc_first_mtop(nullptr, ir->pbcType, false, nullptr, globalState->box, &mtop, x_pbc, {});
         /* All molecules will be whole now, but not necessarily in the home box.
          * Additionally, if a rotation group consists of more than one molecule
          * (e.g. two strands of DNA), each one of them can end up in a different
@@ -3776,7 +3778,7 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
             init_rot_group(fplog,
                            cr,
                            erg,
-                           x_pbc,
+                           as_rvec_array(x_pbc.data()),
                            mtop,
                            mdrunOptions.verbose,
                            er->out_slabs,
@@ -3827,8 +3829,6 @@ std::unique_ptr<gmx::EnforcedRotation> init_rot(FILE*                       fplo
                 er->out_torque = open_torque_out(opt2fn("-rt", nfile, fnm), er);
             }
         }
-
-        sfree(x_pbc);
     }
     return enforcedRotation;
 }
@@ -3858,7 +3858,7 @@ static void rotate_local_reference(gmx_enfrotgrp* erg)
 static void choose_pbc_image(gmx::ArrayRef<const gmx::RVec> coords, gmx_enfrotgrp* erg, const matrix box, int npbcdim)
 {
     const auto& localRotationGroupIndex = erg->atomSet->localIndex();
-    for (gmx::index i = 0; i < localRotationGroupIndex.ssize(); i++)
+    for (gmx::Index i = 0; i < localRotationGroupIndex.ssize(); i++)
     {
         /* Index of a rotation group atom  */
         int ii = localRotationGroupIndex[i];
@@ -3890,6 +3890,8 @@ void do_rotation(const t_commrec*               cr,
     rvec        transvec;
     gmx_potfit* fit = nullptr; /* For fit type 'potential' determine the fit
                                     angle via the potential minimum            */
+
+    GMX_ASSERT(er, "Enforced rotation needs a valid pointer to its data object");
 
 #ifdef TAKETIME
     double t0;
@@ -3945,7 +3947,7 @@ void do_rotation(const t_commrec*               cr,
             if (bNS)
             {
                 const auto& collectiveRotationGroupIndex = erg->atomSet->collectiveIndex();
-                for (gmx::index i = 0; i < collectiveRotationGroupIndex.ssize(); i++)
+                for (gmx::Index i = 0; i < collectiveRotationGroupIndex.ssize(); i++)
                 {
                     /* Index of local atom w.r.t. the collective rotation group */
                     int ii        = collectiveRotationGroupIndex[i];
@@ -4050,7 +4052,11 @@ void do_rotation(const t_commrec*               cr,
 #ifdef TAKETIME
     if (MAIN(cr))
     {
-        fprintf(stderr, "%s calculation (step %d) took %g seconds.\n", RotStr, step, MPI_Wtime() - t0);
+        fprintf(stderr,
+                "%s calculation (step %" PRId64 ") took %g seconds.\n",
+                RotStr.c_str(),
+                step,
+                MPI_Wtime() - t0);
     }
 #endif
 }

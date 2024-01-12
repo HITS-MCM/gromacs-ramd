@@ -19,7 +19,10 @@ set -e
 
 # Build and install gmxapi python package from local source.
 # Note that tool chain may be provided differently across GROMACS versions.
+python -m pip install --upgrade scikit-build-core[pyproject]
 python -m pip install --no-build-isolation --no-cache-dir --no-deps --no-index python_packaging/gmxapi
+# For more output, use the following instead
+#python -m pip install --verbose --no-build-isolation --no-cache-dir --no-deps --no-index python_packaging/gmxapi --config-settings=cmake.verbose=true --config-settings=logging.level=DEBUG
 
 pushd python_packaging/sample_restraint
   rm -rf build

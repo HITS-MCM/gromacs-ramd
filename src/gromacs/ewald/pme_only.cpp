@@ -104,9 +104,10 @@
 /*! \brief Main PP-PME communication data structure */
 struct gmx_pme_pp
 {
+    gmx_pme_pp(MPI_Comm simulationCommunicator, std::vector<PpRanks>&& ppRanks);
     MPI_Comm             mpi_comm_mysim; /**< MPI communicator for this simulation */
     std::vector<PpRanks> ppRanks;        /**< The PP partner ranks                 */
-    int                  peerRankId;     /**< The peer PP rank id                  */
+    int                  peerRankId;     /**< The peer PP rank id (the last one)   */
     //@{
     /**< Vectors of A- and B-state parameters used to transfer vectors to PME ranks  */
     gmx::PaddedHostVector<real> chargeA;
@@ -135,33 +136,35 @@ struct gmx_pme_pp
     bool sendForcesDirectToPpGpu = false;
     /*! \brief Whether a GPU graph should be used to execute steps in the MD loop if run conditions allow */
     bool useMdGpuGraph = false;
+    /*! \brief Whether a NVSHMEM should be used for GPU communication if run conditions allow */
+    bool useNvshmem = false;
 };
 
-/*! \brief Initialize the PME-only side of the PME <-> PP communication */
-static std::unique_ptr<gmx_pme_pp> gmx_pme_pp_init(const t_commrec* cr)
+static std::vector<PpRanks> makePpRanks(const t_commrec* cr)
 {
-    auto pme_pp = std::make_unique<gmx_pme_pp>();
-
+    std::vector<PpRanks> ppRanks;
 #if GMX_MPI
     int rank;
-
-    pme_pp->mpi_comm_mysim = cr->mpi_comm_mysim;
     MPI_Comm_rank(cr->mpi_comm_mygroup, &rank);
-    auto ppRanks = get_pme_ddranks(cr, rank);
-    pme_pp->ppRanks.reserve(ppRanks.size());
-    for (const auto& ppRankId : ppRanks)
+    std::vector<int> ppRankIds = get_pme_ddranks(cr, rank);
+    ppRanks.reserve(ppRanks.size());
+    for (const auto& ppRankId : ppRankIds)
     {
-        pme_pp->ppRanks.push_back({ ppRankId, 0 });
+        ppRanks.push_back({ ppRankId, 0 });
     }
-    // The peer PP rank is the last one.
-    pme_pp->peerRankId = pme_pp->ppRanks.back().rankId;
-    pme_pp->req.resize(eCommType_NR * pme_pp->ppRanks.size());
-    pme_pp->stat.resize(eCommType_NR * pme_pp->ppRanks.size());
 #else
     GMX_UNUSED_VALUE(cr);
 #endif
+    return ppRanks;
+}
 
-    return pme_pp;
+gmx_pme_pp::gmx_pme_pp(MPI_Comm simulationCommunicator, std::vector<PpRanks>&& ppRanksArg) :
+    mpi_comm_mysim(simulationCommunicator),
+    ppRanks(std::move(ppRanksArg)),
+    peerRankId(ppRanks.back().rankId),
+    req(eCommType_NR * ppRanks.size()),
+    stat(eCommType_NR * ppRanks.size())
+{
 }
 
 static void reset_pmeonly_counters(gmx_wallcycle*            wcycle,
@@ -541,7 +544,11 @@ static int gmx_pme_recv_coeffs_coords(struct gmx_pme_t*            pme,
 }
 
 /*! \brief Send the PME mesh force, virial and energy to the PP-only ranks. */
-static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme, gmx_pme_pp* pme_pp, const PmeOutput& output, float cycles)
+static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme,
+                                        gmx_pme_pp*      pme_pp,
+                                        const PmeOutput& output,
+                                        float            cycles,
+                                        const bool       computeVirial)
 {
 #if GMX_MPI
     gmx_pme_comm_vir_ene_t cve;
@@ -572,31 +579,38 @@ static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme, gmx_pme_pp* pme_pp
     }
     else
     {
-        for (const auto& receiver : pme_pp->ppRanks)
+        if (!computeVirial && pme_pp->useNvshmem)
         {
-            ind_start = ind_end;
-            ind_end   = ind_start + receiver.numAtoms;
-            if (pme_pp->useGpuDirectComm)
+            pme_pp->pmeForceSenderGpu->waitForEvents();
+        }
+        else
+        {
+            for (const auto& receiver : pme_pp->ppRanks)
             {
-                pme_pp->pmeForceSenderGpu->sendFToPpGpuAwareMpi(pme_gpu_get_device_f(&pme),
-                                                                ind_start,
-                                                                receiver.numAtoms * sizeof(rvec),
-                                                                receiver.rankId,
-                                                                &pme_pp->req[messages]);
+                ind_start = ind_end;
+                ind_end   = ind_start + receiver.numAtoms;
+                if (pme_pp->useGpuDirectComm)
+                {
+                    pme_pp->pmeForceSenderGpu->sendFToPpGpuAwareMpi(pme_gpu_get_device_f(&pme),
+                                                                    ind_start,
+                                                                    receiver.numAtoms * sizeof(rvec),
+                                                                    receiver.rankId,
+                                                                    &pme_pp->req[messages]);
+                }
+                else
+                {
+                    void* sendbuf = &output.forces_[ind_start];
+                    // Send using MPI
+                    MPI_Isend(sendbuf,
+                              receiver.numAtoms * sizeof(rvec),
+                              MPI_BYTE,
+                              receiver.rankId,
+                              0,
+                              pme_pp->mpi_comm_mysim,
+                              &pme_pp->req[messages]);
+                }
+                messages++;
             }
-            else
-            {
-                void* sendbuf = &output.forces_[ind_start];
-                // Send using MPI
-                MPI_Isend(sendbuf,
-                          receiver.numAtoms * sizeof(rvec),
-                          MPI_BYTE,
-                          receiver.rankId,
-                          0,
-                          pme_pp->mpi_comm_mysim,
-                          &pme_pp->req[messages]);
-            }
-            messages++;
         }
     }
 
@@ -626,6 +640,7 @@ static void gmx_pme_send_force_vir_ener(const gmx_pme_t& pme, gmx_pme_pp* pme_pp
     GMX_UNUSED_VALUE(pme_pp);
     GMX_UNUSED_VALUE(output);
     GMX_UNUSED_VALUE(cycles);
+    GMX_UNUSED_VALUE(computeVirial);
 #endif
 }
 
@@ -637,6 +652,7 @@ int gmx_pmeonly(struct gmx_pme_t**              pmeFromRunnerPtr,
                 t_inputrec*                     ir,
                 PmeRunMode                      runMode,
                 bool                            useGpuPmePpCommunication,
+                bool                            useNvshmem,
                 const gmx::DeviceStreamManager* deviceStreamManager)
 {
     int     ret;
@@ -657,7 +673,7 @@ int gmx_pmeonly(struct gmx_pme_t**              pmeFromRunnerPtr,
     std::vector<gmx_pme_t*> pmedata;
     pmedata.push_back(pmeFromRunner);
 
-    auto pme_pp = gmx_pme_pp_init(cr);
+    auto pme_pp = std::make_unique<gmx_pme_pp>(cr->mpi_comm_mysim, makePpRanks(cr));
 
     std::unique_ptr<gmx::StatePropagatorDataGpu> stateGpu;
     // TODO the variable below should be queried from the task assignment info
@@ -681,6 +697,12 @@ int gmx_pmeonly(struct gmx_pme_t**              pmeFromRunnerPtr,
                     pme_pp->mpi_comm_mysim,
                     deviceStreamManager->context(),
                     pme_pp->ppRanks);
+            if (useNvshmem)
+            {
+                pme_gpu_use_nvshmem(pmeFromRunner->gpu, useNvshmem);
+                pme_pp->useNvshmem                            = useNvshmem;
+                pmeFromRunner->gpu->nvshmemParams->ppRanksRef = pme_pp->ppRanks;
+            }
         }
         // TODO: Special PME-only constructor is used here. There is no mechanism to prevent from using the other constructor here.
         //       This should be made safer.
@@ -786,9 +808,10 @@ int gmx_pmeonly(struct gmx_pme_t**              pmeFromRunnerPtr,
                                   wcycle,
                                   lambda_q,
                                   pme_pp->useGpuDirectComm,
-                                  pme_pp->pmeCoordinateReceiverGpu.get());
+                                  pme_pp->pmeCoordinateReceiverGpu.get(),
+                                  pme_pp->useMdGpuGraph);
             pme_gpu_launch_complex_transforms(pme, wcycle, stepWork);
-            pme_gpu_launch_gather(pme, wcycle, lambda_q);
+            pme_gpu_launch_gather(pme, wcycle, lambda_q, stepWork.computeVirial);
             output = pme_gpu_wait_finish_task(pme, computeEnergyAndVirial, lambda_q, wcycle);
         }
         else
@@ -834,7 +857,7 @@ int gmx_pmeonly(struct gmx_pme_t**              pmeFromRunnerPtr,
             pme_gpu_reinit_computation(pme, pme_pp->useMdGpuGraph, wcycle);
         }
 
-        gmx_pme_send_force_vir_ener(*pme, pme_pp.get(), output, cycles);
+        gmx_pme_send_force_vir_ener(*pme, pme_pp.get(), output, cycles, stepWork.computeVirial);
 
         // Reinit after PME->PP force send so it is removed from the critical path
         if (useGpuForPme && !pme_pp->useMdGpuGraph)

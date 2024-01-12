@@ -25,17 +25,6 @@ systems.
 
 :issue:`4607`
 
-Build is fragile with gcc 7 and CUDA
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Different forms of gcc 7 have different behaviour when compiling test
-programs with nvcc. This prevents |Gromacs| from reliably testing compilation
-flags for use with nvcc. So in this case we use flags unilaterally and this
-could lead to compilation errors. The best way to avoid these potential problems
-is to use a more recent version of gcc.
-
-:issue:`4478`
-
 SYCL build unstable when using oneAPI with LevelZero backend
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -67,6 +56,29 @@ from CMake or later during build.
 
 :issue:`4574`
 
+FFT errors with NVIDIA RTX 40xx-series GPUs and CUDA 11.7 or earlier
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cuFFT library only has full support for RTX 40xx GPUs since version 11.8.
+If you are using older CUDA, you might encounter ``cufftPlanMany R2C plan failure``
+error when running a simulation with PME on such a GPU.
+To resolve, upgrade to CUDA 11.8 or 12.x.
+
+:issue:`4759`
+
+cuFFTMp based PME decomposition build broken with NVHPC SDK 23.3+ when building on a node without CUDA driver installed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Starting from cuFFTMp version ``11.0.5`` it depends on NVSHMEM version which has dependency on ``libnvshmem_host.so``.
+This `cuFFTMp <https://docs.nvidia.com/hpc-sdk/cufftmp/release_notes.html#new-features>`_ version is shipped
+since NVHPC SDK 23.3+.
+
+To build with cuFFTMp 11.0.5 and later it is necessary to explicitly link to the ``libnvidia-ml.so`` and ``libcuda.so``
+libraries or the stub versions of these.
+
+To work around this build issue please refer to :ref:`cufftmp <cufftmp installation>` section.
+
+:issue:`4886`
+
 "Cannot find a working standard library" error with ROCm Clang
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -79,18 +91,6 @@ On Ubuntu 22.04, installing GCC 12 standard library (with
 setting ``-DGMX_GPLUSGPLUS_PATH``.
 
 :issue:`4679`
-
-Ryckaert-Bell dihedral potential calculated imprecisely on Gen9 Intel GPUs
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-In SYCL/oneAPI build, when bonded forces are offloaded to an Intel Gen9 GPU
-(HD Graphics 5xx to 7xx-series; Skylake to Gemini Lake) the Ryckaert-Bell potential
-is computed imprecisely. This is unlikely to lead to wrong results, but
-we still recommend disabling listed forces offload (``-bonded cpu``) when running
-on Gen9 Intel integrated GPUs, especially since offloading is unlikely to offer significant
-performance advantage on such devices.
-
-:issue:`4686`
 
 Expanded ensemble does not checkpoint correctly
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -112,3 +112,12 @@ the bug), or use an older version of |Gromacs|
 restarting from checkpoints in the affected case.
 
 :issue:`4629`
+
+Compiling with GCC 12 on POWER9 architectures
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+There are multiple failing unit tests after compilation with GCC 12.2
+and 12.3 on POWER9 architectures. It is possible that other GCC 12 and
+newer versions are affected.
+
+:issue:`4823`

@@ -39,11 +39,16 @@ if(GMX_DOUBLE)
     message(FATAL_ERROR "CUDA acceleration is not available in double precision")
 endif()
 
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
 find_package(CUDA ${REQUIRED_CUDA_VERSION} REQUIRED)
 
 if(${CUDA_VERSION} GREATER_EQUAL 11.1)
-  set(GMX_HAVE_CUDA_GRAPH_SUPPORT ON)
+  set(GMX_HAVE_GPU_GRAPH_SUPPORT ON)
 endif()
+
+mark_as_advanced(CUDA_SDK_ROOT_DIR CUDA_USE_STATIC_CUDA_RUNTIME)
 
 # Try to execute ${CUDA_NVCC_EXECUTABLE} --version and set the output
 # (or an error string) in the argument variable.
@@ -104,6 +109,11 @@ else()
     # set up nvcc options
     include(gmxManageNvccConfig)
 endif()
+
+# We make sure to call get_cuda_compiler_info() before reaching this line,
+# so we report errors related to host compiler / nvcc mismatch
+# before the call to enable_language(CUDA).
+enable_language(CUDA)
 
 option(GMX_CUDA_NB_SINGLE_COMPILATION_UNIT "Whether to compile the CUDA non-bonded module using a single compilation unit." OFF)
 mark_as_advanced(GMX_CUDA_NB_SINGLE_COMPILATION_UNIT)

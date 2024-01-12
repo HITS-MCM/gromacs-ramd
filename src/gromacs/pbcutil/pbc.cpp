@@ -1417,9 +1417,20 @@ int* compact_unitcell_edges()
     return edge;
 }
 
-void put_atoms_in_box(PbcType pbcType, const matrix box, gmx::ArrayRef<gmx::RVec> x)
+template<bool haveBoxDeformation>
+static void putAtomsInBoxTemplated(PbcType                  pbcType,
+                                   const matrix             box,
+                                   const matrix             boxDeformation,
+                                   gmx::ArrayRef<gmx::RVec> x,
+                                   gmx::ArrayRef<gmx::RVec> v)
 {
-    int npbcdim, m, d;
+    if constexpr (haveBoxDeformation)
+    {
+        GMX_ASSERT(v.size() == x.size(), "Need velocities for box deformation");
+    }
+
+    // NOLINTNEXTLINE(readability-misleading-indentation)
+    int npbcdim;
 
     if (pbcType == PbcType::Screw)
     {
@@ -1435,24 +1446,25 @@ void put_atoms_in_box(PbcType pbcType, const matrix box, gmx::ArrayRef<gmx::RVec
         npbcdim = 3;
     }
 
+    gmx::RVec invBox;
+    for (int m = 0; m < npbcdim; ++m)
+    {
+        invBox[m] = 1 / box[m][m];
+    }
+
     if (TRICLINIC(box))
     {
-        for (gmx::index i = 0; (i < x.ssize()); ++i)
+        for (gmx::Index i = 0; i < x.ssize(); i++)
         {
-            for (m = npbcdim - 1; m >= 0; m--)
+            for (int m = npbcdim - 1; m >= 0; m--)
             {
-                while (x[i][m] < 0)
+                const auto boxVectorShift = std::floor(x[i][m] * invBox[m]);
+                for (int d = 0; d <= m; d++)
                 {
-                    for (d = 0; d <= m; d++)
+                    x[i][d] -= boxVectorShift * box[m][d];
+                    if constexpr (haveBoxDeformation)
                     {
-                        x[i][d] += box[m][d];
-                    }
-                }
-                while (x[i][m] >= box[m][m])
-                {
-                    for (d = 0; d <= m; d++)
-                    {
-                        x[i][d] -= box[m][d];
+                        v[i][d] -= boxVectorShift * boxDeformation[m][d];
                     }
                 }
             }
@@ -1460,24 +1472,42 @@ void put_atoms_in_box(PbcType pbcType, const matrix box, gmx::ArrayRef<gmx::RVec
     }
     else
     {
-        for (gmx::index i = 0; (i < x.ssize()); ++i)
+        for (gmx::Index i = 0; i < x.ssize(); i++)
         {
-            for (d = 0; d < npbcdim; d++)
+            for (int d = 0; d < npbcdim; d++)
             {
-                while (x[i][d] < 0)
+                const auto boxVectorShift = std::floor(x[i][d] * invBox[d]);
+                x[i][d] -= boxVectorShift * box[d][d];
+                if constexpr (haveBoxDeformation)
                 {
-                    x[i][d] += box[d][d];
-                }
-                while (x[i][d] >= box[d][d])
-                {
-                    x[i][d] -= box[d][d];
+                    for (int d2 = 0; d2 <= d; d2++)
+                    {
+                        v[i][d2] -= boxVectorShift * boxDeformation[d][d2];
+                    }
                 }
             }
         }
     }
+
+    if constexpr (!haveBoxDeformation)
+    {
+        GMX_UNUSED_VALUE(v);
+    }
 }
 
-void put_atoms_in_box_omp(PbcType pbcType, const matrix box, gmx::ArrayRef<gmx::RVec> x, gmx_unused int nth)
+
+void put_atoms_in_box(PbcType pbcType, const matrix box, gmx::ArrayRef<gmx::RVec> x)
+{
+    putAtomsInBoxTemplated<false>(pbcType, box, nullptr, x, {});
+}
+
+void put_atoms_in_box_omp(PbcType                  pbcType,
+                          const matrix             box,
+                          const bool               haveBoxDeformation,
+                          const matrix             boxDeformation,
+                          gmx::ArrayRef<gmx::RVec> x,
+                          gmx::ArrayRef<gmx::RVec> v,
+                          gmx_unused int           nth)
 {
 #pragma omp parallel for num_threads(nth) schedule(static)
     for (int t = 0; t < nth; t++)
@@ -1487,7 +1517,15 @@ void put_atoms_in_box_omp(PbcType pbcType, const matrix box, gmx::ArrayRef<gmx::
             size_t natoms = x.size();
             size_t offset = (natoms * t) / nth;
             size_t len    = (natoms * (t + 1)) / nth - offset;
-            put_atoms_in_box(pbcType, box, x.subArray(offset, len));
+            if (haveBoxDeformation)
+            {
+                putAtomsInBoxTemplated<true>(
+                        pbcType, box, boxDeformation, x.subArray(offset, len), v.subArray(offset, len));
+            }
+            else
+            {
+                putAtomsInBoxTemplated<false>(pbcType, box, boxDeformation, x.subArray(offset, len), {});
+            }
         }
         GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
     }
@@ -1519,7 +1557,7 @@ void put_atoms_in_triclinic_unitcell(int ecenter, const matrix box, gmx::ArrayRe
     shift_center[1] = shm12 * shift_center[2];
     shift_center[2] = 0;
 
-    for (gmx::index i = 0; (i < x.ssize()); ++i)
+    for (gmx::Index i = 0; (i < x.ssize()); ++i)
     {
         for (m = DIM - 1; m >= 0; m--)
         {
@@ -1563,7 +1601,7 @@ void put_atoms_in_compact_unitcell(PbcType pbcType, int ecenter, const matrix bo
     }
 
     calc_box_center(ecenter, box, box_center);
-    for (gmx::index i = 0; (i < x.ssize()); ++i)
+    for (gmx::Index i = 0; (i < x.ssize()); ++i)
     {
         pbc_dx(&pbc, x[i], box_center, dx);
         rvec_add(box_center, dx, x[i]);
@@ -1574,19 +1612,38 @@ void put_atoms_in_compact_unitcell(PbcType pbcType, int ecenter, const matrix bo
  *
  * \param[in]     fplog     Log file
  * \param[in]     pbcType   The PBC type
+ * \param[in]     correctVelocitiesForBoxDeformation  Whether to correct the velocities for
+ *                                                    continuous box deformation
+ * \param[in]     boxDeformation  The box deformation velocity
  * \param[in]     box       The simulation box
  * \param[in]     mtop      System topology definition
  * \param[in,out] x         The coordinates of the atoms
+ * \param[in]     v         The velocities of the atoms
  * \param[in]     bFirst    Specifier for first-time PBC removal
  */
-static void
-low_do_pbc_mtop(FILE* fplog, PbcType pbcType, const matrix box, const gmx_mtop_t* mtop, rvec x[], gmx_bool bFirst)
+static void low_do_pbc_mtop(FILE*                    fplog,
+                            PbcType                  pbcType,
+                            const bool               correctVelocitiesForBoxDeformation,
+                            const matrix             boxDeformation,
+                            const matrix             box,
+                            const gmx_mtop_t*        mtop,
+                            gmx::ArrayRef<gmx::RVec> x,
+                            gmx::ArrayRef<gmx::RVec> v,
+                            gmx_bool                 bFirst)
 {
     int as, mol;
 
     if (bFirst && fplog)
     {
         fprintf(fplog, "Removing pbc first time\n");
+    }
+
+    matrix boxDeformationRate;
+    if (correctVelocitiesForBoxDeformation)
+    {
+        GMX_RELEASE_ASSERT(v.size() == x.size(), "Need velocities with box deformation");
+
+        setBoxDeformationRate(boxDeformation, box, boxDeformationRate);
     }
 
     as = 0;
@@ -1602,15 +1659,34 @@ low_do_pbc_mtop(FILE* fplog, PbcType pbcType, const matrix box, const gmx_mtop_t
         {
             t_graph graph = mk_graph_moltype(moltype);
 
+            std::vector<gmx::RVec> xOrig(correctVelocitiesForBoxDeformation ? moltype.atoms.nr : 0);
+
             for (mol = 0; mol < molb.nmol; mol++)
             {
-                mk_mshift(fplog, &graph, pbcType, box, x + as);
+                auto xMol = x.subArray(as, moltype.atoms.nr);
 
-                shift_self(graph, box, x + as);
+                mk_mshift(fplog, &graph, pbcType, box, as_rvec_array(xMol.data()));
+
+                if (correctVelocitiesForBoxDeformation)
+                {
+                    // Store a copy of the original coordinates, so we can compute displacements
+                    std::copy(xMol.begin(), xMol.end(), xOrig.begin());
+                }
+
+                shift_self(graph, box, as_rvec_array(xMol.data()));
                 /* The molecule is whole now.
                  * We don't need the second mk_mshift call as in do_pbc_first,
                  * since we no longer need this graph.
                  */
+
+                if (correctVelocitiesForBoxDeformation)
+                {
+                    for (int i = 0; i < moltype.atoms.nr; i++)
+                    {
+                        correctVelocityForDisplacement<true>(
+                                boxDeformationRate, v[as + i], xMol[i] - xOrig[i]);
+                    }
+                }
 
                 as += moltype.atoms.nr;
             }
@@ -1618,12 +1694,43 @@ low_do_pbc_mtop(FILE* fplog, PbcType pbcType, const matrix box, const gmx_mtop_t
     }
 }
 
-void do_pbc_first_mtop(FILE* fplog, PbcType pbcType, const matrix box, const gmx_mtop_t* mtop, rvec x[])
+void do_pbc_first_mtop(FILE*                    fplog,
+                       PbcType                  pbcType,
+                       const bool               correctVelocitiesForBoxDeformation,
+                       const matrix             boxDeformation,
+                       const matrix             box,
+                       const gmx_mtop_t*        mtop,
+                       gmx::ArrayRef<gmx::RVec> x,
+                       gmx::ArrayRef<gmx::RVec> v)
 {
-    low_do_pbc_mtop(fplog, pbcType, box, mtop, x, TRUE);
+    low_do_pbc_mtop(
+            fplog, pbcType, correctVelocitiesForBoxDeformation, boxDeformation, box, mtop, x, v, TRUE);
 }
 
 void do_pbc_mtop(PbcType pbcType, const matrix box, const gmx_mtop_t* mtop, rvec x[])
 {
-    low_do_pbc_mtop(nullptr, pbcType, box, mtop, x, FALSE);
+    low_do_pbc_mtop(nullptr,
+                    pbcType,
+                    false,
+                    nullptr,
+                    box,
+                    mtop,
+                    gmx::arrayRefFromArray<gmx::RVec>(reinterpret_cast<gmx::RVec*>(x), mtop->natoms),
+                    {},
+                    FALSE);
+}
+
+void setBoxDeformationRate(const matrix boxDeformation, const matrix box, matrix boxDeformationRate)
+{
+    clear_mat(boxDeformationRate);
+    for (int d1 = 0; d1 < DIM; d1++)
+    {
+        for (int d2 = 0; d2 <= d1; d2++)
+        {
+            if (box[d1][d1] > 0)
+            {
+                boxDeformationRate[d1][d2] = boxDeformation[d1][d2] / box[d1][d1];
+            }
+        }
+    }
 }

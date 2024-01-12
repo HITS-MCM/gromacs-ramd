@@ -77,9 +77,9 @@ namespace gmx
  */
 inline bool needStateGpu(SimulationWorkload simulationWorkload)
 {
-    return (simulationWorkload.haveGpuPmeOnPpRank()) || simulationWorkload.useGpuXBufferOps
-           || simulationWorkload.useGpuFBufferOps || simulationWorkload.useGpuHaloExchange
-           || simulationWorkload.useGpuUpdate;
+    return (simulationWorkload.haveGpuPmeOnPpRank()) || simulationWorkload.useGpuXBufferOpsWhenAllowed
+           || simulationWorkload.useGpuFBufferOpsWhenAllowed
+           || simulationWorkload.useGpuHaloExchange || simulationWorkload.useGpuUpdate;
 }
 
 class DeviceStreamManager;
@@ -401,6 +401,9 @@ public:
      *  \returns The total number of atoms.
      */
     int numAtomsAll() const;
+
+    /*! \brief Wait until coordinates are updated on the device. */
+    void waitCoordinatesUpdatedOnDevice();
 
 private:
     class Impl;

@@ -43,6 +43,7 @@
 
 namespace gmx
 {
+enum class GpuAwareMpiStatus : int;
 class CpuInfo;
 class HardwareTopology;
 } // namespace gmx
@@ -55,8 +56,8 @@ struct DeviceInformation;
  *       be shared among all threads) */
 struct gmx_hw_info_t
 {
-    gmx_hw_info_t(std::unique_ptr<gmx::CpuInfo>          cpuInfo,
-                  std::unique_ptr<gmx::HardwareTopology> hardwareTopology);
+    gmx_hw_info_t(std::unique_ptr<gmx::CpuInfo>          theCpuInfo,
+                  std::unique_ptr<gmx::HardwareTopology> theHardwareTopology);
     ~gmx_hw_info_t();
 
     /* Data for our local physical node */
@@ -86,6 +87,7 @@ struct gmx_hw_info_t
 
     gmx_bool bIdenticalGPUs; /* TRUE if all ranks have the same type(s) and order of GPUs */
     bool     haveAmdZen1Cpu; /* TRUE when at least one CPU in any of the nodes is AMD Zen of the first generation */
+    gmx::GpuAwareMpiStatus minGpuAwareMpiStatus; /* Lowest support level for GPU-aware MPI (Supported > Forced > Not supported) across all detected devices */
 
     //! Container of warning strings to log later when that is possible.
     std::vector<std::string> hardwareDetectionWarnings_;

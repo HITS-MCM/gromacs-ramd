@@ -111,10 +111,10 @@ private:
 
     struct GroupInfo
     {
-        GroupInfo(const std::string& name, bool bDynamic) : name(name), bDynamic(bDynamic) {}
+        GroupInfo(const std::string& name, bool bDynamic) : name_(name), bDynamic_(bDynamic) {}
 
-        std::string name;
-        bool        bDynamic;
+        std::string name_;
+        bool        bDynamic_;
     };
 
     std::string            fnm_;
@@ -198,14 +198,14 @@ void IndexFileWriterModule::pointsAdded(const AnalysisDataPointSetRef& points)
     {
         ++currentGroup_;
         GMX_RELEASE_ASSERT(currentGroup_ < ssize(groups_), "Too few groups initialized");
-        if (bFirstFrame || groups_[currentGroup_].bDynamic)
+        if (bFirstFrame || groups_[currentGroup_].bDynamic_)
         {
             if (!bFirstFrame || currentGroup_ > 0)
             {
                 std::fprintf(fp_, "\n\n");
             }
-            std::string name = groups_[currentGroup_].name;
-            if (groups_[currentGroup_].bDynamic)
+            std::string name = groups_[currentGroup_].name_;
+            if (groups_[currentGroup_].bDynamic_)
             {
                 name += formatString("_f%d_t%.3f", points.frameIndex(), points.x());
             }
@@ -216,7 +216,7 @@ void IndexFileWriterModule::pointsAdded(const AnalysisDataPointSetRef& points)
     }
     else
     {
-        if (bFirstFrame || groups_[currentGroup_].bDynamic)
+        if (bFirstFrame || groups_[currentGroup_].bDynamic_)
         {
             if (currentSize_ % 15 == 0)
             {
@@ -436,7 +436,7 @@ void Select::initOptions(IOptionsContainer* options, TrajectoryAnalysisSettings*
                                .defaultBasename("index")
                                .description("Indices selected by each selection"));
     options->addOption(FileNameOption("on")
-                               .filetype(OptionFileType::Index)
+                               .filetype(OptionFileType::AtomIndex)
                                .outputFile()
                                .store(&fnNdx_)
                                .defaultBasename("index")
@@ -500,9 +500,9 @@ void Select::initAnalysis(const TrajectoryAnalysisSettings& settings, const Topo
 {
     bResInd_ = (resNumberType_ == ResidueNumbering::ByIndex);
 
-    for (SelectionList::iterator i = sel_.begin(); i != sel_.end(); ++i)
+    for (auto& i : sel_)
     {
-        i->initCoveredFraction(CFRAC_SOLIDANGLE);
+        i.initCoveredFraction(CFRAC_SOLIDANGLE);
     }
 
     // TODO: For large systems, a float may not have enough precision

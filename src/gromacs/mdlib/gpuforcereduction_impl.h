@@ -78,7 +78,7 @@ public:
      */
     Impl(const DeviceContext& deviceContext, const DeviceStream& deviceStream, gmx_wallcycle* wcycle);
 
-    ~Impl() = default;
+    ~Impl();
     /*! \brief Register a nbnxm-format force to be reduced
      *
      * \param [in] forcePtr  Pointer to force to be reduced
@@ -90,6 +90,13 @@ public:
      * \param [in] forcePtr  Pointer to force to be reduced
      */
     void registerRvecForce(DeviceBuffer<Float3> forcePtr);
+
+    /*! \brief Register a force synchronization NVSHMEM object
+     *
+     * \param [in] syncObj  Pointer to force sync object
+     */
+    void registerForcesReadyNvshmemFlags(DeviceBuffer<uint64_t> syncObj);
+
 
     /*! \brief Add a dependency for this force reduction
      *
@@ -137,6 +144,11 @@ private:
     DeviceBuffer<RVec> nbnxmForceToAdd_;
     //! Rvec-format force to be added in this reduction
     DeviceBuffer<RVec> rvecForceToAdd_;
+    //! nvshmem sync object used in forces reduction kernel
+    DeviceBuffer<uint64_t> forcesReadyNvshmemFlags;
+    //! nvshmem sync object tracker used in forces reduction kernel
+    uint64_t forcesReadyNvshmemFlagsCounter;
+
     //! event to be marked when reduction launch has been completed
     GpuEventSynchronizer* completionMarker_ = nullptr;
     //! The wallclock counter

@@ -39,7 +39,7 @@ function(gmx_manage_vkfft BACKEND_NAME)
 
     if (NOT GMX_EXTERNAL_VKFFT)
         set(vkfft_DIR ${PROJECT_SOURCE_DIR}/src/external/vkfft)
-        set(vkfft_VERSION "internal (1.2.26-b15cb0ca3e884bdb6c901a12d87aa8aadf7637d8) with ${BACKEND_NAME} backend" PARENT_SCOPE)
+        set(vkfft_VERSION "internal (1.3.1) with ${BACKEND_NAME} backend" PARENT_SCOPE)
     else()
         find_path(vkfft_DIR
             NAMES vkFFT.h
@@ -64,13 +64,20 @@ function(gmx_manage_vkfft BACKEND_NAME)
     gmx_target_interface_warning_suppression(VkFFT "-Wno-unused-but-set-variable" HAS_WARNING_NO_UNUSED_BUT_SET_VARIABLE)
     gmx_target_interface_warning_suppression(VkFFT "-Wno-sign-compare" HAS_WARNING_NO_SIGN_COMPARE)
 
+    if (APPLE)
+        # macOS Ventura because `sprintf` was deprecated in favor of `snprintf`.
+        gmx_target_interface_warning_suppression(VkFFT "-Wno-deprecated-declarations" HAS_WARNING_NO_DEPRECATED_DECLARATIONS)
+    endif()
+
     # Backend-specific settings and workarounds
     if (BACKEND_NAME STREQUAL "CUDA")
         target_compile_definitions(VkFFT INTERFACE VKFFT_BACKEND=1)
         # This is not ideal, because it uses some random version of CUDA. See #4621.
         find_package(CUDAToolkit REQUIRED)
         target_link_libraries(VkFFT INTERFACE CUDA::cuda_driver CUDA::nvrtc)
-        if (NOT GMX_SYCL_HIPSYCL)
+        list(APPEND GMX_PUBLIC_LIBRARIES CUDA::cuda_driver) # Workaround for #4902, #4922
+        set(GMX_PUBLIC_LIBRARIES ${GMX_PUBLIC_LIBRARIES} PARENT_SCOPE)
+        if (GMX_SYCL_DPCPP)
             if(NOT DEFINED ENV{GITLAB_CI}) # Don't warn in CI builds
                 message(WARNING "The use of VkFFT with CUDA backend is experimental and not intended for production use")
             endif()
@@ -78,10 +85,23 @@ function(gmx_manage_vkfft BACKEND_NAME)
         endif()
     elseif(BACKEND_NAME STREQUAL "HIP")
         target_compile_definitions(VkFFT INTERFACE VKFFT_BACKEND=2)
+        if (GMX_SYCL_DPCPP)
+            # HIP does not include hiprtc CMake config prior to version 5.6
+            # https://github.com/ROCm-Developer-Tools/HIP/issues/3131
+            # Using find_package(HIP) pulls in too many dependencies, in particular clang_rt.
+            # Once we require ROCm 5.6 or newer, we can simply do
+            # find_package(hiprtc REQUIRED)
+            # target_link_libraries(VkFFT INTERFACE hiprtc::hiprtc)
+            # But for now, we use our custom cmake/FindHip.cmake module:
+            find_package(Hip REQUIRED COMPONENTS hiprtc)
+            target_link_libraries(VkFFT INTERFACE Hip::amdhip Hip::hiprtc)
+        endif()
         # hipFree is marked `nodiscard` but VkFFT ignores it
         gmx_target_interface_warning_suppression(VkFFT "-Wno-unused-result" HAS_WARNING_NO_UNUSED_RESULT)
     elseif(BACKEND_NAME STREQUAL "OpenCL")
         target_compile_definitions(VkFFT INTERFACE VKFFT_BACKEND=3)
+        # The "-Wcast-qual" warning appears when compiling VkFFT for OpenCL, but not for HIP.
+        gmx_target_interface_warning_suppression(VkFFT "-Wno-cast-qual" HAS_WARNING_NO_CAST_QUAL)
     elseif(BACKEND_NAME STREQUAL "LevelZero")
         target_compile_definitions(VkFFT INTERFACE VKFFT_BACKEND=4)
     else()

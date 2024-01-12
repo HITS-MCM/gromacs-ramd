@@ -246,13 +246,34 @@ class t_state
 public:
     t_state();
 
-    // All things public
-    int natoms; //!< Number of atoms, local + non-local; this is the size of \p x, \p v and \p cg_p, when used
+    //! Returns the number of atoms represented by this state.
+    int numAtoms() const { return numAtoms_; }
+
+    //! Change the number of atoms represented by this state, allocating memory as needed.
+    void changeNumAtoms(int numAtoms);
+
+    //! Returns whether entry \p entry is present
+    bool hasEntry(StateEntry entry) const { return (flags_ & enumValueToBitMask(entry)) != 0; }
+
+    //! Set entry \p entry to present, resizes corresponding vector to numAtoms() when relevant
+    void addEntry(StateEntry entry);
+
+    //! Return an integer with bits set for entries that are present
+    int flags() const { return flags_; }
+
+    //! Sets the present entries to the ones set in \p flags
+    void setFlags(int flags);
+
+private:
+    int numAtoms_; //!< Number of atoms, local + non-local; this is the size of \p x, \p v and \p cg_p, when used
+    int flags_; //!< Set of bit-flags telling which entries are present, see enum at the top of the file
+
+    // The rest is still public
+public:
     int ngtc;          //!< The number of temperature coupling groups
     int nnhpres;       //!< The number of NH-chains for the MTTK barostat (always 1 or 0)
     int nhchainlength; //!< The NH-chain length for temperature coupling and MTTK barostat
-    int flags; //!< Set of bit-flags telling which entries are present, see enum at the top of the file
-    int fep_state; //!< indicates which of the alchemical states we are in
+    int fep_state;     //!< indicates which of the alchemical states we are in
     gmx::EnumerationArray<FreeEnergyPerturbationCouplingType, real> lambda; //!< Free-energy lambda vector
     matrix                                                          box; //!< Matrix of box vectors
     //! Relative box vectors characteristic of the box shape, used to to preserve that box shape
@@ -269,8 +290,8 @@ public:
     double              baros_integral; //!< For Berendsen P-coupling conserved quantity
     real                veta;           //!< Trotter based isotropic P-coupling
     real                vol0; //!< Initial volume,required for computing MTTK conserved quantity
-    PaddedHostVector<gmx::RVec> x;    //!< The coordinates (natoms)
-    PaddedHostVector<gmx::RVec> v;    //!< The velocities (natoms)
+    PaddedHostVector<gmx::RVec> x;    //!< The coordinates (numAtoms_)
+    PaddedHostVector<gmx::RVec> v;    //!< The velocities (numAtoms_)
     PaddedHostVector<gmx::RVec> cg_p; //!< p vector for conjugate gradient minimization
 
     ekinstate_t ekinstate; //!< The state of the kinetic energy
@@ -304,9 +325,6 @@ struct t_extmass
 //! Resizes the T- and P-coupling state variables
 void init_gtc_state(t_state* state, int ngtc, int nnhpres, int nhchainlength);
 
-//! Change the number of atoms represented by this state, allocating memory as needed.
-void state_change_natoms(t_state* state, int natoms);
-
 //! Allocates memory for free-energy history
 void init_dfhist_state(t_state* state, int dfhistNumLambda);
 
@@ -314,7 +332,7 @@ void init_dfhist_state(t_state* state, int dfhistNumLambda);
 void comp_state(const t_state* st1, const t_state* st2, bool bRMSD, real ftol, real abstol);
 
 /*! \brief Allocates an rvec pointer and copy the contents of v to it */
-rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::index n);
+rvec* makeRvecArray(gmx::ArrayRef<const gmx::RVec> v, gmx::Index n);
 
 /*! \brief Determine the relative box components
  *
@@ -352,7 +370,7 @@ static inline gmx::ArrayRef<const gmx::RVec> positionsFromStatePointer(const t_s
 {
     if (state)
     {
-        return gmx::makeConstArrayRef(state->x).subArray(0, state->natoms);
+        return gmx::makeConstArrayRef(state->x).subArray(0, state->numAtoms());
     }
     else
     {

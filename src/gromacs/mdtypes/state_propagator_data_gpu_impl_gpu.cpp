@@ -132,7 +132,24 @@ StatePropagatorDataGpu::Impl::Impl(const DeviceStream*  pmeStream,
     fCopyStreams_[AtomLocality::All]      = nullptr;
 }
 
-StatePropagatorDataGpu::Impl::~Impl() {}
+StatePropagatorDataGpu::Impl::~Impl()
+{
+    // Flush all the streams before freeing memory. See #4519.
+    const std::array<const DeviceStream*, 6> allStreams{ pmeStream_,          localStream_,
+                                                         nonLocalStream_,     updateStream_,
+                                                         copyInStream_.get(), memsetStream_.get() };
+    for (const DeviceStream* stream : allStreams)
+    {
+        if (stream)
+        {
+            stream->synchronize();
+        }
+    }
+
+    freeDeviceBuffer(&d_x_);
+    freeDeviceBuffer(&d_v_);
+    freeDeviceBuffer(&d_f_);
+}
 
 void StatePropagatorDataGpu::Impl::reinit(int numAtomsLocal, int numAtomsAll)
 {
@@ -810,6 +827,11 @@ int StatePropagatorDataGpu::numAtomsLocal() const
 int StatePropagatorDataGpu::numAtomsAll() const
 {
     return impl_->numAtomsAll();
+}
+
+void StatePropagatorDataGpu::waitCoordinatesUpdatedOnDevice()
+{
+    impl_->waitCoordinatesUpdatedOnDevice();
 }
 
 } // namespace gmx

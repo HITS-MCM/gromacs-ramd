@@ -57,6 +57,7 @@
 #include "gromacs/simd/simd.h"
 #include "gromacs/simd/simd_math.h"
 #include "gromacs/utility/arrayref.h"
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/fatalerror.h"
 
 #include "nb_softcore.h"
@@ -68,7 +69,6 @@ struct ScalarDataTypes
     using IntType  = int;  //!< The data type to use as int.
     using BoolType = bool; //!< The data type to use as bool for real value comparison.
     static constexpr int simdRealWidth = 1; //!< The width of the RealType.
-    static constexpr int simdIntWidth  = 1; //!< The width of the IntType.
 };
 
 #if GMX_SIMD_HAVE_REAL && GMX_SIMD_HAVE_INT32_ARITHMETICS
@@ -128,6 +128,19 @@ static inline void pmeLJCorrectionVF(const RealType rInv,
                                      const BoolType       mask,
                                      const BoolType       bIiEqJnr)
 {
+    // The expression 1 - exp(-x) * (1 + x + x^2/2) gives divergent
+    // rounding errors when x goes towards zero. To avoid this, we approximate
+    // this expression with its series expansion around x = 0:
+    //   x^3 (1/6 - x/8 + x^2/20 - x^3/72 + ...)
+    // The relative error of the full expression is x^-3 as x -> 0.
+    // The relative error of the quadratic approximation is 1/8 x^3.
+    // We set the switch point for coeffSqRSq such that the maximum error
+    // of rounding in the full term and the approximation error are equal.
+    // At this point both errors are sqrt(2)/4 sqrt(GMX_REAL_EPS).
+    // This error is large relative to this force component, but is small
+    // relative to the total forces on atoms.
+    const real c_coeffSqRSqSwitch = std::pow(8.0_real * GMX_REAL_EPS, 1.0_real / 6.0_real);
+
     // We mask rInv to get zero force and potential for masked out pair interactions
     const RealType rInvSq  = rInv * rInv;
     const RealType rInvSix = rInvSq * rInvSq * rInvSq;
@@ -135,14 +148,18 @@ static inline void pmeLJCorrectionVF(const RealType rInv,
     const RealType coeffSqRSq       = ewaldLJCoeffSq * gmx::selectByMask(rSq, mask);
     const RealType expNegCoeffSqRSq = gmx::exp(-coeffSqRSq);
     const RealType poly             = 1.0_real + coeffSqRSq + 0.5_real * coeffSqRSq * coeffSqRSq;
+    const RealType fullTerm         = rInvSix * (1.0_real - expNegCoeffSqRSq * poly);
+    const RealType approximation =
+            ewaldLJCoeffSixDivSix * (1.0_real + coeffSqRSq * (-0.75_real + 0.3_real * coeffSqRSq));
+    const RealType term = gmx::blend(fullTerm, approximation, coeffSqRSq < c_coeffSqRSqSwitch);
+
     if constexpr (computeForces)
     {
-        *force = rInvSix - expNegCoeffSqRSq * (rInvSix * poly + ewaldLJCoeffSixDivSix);
+        *force = term - expNegCoeffSqRSq * ewaldLJCoeffSixDivSix;
         *force = *force * rInvSq;
     }
     // The self interaction is the limit for r -> 0 which we need to compute separately
-    *pot = gmx::blend(
-            rInvSix * (1.0_real - expNegCoeffSqRSq * poly), 0.5_real * ewaldLJCoeffSixDivSix, bIiEqJnr);
+    *pot = gmx::blend(term, 0.5_real * ewaldLJCoeffSixDivSix, bIiEqJnr);
 }
 
 //! Computes r^(1/6) and 1/r^(1/6)
@@ -321,7 +338,7 @@ static void nb_free_energy_kernel(const t_nblist&                               
     const real            elecEpsilonFactor        = interactionParameters.epsfac;
     const real            rCoulomb                 = interactionParameters.rcoulomb;
     const real            reactionFieldCoefficient = interactionParameters.reactionFieldCoefficient;
-    const real            reactionFieldShift       = interactionParameters.reactionFieldShift;
+    const real gmx_unused reactionFieldShift       = interactionParameters.reactionFieldShift;
     const real gmx_unused shLjEwald                = interactionParameters.sh_lj_ewald;
     const real            rVdw                     = interactionParameters.rvdw;
     const real            dispersionShift          = interactionParameters.dispersion_shift.cpot;
@@ -445,6 +462,9 @@ static void nb_free_energy_kernel(const t_nblist&                               
             GMX_ASSERT(threadForceShiftBuffer != nullptr, "need a valid threadForceShiftBuffer");
         }
     }
+
+    // Used with reaction-field only
+    BoolType haveExcludedPairsBeyondCutoff = false;
 
     for (int n = 0; n < nri; n++)
     {
@@ -1003,35 +1023,46 @@ static void nb_free_energy_kernel(const t_nblist&                               
                 }
             } // end of block requiring bPairIncluded && withinCutoffMask
             /* In the following block bPairIncluded should be false in the masks. */
-            if (coulombInteractionType == NbkernelElecType::ReactionField)
+            if constexpr (!elecInteractionTypeIsEwald)
             {
-                const BoolType computeReactionField = bPairExcluded;
-
-                if (gmx::anyTrue(computeReactionField))
+                if (coulombInteractionType == NbkernelElecType::ReactionField)
                 {
-                    /* For excluded pairs we don't use soft-core.
-                     * As there is no singularity, there is no need for soft-core.
-                     */
-                    const RealType FF = -two * reactionFieldCoefficient;
-                    RealType       VV = reactionFieldCoefficient * rSq - reactionFieldShift;
+                    // With RF do not allow excluded pairs beyond the Coulomb cut-off, check this here.
+                    // We'd like to use !withinCutoffMask, but there is no negation operator for SimdFBool.
+                    // We need to use <= as this is the exact negation of the cutoff check.
+                    const BoolType beyondCutoff = (rCutoffCoul * rCutoffCoul <= rSq);
+                    haveExcludedPairsBeyondCutoff =
+                            haveExcludedPairsBeyondCutoff || (bPairExcluded && beyondCutoff);
 
-                    /* If ii == jnr the i particle (ii) has itself (jnr)
-                     * in its neighborlist. This corresponds to a self-interaction
-                     * that will occur twice. Scale it down by 50% to only include
-                     * it once.
-                     */
-                    VV = VV * gmx::blend(one, half, bIiEqJnr);
+                    const BoolType computeReactionField = bPairExcluded;
 
-                    for (int i = 0; i < NSTATES; i++)
+                    if (gmx::anyTrue(computeReactionField))
                     {
-                        vCoulTot = vCoulTot
-                                   + gmx::selectByMask(lambdaFactorCoul[i] * qq[i] * VV,
-                                                       computeReactionField);
-                        scalarForcePerDistance = scalarForcePerDistance
-                                                 + gmx::selectByMask(lambdaFactorCoul[i] * qq[i] * FF,
-                                                                     computeReactionField);
-                        dvdlCoul = dvdlCoul
-                                   + gmx::selectByMask(dLambdaFactor[i] * qq[i] * VV, computeReactionField);
+                        /* For excluded pairs we don't use soft-core.
+                         * As there is no singularity, there is no need for soft-core.
+                         */
+                        const RealType FF = -two * reactionFieldCoefficient;
+                        RealType       VV = reactionFieldCoefficient * rSq - reactionFieldShift;
+
+                        /* If ii == jnr the i particle (ii) has itself (jnr)
+                         * in its neighborlist. This corresponds to a self-interaction
+                         * that will occur twice. Scale it down by 50% to only include
+                         * it once.
+                         */
+                        VV = VV * gmx::blend(one, half, bIiEqJnr);
+
+                        for (int i = 0; i < NSTATES; i++)
+                        {
+                            vCoulTot = vCoulTot
+                                       + gmx::selectByMask(lambdaFactorCoul[i] * qq[i] * VV,
+                                                           computeReactionField);
+                            scalarForcePerDistance = scalarForcePerDistance
+                                                     + gmx::selectByMask(lambdaFactorCoul[i] * qq[i] * FF,
+                                                                         computeReactionField);
+                            dvdlCoul = dvdlCoul
+                                       + gmx::selectByMask(dLambdaFactor[i] * qq[i] * VV,
+                                                           computeReactionField);
+                        }
                     }
                 }
             }
@@ -1167,6 +1198,14 @@ static void nb_free_energy_kernel(const t_nblist&                               
      * TODO: Update the number of flops and/or use different counts for different code paths.
      */
     atomicNrnbIncrement(nrnb, eNR_NBKERNEL_FREE_ENERGY, nlist.nri * 12 + nlist.jindex[nri] * 150);
+
+    if (coulombInteractionType == NbkernelElecType::ReactionField
+        && gmx::anyTrue(haveExcludedPairsBeyondCutoff))
+    {
+        GMX_THROW(gmx::InvalidInputError(
+                "One or more excluded and perturbed atom pairs are beyond the Coulomb cut-off, "
+                "which is not allowed with reaction-field."));
+    }
 }
 
 typedef void (*KernelFunction)(const t_nblist&                                  nlist,

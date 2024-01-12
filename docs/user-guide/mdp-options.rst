@@ -268,6 +268,19 @@ Run control
       Interval for computing the forces in level 2 of the multiple time-stepping
       scheme
 
+.. mdp:: mass-repartitioning-factor
+
+      (1) []
+      Scales the masses of the lightest atoms in the system by this factor
+      to the mass mMin. All atoms with a mass lower than mMin also have
+      their mass set to that mMin. The mass change is subtracted from the mass
+      of the atom the light atom is bound to. If there is no bound atom a
+      warning is generated. If there is more than one atom bound an error is
+      generated. If the mass of the bound atom would become lower than mMin
+      an error is generated. For typical atomistic systems only the masses
+      of hydrogens are scaled. With h-bonds constrained a factor of 3 will
+      usually enable a time step of 4 fs.
+
 .. mdp:: comm-mode
 
    .. mdp-value:: Linear
@@ -518,15 +531,14 @@ Neighbor searching
       Use no periodic boundary conditions, ignore the box. To simulate
       without cut-offs, set all cut-offs and :mdp:`nstlist` to 0. For
       best performance without cut-offs on a single MPI rank, set
-      :mdp:`nstlist` to zero and :mdp-value:`ns-type=simple`.
+      :mdp:`nstlist` to zero.
 
    .. mdp-value:: xy
 
-      Use periodic boundary conditions in x and y directions
-      only. This works only with :mdp-value:`ns-type=grid` and can be used
-      in combination with walls_. Without walls or with only one wall
-      the system size is infinite in the z direction. Therefore
-      pressure coupling or Ewald summation methods can not be
+      Use periodic boundary conditions in x and y directions only.
+      This can be used in combination with walls_. Without walls
+      or with only one wall the system size is infinite in the z direction.
+      Therefore pressure coupling or Ewald summation methods can not be
       used. These disadvantages do not apply when two walls are used.
 
 .. mdp:: periodic-molecules
@@ -572,11 +584,27 @@ Neighbor searching
    scale. To override the automated buffer setting, use
    :mdp:`verlet-buffer-tolerance` =-1 and set :mdp:`rlist` manually.
 
+.. mdp:: verlet-buffer-pressure-tolerance
+
+   (0.5) [bar]
+
+   Used when performing a simulation with dynamics and only active when
+   :mdp:`verlet-buffer-tolerance` is positive. This sets the maximum
+   tolerated error in the average pressure due to missing Lennard-Jones
+   interactions of particle pairs that are not in the pair list, but
+   come within :mdp:`rvdw` range as the pair list ages. As for the drift
+   tolerance, the (over)estimate of the pressure error is tight at short
+   times. At longer time it turns into a significant overestimate,
+   because interactions limit the displacement of particles. Note that
+   the default tolerance of 0.5 bar corresponds to a maximum relative
+   deviation of the density of liquid water of 2e-5.
+
 .. mdp:: rlist
 
    (1) [nm]
    Cut-off distance for the short-range neighbor list. With dynamics,
-   this is by default set by the :mdp:`verlet-buffer-tolerance` option
+   this is by default set by the :mdp:`verlet-buffer-tolerance` and
+   :mdp:`verlet-buffer-pressure-tolerance` options
    and the value of :mdp:`rlist` is ignored. Without dynamics, this
    is by default set to the maximum cut-off plus 5% buffer, except
    for test particle insertion, where the buffer is managed exactly
@@ -893,9 +921,13 @@ Ewald
 .. mdp:: pme-order
 
    (4)
-   Interpolation order for PME. 4 equals cubic interpolation. You
-   might try 6/8/10 when running in parallel and simultaneously
-   decrease grid dimension.
+   The number of grid points along a dimension to which a charge is
+   mapped. The actual order of the PME interpolation is one less,
+   e.g. the default of 4 gives cubic interpolation. Supported values
+   are 3 to 12 (max 8 for P3M-AD). When running in parallel, it can be
+   worth to switch to 5 and simultaneously increase the grid spacing.
+   Note that on the CPU only values 4 and 5 have SIMD acceleration and
+   GPUs only support the value 4.
 
 .. mdp:: ewald-rtol
 
@@ -1120,10 +1152,7 @@ Pressure coupling
       Exponential relaxation pressure coupling with time constant
       :mdp:`tau-p`, including a stochastic term to enforce correct
       volume fluctuations.  The box is scaled every :mdp:`nstpcouple`
-      steps. It can be used for both equilibration and production,
-      but presently it cannot be used for full anisotropic coupling.
-      This requires a (constant or variable) ensemble temperature
-      to be available.
+      steps. It can be used for both equilibration and production.
 
    .. mdp-value:: Parrinello-Rahman
 
@@ -1132,7 +1161,7 @@ Pressure coupling
       atoms is coupled to this. No instantaneous scaling takes
       place. As for Nose-Hoover temperature coupling the time constant
       :mdp:`tau-p` is the period of pressure fluctuations at
-      equilibrium. This is probably a better method when you want to
+      equilibrium. This is a good method when you want to
       apply pressure scaling during data collection, but beware that
       you can get very large oscillations if you are starting from a
       different pressure. For simulations where the exact fluctations
@@ -1212,7 +1241,7 @@ Pressure coupling
 
 .. mdp:: tau-p
 
-   (1) [ps]
+   (5) [ps]
    The time constant for pressure coupling (one value for all
    directions).
 
@@ -2040,8 +2069,10 @@ AWH adaptive biasing
 .. mdp:: awh1-error-init
 
    (10.0) [kJ mol\ :sup:`-1`]
-   Estimated initial average error of the PMF for this bias. This value together with the
-   given diffusion constant(s) :mdp:`awh1-dim1-diffusion` determine the initial biasing rate.
+   Estimated initial average error of the PMF for this bias. This value together with an
+   estimate of the crossing time, based on the length of the sampling interval and the
+   given diffusion constant(s) :mdp:`awh1-dim1-diffusion`, determine the initial biasing rate.
+   With multiple dimensions, the longest crossing time is used.
    The error is obviously not known *a priori*. Only a rough estimate of :mdp:`awh1-error-init`
    is needed however.
    As a  general guideline, leave :mdp:`awh1-error-init` to its default value when starting a new
@@ -2067,6 +2098,12 @@ AWH adaptive biasing
    As :mdp-value:`awh1-growth=exp-linear` but skip the initial stage. This may be useful if there is *a priori*
    knowledge (see :mdp:`awh1-error-init`) which eliminates the need for an initial stage. This is also
    the setting compatible with :mdp-value:`awh1-target=local-boltzmann`.
+
+.. mdp:: awh1-growth-factor
+
+   (2) []
+   The growth factor :math:`\gamma` during the exponential phase with :mdp-value:`awh1-growth=exp-linear`.
+   Should be larger than 1.
 
 .. mdp:: awh1-equilibrate-histogram
 
@@ -2160,6 +2197,28 @@ AWH adaptive biasing
       ``-multidir``.
       Sharing may increase convergence initially, although the starting configurations
       can be critical, especially when sharing between many biases.
+
+.. mdp:: awh1-target-metric-scaling
+
+   .. mdp-value:: no
+
+      Do not scale the target distribution based on the AWH friction metric.
+
+   .. mdp-value:: yes
+
+      Scale the target distribution based on the AWH friction metric. Regions with
+      high friction (long autocorrelation times) will be sampled more. The diffusion metric
+      is the inverse of the friction metric. This scaling can be used with any
+      :mdp:`awh1-target` type and is applied after user provided target distribution
+      modifications (:mdp:`awh1-user-data`), if any. If :mdp-value:`awh1-growth=exp-linear`,
+      the target distribution scaling starts after leaving the initial phase.
+
+.. mdp:: awh1-target-metric-scaling-limit
+
+   (10)
+   The upper limit of scaling, relative to the average, when
+   :mdp-value:`awh1-target-metric-scaling` is enabled. The lower limit will be the inverse
+   of this value. This upper limit should be > 1.
 
 .. mdp:: awh1-ndim
 
@@ -3251,16 +3310,40 @@ Non-equilibrium MD
    The velocities of deformation for the box elements: a(x) b(y) c(z)
    b(x) c(x) c(y). Each step the box elements for which :mdp:`deform`
    is non-zero are calculated as: box(ts)+(t-ts)*deform, off-diagonal
-   elements are corrected for periodicity. The coordinates are
-   transformed accordingly. Frozen degrees of freedom are (purposely)
-   also transformed. The time ts is set to t at the first step and at
+   elements are corrected for periodicity.
+   The time ts is set to t at the first step and at
    steps at which x and v are written to trajectory to ensure exact
    restarts. Deformation can be used together with semiisotropic or
    anisotropic pressure coupling when the appropriate
    compressibilities are set to zero. The diagonal elements can be
    used to strain a solid. The off-diagonal elements can be used to
-   shear a solid or a liquid.
+   shear a solid or a liquid. Note that the atom positions are not
+   affected directly by this option. Instead, the deform option
+   only modifies the velocities of particles that are shifted by a
+   periodic box vector such that their new velocities match the
+   virtual velocity flow field corresponding to the box deformation.
+   As the deform option never accelerates the remaining particles
+   in the system, the matching velocity flow field should be set up
+   at the beginning of the simulation to make the particles follow
+   the deformation. This can be done with the :mdp:`deform-init-flow`
+   option. The flow field is removed from the kinetic energy by
+   :ref:`gmx mdrun` so the actual temperature and pressure of the
+   system are reported.
 
+.. mdp:: deform-init-flow
+
+   .. mdp-value:: no
+
+      Do not modify the velocities. Only use this option when the
+      velocities of the atoms in the initial configuration already
+      obey the flow field.
+
+   .. mdp-value:: yes
+
+      When the :mdp:`deform` option is active, add a velocity profile
+      corresponding to the box deformation to the initial velocities.
+      This is done after computing observables from the initial state
+      such as the initial tempature.
 
 Electric fields
 ^^^^^^^^^^^^^^^
@@ -3295,7 +3378,7 @@ Mixed quantum/classical molecular dynamics
 
 .. mdp:: QMMM-grps
 
-   groups to be descibed at the QM level for MiMiC QM/MM
+   groups to be described at the QM level for MiMiC QM/MM
 
 .. MDP:: QMMM
 
@@ -3548,7 +3631,7 @@ electron-microscopy experiments. (See the `reference manual`_ for details)
    and energies. Corresponds to a transformation of the input density by the
    inverse of this matrix. The matrix is given in row-major order.
    This option allows, e.g., rotation of the density-guided atom group around the
-   z-axis by :math:`\theta` degress by using following input:
+   z-axis by :math:`\theta` degrees by using the following input:
    :math:`(\cos \theta , -\sin \theta , 0 , \sin \theta , \cos \theta , 0 , 0 , 0 , 1)` .
 
 QM/MM simulations with CP2K Interface 
@@ -3596,6 +3679,46 @@ For further details about QM/MM interface implementation follow :ref:`qmmm`.
    () Names of the CP2K files that will be generated during the simulation. 
    When using the default, empty, value the name of the simulation input file will be used 
    with an additional ``_cp2k`` suffix.
+
+.. _mdp-colvars:
+
+Collective variables (Colvars) module
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These options enable and control the features provided by the collective
+variables (Colvars) module (`link <https://colvars.github.io/>`_), a software
+library for enhanced sampling methods in molecular simulations.  The Colvars
+module is described in ref. \ :ref:`195 <refFiorin13>` as well as other
+references that are reported in the log file when the corresponding features
+are used.
+For further details about Colvars interface implementation follow :ref:`colvars`.
+
+.. mdp:: colvars-active
+
+   (false) Activate Colvars computation in the current run. Requires that the
+   Colvars library was compiled with |Gromacs|, which is the default in a
+   typical installation.
+
+.. mdp:: colvars-configfile
+
+   Name of the Colvars configuration file, using options
+   specific to Colvars that are documented at:
+   `https://colvars.github.io/gromacs-2024/colvars-refman-gromacs.html
+   <https://colvars.github.io/gromacs-2024/colvars-refman-gromacs.html>`_.
+   The file name can be either an absolute path, or a path relative to the
+   working directory when :ref:`gmx grompp` is called.
+
+.. mdp:: colvars-seed
+
+   (-1) [integer] Seed used to initialize the random generator associated
+   with certain stochastic methods implemented within Colvars.  The default
+   value of -1 generates a random seed.
+
+The current implementation of the Colvars-|Gromacs| interface gathers the
+relevant atomic coordinates on one MPI rank, where all collective variables
+and their forces are computed.  Take this fact into account when choosing how
+many atoms to include in selections.
+
 
 User defined thingies
 ^^^^^^^^^^^^^^^^^^^^^

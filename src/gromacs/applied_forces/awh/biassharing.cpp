@@ -125,7 +125,7 @@ BiasSharing::BiasSharing(const AwhParams& awhParams, const t_commrec& commRecord
         int              shareGroupPrev = 0;
         for (int k = 0; k < awhParams.numBias(); k++)
         {
-            const int shareGroup = awhParams.awhBiasParams()[k].shareGroup();
+            const int shareGroup = awhParams.awhBiasParams(k).shareGroup();
             GMX_RELEASE_ASSERT(shareGroup >= 0, "Bias share group values should be >= 0");
             localShareIndices.push_back(shareGroup);
             if (shareGroup > 0)
@@ -159,7 +159,7 @@ BiasSharing::BiasSharing(const AwhParams& awhParams, const t_commrec& commRecord
             {
                 const auto& findBiasIndex =
                         std::find(localShareIndices.begin(), localShareIndices.end(), shareIndex);
-                const index localBiasIndex = (findBiasIndex == localShareIndices.end()
+                const Index localBiasIndex = (findBiasIndex == localShareIndices.end()
                                                       ? -1
                                                       : findBiasIndex - localShareIndices.begin());
                 MPI_Comm    splitComm;
@@ -279,6 +279,11 @@ void BiasSharing::sumOverSharingMainRanks(ArrayRef<long> data, const int biasInd
     sumOverSimulations(data, multiSimCommPerBias_[biasIndex], false, commRecord_);
 }
 
+void BiasSharing::sumOverSharingMainRanks(ArrayRef<double> data, const int biasIndex) const
+{
+    sumOverSimulations(data, multiSimCommPerBias_[biasIndex], false, commRecord_);
+}
+
 void BiasSharing::sumOverSharingSimulations(ArrayRef<int> data, const int biasIndex) const
 {
     sumOverSimulations(data, multiSimCommPerBias_[biasIndex], true, commRecord_);
@@ -295,12 +300,12 @@ bool haveBiasSharingWithinSimulation(const AwhParams& awhParams)
 
     for (int k = 0; k < awhParams.numBias(); k++)
     {
-        int shareGroup = awhParams.awhBiasParams()[k].shareGroup();
+        int shareGroup = awhParams.awhBiasParams(k).shareGroup();
         if (shareGroup > 0)
         {
             for (int i = k + 1; i < awhParams.numBias(); i++)
             {
-                if (awhParams.awhBiasParams()[i].shareGroup() == shareGroup)
+                if (awhParams.awhBiasParams(i).shareGroup() == shareGroup)
                 {
                     haveSharing = true;
                 }

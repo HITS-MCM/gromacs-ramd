@@ -163,6 +163,24 @@ private:
                           std::vector<float>*       convolvedPmf) const;
 
     /*! \brief
+     * Calculates the average correlation tensor volume (square root determinant of the
+     * correlationIntegral) of non-zero values.
+     *
+     * \returns the average of non-zero AWH metric values
+     */
+    double calculateAverageNonZeroMetric();
+
+    /*! \brief
+     * Scales the target distribution by their relative sqrt(friction metric). Points without a
+     * valid friction metric are not affected.
+     *
+     * \param[in] targetMetricScalingLimit The upper limit to how much the distribution can be scaled.
+     *                                     The lower limit is the inverse.
+     * \returns the sum of all target distribution values after scaling.
+     */
+    double scaleTargetByMetric(double targetMetricScalingLimit);
+
+    /*! \brief
      * Convolves the PMF and sets the initial free energy to its convolution.
      *
      * \param[in] dimParams  The bias dimensions parameters
@@ -181,17 +199,19 @@ public:
     /*! \brief
      * Initialize the state of grid coordinate points.
      *
-     * \param[in] awhBiasParams   Bias parameters from inputrec.
-     * \param[in] dimParams       The dimension parameters.
-     * \param[in] grid            The grid.
-     * \param[in] params          The bias parameters.
-     * \param[in] filename        Name of file to read PMF and target from.
-     * \param[in] numBias         The number of biases.
+     * \param[in] awhBiasParams    Bias parameters from inputrec.
+     * \param[in] dimParams        The dimension parameters.
+     * \param[in] grid             The grid.
+     * \param[in] params           The bias parameters.
+     * \param[in] forceCorrelation The force correlation statistics for every grid point.
+     * \param[in] filename         Name of file to read PMF and target from.
+     * \param[in] numBias          The number of biases.
      */
     void initGridPointState(const AwhBiasParams&      awhBiasParams,
                             ArrayRef<const DimParams> dimParams,
                             const BiasGrid&           grid,
                             const BiasParams&         params,
+                            const CorrelationGrid&    forceCorrelation,
                             const std::string&        filename,
                             int                       numBias);
 
@@ -350,6 +370,17 @@ private:
                                  ArrayRef<const DimParams> dimParams,
                                  const BiasGrid&           grid) const;
 
+    /*! \brief
+     * Updates the target distribution for all points.
+     *
+     * The target distribution is always updated for all points
+     * at the same time.
+     *
+     * \param[in] params           The bias parameters.
+     * \param[in] forceCorrelation The force correlation statistics for every grid point.
+     */
+    void updateTargetDistribution(const BiasParams& params, const CorrelationGrid& forceCorrelation);
+
 public:
     /*! \brief
      * Update the reaction coordinate value.
@@ -376,17 +407,19 @@ public:
      * of the free energy or sampling history that need to be updated here, namely the target
      * distribution and the bias function.
      *
-     * \param[in]     dimParams   The dimension parameters.
-     * \param[in]     grid        The grid.
-     * \param[in]     params      The bias parameters.
-     * \param[in]     t           Time.
-     * \param[in]     step        Time step.
-     * \param[in,out] fplog       Log file.
-     * \param[in,out] updateList  Work space to store a temporary list.
+     * \param[in]     dimParams        The dimension parameters.
+     * \param[in]     grid             The grid.
+     * \param[in]     params           The bias parameters.
+     * \param[in]     forceCorrelation The force correlation statistics for every grid point.
+     * \param[in]     t                Time.
+     * \param[in]     step             Time step.
+     * \param[in,out] fplog            Log file.
+     * \param[in,out] updateList       Work space to store a temporary list.
      */
     void updateFreeEnergyAndAddSamplesToHistogram(ArrayRef<const DimParams> dimParams,
                                                   const BiasGrid&           grid,
                                                   const BiasParams&         params,
+                                                  const CorrelationGrid&    forceCorrelation,
                                                   double                    t,
                                                   int64_t                   step,
                                                   FILE*                     fplog,
@@ -499,11 +532,13 @@ public:
 
     /*! \brief Updates sharedCorrelationTensorTimeIntegral_ for all points.
      *
-     * \param[in] biasParams       The bias parameters.
-     * \param[in] forceCorrelation The force correlation grid.
+     * \param[in] biasParams          The bias parameters.
+     * \param[in] forceCorrelation    The force correlation grid.
+     * \param[in] shareAcrossAllRanks Share the data across all ranks? Otherwise only the main ranks.
      */
     void updateSharedCorrelationTensorTimeIntegral(const BiasParams&      biasParams,
-                                                   const CorrelationGrid& forceCorrelation);
+                                                   const CorrelationGrid& forceCorrelation,
+                                                   bool                   shareAcrossAllRanks);
 
     /*! \brief Gets the time integral, shared across all ranks, of a tensor of a correlation grid point.
      *
@@ -519,14 +554,6 @@ public:
      * volume.
      */
     const std::vector<double>& getSharedPointCorrelationIntegral(int gridPointIndex) const;
-
-    /*! \brief Gets the volume element, shared across all ranks, of a correlation grid point.
-     *
-     * \param[in] gridPointIndex   The index of the grid point from which to retrieve the tensor
-     * volume.
-     * \param[in] numCorrelation   Number of force correlation tensors.
-     */
-    double getSharedCorrelationTensorVolumeElement(int gridPointIndex, int numCorrelation) const;
 
     /* Data members */
 private:
@@ -548,7 +575,8 @@ private:
     const BiasSharing* biasSharing_;
 
     /* Correlation tensor time integral, for all points, shared across all ranks (weighted based on
-     * the local weight contribution). The structure is [points][correlationTensorIndex] */
+     * the local weight contribution). The structure is [points][correlationTensorIndex].
+     * This is only updated on the main MPI ranks.*/
     std::vector<std::vector<double>> sharedCorrelationTensorTimeIntegral_;
 };
 

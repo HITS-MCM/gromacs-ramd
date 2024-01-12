@@ -19,10 +19,16 @@ the reaction coordinate may be chosen freely.
 Basics of the method
 ^^^^^^^^^^^^^^^^^^^^
 
-Rather than biasing the reaction coordinate :math:`\xi(x)` directly, AWH
-acts on a *reference coordinate* :math:`\lambda`. The fundamentals of the
-method is based on the connection between atom coordinates and :math:`\lambda` and
-is established through the extended ensemble \ :ref:`68 <refLyubartsev1992>`,
+The AWH method can act on two different types of reaction coordinates.
+It can work directly on a discrete reaction coordinate :math:`\lambda`
+in case this is the free-energy coupling parameter :ref:`187 <reflundborg2021>`.
+And it can act on reaction coordinates that are (continuous) functions of the coordinates:
+:math:`\xi(x)`. In this case AWH acts on a *reference coordinate* :math:`\lambda` which
+takes discrete values and is coupled to :math:`\xi(x)` using an umbrella function :math:`Q`.
+We will now describe the method for the most general case. When acting directly
+on :math:`\lambda`, the function :math:`Q` is zero. The fundamentals of the
+method are based on the connection between atom coordinates and :math:`\lambda` and
+are established through the extended ensemble :ref:`68 <refLyubartsev1992>`,
 
 .. math:: P(x,\lambda) = \frac{1}{\mathcal{Z}}e^{g(\lambda) - Q(\xi(x),\lambda) - V(x)},
           :label: eqawhpxlambda
@@ -33,8 +39,8 @@ distribution along :math:`\lambda` can be tuned to be any predefined
 *target distribution* :math:`\rho(\lambda)` (often chosen to be flat) by
 choosing :math:`g(\lambda)` wisely. This is evident from
 
-.. math:: P(\lambda) = \int P(x,\lambda)  dx = 
-          \frac{1}{\mathcal{Z}}e^{g(\lambda)} \int e^{- Q(\xi(x),\lambda) - V(x)}  dx 
+.. math:: P(\lambda) = \int P(x,\lambda)  dx =
+          \frac{1}{\mathcal{Z}}e^{g(\lambda)} \int e^{- Q(\xi(x),\lambda) - V(x)}  dx
           \equiv \frac{1}{\mathcal{Z}}e^{g(\lambda) - F(\lambda)},
           :label: eqawhplambda
 
@@ -63,16 +69,12 @@ determined accurately. Thus, AWH adaptively calculates
 :math:`F(\lambda)` and simultaneously converges :math:`P(\lambda)`
 toward :math:`\rho(\lambda)`.
 
-It is also possible to directly control the :math:`\lambda` state
-of, e.g., alchemical free energy perturbations :ref:`187 <reflundborg2021>`. In that case there is no harmonic
-potential and :math:`\lambda` changes in discrete steps along the reaction coordinate
-depending on the biased free energy difference between the :math:`\lambda` states.
-N.b., it is not yet possible to use AWH in combination with perturbed masses or
-constraints.
-
 For a multidimensional reaction coordinate :math:`\xi`, the sampling
 interval is the Cartesian product :math:`I=\Pi_{\mu} I_{\mu}` (a rectangular
 domain).
+
+N.b., it is not yet possible to use AWH for alchemical transformations
+that involve perturbed masses or constraints.
 
 The free energy update
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -92,8 +94,8 @@ target distribution may be updated during the simulation (see examples
 in section :ref:`awhtargets`). Substituting this choice of :math:`g=g_n`
 back into :eq:`Eq. %s <eqawhplambda>` yields the simple free energy update
 
-.. math:: \Delta F_n(\lambda) 
-          = F(\lambda) - F_n(\lambda) 
+.. math:: \Delta F_n(\lambda)
+          = F(\lambda) - F_n(\lambda)
           = -\ln\frac{P_n(\lambda)}{\rho_n(\lambda)},
           :label: eqawhdfnaive
 
@@ -211,7 +213,8 @@ a convolved bias potential is chosen to be used along the other dimensions
         shown as :math:`\times`-markers of different colors. At these times the
         free energy update size :math:`\sim 1/N`, where :math:`N` is the size of
         the weight histogram, is decreased by scaling :math:`N` by a factor of
-        :math:`\gamma=3`.
+        :math:`\gamma=3` (note that the default value of :math:`\gamma`
+        is 2 since |Gromacs| 2024).
 
 .. _fig-awhbiasevolution3:
 
@@ -254,7 +257,7 @@ In the initial stage the update size is kept constant (by keeping
 has been detected, a “covering”. For the definition of a covering, see
 :eq:`Eq. %s <eqawhcovering>` below. After a covering has
 occurred, :math:`N_n` is scaled up by a constant “growth factor”
-:math:`\gamma`, chosen heuristically as :math:`\gamma=3`. Thus, in the
+:math:`\gamma`, which by default has the value of 2. Thus, in the
 initial stage :math:`N_n` is set dynamically as
 :math:`N_{n} = \gamma^{m} N_0`, where :math:`m` is the number of
 coverings. Since the update size scales as :math:`1/N` (
@@ -316,7 +319,7 @@ condition breaks \ :ref:`137 <reflindahl2014accelerated>`. In the initial stage
 :math:`N` grows close to exponentially while the collected number of
 samples grows linearly, so an exit will surely occur eventually. Here we
 instead apply an exit criterion based on the observation that
-“artifically” keeping :math:`N` constant while continuing to collect
+“artificially” keeping :math:`N` constant while continuing to collect
 samples corresponds to scaling down the relative weight of old samples
 relative to new ones. Similarly, the subsequent scaling up of :math:`N`
 by a factor :math:`\gamma` corresponds to scaling up the weight of old
@@ -373,7 +376,7 @@ free energy
 
 .. math:: \rho_{\mathrm{cut}}(\lambda) \propto \frac{1}{1+ e^{F(\lambda) - F_{\mathrm{cut}}}},
           :label: eqawhrhocut
-    
+
 
 where :math:`F_{\mathrm{cut}}` is a free energy cutoff (relative to
 :math:`\min_\lambda F(\lambda)`). Thus, regions of the sampling interval
@@ -406,7 +409,7 @@ success of well-tempered metadynamics, this is a special case worth
 considering. In this case :math:`\rho` is a function of the reference
 weight histogram
 
-.. math:: \rho_{\mathrm{Boltz,loc}}(\lambda) \propto W(\lambda), 
+.. math:: \rho_{\mathrm{Boltz,loc}}(\lambda) \propto W(\lambda),
           :label: eqnawhweighthistogram
 
 and the update of the weight histogram is modified (cf.
@@ -431,7 +434,7 @@ histogram applied in the initial stage is a global operation, which is
 incompatible :math:`\rho_{\mathrm{Boltz,loc}}` only depending locally on
 the sampling history.
 
-Lastly, the target distribution can be modulated by arbitrary
+The target distribution can also be modulated by arbitrary
 probability weights
 
 .. math:: \rho(\lambda) = \rho_0(\lambda) w_{\mathrm{user}}(\lambda).
@@ -440,6 +443,44 @@ probability weights
 where :math:`w_{\mathrm{user}}(\lambda)` is provided by user data and
 in principle :math:`\rho_0(\lambda)` can be any of the target
 distributions mentioned above.
+
+Lastly, it is possible to automatically scale the target distribution
+(:math:`\rho_0(\lambda)`) based on the AWH friction metric (see
+section :ref:`awhfriction`). This implies scaling the target
+distribution by the square root of the friction metric
+(see :eq:`Eq. %s <eqawhsqrtmetric>`),
+
+.. math:: \rho(\lambda) = \rho_0(\lambda) w_{\mathrm{user}}(\lambda) \sqrt{\det\eta_{\mu\nu}(\lambda)},
+          :label: eqnawhmetricopt
+
+where :math:`w_{\mathrm{user}}(\lambda)` can be uniform and
+\sqrt{\det\eta_{\mu\nu}(\lambda)} is the square root of the friction metric.
+This scaling of the target distribution, increasing the
+relative sampling of regions with slower diffusion, should generally lower the
+statistical error of the estimated free energy landscape.
+
+This modification is only applied after leaving the initial stage
+(section :ref:`awhinitialstage`), if applicable, and is performed when updating
+the target distribution, typically when also updating the free energy. The scaling
+is based on the relative difference of the local friction metric compared to the
+average friction metric (of points that have a non-zero friction metric).
+
+If any histograms have not been sampled enough to have a friction metric they
+will be scaled by the average friction metric, i.e., practically unscaled.
+Insufficient sampling can result in a too low, but still non-zero, friction metric.
+To address that, the scaling down of the target distribution (relative scaling < 1)
+is based on the local sampling of each point, so that the target distribution of
+points that have not been sampled much yet will be almost unaffected.
+Furthermore, the scaling can be limited by a maximum scaling factor
+(:mdp:`awh1-target-metric-scaling-limit`). The lower limit
+of the scaling is the inverse of the maximum scaling factor.
+
+More information about this scaling can be found in :ref:`194 <reflundborg2023>`.
+
+Scaling the target distribution based on the friction metric
+can be combined with Boltzmann or Local-Boltzmann target distributions.
+However, this is generally not recommended, due to the risk of feedback loops
+between the two adaptive update mechanisms.
 
 Multiple independent or sharing biases
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -450,7 +491,7 @@ simulation. This only makes sense if the biased coordinates
 independently from one another. A typical example of this would be when
 applying an independent bias to each monomer of a protein. Furthermore,
 multiple AWH simulations can be launched in parallel, each with a (set
-of) indepedendent biases.
+of) independent biases.
 
 If the defined sampling interval is large relative to the diffusion time
 of the reaction coordinate, traversing the sampling interval multiple
@@ -523,7 +564,7 @@ biased data along :math:`u` and removes the effect of :math:`U_{n(t)}`
 by dividing the weight of samples :math:`u(t)` by
 :math:`e^{-U_{n(t)}(\xi(t))}`,
 
-.. math:: \hat{\Phi}(u)  = -\ln 
+.. math:: \hat{\Phi}(u)  = -\ln
           \sum_t 1_u(u(t))e^{U_{n(t)}(\xi(t)} \mathcal{Z}_{n(t)}.
           :label: eqawhunbias
 
@@ -577,8 +618,14 @@ centered at :math:`\lambda` and
 is the deviation of the force. The factors :math:`\omega(\lambda|x(t))`,
 see :eq:`Eq %s <eqawhomega>`, reweight the samples.
 :math:`\eta_{\mu\nu}(\lambda)` is a friction
-tensor :ref:`186 <reflindahl2018>` and :ref:`144 <refsivak2012thermodynamic>`. Its matrix elements are inversely proportional to local
-diffusion coefficients. A measure of sampling (in)efficiency at each
+tensor :ref:`186 <reflindahl2018>` and :ref:`144 <refsivak2012thermodynamic>`.
+The diffusion matrix, on the flattened landscape, is equal to $k_B T$ times
+the inverse of the friction metrix tensor:
+
+.. math:: \mathbf{D}(\lambda) = k_B T \mathbf{\eta}^{-1}(\lambda).
+          :label: eqawhdiffusionmatrix
+
+A measure of sampling (in)efficiency at each
 :math:`\lambda` is given by
 
 .. math:: \eta^{\frac{1}{2}}(\lambda) = \sqrt{\det\eta_{\mu\nu}(\lambda)}.
@@ -588,6 +635,20 @@ A large value of :math:`\eta^{\frac{1}{2}}(\lambda)` indicates slow
 dynamics and long correlation times, which may require more sampling.
 
 .. _awhusage:
+
+Limitations
+~~~~~~~~~~~
+
+The only real limitation of the AWH implementation, apart from the not uncommon
+practical issue that the method might not converge sufficiently fast, is a limit
+on the maximum free energy difference. This limit is set to 700 $k_B T$, because
+$e^700$ is close to the maximum value that can be accurately represented by
+a double precision floating point value. For physical reaction coordinates this
+is not a limit in practice. But for alchemical coordinates this does limit
+the range of applications. For instance, hydration free-energies of divalent
+cations with a pair of monovalent anions can exceed this limit. The limit can
+also be exceeded when decoupling large molecules from solvent, but this often
+coincides with the limit where the sampling becomes problematic.
 
 Usage
 ~~~~~
@@ -639,9 +700,24 @@ maximum free energy difference of the PMF estimate. If this is much
 larger than the expected magnitude of the free energy barriers that
 should be crossed, then the system is probably being pulled too hard and
 :math:`D` should be decreased. An accurate estimate of the diffusion
-can be obtaining from an AWH simulation with the :ref:`gmx awh` tool.
+can be obtained from an AWH simulation with the :ref:`gmx awh` tool.
 :math:`\varepsilon_0` on the other hand, should be a rough estimate
 of the initial error.
+
+Estimating errors
+^^^^^^^^^^^^^^^^^
+
+As with any adaptive method, estimating errors for AWH is difficult from
+data of a single simulation only. We are looking into methods to do this.
+For now, the only safe way to estimate errors is to run multiple completely
+independent simulations and compute a standard error estimate.
+Note that for the simulations to be really independent, they should start
+from different, equilibrated states along the reaction coordinate(s).
+In practice, this is often difficult to achieve, in particular in the common
+case that you only know the starting state along the reaction coordinate.
+The exit from the initial phase of AWH is designed such that, in most cases,
+such systematic errors are as small as the noise when exiting the initial phase,
+but it cannot be excluded that some effects are still present.
 
 Tips for efficient sampling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -651,11 +727,18 @@ PMF landscape. If this is not the case, the distributions of the
 reaction coordinate :math:`\xi` and the reference coordinate
 :math:`\lambda`, will differ significantly and warnings will be printed
 in the log file. One can choose :math:`k` as large as the time step
-supports. This will neccessarily increase the number of points of the
+supports. This will necessarily increase the number of points of the
 discretized sampling interval :math:`I`. In general however, it should
 not affect the performance of the simulation noticeably because the AWH
 update is implemented such that only sampled points are accessed at free
 energy update time.
+
+For an alchemical free-energy dimension, AWH accesses all
+:math:`\lambda` points at every sampling step. Because the number of
+:math:`\lambda` points is usually far below 100, there is no significant
+cost to this in the AWH method itself. However, foreign energy differences
+need to be computed for every :math:`\lambda` value used, which can
+become somewhat costly.
 
 As with any method, the choice of reaction coordinate(s) is critical. If
 a single reaction coordinate does not suffice, identifying a second

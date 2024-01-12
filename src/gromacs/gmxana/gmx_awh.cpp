@@ -258,7 +258,7 @@ std::vector<std::string> makeLegend(const AwhBiasParams& awhBiasParams,
     /* Give legends to dimensions higher than the first */
     for (int d = 1; d < awhBiasParams.ndim(); d++)
     {
-        legend.push_back(gmx::formatString("dim%d", d));
+        legend.push_back(gmx::formatString("awh-dim%d", d + 1));
     }
 
     switch (outputFileType)
@@ -370,6 +370,9 @@ void OutputFile::initializeFrictionOutputFile(int                  subBlockStart
     firstGraphSubBlock_ = subBlockStart + numSubBlocks - numTensorElements;
     numGraph_           = numTensorElements;
     useKTForEnergy_     = (energyUnit == EnergyUnit::KT);
+    // For the the bias and the PMF in the awh output file this factor converts energy.
+    // For the friction output, which has units energy^2*time, this converts energy
+    // and also divides by kT to get from the metric tensor to friction.
     scaleFactor_.resize(numGraph_, useKTForEnergy_ ? 1 : kTValue);
     int numLegend = numDim_ - 1 + numGraph_;
     legend_       = makeLegend(awhBiasParams, OutputFileType::Friction, numLegend);
@@ -409,7 +412,7 @@ AwhReader::AwhReader(const AwhParams&  awhParams,
     int subblockStart = 0;
     for (int k = 0; k < awhParams.numBias(); k++)
     {
-        const AwhBiasParams& awhBiasParams = awhParams.awhBiasParams()[k];
+        const AwhBiasParams& awhBiasParams = awhParams.awhBiasParams(k);
 
         int numSubBlocks = static_cast<int>(block->sub[subblockStart].fval[0]);
 
@@ -429,8 +432,8 @@ AwhReader::AwhReader(const AwhParams&  awhParams,
                     subblockStart, numSubBlocks, awhBiasParams, energyUnit, kT);
         }
 
-        biasOutputSetups_.emplace_back(BiasOutputSetup(
-                subblockStart, std::move(awhOutputFile), std::move(frictionOutputFile)));
+        biasOutputSetups_.emplace_back(
+                subblockStart, std::move(awhOutputFile), std::move(frictionOutputFile));
 
         subblockStart += numSubBlocks;
     }

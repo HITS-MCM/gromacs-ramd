@@ -67,6 +67,7 @@ HistogramSize::HistogramSize(const AwhBiasParams& awhBiasParams, double histogra
     numUpdates_(0),
     histogramSize_(histogramSizeInitial),
     inInitialStage_(awhBiasParams.growthType() == AwhHistogramGrowthType::ExponentialLinear),
+    growthFactor_(awhBiasParams.growthFactor()),
     equilibrateHistogram_(awhBiasParams.equilibrateHistogram()),
     logScaledSampleWeight_(0),
     maxLogScaledSampleWeight_(0),
@@ -101,17 +102,13 @@ double HistogramSize::newHistogramSizeInitialStage(const BiasParams& params,
        (ensuring that the sample weights at the end of each covering stage are monotonically
        increasing). If we cannot, exit the initial stage without changing the histogram size. */
 
-    /* The scale factor. The value is not very critical but should obviously be > 1 (or the exit
-       will happen very late) and probably < 5 or so (or there will be no initial stage). */
-    static const double growthFactor = 3;
-
     /* The scale factor is in most cases very close to the histogram growth factor. */
     double scaleFactor =
-            growthFactor / (1. + params.updateWeight * params.localWeightScaling / histogramSize_);
+            growthFactor_ / (1. + params.updateWeight * params.localWeightScaling / histogramSize_);
 
     bool exitInitialStage =
             (logScaledSampleWeight_ - std::log(scaleFactor) <= prevMaxLogScaledSampleWeight);
-    double newHistogramSize = exitInitialStage ? histogramSize_ : histogramSize_ * growthFactor;
+    double newHistogramSize = exitInitialStage ? histogramSize_ : histogramSize_ * growthFactor_;
 
     /* Update the AWH bias about the exit. */
     inInitialStage_ = !exitInitialStage;
@@ -119,7 +116,7 @@ double HistogramSize::newHistogramSizeInitialStage(const BiasParams& params,
     /* Print information about coverings and if there was an exit. */
     if (fplog != nullptr)
     {
-        std::string prefix = gmx::formatString("\nawh%d:", params.biasIndex + 1);
+        std::string prefix = gmx::formatString("\nawh%d:", params.biasIndex_ + 1);
         fprintf(fplog, "%s covering at t = %g ps. Decreased the update size.\n", prefix.c_str(), t);
 
         if (exitInitialStage)
@@ -224,7 +221,7 @@ double HistogramSize::newHistogramSize(const BiasParams&          params,
 
             if (fplog != nullptr)
             {
-                std::string prefix = gmx::formatString("\nawh%d:", params.biasIndex + 1);
+                std::string prefix = gmx::formatString("\nawh%d:", params.biasIndex_ + 1);
                 if (!equilibrateHistogram_)
                 {
                     fprintf(fplog, "%s equilibrated histogram at t = %g ps.\n", prefix.c_str(), t);

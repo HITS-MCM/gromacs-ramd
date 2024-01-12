@@ -88,7 +88,6 @@ typedef struct lambda_vec_t
 typedef struct xvg_t
 {
     const char*   filename;
-    int           ftp;          /* file type */
     int           nset;         /* number of lambdas, including dhdl */
     int*          np;           /* number of data points (du or hists) per lambda */
     double        temp;         /* temperature */
@@ -99,7 +98,6 @@ typedef struct xvg_t
                                    the native lambda and the 'foreign' lambdas. */
     lambda_vec_t native_lambda; /* the native lambda */
 
-    struct xvg_t *next, *prev; /*location in the global linked list of xvg_ts*/
 } xvg_t;
 
 
@@ -1044,7 +1042,7 @@ static void sim_data_histogram(sim_data_t* sd, const char* filename, int nbin_de
 
             sample_coll_make_hist(sc, &hist, &dx, &minval, nbin_default);
 
-            for (gmx::index i = 0; i < gmx::ssize(hist); i++)
+            for (gmx::Index i = 0; i < gmx::ssize(hist); i++)
             {
                 double xmin = i * dx + minval;
                 double xmax = (i + 1) * dx + minval;
@@ -2865,7 +2863,7 @@ static void read_edr_rawdh_block(samples_t**   smp,
     }
 
     /* make room for the data */
-    if (gmx::index(s->ndu_alloc) < s->ndu + blk->sub[2].nr)
+    if (gmx::Index(s->ndu_alloc) < s->ndu + blk->sub[2].nr)
     {
         s->ndu_alloc += (s->ndu_alloc < static_cast<size_t>(blk->sub[2].nr)) ? blk->sub[2].nr * 2
                                                                              : s->ndu_alloc;

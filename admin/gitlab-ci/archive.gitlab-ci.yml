@@ -35,9 +35,9 @@ regressiontests:prepare:
     KUBERNETES_CPU_LIMIT: 1
     KUBERNETES_CPU_REQUEST: 1
     KUBERNETES_MEMORY_REQUEST: 2Gi
-  # Always clone the default version for this branch, release-2023 in this case
+  # Always clone the default version for this branch, release-2024 in this case
   script:
-    - export REGTESTBRANCH=release-2023
+    - export REGTESTBRANCH=release-2024
     - if [[ ! -z "$REGRESSIONTESTBRANCH" ]] ; then
       export REGTESTBRANCH=$REGRESSIONTESTBRANCH ;
       echo "Using $REGTESTBRANCH instead of default" ;
@@ -87,7 +87,7 @@ regressiontests:package:
     - if [[ $GROMACS_RELEASE != "true" ]] ; then
       REGTESTNAME=$REGTESTNAME-dev ;
       fi
-    - export REGTESTBRANCH=release-2023
+    - export REGTESTBRANCH=release-2024
     - if [[ $CI_COMMIT_REF_NAME == "main" || $CI_COMMIT_REF_NAME == "release-20"[1-2][0-9] ]] ; then
       export REGTESTBRANCH=$CI_COMMIT_REF_NAME ;
       fi
@@ -160,7 +160,7 @@ archive:configure:release:
     - cmake --build . --target install-guide -- -j4 2>&1 | tee installGuideBuildLogFile.log
     - cmake --build . --target package_source -- -j4 2>&1 | tee packageBuildLogFile.log
     - awk '/warning/,/warning.*generated|^$/' buildLogFile.log manBuildLogFile.log
-      completionBuildLogFile.log installGuideBuildLogFile.log checksumBuildLogFile.log
+      completionBuildLogFile.log installGuideBuildLogFile.log
       packageBuildLogFile.log | grep -v "CMake" | tee buildErrors.log || true
     - grep "cannot be built" buildLogFile.log manBuildLogFile.log
       completionBuildLogFile.log installGuideBuildLogFile.log
@@ -175,6 +175,7 @@ archive:configure:release:
     - cd tempdir
     - tar -xf $SOURCETARBALL
     - rm -rf gromacs-*/$BUILD_DIR
+    - find gromacs-*/ -name __pycache__ -exec rm -rf '{}' '+'
     - tar -c --gzip -f $SOURCETARBALL gromacs-*/
     - mv $SOURCETARBALL ..
     - cd ..
@@ -294,8 +295,16 @@ archive:nightly-webpage:
     - job: webpage:build
   variables:
     BUILD_DIR: build-docs
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan manual.gromacs.org > ~/.ssh/known_hosts # Force overwrite the known hosts so we only have that one key in it.
+    - chmod 644 ~/.ssh/known_hosts
   script:
     - tar czf webpage.tar.gz $BUILD_DIR/docs/html/
+    - rsync --chmod=u+rwX,g+rwX,o+rX -av $BUILD_DIR/docs/html/* $BUILD_DIR/docs/html/.[a-z]* pbauer@manual.gromacs.org:/var/www/manual/nightly/
 
   artifacts:
     when: always

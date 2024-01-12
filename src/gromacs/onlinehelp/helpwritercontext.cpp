@@ -262,11 +262,11 @@ public:
     struct LinkItem
     {
         LinkItem(const std::string& linkName, const std::string& replacement) :
-            linkName(linkName), replacement(replacement)
+            linkName_(linkName), replacement_(replacement)
         {
         }
-        std::string linkName;
-        std::string replacement;
+        std::string linkName_;
+        std::string replacement_;
     };
 
     //! Shorthand for a list of links.
@@ -371,11 +371,11 @@ public:
     struct ReplaceItem
     {
         ReplaceItem(const std::string& search, const std::string& replace) :
-            search(search), replace(replace)
+            search_(search), replace_(replace)
         {
         }
-        std::string search;
-        std::string replace;
+        std::string search_;
+        std::string replace_;
     };
 
     //! Smart pointer type for managing the shared state.
@@ -426,10 +426,9 @@ std::string HelpWriterContext::Impl::replaceLinks(const std::string& input) cons
     std::string result(input);
     if (state_->links_ != nullptr)
     {
-        HelpLinks::Impl::LinkList::const_iterator link;
-        for (link = state_->links_->impl_->links_.begin(); link != state_->links_->impl_->links_.end(); ++link)
+        for (const auto& link : state_->links_->impl_->links_)
         {
-            result = replaceAllWords(result, link->linkName, link->replacement);
+            result = replaceAllWords(result, link.linkName_, link.replacement_);
         }
     }
     return result;
@@ -438,9 +437,9 @@ std::string HelpWriterContext::Impl::replaceLinks(const std::string& input) cons
 void HelpWriterContext::Impl::processMarkup(const std::string& text, IWrapper* wrapper) const
 {
     std::string result(text);
-    for (ReplaceList::const_iterator i = replacements_.begin(); i != replacements_.end(); ++i)
+    for (const auto& replacement : replacements_)
     {
-        result = replaceAll(result, i->search, i->replace);
+        result = replaceAll(result, replacement.search_, replacement.replace_);
     }
     switch (state_->format_)
     {

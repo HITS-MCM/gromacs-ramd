@@ -128,7 +128,7 @@ void sumPmf(gmx::ArrayRef<PointState> pointState, int numSharedUpdate, const Bia
 
     /* Take log again to get (non-normalized) PMF */
     double normFac = 1.0 / numSharedUpdate;
-    for (gmx::index i = 0; i < pointState.ssize(); i++)
+    for (gmx::Index i = 0; i < pointState.ssize(); i++)
     {
         if (pointState[i].inTargetRegion())
         {
@@ -204,9 +204,17 @@ double biasedLogWeightFromPoint(ArrayRef<const DimParams>  dimParams,
                 {
                     const int pointLambdaIndex     = grid.point(pointIndex).coordValue[d];
                     const int gridpointLambdaIndex = grid.point(gridpointIndex).coordValue[d];
-                    logWeight -= dimParams[d].fepDimParams().beta
-                                 * (neighborLambdaEnergies[pointLambdaIndex]
-                                    - neighborLambdaEnergies[gridpointLambdaIndex]);
+
+                    const double energyDiff = neighborLambdaEnergies[pointLambdaIndex]
+                                              - neighborLambdaEnergies[gridpointLambdaIndex];
+                    if (dimParams[d].fepDimParams().beta * energyDiff < -0.5 * detail::c_largePositiveExponent)
+                    {
+                        GMX_THROW(SimulationInstabilityError(gmx::formatString(
+                                "AWH lambda dimension encountered a too large negative neighbor "
+                                "energy difference of %f kJ/mol",
+                                energyDiff)));
+                    }
+                    logWeight -= dimParams[d].fepDimParams().beta * energyDiff;
                 }
             }
             else
@@ -293,41 +301,84 @@ void BiasState::calcConvolvedPmf(ArrayRef<const DimParams> dimParams,
     }
 }
 
-namespace
+double BiasState::calculateAverageNonZeroMetric()
 {
-
-/*! \brief
- * Updates the target distribution for all points.
- *
- * The target distribution is always updated for all points
- * at the same time.
- *
- * \param[in,out] pointState  The state of all points.
- * \param[in]     params      The bias parameters.
- */
-void updateTargetDistribution(ArrayRef<PointState> pointState, const BiasParams& params)
-{
-    double freeEnergyCutoff = 0;
-    if (params.eTarget == AwhTargetType::Cutoff)
+    int    elementCount = 0;
+    double sumVolume    = 0;
+    for (gmx::Index pointIndex = 0; pointIndex < ssize(points_); pointIndex++)
     {
-        freeEnergyCutoff = freeEnergyMinimumValue(pointState) + params.freeEnergyCutoffInKT;
-    }
+        std::vector<double> correlationIntegral     = getSharedPointCorrelationIntegral(pointIndex);
+        double              correlationTensorVolume = getSqrtDeterminant(correlationIntegral);
 
-    double sumTarget = 0;
-    for (PointState& ps : pointState)
-    {
-        sumTarget += ps.updateTargetWeight(params, freeEnergyCutoff);
+        if (correlationTensorVolume > 0)
+        {
+            sumVolume += correlationTensorVolume;
+            elementCount++;
+        }
     }
-    GMX_RELEASE_ASSERT(sumTarget > 0, "We should have a non-zero distribution");
-
-    /* Normalize to 1 */
-    double invSum = 1.0 / sumTarget;
-    for (PointState& ps : pointState)
+    double averageVolume = 0;
+    if (elementCount != 0)
     {
-        ps.scaleTarget(invSum);
+        averageVolume = sumVolume / elementCount;
     }
+    return averageVolume;
 }
 
+double BiasState::scaleTargetByMetric(double targetMetricScalingLimit)
+{
+    GMX_RELEASE_ASSERT(targetMetricScalingLimit > 1,
+                       "When scaling by friction metric, the upper scaling limit must be > 1.");
+    /* Calculate the average of non-zero correlation tensor volume elements before
+     * scaling by the friction tensor. The average will be used to scale the target
+     * relatively and to avoid scaling (scaleFactor = 1) where there is not enough
+     * data (no valid correlationTensorVolume) to use for scaling. */
+    double averageVolume = calculateAverageNonZeroMetric();
+    if (averageVolume == 0)
+    {
+        averageVolume = 1;
+    }
+    double sumTarget = 0;
+
+    /* There is a global scaling factor limit. The lower limit can be modified per
+     * point depending on its sampling, but it cannot be lower than lowerScalingLimit. */
+    double upperScalingLimit = averageVolume * targetMetricScalingLimit;
+    double lowerScalingLimit = averageVolume / targetMetricScalingLimit;
+    for (gmx::Index pointIndex = 0; pointIndex < ssize(points_); pointIndex++)
+    {
+        PointState& ps = points_[pointIndex];
+
+        std::vector<double> correlationIntegral     = getSharedPointCorrelationIntegral(pointIndex);
+        double              correlationTensorVolume = getSqrtDeterminant(correlationIntegral);
+
+        /* Points may have a very low correlation tensor from not being sampled enough.
+         * This sets a lower limit on the scaling based on the amount of samples */
+        const double weightSumTot     = points_[pointIndex].weightSumTot();
+        double pointLowerScalingLimit = weightSumTot > 1 ? averageVolume / weightSumTot : averageVolume;
+        pointLowerScalingLimit        = std::max(lowerScalingLimit, pointLowerScalingLimit);
+
+        /* If there is no correlation tensor volume from this point use the average
+         * volume. This will result in no friction tensor scaling for the target
+         * distribution of this point. */
+        if (correlationTensorVolume == 0)
+        {
+            correlationTensorVolume = averageVolume;
+        }
+        /* Clamp the scaling to the allowed interval */
+        else
+        {
+            correlationTensorVolume =
+                    std::clamp(correlationTensorVolume, pointLowerScalingLimit, upperScalingLimit);
+        }
+        double scaleFactor = correlationTensorVolume / averageVolume;
+        ps.scaleTarget(scaleFactor);
+
+        sumTarget += ps.target();
+    }
+    return sumTarget;
+}
+
+namespace
+{
 /*! \brief
  * Puts together a string describing a grid point.
  *
@@ -358,6 +409,36 @@ std::string gridPointValueString(const BiasGrid& grid, int point)
 }
 
 } // namespace
+
+void BiasState::updateTargetDistribution(const BiasParams& params, const CorrelationGrid& forceCorrelation)
+{
+    double freeEnergyCutoff = 0;
+    if (params.eTarget == AwhTargetType::Cutoff)
+    {
+        freeEnergyCutoff = freeEnergyMinimumValue(points_) + params.freeEnergyCutoffInKT;
+    }
+
+    double sumTarget = 0;
+    for (PointState& ps : points_)
+    {
+        sumTarget += ps.updateTargetWeight(params, freeEnergyCutoff);
+    }
+    GMX_RELEASE_ASSERT(sumTarget > 0, "We should have a non-zero distribution");
+
+    /* Scale the target distribution by the friction metric - normalize afterwards */
+    if (params.scaleTargetByMetric && !inInitialStage())
+    {
+        updateSharedCorrelationTensorTimeIntegral(params, forceCorrelation, true);
+        sumTarget = scaleTargetByMetric(params.targetMetricScalingLimit);
+    }
+
+    /* Normalize to 1 */
+    double invSum = 1.0 / sumTarget;
+    for (PointState& ps : points_)
+    {
+        ps.scaleTarget(invSum);
+    }
+}
 
 int BiasState::warnForHistogramAnomalies(const BiasGrid& grid, int biasIndex, double t, FILE* fplog, int maxNumWarnings) const
 {
@@ -527,7 +608,7 @@ double BiasState::moveUmbrella(ArrayRef<const DimParams> dimParams,
         at steps when the reference value has been moved. E.g. if the ref. value
         is set every step to (coord dvalue +/- delta) would give zero force.
      */
-    for (gmx::index d = 0; d < biasForce.ssize(); d++)
+    for (gmx::Index d = 0; d < biasForce.ssize(); d++)
     {
         /* Average of the current and new force */
         biasForce[d] = 0.5 * (biasForce[d] + newForce[d]);
@@ -617,7 +698,7 @@ void BiasState::doSkippedUpdatesForAllPoints(const BiasParams& params)
         bool didUpdate = pointState.performPreviouslySkippedUpdates(
                 params, histogramSize_.numUpdates(), weightHistScaling, logPmfsumScaling);
 
-        /* Update the bias for this point only if there were skipped updates in the past to avoid calculating the log unneccessarily */
+        /* Update the bias for this point only if there were skipped updates in the past to avoid calculating the log unnecessarily */
         if (didUpdate)
         {
             pointState.updateBias();
@@ -1042,7 +1123,7 @@ bool BiasState::isSamplingRegionCovered(const BiasParams&         params,
         {
             biasSharing_->sumOverSharingSimulations(
                     gmx::arrayRefFromArray(checkDim[d].covered.data(), grid.axis(d).numPoints()),
-                    params.biasIndex);
+                    params.biasIndex_);
         }
     }
 
@@ -1077,6 +1158,7 @@ static void normalizeFreeEnergyAndPmfSum(std::vector<PointState>* pointState)
 void BiasState::updateFreeEnergyAndAddSamplesToHistogram(ArrayRef<const DimParams> dimParams,
                                                          const BiasGrid&           grid,
                                                          const BiasParams&         params,
+                                                         const CorrelationGrid&    forceCorrelation,
                                                          double                    t,
                                                          int64_t                   step,
                                                          FILE*                     fplog,
@@ -1095,16 +1177,16 @@ void BiasState::updateFreeEnergyAndAddSamplesToHistogram(ArrayRef<const DimParam
     makeLocalUpdateList(grid, points_, originUpdatelist_, endUpdatelist_, updateList);
     if (params.numSharedUpdate > 1)
     {
-        mergeSharedUpdateLists(updateList, points_.size(), *biasSharing_, params.biasIndex);
+        mergeSharedUpdateLists(updateList, points_.size(), *biasSharing_, params.biasIndex_);
     }
 
     /* Reset the range for the next update */
     resetLocalUpdateRange(grid);
 
     /* Add samples to histograms for all local points and sync simulations if needed */
-    sumHistograms(points_, weightSumCovering_, params.numSharedUpdate, biasSharing_, params.biasIndex, *updateList);
+    sumHistograms(points_, weightSumCovering_, params.numSharedUpdate, biasSharing_, params.biasIndex_, *updateList);
 
-    sumPmf(points_, params.numSharedUpdate, biasSharing_, params.biasIndex);
+    sumPmf(points_, params.numSharedUpdate, biasSharing_, params.biasIndex_);
 
     /* Renormalize the free energy if values are too large. */
     bool needToNormalizeFreeEnergy = false;
@@ -1123,8 +1205,10 @@ void BiasState::updateFreeEnergyAndAddSamplesToHistogram(ArrayRef<const DimParam
     }
 
     /* Update target distribution? */
+    bool doScaleTargetByMetric = params.scaleTargetByMetric && !inInitialStage();
     bool needToUpdateTargetDistribution =
-            (params.eTarget != AwhTargetType::Constant && params.isUpdateTargetStep(step));
+            ((params.eTarget != AwhTargetType::Constant || doScaleTargetByMetric)
+             && params.isUpdateTargetStep(step));
 
     /* In the initial stage, the histogram grows dynamically as a function of the number of coverings. */
     bool detectedCovering = false;
@@ -1203,7 +1287,7 @@ void BiasState::updateFreeEnergyAndAddSamplesToHistogram(ArrayRef<const DimParam
     if (needToUpdateTargetDistribution)
     {
         /* The target distribution is always updated for all points at once. */
-        updateTargetDistribution(points_, params);
+        updateTargetDistribution(params, forceCorrelation);
     }
 
     /* Update the bias. The bias is updated separately and last since it simply a function of
@@ -1547,7 +1631,8 @@ void BiasState::setFreeEnergyToConvolvedPmf(ArrayRef<const DimParams> dimParams,
 }
 
 void BiasState::updateSharedCorrelationTensorTimeIntegral(const BiasParams&      biasParams,
-                                                          const CorrelationGrid& forceCorrelation)
+                                                          const CorrelationGrid& forceCorrelation,
+                                                          bool shareAcrossAllRanks)
 {
     const int numCorrelation = forceCorrelation.tensorSize();
     const int numPoints      = points_.size();
@@ -1567,10 +1652,10 @@ void BiasState::updateSharedCorrelationTensorTimeIntegral(const BiasParams&     
     {
         GMX_ASSERT(biasSharing_ != nullptr
                            && biasParams.numSharedUpdate
-                                              % biasSharing_->numSharingSimulations(biasParams.biasIndex)
+                                              % biasSharing_->numSharingSimulations(biasParams.biasIndex_)
                                       == 0,
                    "numSharedUpdate should be a multiple of multiSimComm->numSimulations_");
-        GMX_ASSERT(biasParams.numSharedUpdate == biasSharing_->numSharingSimulations(biasParams.biasIndex),
+        GMX_ASSERT(biasParams.numSharedUpdate == biasSharing_->numSharingSimulations(biasParams.biasIndex_),
                    "Sharing within a simulation is not implemented (yet)");
 
         for (int gridPointIndex = 0; gridPointIndex < numPoints; gridPointIndex++)
@@ -1582,13 +1667,20 @@ void BiasState::updateSharedCorrelationTensorTimeIntegral(const BiasParams&     
                 {
                     int index     = gridPointIndex * numCorrelation + correlationTensorIndex;
                     buffer[index] = forceCorrelation.tensors()[gridPointIndex].getTimeIntegral(
-                                            correlationTensorIndex, forceCorrelation.dtSample)
+                                            correlationTensorIndex, forceCorrelation.dtSample_)
                                     * points_[gridPointIndex].localWeightSum();
                 }
             }
         }
 
-        biasSharing_->sumOverSharingSimulations(buffer, biasParams.biasIndex);
+        if (shareAcrossAllRanks)
+        {
+            biasSharing_->sumOverSharingSimulations(buffer, biasParams.biasIndex_);
+        }
+        else
+        {
+            biasSharing_->sumOverSharingMainRanks(buffer, biasParams.biasIndex_);
+        }
 
         for (int gridPointIndex = 0; gridPointIndex < numPoints; gridPointIndex++)
         {
@@ -1617,7 +1709,7 @@ void BiasState::updateSharedCorrelationTensorTimeIntegral(const BiasParams&     
             {
                 sharedCorrelationTensorTimeIntegral_[gridPointIndex][correlationTensorIndex] =
                         forceCorrelation.tensors()[gridPointIndex].getTimeIntegral(
-                                correlationTensorIndex, forceCorrelation.dtSample);
+                                correlationTensorIndex, forceCorrelation.dtSample_);
             }
         }
     }
@@ -1903,6 +1995,7 @@ void BiasState::initGridPointState(const AwhBiasParams&      awhBiasParams,
                                    ArrayRef<const DimParams> dimParams,
                                    const BiasGrid&           grid,
                                    const BiasParams&         params,
+                                   const CorrelationGrid&    forceCorrelation,
                                    const std::string&        filename,
                                    int                       numBias)
 {
@@ -1911,7 +2004,7 @@ void BiasState::initGridPointState(const AwhBiasParams&      awhBiasParams,
      */
     if (awhBiasParams.userPMFEstimate())
     {
-        readUserPmfAndTargetDistribution(dimParams, grid, filename, numBias, params.biasIndex, &points_);
+        readUserPmfAndTargetDistribution(dimParams, grid, filename, numBias, params.biasIndex_, &points_);
         setFreeEnergyToConvolvedPmf(dimParams, grid);
     }
 
@@ -1920,7 +2013,7 @@ void BiasState::initGridPointState(const AwhBiasParams&      awhBiasParams,
                        "AWH reference weight histogram not initialized properly with local "
                        "Boltzmann target distribution.");
 
-    updateTargetDistribution(points_, params);
+    updateTargetDistribution(params, forceCorrelation);
 
     for (PointState& pointState : points_)
     {

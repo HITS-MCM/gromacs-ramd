@@ -180,7 +180,7 @@ public:
     //! Constructor from input file.
     AwhBiasParams(std::vector<t_inpfile>* inp, const std::string& prefix, WarningHandler* wi, bool bComment);
     //! Constructor to generate from file reading.
-    explicit AwhBiasParams(ISerializer* serializer);
+    explicit AwhBiasParams(ISerializer* serializer, bool tprWithoutGrowthFactor, bool tprWithoutTargetMetricScaling);
 
     //! Move constructor.
     AwhBiasParams(AwhBiasParams&&) = default;
@@ -199,6 +199,8 @@ public:
     double targetCutoff() const { return targetCutoff_; }
     //! Which kind of growth to use.
     AwhHistogramGrowthType growthType() const { return eGrowth_; }
+    //! The histogram growth factor during the initial phase
+    double growthFactor() const { return growthFactor_; }
     //! User provided PMF estimate.
     bool userPMFEstimate() const { return bUserData_; }
     //! Estimated initial free energy error in kJ/mol.
@@ -207,12 +209,20 @@ public:
     int ndim() const { return dimParams_.size(); }
     //! Number of groups to share this bias with.
     int shareGroup() const { return shareGroup_; }
+    //! Whether we should scale the target distribution by the AWH friction metric.
+    bool scaleTargetByMetric() const { return scaleTargetByMetric_; }
+    //! The upper limiting scaling factor when scaling by the friction metric. The lower limit is the inverse.
+    double targetMetricScalingLimit() const { return targetMetricScalingLimit_; }
     //! If the simulation starts with equilibrating histogram.
     bool equilibrateHistogram() const { return equilibrateHistogram_; }
     //! Access to dimension parameters.
     ArrayRef<AwhDimParams> dimParams() { return dimParams_; }
+    //! Access to dimension parameters for a specific dimension.
+    AwhDimParams& dimParams(size_t idx) { return dimParams_[idx]; }
     //! Const access to dimension parameters.
     ArrayRef<const AwhDimParams> dimParams() const { return dimParams_; }
+    //! Const access to dimension parameters for a specific dimension.
+    const AwhDimParams& dimParams(size_t idx) const { return dimParams_[idx]; }
     //! Write datastructure.
     void serialize(ISerializer* serializer);
 
@@ -227,8 +237,14 @@ private:
     double targetCutoff_;
     //! How the biasing histogram grows.
     AwhHistogramGrowthType eGrowth_;
+    //! The histogram growth factor during the initial phase
+    double growthFactor_;
     //! Is there a user-defined initial PMF estimate and target estimate?
     bool bUserData_;
+    //! Should the target distribution be scaled by the friction metric?
+    bool scaleTargetByMetric_;
+    //! The upper limiting scaling factor when scaling by the friction metric. The lower limit is the inverse.
+    double targetMetricScalingLimit_;
     //! Estimated initial free energy error in kJ/mol.
     double errorInitial_;
     //! When >0, the bias is shared with biases of the same group and across multiple simulations when shareBiasMultisim=true
@@ -245,7 +261,7 @@ public:
     //! Constructor from input file.
     AwhParams(std::vector<t_inpfile>* inp, WarningHandler* wi);
     //! Constructor used to generate awh parameter from file reading.
-    explicit AwhParams(ISerializer* serializer);
+    explicit AwhParams(ISerializer* serializer, bool tprWithoutGrowthFactor, bool tprWithoutTargetMetricScaling);
 
     //! Move constructor.
     AwhParams(AwhParams&&) = default;
@@ -260,8 +276,12 @@ public:
     int numBias() const { return awhBiasParams_.size(); }
     //! Get access to bias parameters.
     ArrayRef<AwhBiasParams> awhBiasParams() { return awhBiasParams_; }
+    //! Get access to specific bias parameters.
+    AwhBiasParams& awhBiasParams(size_t idx) { return awhBiasParams_[idx]; }
     //! Const access to bias parameters.
     ArrayRef<const AwhBiasParams> awhBiasParams() const { return awhBiasParams_; }
+    //! Const access to specific bias parameters.
+    const AwhBiasParams& awhBiasParams(size_t idx) const { return awhBiasParams_[idx]; }
     //! What king of potential is being used. \todo should use actual enum class.
     AwhPotentialType potential() const { return potentialEnum_; }
     //! Seed used for starting AWH.

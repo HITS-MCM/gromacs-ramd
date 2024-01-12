@@ -43,6 +43,8 @@
 
 #include "device_stream.h"
 
+#include <cstdio>
+
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
@@ -78,8 +80,13 @@ DeviceStream::~DeviceStream()
     if (isValid())
     {
         cudaError_t stat = cudaStreamDestroy(stream_);
-        GMX_RELEASE_ASSERT(stat == cudaSuccess,
-                           ("Failed to release CUDA stream. " + gmx::getDeviceErrorString(stat)).c_str());
+        if (stat != cudaSuccess)
+        {
+            // Don't throw in the destructor, just print a warning
+            std::fprintf(stderr,
+                         "Failed to release CUDA stream. %s\n",
+                         gmx::getDeviceErrorString(stat).c_str());
+        }
         stream_ = nullptr;
     }
 }
@@ -100,3 +107,5 @@ void DeviceStream::synchronize() const
     GMX_RELEASE_ASSERT(stat == cudaSuccess,
                        ("cudaStreamSynchronize failed. " + gmx::getDeviceErrorString(stat)).c_str());
 }
+
+void issueClFlushInStream(const DeviceStream& /*deviceStream*/) {}

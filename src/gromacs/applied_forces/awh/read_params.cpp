@@ -430,6 +430,12 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams,
         wi->addError(gmx::formatString("%s needs to be > 0.", opt.c_str()));
     }
 
+    if (awhBiasParams.growthFactor() <= 1)
+    {
+        opt = prefix + "-growth-factor";
+        wi->addError(gmx::formatString("%s needs to be > 1.", opt.c_str()));
+    }
+
     opt = prefix + "-equilibrate-histogram";
     if (awhBiasParams.equilibrateHistogram()
         && awhBiasParams.growthType() != AwhHistogramGrowthType::ExponentialLinear)
@@ -526,7 +532,7 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams,
     for (int d = 0; d < awhBiasParams.ndim(); d++)
     {
         std::string prefixdim = prefix + formatString("-dim%d", d + 1);
-        checkDimParams(prefixdim, awhBiasParams.dimParams()[d], ir, wi);
+        checkDimParams(prefixdim, awhBiasParams.dimParams(d), ir, wi);
     }
 }
 
@@ -539,7 +545,7 @@ void checkBiasParams(const AwhBiasParams& awhBiasParams,
 void checkInputConsistencyAwhBias(const AwhBiasParams& awhBiasParams, WarningHandler* wi)
 {
     /* Covering diameter and sharing warning. */
-    auto awhBiasDimensionParams = awhBiasParams.dimParams();
+    const auto awhBiasDimensionParams = awhBiasParams.dimParams();
     for (const auto& dimensionParam : awhBiasDimensionParams)
     {
         double coverDiameter = dimensionParam.coverDiameter();
@@ -562,8 +568,8 @@ void checkInputConsistencyAwh(const AwhParams& awhParams, WarningHandler* wi)
     /* Each pull coord can map to at most 1 AWH coord.
      * Check that we have a shared bias when requesting multisim sharing.
      */
-    bool haveSharedBias = false;
-    auto awhBiasParams  = awhParams.awhBiasParams();
+    bool       haveSharedBias = false;
+    const auto awhBiasParams  = awhParams.awhBiasParams();
     for (int k1 = 0; k1 < awhParams.numBias(); k1++)
     {
         const AwhBiasParams& awhBiasParams1 = awhBiasParams[k1];
@@ -696,7 +702,7 @@ AwhDimParams::AwhDimParams(std::vector<t_inpfile>* inp, const std::string& prefi
                 "non-optimal for your system!",
                 opt.c_str(),
                 diffusion_default);
-        wi->addWarning(message);
+        wi->addNote(message);
         diffusionValue = diffusion_default;
     }
     diffusion_ = diffusionValue;
@@ -763,6 +769,13 @@ AwhBiasParams::AwhBiasParams(std::vector<t_inpfile>* inp, const std::string& pre
 
     if (bComment)
     {
+        printStringNoNewline(inp, "Growth factor during the exponential growth phase");
+    }
+    opt           = prefix + "-growth-factor";
+    growthFactor_ = get_ereal(inp, opt, 2, wi);
+
+    if (bComment)
+    {
         printStringNoNewline(inp,
                              "Start the simulation by equilibrating histogram towards the target "
                              "distribution: no or yes");
@@ -810,6 +823,49 @@ AwhBiasParams::AwhBiasParams(std::vector<t_inpfile>* inp, const std::string& pre
 
     if (bComment)
     {
+        printStringNoNewline(inp,
+                             "Scale the target distribution (can be used to modify any target "
+                             "distribution type and can be combined with user data) based on "
+                             "the AWH friction metric: no or yes");
+    }
+    opt                  = prefix + "-target-metric-scaling";
+    scaleTargetByMetric_ = getEnum<Boolean>(inp, opt.c_str(), wi) != Boolean::No;
+
+    if (scaleTargetByMetric_
+        && (eTarget_ == AwhTargetType::Boltzmann || eTarget_ == AwhTargetType::LocalBoltzmann))
+    {
+        auto message = formatString(
+                "Combining a %s target distribution with scaling the target distribution "
+                "by the friction metric (%s) might result in a feedback loop between the two "
+                "adaptive update mechanisms.",
+                enumValueToString(eTarget_),
+                opt.c_str());
+        wi->addWarning(message);
+    }
+
+    if (bComment)
+    {
+        printStringNoNewline(inp,
+                             "Maximum factor when scaling the target distribution based on the "
+                             "friction metric. The inverse of the value is used as the lower "
+                             "limit for the scaling.");
+    }
+    opt                             = prefix + "-target-metric-scaling-limit";
+    double targetMetricScalingLimit = get_ereal(inp, opt, 10, wi);
+    if (scaleTargetByMetric_ && targetMetricScalingLimit <= 1)
+    {
+        auto message = formatString(
+                "%s (%g) must be > 1. Setting it to the default value 10. This may "
+                "not be optimal for your system.",
+                opt.c_str(),
+                targetMetricScalingLimit);
+        wi->addWarning(message);
+        targetMetricScalingLimit = 10;
+    }
+    targetMetricScalingLimit_ = targetMetricScalingLimit;
+
+    if (bComment)
+    {
         printStringNoNewline(inp, "Dimensionality of the coordinate");
     }
     opt      = prefix + "-ndim";
@@ -828,7 +884,9 @@ AwhBiasParams::AwhBiasParams(std::vector<t_inpfile>* inp, const std::string& pre
     }
 }
 
-AwhBiasParams::AwhBiasParams(ISerializer* serializer)
+AwhBiasParams::AwhBiasParams(ISerializer* serializer,
+                             const bool   tprWithoutGrowthFactor,
+                             const bool   tprWithoutTargetMetricScaling)
 {
     GMX_RELEASE_ASSERT(serializer->reading(),
                        "Can not use writing serializer to create datastructure");
@@ -836,9 +894,28 @@ AwhBiasParams::AwhBiasParams(ISerializer* serializer)
     serializer->doDouble(&targetBetaScaling_);
     serializer->doDouble(&targetCutoff_);
     serializer->doEnumAsInt(&eGrowth_);
+    if (tprWithoutGrowthFactor)
+    {
+        // A factor 3 was the old, hard-coded value
+        growthFactor_ = 3;
+    }
+    else
+    {
+        serializer->doDouble(&growthFactor_);
+    }
     int temp = 0;
     serializer->doInt(&temp);
     bUserData_ = static_cast<bool>(temp);
+    if (tprWithoutTargetMetricScaling)
+    {
+        scaleTargetByMetric_      = false;
+        targetMetricScalingLimit_ = 10;
+    }
+    else
+    {
+        serializer->doBool(&scaleTargetByMetric_);
+        serializer->doDouble(&targetMetricScalingLimit_);
+    }
     serializer->doDouble(&errorInitial_);
     int numDimensions = dimParams_.size();
     serializer->doInt(&numDimensions);
@@ -859,8 +936,11 @@ void AwhBiasParams::serialize(ISerializer* serializer)
     serializer->doDouble(&targetBetaScaling_);
     serializer->doDouble(&targetCutoff_);
     serializer->doEnumAsInt(&eGrowth_);
+    serializer->doDouble(&growthFactor_);
     int temp = static_cast<int>(bUserData_);
     serializer->doInt(&temp);
+    serializer->doBool(&scaleTargetByMetric_);
+    serializer->doDouble(&targetMetricScalingLimit_);
     serializer->doDouble(&errorInitial_);
     int numDimensions = ndim();
     serializer->doInt(&numDimensions);
@@ -931,7 +1011,7 @@ AwhParams::AwhParams(std::vector<t_inpfile>* inp, WarningHandler* wi)
     checkInputConsistencyAwh(*this, wi);
 }
 
-AwhParams::AwhParams(ISerializer* serializer)
+AwhParams::AwhParams(ISerializer* serializer, const bool tprWithoutGrowthFactor, const bool tprWithoutTargetMetricScaling)
 {
     GMX_RELEASE_ASSERT(serializer->reading(),
                        "Can not use writing serializer to read AWH parameters");
@@ -948,7 +1028,7 @@ AwhParams::AwhParams(ISerializer* serializer)
     {
         for (int k = 0; k < numberOfBiases; k++)
         {
-            awhBiasParams_.emplace_back(serializer);
+            awhBiasParams_.emplace_back(serializer, tprWithoutGrowthFactor, tprWithoutTargetMetricScaling);
         }
     }
 }

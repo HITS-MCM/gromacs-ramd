@@ -43,17 +43,21 @@
 #ifndef GMX_MDRUNUTILITY_MDMODULESNOTIFIERS_H
 #define GMX_MDRUNUTILITY_MDMODULESNOTIFIERS_H
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "gromacs/math/arrayrefwithpadding.h"
+#include "gromacs/math/matrix.h"
 #include "gromacs/math/vectypes.h"
 #include "gromacs/mdrunutility/mdmodulesnotifier.h"
+
 
 struct t_commrec;
 struct gmx_mtop_t;
 class WarningHandler;
 enum class PbcType : int;
+struct t_inputrec;
 
 namespace gmx
 {
@@ -67,6 +71,27 @@ class SeparatePmeRanksPermitted;
 struct MDModulesCheckpointReadingDataOnMain;
 struct MDModulesCheckpointReadingBroadcast;
 struct MDModulesWriteCheckpointData;
+
+/*! \libinternal \brief Notification that atoms may have been redistributed
+ *
+ * This notification is emitted at the end of the DD (re)partioning
+ * or without DD right after atoms have put into the box.
+ * The local atom sets are updated for the new atom order when this signal is emitted.
+ * The coordinates of atoms can be shifted by periodic vectors
+ * before the signal was emitted.
+ */
+struct MDModulesAtomsRedistributedSignal
+{
+    MDModulesAtomsRedistributedSignal(const matrix box, gmx::ArrayRef<const RVec> x) :
+        box_(createMatrix3x3FromLegacyMatrix(box)), x_(x)
+    {
+    }
+
+    //! The simulation unit cell
+    const Matrix3x3 box_;
+    //! List of local atom coordinates after partitioning
+    gmx::ArrayRef<const RVec> x_;
+};
 
 /*! \libinternal \brief Check if module outputs energy to a specific field.
  *
@@ -102,19 +127,13 @@ class EnergyCalculationFrequencyErrors
 {
 public:
     //! Construct by setting the energy calculation frequency
-    EnergyCalculationFrequencyErrors(int64_t energyCalculationIntervalInSteps) :
-        energyCalculationIntervalInSteps_(energyCalculationIntervalInSteps)
-    {
-    }
+    EnergyCalculationFrequencyErrors(int64_t energyCalculationIntervalInSteps);
     //! Return the number of steps of an energy calculation interval
-    std::int64_t energyCalculationIntervalInSteps() const
-    {
-        return energyCalculationIntervalInSteps_;
-    }
+    std::int64_t energyCalculationIntervalInSteps() const;
     //! Collect error messages
-    void addError(const std::string& errorMessage) { errorMessages_.push_back(errorMessage); }
+    void addError(const std::string& errorMessage);
     //! Return error messages
-    const std::vector<std::string>& errorMessages() const { return errorMessages_; }
+    const std::vector<std::string>& errorMessages() const;
 
 private:
     //! The frequency of energy calculations
@@ -148,6 +167,14 @@ struct MdRunInputFilename
     std::string mdRunFilename_;
 };
 
+/*! \libinternal \brief Energy trajectory output filename from Mdrun.
+ */
+struct EdrOutputFilename
+{
+    //! The name of energy output file
+    std::string edrOutputFilename_;
+};
+
 /*! \libinternal \brief Notification for QM program input filename
  *  provided by user as command-line argument for grompp
  */
@@ -157,6 +184,19 @@ struct QMInputFileName
     bool hasQMInputFileName_ = false;
     //! The name of the QM Input file (.inp)
     std::string qmInputFileName_;
+};
+
+/*! \libinternal \brief Provides the constant ensemble temperature
+ */
+struct EnsembleTemperature
+{
+    /*! \libinternal
+     * \brief Check whether the constant ensemble temperature is available.
+     * Then, store the value as optional.
+     */
+    explicit EnsembleTemperature(const t_inputrec& ir);
+    //! The constant ensemble temperature
+    std::optional<real> constantEnsembleTemperature_;
 };
 
 /*! \libinternal
@@ -252,19 +292,24 @@ notifier =>> moduleC [label="returns"];
 struct MDModulesNotifiers
 {
     /*! \brief Pre-processing callback functions.
-     * CoordinatesAndBoxPreprocessed Allows modules to access coordinates,
-     *                                box and pbc during grompp
-     * MDLogger Allows MdModule to use standard logging class for messages output
-     * warninp* Allows modules to make grompp warnings, notes and errors
-     * EnergyCalculationFrequencyErrors* allows modules to check if they match
-     *                                   their required calculation frequency
-     *                                   and add their error message if needed
-     *                                   to the collected error messages
-     * gmx_mtop_t* Allows modules to modify the topology during pre-processing
-     * IndexGroupsAndNames provides modules with atom indices and their names
-     * KeyValueTreeObjectBuilder enables writing of module internal data to
-     *                           .tpr files.
-     * QMInputFileName Allows QMMM module to know if user provided external QM input file
+     *
+     * \tparam CoordinatesAndBoxPreprocessed
+     *                              Allows modules to access coordinates,
+     *                              box and PBC during grompp
+     * \tparam MDLogger             Allows MdModule to use standard logging class for
+     *                              output of messages
+     * \tparam warninp*             Allows modules to make grompp warnings, notes and errors
+     * \tparam EnergyCalculationFrequencyErrors*
+     *                              Allows modules to check if they match their required calculation
+     *                              frequency and add their error message if needed to the
+     *                              collected error messages
+     * \tparam gmx_mtop_t*          Allows modules to modify the topology during pre-processing
+     * \tparam IndexGroupsAndNames  Provides modules with atom indices and their names
+     * \tparam KeyValueTreeObjectBuilder
+     *                              Enables writing of module internal data to .tpr files.
+     * \tparam QMInputFileName      Allows the QMMM module to know if the user has provided
+     *                              an external QM input file
+     * \tparam EnsembleTemperature  Provides modules with the constant ensemble temperature.
      */
     BuildMDModulesNotifier<const CoordinatesAndBoxPreprocessed&,
                            const MDLogger&,
@@ -273,17 +318,19 @@ struct MDModulesNotifiers
                            gmx_mtop_t*,
                            const IndexGroupsAndNames&,
                            KeyValueTreeObjectBuilder,
-                           const QMInputFileName&>::type preProcessingNotifier_;
+                           const QMInputFileName&,
+                           const EnsembleTemperature&>::type preProcessingNotifier_;
 
     /*! \brief Handles subscribing and calling checkpointing callback functions.
      *
-     * MDModulesCheckpointReadingDataOnMain   provides modules with their
-     *                                        checkpointed data on the main
-     *                                        node and checkpoint file version
-     * MDModulesCheckpointReadingBroadcast provides modules with a communicator
-     *                                     and the checkpoint file version to
-     *                                     distribute their data
-     * MDModulesWriteCheckpointData provides the modules with a key-value-tree
+     * \tparam MDModulesCheckpointReadingDataOnMain
+     *                              Provides modules with their checkpointed data
+     *                              on the main node and checkpoint file version
+     * \tparam MDModulesCheckpointReadingBroadcast
+     *                              Provides modules with a communicator and the
+     *                              checkpoint file version to distribute their data
+     * \tparam MDModulesWriteCheckpointData
+     *                              Provides the modules with a key-value-tree
      *                              builder to store their checkpoint data and
      *                              the checkpoint file version
      */
@@ -292,40 +339,44 @@ struct MDModulesNotifiers
 
     /*! \brief Handles subscribing and calling callbacks during simulation setup.
      *
-     * const KeyValueTreeObject& provides modules with the internal data they
-     *                           wrote to .tpr files
-     * LocalAtomSetManager* enables modules to add atom indices to local atom sets
-     *                      to be managed
-     * const MDLogger& Allows MdModule to use standard logging class for messages output
-     * const gmx_mtop_t& provides the topology of the system to the modules
-     * MDModulesEnergyOutputToDensityFittingRequestChecker* enables modules to
-     *                      report if they want to write their energy output
-     *                      to the density fitting field in the energy files
-     * MDModulesEnergyOutputToQMMMRequestChecker* enables QMMM module to
-     *                      report if it want to write their energy output
-     *                      to the "Quantum En." field in the energy files
-     * SeparatePmeRanksPermitted* enables modules to report if they want
-     *                      to disable dedicated PME ranks
-     * const PbcType& provides modules with the periodic boundary condition type
-     *                that is used during the simulation
-     * const SimulationTimeStep& provides modules with the simulation time-step
-     *                           that allows them to interconvert between step
-     *                           time information
-     * const t_commrec& provides a communicator to the modules during simulation
-     *                  setup
-     * const MdRunInputFilename& Allows modules to know .tpr filename during mdrun
+     * \tparam KeyValueTreeObject&  Provides modules with the internal data they
+     *                              wrote to .tpr files
+     * \tparam LocalAtomSetManager* Enables modules to add atom indices to local atom sets
+     *                              to be managed
+     * \tparam MDLogger&            Allows MdModule to use standard logging class for messages
+     *                              output
+     * \tparam gmx_mtop_t&          Provides the topology of the system to the modules
+     * \tparam MDModulesEnergyOutputToDensityFittingRequestChecker*
+     *                              Enables modules to report if they want to write their
+     *                              energy output to the density fitting field in the energy files
+     * \tparam MDModulesEnergyOutputToQMMMRequestChecker*
+     *                              Enables QMMM module to report if it wants to write its energy
+     *                              output to the "Quantum En." field in the energy files
+     * \tparam SeparatePmeRanksPermitted*
+     *                              Enables modules to report if they want to disable dedicated
+     *                              PME ranks
+     * \tparam PbcType&             Provides modules with the periodic boundary condition type
+     *                              that is used during the simulation
+     * \tparam SimulationTimeStep&  Provides modules with the simulation time-step that allows
+     *                              them to interconvert between step and time information
+     * \tparam t_commrec&           Provides a communicator to the modules during simulation
+     *                              setup
+     * \tparam MdRunInputFilename&  Allows modules to know .tpr filename during mdrun
+     * \tparam EdrOutputFilename&   Allows modules to know .edr filename during mdrun
      */
     BuildMDModulesNotifier<const KeyValueTreeObject&,
                            LocalAtomSetManager*,
                            const MDLogger&,
                            const gmx_mtop_t&,
+                           const MDModulesAtomsRedistributedSignal,
                            MDModulesEnergyOutputToDensityFittingRequestChecker*,
                            MDModulesEnergyOutputToQMMMRequestChecker*,
                            SeparatePmeRanksPermitted*,
                            const PbcType&,
                            const SimulationTimeStep&,
                            const t_commrec&,
-                           const MdRunInputFilename&>::type simulationSetupNotifier_;
+                           const MdRunInputFilename&,
+                           const EdrOutputFilename&>::type simulationSetupNotifier_;
 };
 
 } // namespace gmx

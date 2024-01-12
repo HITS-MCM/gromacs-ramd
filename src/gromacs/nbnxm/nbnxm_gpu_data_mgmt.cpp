@@ -80,23 +80,6 @@
 namespace Nbnxm
 {
 
-static inline void issueClFlushInStream(const DeviceStream& deviceStream)
-{
-#if GMX_GPU_OPENCL
-    /* Based on the v1.2 section 5.13 of the OpenCL spec, a flush is needed
-     * in the stream after marking an event in it in order to be able to sync with
-     * the event from another stream.
-     */
-    cl_int cl_error = clFlush(deviceStream.stream());
-    if (cl_error != CL_SUCCESS)
-    {
-        GMX_THROW(gmx::InternalError("clFlush failed: " + ocl_get_error_string(cl_error)));
-    }
-#else
-    GMX_UNUSED_VALUE(deviceStream);
-#endif
-}
-
 static inline void init_ewald_coulomb_force_table(const EwaldCorrectionTables& tables,
                                                   NBParamGpu*                  nbp,
                                                   const DeviceContext&         deviceContext)
@@ -216,6 +199,29 @@ static inline void set_cutoff_parameters(NBParamGpu*                nbp,
     nbp->vdw_switch       = ic.vdw_switch;
 }
 
+static inline void initPlistSorting(gpuPlistSorting* sorting)
+{
+    /* initialize to nullptr pointers to data that is not allocated here and will
+       need reallocation in nbnxn_gpu_init_pairlist */
+    sorting->scanTemporary = nullptr;
+    sorting->sciHistogram  = nullptr;
+    sorting->sciOffset     = nullptr;
+    sorting->sciCount      = nullptr;
+    sorting->sciSorted     = nullptr;
+
+    /* size -1 indicates that the respective array hasn't been initialized yet */
+    sorting->nscanTemporary      = -1;
+    sorting->scanTemporaryNalloc = -1;
+    sorting->nsciHistogram       = -1;
+    sorting->sciHistogramNalloc  = -1;
+    sorting->nsciOffset          = -1;
+    sorting->sciOffsetNalloc     = -1;
+    sorting->nsciCounted         = -1;
+    sorting->sciCountedNalloc    = -1;
+    sorting->nsciSorted          = -1;
+    sorting->sciSortedNalloc     = -1;
+}
+
 static inline void init_plist(gpu_plist* pl)
 {
     /* initialize to nullptr pointers to data that is not allocated here and will
@@ -238,6 +244,9 @@ static inline void init_plist(gpu_plist* pl)
     pl->haveFreshList          = false;
     pl->rollingPruningNumParts = 0;
     pl->rollingPruningPart     = 0;
+
+    /* initialise data structures used for sorting */
+    initPlistSorting(&(pl->sorting));
 }
 
 static inline void init_timings(gmx_wallclock_gpu_nbnxn_t* t)
@@ -498,13 +507,13 @@ NbnxmGpu* gpu_init(const gmx::DeviceStreamManager& deviceStreamManager,
     return nb;
 }
 
-void gpu_pme_loadbal_update_param(const nonbonded_verlet_t* nbv, const interaction_const_t& ic)
+void gpu_pme_loadbal_update_param(nonbonded_verlet_t* nbv, const interaction_const_t& ic)
 {
     if (!nbv || !nbv->useGpu())
     {
         return;
     }
-    NbnxmGpu*   nb  = nbv->gpu_nbv;
+    NbnxmGpu*   nb  = nbv->gpuNbv();
     NBParamGpu* nbp = nb->nbparam;
 
     set_cutoff_parameters(nbp, ic, nbv->pairlistSets().params());
@@ -581,6 +590,53 @@ void gpu_init_pairlist(NbnxmGpu* nb, const NbnxnPairlistGpu* h_plist, const Inte
                        deviceStream,
                        GpuApiCallBehavior::Async,
                        bDoTime ? iTimers.pl_h2d.fetchNextEvent() : nullptr);
+
+/* gpu sorting is only implemented for cuda */
+#if GMX_GPU_CUDA
+    reallocateDeviceBuffer(&d_plist->sorting.sciSorted,
+                           h_plist->sci.size(),
+                           &d_plist->sorting.nsciSorted,
+                           &d_plist->sorting.sciSortedNalloc,
+                           deviceContext);
+    copyToDeviceBuffer(&d_plist->sorting.sciSorted,
+                       h_plist->sci.data(),
+                       0,
+                       h_plist->sci.size(),
+                       deviceStream,
+                       GpuApiCallBehavior::Async,
+                       bDoTime ? iTimers.pl_h2d.fetchNextEvent() : nullptr);
+    reallocateDeviceBuffer(&d_plist->sorting.sciCount,
+                           h_plist->sci.size(),
+                           &d_plist->sorting.nsciCounted,
+                           &d_plist->sorting.sciCountedNalloc,
+                           deviceContext);
+
+    if (d_plist->sorting.nscanTemporary == -1)
+    {
+        reallocateDeviceBuffer(&d_plist->sorting.sciHistogram,
+                               c_sciHistogramSize + 1,
+                               &d_plist->sorting.nsciHistogram,
+                               &d_plist->sorting.sciHistogramNalloc,
+                               deviceContext);
+
+        reallocateDeviceBuffer(&d_plist->sorting.sciOffset,
+                               c_sciHistogramSize,
+                               &d_plist->sorting.nsciOffset,
+                               &d_plist->sorting.sciOffsetNalloc,
+                               deviceContext);
+
+        size_t scanTemporarySize = 0;
+        getExclusiveScanWorkingArraySize(scanTemporarySize, d_plist, deviceStream);
+
+        reallocateDeviceBuffer(&d_plist->sorting.scanTemporary,
+                               static_cast<int>(scanTemporarySize),
+                               &d_plist->sorting.nscanTemporary,
+                               &d_plist->sorting.scanTemporaryNalloc,
+                               deviceContext);
+    }
+
+    clearDeviceBufferAsync(&d_plist->sorting.sciHistogram, 0, c_sciHistogramSize, deviceStream);
+#endif
 
     reallocateDeviceBuffer(&d_plist->cjPacked,
                            h_plist->cjPacked.size(),
@@ -754,9 +810,9 @@ gmx_wallclock_gpu_nbnxn_t* gpu_get_timings(NbnxmGpu* nb)
 //! This function is documented in the header file
 void gpu_reset_timings(nonbonded_verlet_t* nbv)
 {
-    if (nbv->gpu_nbv && nbv->gpu_nbv->bDoTime)
+    if (nbv->gpuNbv() && nbv->gpuNbv()->bDoTime)
     {
-        init_timings(nbv->gpu_nbv->timings);
+        init_timings(nbv->gpuNbv()->timings);
     }
 }
 
@@ -1032,7 +1088,7 @@ void nbnxn_gpu_init_x_to_nbat_x(const Nbnxm::GridSet& gridSet, NbnxmGpu* gpu_nbv
 
     for (unsigned int g = 0; g < gridSet.grids().size(); g++)
     {
-        const Nbnxm::Grid& grid = gridSet.grids()[g];
+        const Nbnxm::Grid& grid = gridSet.grid(g);
 
         const int  numColumns      = grid.numColumns();
         const int* atomIndices     = gridSet.atomIndices().data();
@@ -1187,6 +1243,7 @@ void gpu_free(NbnxmGpu* nb)
     freeDeviceBuffer(&plist->cjPacked);
     freeDeviceBuffer(&plist->imask);
     freeDeviceBuffer(&plist->excl);
+    freeDeviceBuffer(&plist->d_rollingPruningPart);
     delete plist;
     if (nb->bUseTwoStreams)
     {
@@ -1195,9 +1252,13 @@ void gpu_free(NbnxmGpu* nb)
         freeDeviceBuffer(&plist_nl->cjPacked);
         freeDeviceBuffer(&plist_nl->imask);
         freeDeviceBuffer(&plist_nl->excl);
+        freeDeviceBuffer(&plist_nl->d_rollingPruningPart);
         delete plist_nl;
     }
 
+    freeDeviceBuffer(&nb->cxy_na);
+    freeDeviceBuffer(&nb->cxy_ind);
+    freeDeviceBuffer(&nb->atomIndices);
     /* Free nbst */
     pfree(nb->nbst.eLJ);
     nb->nbst.eLJ = nullptr;

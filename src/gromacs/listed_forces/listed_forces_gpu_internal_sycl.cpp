@@ -151,50 +151,46 @@ static inline void harmonic_gpu(const float              kA,
 template<bool calcVir, bool calcEner>
 static inline void bonds_gpu(const int                                  i,
                              sycl::private_ptr<float>                   vtot_loc,
-                             const int                                  numBonds,
-                             const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                             const sycl::global_ptr<const t_iparams>    d_forceparams,
+                             const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                             const sycl::global_ptr<const t_iparams>    gm_forceparams,
                              const sycl::global_ptr<const sycl::float4> gm_xq,
                              sycl::global_ptr<Float3>                   gm_f,
                              sycl::local_ptr<Float3>                    sm_fShiftLoc,
                              const PbcAiuc&                             pbcAiuc,
                              const int                                  localId)
 {
-    if (i < numBonds)
+    const int type = gm_forceatoms[3 * i];
+    const int ai   = gm_forceatoms[3 * i + 1];
+    const int aj   = gm_forceatoms[3 * i + 2];
+
+    /* dx = xi - xj, corrected for periodic boundary conditions. */
+    Float3 dx;
+    int    ki = pbcDxAiucSycl<calcVir>(pbcAiuc, gm_xq[ai], gm_xq[aj], dx);
+
+    float dr2 = dx.norm2();
+    float dr  = sycl::sqrt(dr2);
+
+    float vbond;
+    float fbond;
+    harmonic_gpu<calcEner>(
+            gm_forceparams[type].harmonic.krA, gm_forceparams[type].harmonic.rA, dr, &vbond, &fbond);
+
+    if (calcEner)
     {
-        const int type = d_forceatoms[3 * i];
-        const int ai   = d_forceatoms[3 * i + 1];
-        const int aj   = d_forceatoms[3 * i + 2];
+        *vtot_loc += vbond;
+    }
 
-        /* dx = xi - xj, corrected for periodic boundary conditions. */
-        Float3 dx;
-        int    ki = pbcDxAiucSycl<calcVir>(pbcAiuc, gm_xq[ai], gm_xq[aj], dx);
+    if (dr2 != 0.0F)
+    {
+        fbond *= sycl::rsqrt(dr2);
 
-        float dr2 = dx.norm2();
-        float dr  = sycl::sqrt(dr2);
-
-        float vbond;
-        float fbond;
-        harmonic_gpu<calcEner>(
-                d_forceparams[type].harmonic.krA, d_forceparams[type].harmonic.rA, dr, &vbond, &fbond);
-
-        if (calcEner)
+        Float3 fij = fbond * dx;
+        staggeredAtomicAddForce(&gm_f[ai], fij, localId);
+        staggeredAtomicAddForce(&gm_f[aj], -fij, localId);
+        if (calcVir && ki != gmx::c_centralShiftIndex)
         {
-            *vtot_loc += vbond;
-        }
-
-        if (dr2 != 0.0F)
-        {
-            fbond *= sycl::rsqrt(dr2);
-
-            Float3 fij = fbond * dx;
-            staggeredAtomicAddForce(&gm_f[ai], fij, localId);
-            staggeredAtomicAddForce(&gm_f[aj], -fij, localId);
-            if (calcVir && ki != gmx::c_centralShiftIndex)
-            {
-                atomicFetchAddLocal(sm_fShiftLoc[ki], fij);
-                atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], -fij);
-            }
+            atomicFetchAddLocal(sm_fShiftLoc[ki], fij);
+            atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], -fij);
         }
     }
 }
@@ -282,74 +278,67 @@ static float bond_angle_gpu(const sycl::float4        xi,
 template<bool calcVir, bool calcEner>
 static void angles_gpu(const int                                  i,
                        sycl::private_ptr<float>                   vtot_loc,
-                       const int                                  numBonds,
-                       const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                       const sycl::global_ptr<const t_iparams>    d_forceparams,
+                       const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                       const sycl::global_ptr<const t_iparams>    gm_forceparams,
                        const sycl::global_ptr<const sycl::float4> gm_xq,
                        sycl::global_ptr<Float3>                   gm_f,
                        sycl::local_ptr<Float3>                    sm_fShiftLoc,
                        const PbcAiuc&                             pbcAiuc,
                        const int                                  localId)
 {
-    if (i < numBonds)
+    sycl::int4 angleData;
+    angleData.load(i, gm_forceatoms);
+    const int type = angleData.x();
+    const int ai   = angleData.y();
+    const int aj   = angleData.z();
+    const int ak   = angleData.w();
+
+    Float3 r_ij;
+    Float3 r_kj;
+    float  cos_theta;
+    int    t1;
+    int    t2;
+    float  theta = bond_angle_gpu<calcVir>(
+            gm_xq[ai], gm_xq[aj], gm_xq[ak], pbcAiuc, &r_ij, &r_kj, &cos_theta, &t1, &t2);
+
+    float va;
+    float dVdt;
+    harmonic_gpu<calcEner>(
+            gm_forceparams[type].harmonic.krA, gm_forceparams[type].harmonic.rA * c_deg2RadF, theta, &va, &dVdt);
+
+    if (calcEner)
     {
-        sycl::int4 angleData;
-        angleData.load(i, d_forceatoms);
-        const int type = angleData.x();
-        const int ai   = angleData.y();
-        const int aj   = angleData.z();
-        const int ak   = angleData.w();
+        *vtot_loc += va;
+    }
 
-        Float3 r_ij;
-        Float3 r_kj;
-        float  cos_theta;
-        int    t1;
-        int    t2;
-        float  theta = bond_angle_gpu<calcVir>(
-                gm_xq[ai], gm_xq[aj], gm_xq[ak], pbcAiuc, &r_ij, &r_kj, &cos_theta, &t1, &t2);
+    float cos_theta2 = cos_theta * cos_theta;
+    if (cos_theta2 < 1.0F)
+    {
+        float st    = dVdt * sycl::rsqrt(1.0F - cos_theta2);
+        float sth   = st * cos_theta;
+        float nrij2 = r_ij.norm2();
+        float nrkj2 = r_kj.norm2();
 
-        float va;
-        float dVdt;
-        harmonic_gpu<calcEner>(d_forceparams[type].harmonic.krA,
-                               d_forceparams[type].harmonic.rA * c_deg2RadF,
-                               theta,
-                               &va,
-                               &dVdt);
+        float nrij_1 = sycl::rsqrt(nrij2);
+        float nrkj_1 = sycl::rsqrt(nrkj2);
 
-        if (calcEner)
+        float cik = st * nrij_1 * nrkj_1;
+        float cii = sth * nrij_1 * nrij_1;
+        float ckk = sth * nrkj_1 * nrkj_1;
+
+        Float3 f_i = cii * r_ij - cik * r_kj;
+        Float3 f_k = ckk * r_kj - cik * r_ij;
+        Float3 f_j = -f_i - f_k;
+
+        staggeredAtomicAddForce(&gm_f[ai], f_i, localId);
+        staggeredAtomicAddForce(&gm_f[aj], f_j, localId);
+        staggeredAtomicAddForce(&gm_f[ak], f_k, localId);
+
+        if (calcVir)
         {
-            *vtot_loc += va;
-        }
-
-        float cos_theta2 = cos_theta * cos_theta;
-        if (cos_theta2 < 1.0F)
-        {
-            float st    = dVdt * sycl::rsqrt(1.0F - cos_theta2);
-            float sth   = st * cos_theta;
-            float nrij2 = r_ij.norm2();
-            float nrkj2 = r_kj.norm2();
-
-            float nrij_1 = sycl::rsqrt(nrij2);
-            float nrkj_1 = sycl::rsqrt(nrkj2);
-
-            float cik = st * nrij_1 * nrkj_1;
-            float cii = sth * nrij_1 * nrij_1;
-            float ckk = sth * nrkj_1 * nrkj_1;
-
-            Float3 f_i = cii * r_ij - cik * r_kj;
-            Float3 f_k = ckk * r_kj - cik * r_ij;
-            Float3 f_j = -f_i - f_k;
-
-            staggeredAtomicAddForce(&gm_f[ai], f_i, localId);
-            staggeredAtomicAddForce(&gm_f[aj], f_j, localId);
-            staggeredAtomicAddForce(&gm_f[ak], f_k, localId);
-
-            if (calcVir)
-            {
-                atomicFetchAddLocal(sm_fShiftLoc[t1], f_i);
-                atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
-                atomicFetchAddLocal(sm_fShiftLoc[t2], f_k);
-            }
+            atomicFetchAddLocal(sm_fShiftLoc[t1], f_i);
+            atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
+            atomicFetchAddLocal(sm_fShiftLoc[t2], f_k);
         }
     }
 }
@@ -357,117 +346,113 @@ static void angles_gpu(const int                                  i,
 template<bool calcVir, bool calcEner>
 static void urey_bradley_gpu(const int                                  i,
                              sycl::private_ptr<float>                   vtot_loc,
-                             const int                                  numBonds,
-                             const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                             const sycl::global_ptr<const t_iparams>    d_forceparams,
+                             const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                             const sycl::global_ptr<const t_iparams>    gm_forceparams,
                              const sycl::global_ptr<const sycl::float4> gm_xq,
                              sycl::global_ptr<Float3>                   gm_f,
                              sycl::local_ptr<Float3>                    sm_fShiftLoc,
                              const PbcAiuc&                             pbcAiuc,
                              const int                                  localId)
 {
-    if (i < numBonds)
+    sycl::int4 ubData;
+    ubData.load(i, gm_forceatoms);
+    const int type = ubData.x();
+    const int ai   = ubData.y();
+    const int aj   = ubData.z();
+    const int ak   = ubData.w();
+
+    const float th0A = gm_forceparams[type].u_b.thetaA * c_deg2RadF;
+    const float kthA = gm_forceparams[type].u_b.kthetaA;
+    const float r13A = gm_forceparams[type].u_b.r13A;
+    const float kUBA = gm_forceparams[type].u_b.kUBA;
+
+    Float3 r_ij;
+    Float3 r_kj;
+    float  cos_theta;
+    int    t1;
+    int    t2;
+    float  theta = bond_angle_gpu<calcVir>(
+            gm_xq[ai], gm_xq[aj], gm_xq[ak], pbcAiuc, &r_ij, &r_kj, &cos_theta, &t1, &t2);
+
+    float va;
+    float dVdt;
+    harmonic_gpu<calcEner>(kthA, th0A, theta, &va, &dVdt);
+
+    if (calcEner)
     {
-        sycl::int4 ubData;
-        ubData.load(i, d_forceatoms);
-        const int type = ubData.x();
-        const int ai   = ubData.y();
-        const int aj   = ubData.z();
-        const int ak   = ubData.w();
+        *vtot_loc += va;
+    }
 
-        const float th0A = d_forceparams[type].u_b.thetaA * c_deg2RadF;
-        const float kthA = d_forceparams[type].u_b.kthetaA;
-        const float r13A = d_forceparams[type].u_b.r13A;
-        const float kUBA = d_forceparams[type].u_b.kUBA;
+    Float3 r_ik;
+    int    ki = pbcDxAiucSycl<calcVir>(pbcAiuc, gm_xq[ai], gm_xq[ak], r_ik);
 
-        Float3 r_ij;
-        Float3 r_kj;
-        float  cos_theta;
-        int    t1;
-        int    t2;
-        float  theta = bond_angle_gpu<calcVir>(
-                gm_xq[ai], gm_xq[aj], gm_xq[ak], pbcAiuc, &r_ij, &r_kj, &cos_theta, &t1, &t2);
+    float dr2 = r_ik.norm2();
+    float dr  = dr2 * sycl::rsqrt(dr2);
 
-        float va;
-        float dVdt;
-        harmonic_gpu<calcEner>(kthA, th0A, theta, &va, &dVdt);
+    float vbond;
+    float fbond;
+    harmonic_gpu<calcEner>(kUBA, r13A, dr, &vbond, &fbond);
 
+    float cos_theta2 = cos_theta * cos_theta;
+
+    Float3 f_i = { 0.0F, 0.0F, 0.0F };
+    Float3 f_j = { 0.0F, 0.0F, 0.0F };
+    Float3 f_k = { 0.0F, 0.0F, 0.0F };
+
+    if (cos_theta2 < 1.0F)
+    {
+        float st  = dVdt * sycl::rsqrt(1.0F - cos_theta2);
+        float sth = st * cos_theta;
+
+        float nrkj2 = r_kj.norm2();
+        float nrij2 = r_ij.norm2();
+
+        float cik = st * sycl::rsqrt(nrkj2 * nrij2);
+        float cii = sth / nrij2;
+        float ckk = sth / nrkj2;
+
+        f_i = cii * r_ij - cik * r_kj;
+        f_k = ckk * r_kj - cik * r_ij;
+        f_j = -f_i - f_k;
+
+        if (calcVir)
+        {
+            atomicFetchAddLocal(sm_fShiftLoc[t1], f_i);
+            atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
+            atomicFetchAddLocal(sm_fShiftLoc[t2], f_k);
+        }
+    }
+
+    /* Time for the bond calculations */
+    if (dr2 != 0.0F)
+    {
         if (calcEner)
         {
-            *vtot_loc += va;
+            *vtot_loc += vbond;
         }
 
-        Float3 r_ik;
-        int    ki = pbcDxAiucSycl<calcVir>(pbcAiuc, gm_xq[ai], gm_xq[ak], r_ik);
+        fbond *= sycl::rsqrt(dr2);
+        Float3 fik = fbond * r_ik;
+        f_i += fik;
+        f_k -= fik;
 
-        float dr2 = r_ik.norm2();
-        float dr  = dr2 * sycl::rsqrt(dr2);
 
-        float vbond;
-        float fbond;
-        harmonic_gpu<calcEner>(kUBA, r13A, dr, &vbond, &fbond);
-
-        float cos_theta2 = cos_theta * cos_theta;
-
-        Float3 f_i = { 0.0F, 0.0F, 0.0F };
-        Float3 f_j = { 0.0F, 0.0F, 0.0F };
-        Float3 f_k = { 0.0F, 0.0F, 0.0F };
-
-        if (cos_theta2 < 1.0F)
+        if (calcVir && ki != gmx::c_centralShiftIndex)
         {
-            float st  = dVdt * sycl::rsqrt(1.0F - cos_theta2);
-            float sth = st * cos_theta;
-
-            float nrkj2 = r_kj.norm2();
-            float nrij2 = r_ij.norm2();
-
-            float cik = st * sycl::rsqrt(nrkj2 * nrij2);
-            float cii = sth / nrij2;
-            float ckk = sth / nrkj2;
-
-            f_i = cii * r_ij - cik * r_kj;
-            f_k = ckk * r_kj - cik * r_ij;
-            f_j = -f_i - f_k;
-
-            if (calcVir)
-            {
-                atomicFetchAddLocal(sm_fShiftLoc[t1], f_i);
-                atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], f_j);
-                atomicFetchAddLocal(sm_fShiftLoc[t2], f_k);
-            }
+            atomicFetchAddLocal(sm_fShiftLoc[ki], fik);
+            atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], -fik);
         }
+    }
 
-        /* Time for the bond calculations */
-        if (dr2 != 0.0F)
-        {
-            if (calcEner)
-            {
-                *vtot_loc += vbond;
-            }
+    if ((cos_theta2 < 1.0F) || (dr2 != 0.0F))
+    {
+        staggeredAtomicAddForce(&gm_f[ai], f_i, localId);
+        staggeredAtomicAddForce(&gm_f[ak], f_k, localId);
+    }
 
-            fbond *= sycl::rsqrt(dr2);
-            Float3 fik = fbond * r_ik;
-            f_i += fik;
-            f_k -= fik;
-
-
-            if (calcVir && ki != gmx::c_centralShiftIndex)
-            {
-                atomicFetchAddLocal(sm_fShiftLoc[ki], fik);
-                atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], -fik);
-            }
-        }
-
-        if ((cos_theta2 < 1.0F) || (dr2 != 0.0F))
-        {
-            staggeredAtomicAddForce(&gm_f[ai], f_i, localId);
-            staggeredAtomicAddForce(&gm_f[ak], f_k, localId);
-        }
-
-        if (cos_theta2 < 1.0F)
-        {
-            staggeredAtomicAddForce(&gm_f[aj], f_j, localId);
-        }
+    if (cos_theta2 < 1.0F)
+    {
+        staggeredAtomicAddForce(&gm_f[aj], f_j, localId);
     }
 }
 
@@ -498,6 +483,46 @@ static float dih_angle_gpu(const T                   xi,
     phi        = sign * phi;
 
     return phi;
+}
+
+template<bool returnShift, typename T>
+static float dih_angle_gpu_sincos(const T                   xi,
+                                  const T                   xj,
+                                  const T                   xk,
+                                  const T                   xl,
+                                  const PbcAiuc&            pbcAiuc,
+                                  sycl::private_ptr<Float3> r_ij,
+                                  sycl::private_ptr<Float3> r_kj,
+                                  sycl::private_ptr<Float3> r_kl,
+                                  sycl::private_ptr<Float3> m,
+                                  sycl::private_ptr<Float3> n,
+                                  sycl::private_ptr<int>    t1,
+                                  sycl::private_ptr<int>    t2,
+                                  sycl::private_ptr<float>  cosval)
+{
+    *t1 = pbcDxAiucSycl<returnShift>(pbcAiuc, xi, xj, *r_ij);
+    *t2 = pbcDxAiucSycl<returnShift>(pbcAiuc, xk, xj, *r_kj);
+    pbcDxAiucSycl<returnShift>(pbcAiuc, xk, xl, *r_kl);
+
+    *m = r_ij->cross(*r_kj);
+    *n = r_kj->cross(*r_kl);
+
+    Float3 w = m->cross(*n);
+
+    float wlen = sycl::sqrt(w.norm2());
+    float s    = m->dot(*n);
+
+    float mLenSq = m->norm2();
+    float nLenSq = n->norm2();
+    float mnInv  = sycl::rsqrt(mLenSq * nLenSq);
+
+    *cosval      = s * mnInv;
+    float sinval = wlen * mnInv;
+
+    float ipr  = r_ij->dot(*n);
+    float sign = (ipr < 0.0F) ? -1.0F : 1.0F;
+
+    return sign * sinval;
 }
 
 
@@ -577,59 +602,54 @@ static void do_dih_fup_gpu(const int                            i,
 template<bool calcVir, bool calcEner>
 static void pdihs_gpu(const int                                  i,
                       sycl::private_ptr<float>                   vtot_loc,
-                      const int                                  numBonds,
-                      const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                      const sycl::global_ptr<const t_iparams>    d_forceparams,
+                      const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                      const sycl::global_ptr<const t_iparams>    gm_forceparams,
                       const sycl::global_ptr<const sycl::float4> gm_xq,
                       sycl::global_ptr<Float3>                   gm_f,
                       sycl::local_ptr<Float3>                    sm_fShiftLoc,
                       const PbcAiuc&                             pbcAiuc,
                       const int                                  localId)
 {
-    if (i < numBonds)
+    int type = gm_forceatoms[5 * i];
+    int ai   = gm_forceatoms[5 * i + 1];
+    int aj   = gm_forceatoms[5 * i + 2];
+    int ak   = gm_forceatoms[5 * i + 3];
+    int al   = gm_forceatoms[5 * i + 4];
+
+    Float3 r_ij;
+    Float3 r_kj;
+    Float3 r_kl;
+    Float3 m;
+    Float3 n;
+    int    t1;
+    int    t2;
+    int    t3;
+    float  phi = dih_angle_gpu<calcVir>(
+            gm_xq[ai], gm_xq[aj], gm_xq[ak], gm_xq[al], pbcAiuc, &r_ij, &r_kj, &r_kl, &m, &n, &t1, &t2, &t3);
+
+    float vpd;
+    float ddphi;
+    dopdihs_gpu(gm_forceparams[type].pdihs.cpA,
+                gm_forceparams[type].pdihs.phiA,
+                gm_forceparams[type].pdihs.mult,
+                phi,
+                &vpd,
+                &ddphi);
+
+    if (calcEner)
     {
-        int type = d_forceatoms[5 * i];
-        int ai   = d_forceatoms[5 * i + 1];
-        int aj   = d_forceatoms[5 * i + 2];
-        int ak   = d_forceatoms[5 * i + 3];
-        int al   = d_forceatoms[5 * i + 4];
-
-        Float3 r_ij;
-        Float3 r_kj;
-        Float3 r_kl;
-        Float3 m;
-        Float3 n;
-        int    t1;
-        int    t2;
-        int    t3;
-        float  phi = dih_angle_gpu<calcVir>(
-                gm_xq[ai], gm_xq[aj], gm_xq[ak], gm_xq[al], pbcAiuc, &r_ij, &r_kj, &r_kl, &m, &n, &t1, &t2, &t3);
-
-        float vpd;
-        float ddphi;
-        dopdihs_gpu(d_forceparams[type].pdihs.cpA,
-                    d_forceparams[type].pdihs.phiA,
-                    d_forceparams[type].pdihs.mult,
-                    phi,
-                    &vpd,
-                    &ddphi);
-
-        if (calcEner)
-        {
-            *vtot_loc += vpd;
-        }
-
-        do_dih_fup_gpu<calcVir>(
-                ai, aj, ak, al, ddphi, r_ij, r_kj, r_kl, m, n, gm_f, sm_fShiftLoc, pbcAiuc, gm_xq, t1, t2, localId);
+        *vtot_loc += vpd;
     }
+
+    do_dih_fup_gpu<calcVir>(
+            ai, aj, ak, al, ddphi, r_ij, r_kj, r_kl, m, n, gm_f, sm_fShiftLoc, pbcAiuc, gm_xq, t1, t2, localId);
 }
 
 template<bool calcVir, bool calcEner>
 static void rbdihs_gpu(const int                                  i,
                        sycl::private_ptr<float>                   vtot_loc,
-                       const int                                  numBonds,
-                       const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                       const sycl::global_ptr<const t_iparams>    d_forceparams,
+                       const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                       const sycl::global_ptr<const t_iparams>    gm_forceparams,
                        const sycl::global_ptr<const sycl::float4> gm_xq,
                        sycl::global_ptr<Float3>                   gm_f,
                        sycl::local_ptr<Float3>                    sm_fShiftLoc,
@@ -638,13 +658,12 @@ static void rbdihs_gpu(const int                                  i,
 {
     constexpr float c0 = 0.0F, c1 = 1.0F, c2 = 2.0F, c3 = 3.0F, c4 = 4.0F, c5 = 5.0F;
 
-    if (i < numBonds)
     {
-        int type = d_forceatoms[5 * i];
-        int ai   = d_forceatoms[5 * i + 1];
-        int aj   = d_forceatoms[5 * i + 2];
-        int ak   = d_forceatoms[5 * i + 3];
-        int al   = d_forceatoms[5 * i + 4];
+        int type = gm_forceatoms[5 * i];
+        int ai   = gm_forceatoms[5 * i + 1];
+        int aj   = gm_forceatoms[5 * i + 2];
+        int ak   = gm_forceatoms[5 * i + 3];
+        int al   = gm_forceatoms[5 * i + 4];
 
         Float3 r_ij;
         Float3 r_kj;
@@ -653,27 +672,18 @@ static void rbdihs_gpu(const int                                  i,
         Float3 n;
         int    t1;
         int    t2;
-        int    t3;
-        float  phi = dih_angle_gpu<calcVir>(
-                gm_xq[ai], gm_xq[aj], gm_xq[ak], gm_xq[al], pbcAiuc, &r_ij, &r_kj, &r_kl, &m, &n, &t1, &t2, &t3);
 
-        /* Change to polymer convention */
-        if (phi < c0)
-        {
-            phi += c_Pi;
-        }
-        else
-        {
-            phi -= c_Pi;
-        }
-        float cos_phi = sycl::cos(phi);
-        /* Beware of accuracy loss, cannot use 1-sqrt(cos^2) ! */
-        float sin_phi = sycl::sin(phi);
+        // Changing the sign of sin and cos to convert to polymer convention
+        float       cos_phi;
+        const float negative_sin_phi = dih_angle_gpu_sincos<calcVir>(
+                gm_xq[ai], gm_xq[aj], gm_xq[ak], gm_xq[al], pbcAiuc, &r_ij, &r_kj, &r_kl, &m, &n, &t1, &t2, &cos_phi);
+        cos_phi *= -1;
 
         float parm[NR_RBDIHS];
+#pragma unroll NR_RBDIHS
         for (int j = 0; j < NR_RBDIHS; j++)
         {
-            parm[j] = d_forceparams[type].rbdihs.rbcA[j];
+            parm[j] = gm_forceparams[type].rbdihs.rbcA[j];
         }
         /* Calculate cosine powers */
         /* Calculate the energy */
@@ -718,7 +728,7 @@ static void rbdihs_gpu(const int                                  i,
             v += cosfac * rbp;
         }
 
-        ddphi = -ddphi * sin_phi;
+        ddphi = ddphi * negative_sin_phi;
 
         do_dih_fup_gpu<calcVir>(
                 ai, aj, ak, al, ddphi, r_ij, r_kj, r_kl, m, n, gm_f, sm_fShiftLoc, pbcAiuc, gm_xq, t1, t2, localId);
@@ -750,65 +760,60 @@ static constexpr float wrapAngle(float a)
 template<bool calcVir, bool calcEner>
 static void idihs_gpu(const int                                  i,
                       sycl::private_ptr<float>                   vtot_loc,
-                      const int                                  numBonds,
-                      const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                      const sycl::global_ptr<const t_iparams>    d_forceparams,
+                      const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                      const sycl::global_ptr<const t_iparams>    gm_forceparams,
                       const sycl::global_ptr<const sycl::float4> gm_xq,
                       sycl::global_ptr<Float3>                   gm_f,
                       sycl::local_ptr<Float3>                    sm_fShiftLoc,
                       const PbcAiuc&                             pbcAiuc,
                       const int                                  localId)
 {
-    if (i < numBonds)
+    int type = gm_forceatoms[5 * i];
+    int ai   = gm_forceatoms[5 * i + 1];
+    int aj   = gm_forceatoms[5 * i + 2];
+    int ak   = gm_forceatoms[5 * i + 3];
+    int al   = gm_forceatoms[5 * i + 4];
+
+    Float3 r_ij;
+    Float3 r_kj;
+    Float3 r_kl;
+    Float3 m;
+    Float3 n;
+    int    t1;
+    int    t2;
+    int    t3;
+    float  phi = dih_angle_gpu<calcVir>(
+            gm_xq[ai], gm_xq[aj], gm_xq[ak], gm_xq[al], pbcAiuc, &r_ij, &r_kj, &r_kl, &m, &n, &t1, &t2, &t3);
+
+    /* phi can jump if phi0 is close to Pi/-Pi, which will cause huge
+     * force changes if we just apply a normal harmonic.
+     * Instead, we first calculate phi-phi0 and take it modulo (-Pi,Pi).
+     * This means we will never have the periodicity problem, unless
+     * the dihedral is Pi away from phiO, which is very unlikely due to
+     * the potential.
+     */
+    float kA = gm_forceparams[type].harmonic.krA;
+    float pA = gm_forceparams[type].harmonic.rA;
+
+    float phi0 = pA * c_deg2RadF;
+
+    float dp = wrapAngle(phi - phi0);
+
+    float ddphi = -kA * dp;
+
+    do_dih_fup_gpu<calcVir>(
+            ai, aj, ak, al, -ddphi, r_ij, r_kj, r_kl, m, n, gm_f, sm_fShiftLoc, pbcAiuc, gm_xq, t1, t2, localId);
+
+    if (calcEner)
     {
-        int type = d_forceatoms[5 * i];
-        int ai   = d_forceatoms[5 * i + 1];
-        int aj   = d_forceatoms[5 * i + 2];
-        int ak   = d_forceatoms[5 * i + 3];
-        int al   = d_forceatoms[5 * i + 4];
-
-        Float3 r_ij;
-        Float3 r_kj;
-        Float3 r_kl;
-        Float3 m;
-        Float3 n;
-        int    t1;
-        int    t2;
-        int    t3;
-        float  phi = dih_angle_gpu<calcVir>(
-                gm_xq[ai], gm_xq[aj], gm_xq[ak], gm_xq[al], pbcAiuc, &r_ij, &r_kj, &r_kl, &m, &n, &t1, &t2, &t3);
-
-        /* phi can jump if phi0 is close to Pi/-Pi, which will cause huge
-         * force changes if we just apply a normal harmonic.
-         * Instead, we first calculate phi-phi0 and take it modulo (-Pi,Pi).
-         * This means we will never have the periodicity problem, unless
-         * the dihedral is Pi away from phiO, which is very unlikely due to
-         * the potential.
-         */
-        float kA = d_forceparams[type].harmonic.krA;
-        float pA = d_forceparams[type].harmonic.rA;
-
-        float phi0 = pA * c_deg2RadF;
-
-        float dp = wrapAngle(phi - phi0);
-
-        float ddphi = -kA * dp;
-
-        do_dih_fup_gpu<calcVir>(
-                ai, aj, ak, al, -ddphi, r_ij, r_kj, r_kl, m, n, gm_f, sm_fShiftLoc, pbcAiuc, gm_xq, t1, t2, localId);
-
-        if (calcEner)
-        {
-            *vtot_loc += -0.5F * ddphi * dp;
-        }
+        *vtot_loc += -0.5F * ddphi * dp;
     }
 }
 
 template<bool calcVir, bool calcEner>
 static void pairs_gpu(const int                                  i,
-                      const int                                  numBonds,
-                      const sycl::global_ptr<const t_iatom>      d_forceatoms,
-                      const sycl::global_ptr<const t_iparams>    iparams,
+                      const sycl::global_ptr<const t_iatom>      gm_forceatoms,
+                      const sycl::global_ptr<const t_iparams>    gm_iparams,
                       const sycl::global_ptr<const sycl::float4> gm_xq,
                       sycl::global_ptr<Float3>                   gm_f,
                       sycl::local_ptr<Float3>                    sm_fShiftLoc,
@@ -818,48 +823,45 @@ static void pairs_gpu(const int                                  i,
                       sycl::private_ptr<float>                   vtotElec_loc,
                       const int                                  localId)
 {
-    if (i < numBonds)
+    int type = gm_forceatoms[3 * i];
+    int ai   = gm_forceatoms[3 * i + 1];
+    int aj   = gm_forceatoms[3 * i + 2];
+
+    float qq  = gm_xq[ai].w() * gm_xq[aj].w();
+    float c6  = gm_iparams[type].lj14.c6A;
+    float c12 = gm_iparams[type].lj14.c12A;
+
+    /* Do we need to apply full periodic boundary conditions? */
+    Float3 dr;
+    int    fshift_index = pbcDxAiucSycl<calcVir>(pbcAiuc, gm_xq[ai], gm_xq[aj], dr);
+
+    float r2    = dr.norm2();
+    float rinv  = sycl::rsqrt(r2);
+    float rinv2 = rinv * rinv;
+    float rinv6 = rinv2 * rinv2 * rinv2;
+
+    /* Calculate the Coulomb force * r */
+    float velec = scale_factor * qq * rinv;
+
+    /* Calculate the LJ force * r and add it to the Coulomb part */
+    float fr = (12.0F * c12 * rinv6 - 6.0F * c6) * rinv6 + velec;
+
+    float  finvr = fr * rinv2;
+    Float3 f     = finvr * dr;
+
+    /* Add the forces */
+    staggeredAtomicAddForce(&gm_f[ai], f, localId);
+    staggeredAtomicAddForce(&gm_f[aj], -f, localId);
+    if (calcVir && fshift_index != gmx::c_centralShiftIndex)
     {
-        int type = d_forceatoms[3 * i];
-        int ai   = d_forceatoms[3 * i + 1];
-        int aj   = d_forceatoms[3 * i + 2];
+        atomicFetchAddLocal(sm_fShiftLoc[fshift_index], f);
+        atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], -f);
+    }
 
-        float qq  = gm_xq[ai].w() * gm_xq[aj].w();
-        float c6  = iparams[type].lj14.c6A;
-        float c12 = iparams[type].lj14.c12A;
-
-        /* Do we need to apply full periodic boundary conditions? */
-        Float3 dr;
-        int    fshift_index = pbcDxAiucSycl<calcVir>(pbcAiuc, gm_xq[ai], gm_xq[aj], dr);
-
-        float r2    = dr.norm2();
-        float rinv  = sycl::rsqrt(r2);
-        float rinv2 = rinv * rinv;
-        float rinv6 = rinv2 * rinv2 * rinv2;
-
-        /* Calculate the Coulomb force * r */
-        float velec = scale_factor * qq * rinv;
-
-        /* Calculate the LJ force * r and add it to the Coulomb part */
-        float fr = (12.0F * c12 * rinv6 - 6.0F * c6) * rinv6 + velec;
-
-        float  finvr = fr * rinv2;
-        Float3 f     = finvr * dr;
-
-        /* Add the forces */
-        staggeredAtomicAddForce(&gm_f[ai], f, localId);
-        staggeredAtomicAddForce(&gm_f[aj], -f, localId);
-        if (calcVir && fshift_index != gmx::c_centralShiftIndex)
-        {
-            atomicFetchAddLocal(sm_fShiftLoc[fshift_index], f);
-            atomicFetchAddLocal(sm_fShiftLoc[gmx::c_centralShiftIndex], -f);
-        }
-
-        if (calcEner)
-        {
-            *vtotVdw_loc += (c12 * rinv6 - c6) * rinv6;
-            *vtotElec_loc += velec;
-        }
+    if (calcEner)
+    {
+        *vtotVdw_loc += (c12 * rinv6 - c6) * rinv6;
+        *vtotElec_loc += velec;
     }
 }
 
@@ -873,25 +875,19 @@ using sycl::access::fence_space;
 using mode = sycl::access_mode;
 
 template<bool calcVir, bool calcEner>
-auto bondedKernel(sycl::handler&                                        cgh,
-                  const BondedGpuKernelParameters&                      kernelParams,
-                  const DeviceBuffer<t_iatom>                           d_iatoms[numFTypesOnGpu],
-                  DeviceAccessor<float, sycl::access_mode::read_write>  a_vTot,
-                  DeviceAccessor<t_iparams, sycl::access_mode::read>    a_forceParams,
-                  DeviceAccessor<sycl::float4, sycl::access_mode::read> a_xq,
-                  DeviceAccessor<Float3, sycl::access_mode::read_write> a_f,
-                  DeviceAccessor<Float3, sycl::access_mode::read_write> a_fShift)
+auto bondedKernel(sycl::handler&                   cgh,
+                  const BondedGpuKernelParameters& kernelParams,
+                  const DeviceBuffer<t_iatom>      gm_iatoms_[numFTypesOnGpu],
+                  float* __restrict__ gm_vTot,
+                  const t_iparams* __restrict__ gm_forceParams_,
+                  const sycl::float4* __restrict__ gm_xq_,
+                  Float3* __restrict__ gm_f_,
+                  Float3* __restrict__ gm_fShift_)
 {
-    a_vTot.bind(cgh);
-    a_forceParams.bind(cgh);
-    a_xq.bind(cgh);
-    a_f.bind(cgh);
-    a_fShift.bind(cgh);
-
     sycl::global_ptr<const t_iatom> gm_iatomsTemp[numFTypesOnGpu];
     for (int i = 0; i < numFTypesOnGpu; i++)
     {
-        gm_iatomsTemp[i] = d_iatoms[i] ? d_iatoms[i].buffer_->ptr_ : nullptr;
+        gm_iatomsTemp[i] = gm_iatoms_[i].get_pointer();
     }
     const FTypeArray<sycl::global_ptr<const t_iatom>> gm_iatoms(gm_iatomsTemp);
 
@@ -901,15 +897,15 @@ auto bondedKernel(sycl::handler&                                        cgh,
 
     const auto electrostaticsScaleFactor = kernelParams.electrostaticsScaleFactor;
 
-    sycl_2020::local_accessor<Float3, 1> sm_fShiftLoc{ sycl::range<1>(c_numShiftVectors), cgh };
+    sycl::local_accessor<Float3, 1> sm_fShiftLoc{ sycl::range<1>(c_numShiftVectors), cgh };
 
     const PbcAiuc pbcAiuc = kernelParams.pbcAiuc;
 
     return [=](sycl::nd_item<1> itemIdx) {
-        sycl::global_ptr<const t_iparams> gm_forceParams = a_forceParams.get_pointer();
-        sycl::global_ptr<const Float4>    gm_xq          = a_xq.get_pointer();
-        sycl::global_ptr<Float3>          gm_f           = a_f.get_pointer();
-        sycl::global_ptr<Float3>          gm_fShift      = a_fShift.get_pointer();
+        sycl::global_ptr<const t_iparams> gm_forceParams = gm_forceParams_;
+        sycl::global_ptr<const Float4>    gm_xq          = gm_xq_;
+        sycl::global_ptr<Float3>          gm_f           = gm_f_;
+        sycl::global_ptr<Float3>          gm_fShift      = gm_fShift_;
 
         const int tid          = itemIdx.get_global_linear_id();
         const int localId      = itemIdx.get_local_linear_id();
@@ -936,41 +932,46 @@ auto bondedKernel(sycl::handler&                                        cgh,
                 const int                             fTypeTid = tid - fTypeRangeStart[j];
                 const sycl::global_ptr<const t_iatom> iatoms   = gm_iatoms[j];
                 fType                                          = fTypesOnGpu[j];
+
                 if (calcEner)
                 {
                     threadComputedPotential = true;
+                }
+
+                if (fTypeTid >= numBonds)
+                {
+                    break;
                 }
 
                 switch (fType)
                 {
                     case F_BONDS:
                         bonds_gpu<calcVir, calcEner>(
-                                fTypeTid, &vtot_loc, numBonds, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
+                                fTypeTid, &vtot_loc, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
                         break;
                     case F_ANGLES:
                         angles_gpu<calcVir, calcEner>(
-                                fTypeTid, &vtot_loc, numBonds, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
+                                fTypeTid, &vtot_loc, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
                         break;
                     case F_UREY_BRADLEY:
                         urey_bradley_gpu<calcVir, calcEner>(
-                                fTypeTid, &vtot_loc, numBonds, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
+                                fTypeTid, &vtot_loc, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
                         break;
                     case F_PDIHS:
                     case F_PIDIHS:
                         pdihs_gpu<calcVir, calcEner>(
-                                fTypeTid, &vtot_loc, numBonds, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
+                                fTypeTid, &vtot_loc, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
                         break;
                     case F_RBDIHS:
                         rbdihs_gpu<calcVir, calcEner>(
-                                fTypeTid, &vtot_loc, numBonds, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
+                                fTypeTid, &vtot_loc, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
                         break;
                     case F_IDIHS:
                         idihs_gpu<calcVir, calcEner>(
-                                fTypeTid, &vtot_loc, numBonds, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
+                                fTypeTid, &vtot_loc, iatoms, gm_forceParams, gm_xq, gm_f, sm_fShiftLoc, pbcAiuc, localId);
                         break;
                     case F_LJ14:
                         pairs_gpu<calcVir, calcEner>(fTypeTid,
-                                                     numBonds,
                                                      iatoms,
                                                      gm_forceParams,
                                                      gm_xq,
@@ -995,10 +996,10 @@ auto bondedKernel(sycl::handler&                                        cgh,
             vtotElec_loc       = sycl::reduce_over_group(sg, vtotElec_loc, sycl::plus<float>());
             if (sg.leader())
             {
-                atomicFetchAdd(a_vTot[fType], vtot_loc);
+                atomicFetchAdd(gm_vTot[fType], vtot_loc);
                 if (fType == F_LJ14)
                 {
-                    atomicFetchAdd(a_vTot[F_COUL14], vtotElec_loc);
+                    atomicFetchAdd(gm_vTot[F_COUL14], vtotElec_loc);
                 }
             }
         }
@@ -1040,11 +1041,11 @@ void ListedForcesGpu::Impl::launchKernel()
         auto kernel = bondedKernel<calcVir, calcEner>(cgh,
                                                       kernelParams_,
                                                       kernelBuffers_.d_iatoms,
-                                                      kernelBuffers_.d_vTot,
-                                                      kernelBuffers_.d_forceParams,
-                                                      d_xq_,
-                                                      d_f_,
-                                                      d_fShift_);
+                                                      kernelBuffers_.d_vTot.get_pointer(),
+                                                      kernelBuffers_.d_forceParams.get_pointer(),
+                                                      d_xq_.get_pointer(),
+                                                      d_f_.get_pointer(),
+                                                      d_fShift_.get_pointer());
         cgh.parallel_for<kernelNameType>(rangeAll, kernel);
     });
 

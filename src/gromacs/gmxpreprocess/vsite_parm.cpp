@@ -127,8 +127,6 @@ struct VsiteBondParameter
  */
 struct Atom2VsiteBond
 {
-    //! Function type for conversion.
-    int ftype;
     //! The vsite parameters in a list.
     std::vector<VsiteBondParameter> vSiteBondedParameters;
 };
@@ -1608,7 +1606,7 @@ void clean_vsite_bondeds(gmx::ArrayRef<InteractionsOfType> plist,
              */
             if ((interaction_function[ftype].flags & IF_VSITE) && ftype != F_VSITEN)
             {
-                for (gmx::index interactionIndex = 0; interactionIndex < gmx::ssize(plist[ftype]);
+                for (gmx::Index interactionIndex = 0; interactionIndex < gmx::ssize(plist[ftype]);
                      interactionIndex++)
                 {
                     int k     = plist[ftype].interactionTypes[interactionIndex].ai();

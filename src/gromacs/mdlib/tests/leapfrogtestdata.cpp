@@ -84,6 +84,7 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
     kineticEnergyData_(std::vector<real>(numTCoupleGroups == 0 ? 1 : numTCoupleGroups, 0),
                        EnsembleTemperatureSetting::NotAvailable,
                        0.0,
+                       false,
                        0.0,
                        1),
     numTCoupleGroups_(numTCoupleGroups)
@@ -153,8 +154,6 @@ LeapFrogTestData::LeapFrogTestData(int        numAtoms,
 
     inputRecord_.eI      = IntegrationAlgorithm::MD;
     inputRecord_.delta_t = timestep_;
-
-    state_.flags = 0;
 
     state_.box[XX][XX] = 10.0;
     state_.box[XX][YY] = 0.0;

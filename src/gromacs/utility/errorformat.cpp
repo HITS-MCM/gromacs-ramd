@@ -59,7 +59,7 @@ namespace gmx
 namespace internal
 {
 
-void printFatalErrorHeader(FILE* fp, const char* title, const char* func, const std::filesystem::path& file, int line)
+void printFatalErrorHeader(FILE* fp, const char* title, const char* func, const char* file, int line)
 {
     // In case ProgramInfo is not initialized and there is an issue with the
     // initialization, fall back to "GROMACS".
@@ -74,10 +74,9 @@ void printFatalErrorHeader(FILE* fp, const char* title, const char* func, const 
 
     std::fprintf(fp, "\n-------------------------------------------------------\n");
     std::fprintf(fp, "Program:     %s, version %s\n", programName, gmx_version());
-    if (!file.empty())
+    if (file)
     {
-        std::fprintf(
-                fp, "Source file: %s (line %d)\n", stripSourcePrefix(file.string().c_str()).c_str(), line);
+        std::fprintf(fp, "Source file: %s (line %d)\n", stripSourcePrefix(file).c_str(), line);
     }
     if (func != nullptr)
     {
@@ -115,7 +114,7 @@ void printFatalErrorFooter(FILE* fp)
     std::fprintf(fp, "\n");
     std::fprintf(fp,
                  "For more information and tips for troubleshooting, please check the GROMACS\n"
-                 "website at http://www.gromacs.org/Documentation/Errors");
+                 "website at https://manual.gromacs.org/current/user-guide/run-time-errors.html");
     std::fprintf(fp, "\n-------------------------------------------------------\n");
 }
 

@@ -53,7 +53,7 @@
 namespace gmx
 {
 
-QMMMTopologyPreprocessor::QMMMTopologyPreprocessor(ArrayRef<const index> qmIndices) :
+QMMMTopologyPreprocessor::QMMMTopologyPreprocessor(ArrayRef<const Index> qmIndices) :
     qmIndices_(qmIndices.begin(), qmIndices.end())
 {
 }
@@ -111,7 +111,7 @@ ArrayRef<const LinkFrontier> QMMMTopologyPreprocessor::linkFrontier() const
     return linkFrontier_;
 }
 
-bool QMMMTopologyPreprocessor::isQMAtom(index globalAtomIndex)
+bool QMMMTopologyPreprocessor::isQMAtom(Index globalAtomIndex)
 {
     return (qmIndices_.find(globalAtomIndex) != qmIndices_.end());
 }
@@ -120,7 +120,7 @@ void QMMMTopologyPreprocessor::splitQMblocks(gmx_mtop_t* mtop)
 {
 
     // Global counter of atoms
-    index iAt = 0;
+    Index iAt = 0;
 
     /* Counter of molecules point to the specific moltype
      * i.e molblock 0 has 2 molecules have moltype 0 and molblock 2 has 1 additional molecule of type 0
@@ -274,18 +274,18 @@ void QMMMTopologyPreprocessor::buildQMMMAtomNumbers(gmx_mtop_t* mtop)
 {
     // Save to atomNumbers_ atom numbers of all atoms
     AtomIterator atoms(*mtop);
-    while (atoms->globalAtomNumber() < mtop->natoms)
+    while ((*atoms).globalAtomNumber() < mtop->natoms)
     {
         // Check if we have valid atomnumbers
-        if (atoms->atom().atomnumber < 0)
+        if ((*atoms).atom().atomnumber < 0)
         {
             gmx_fatal(FARGS,
                       "Atoms %d does not have atomic number needed for QMMM. Check atomtypes "
                       "section in your topology or forcefield.",
-                      atoms->globalAtomNumber());
+                      (*atoms).globalAtomNumber());
         }
 
-        atomNumbers_.push_back(atoms->atom().atomnumber);
+        atomNumbers_.push_back((*atoms).atom().atomnumber);
         atoms++;
     }
 

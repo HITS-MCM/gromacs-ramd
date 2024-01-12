@@ -368,12 +368,12 @@ static void write_checkpoint(const char*                     fn,
                                                 nppnodes,
                                                 { 0 },
                                                 npmenodes,
-                                                state->natoms,
+                                                state->numAtoms(),
                                                 state->ngtc,
                                                 state->nnhpres,
                                                 state->nhchainlength,
                                                 nlambda,
-                                                state->flags,
+                                                state->flags(),
                                                 0,
                                                 0,
                                                 0,
@@ -450,10 +450,14 @@ static void write_checkpoint(const char*                     fn,
                  * If renames are atomic (such as in POSIX systems),
                  * this copying should be unneccesary.
                  */
-                gmx_file_copy(fn, buf, FALSE);
-                /* We don't really care if this fails:
-                 * there's already a new checkpoint.
-                 */
+                if (gmx_file_copy(fn, buf, FALSE) != 0)
+                {
+                    GMX_THROW(gmx::FileIOError(
+                            gmx::formatString("Cannot rename checkpoint file from %s to %s; maybe "
+                                              "you are out of disk space?",
+                                              fn,
+                                              buf)));
+                }
             }
             else
             {

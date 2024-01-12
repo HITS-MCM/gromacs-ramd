@@ -85,7 +85,7 @@ public:
         /* We test all combinations of:
          *   eawhgrowth:
          *     eawhgrowthLINEAR:     final, normal update phase
-         *     ewahgrowthEXP_LINEAR: intial phase, updated size is constant
+         *     ewahgrowthEXP_LINEAR: initial phase, updated size is constant
          *   eawhpotential (test only eawhpotentialUMBRELLA (MC) for FEP lambda dimensions)
          *   disableUpdateSkips (should not affect the results):
          *     BiasParams::DisableUpdateSkips::yes: update the point state for every sample
@@ -302,6 +302,65 @@ TEST(BiasFepLambdaStateTest, DetectsCovering)
     {
         EXPECT_EQ(exitStepRef, step);
     }
+}
+
+// Test that we catch too large negative foreign energy differencs
+TEST(BiasFepLambdaStateTest, DetectsLargeNegativeForeignEnergy)
+{
+    constexpr AwhCoordinateProviderType coordinateProvider = AwhCoordinateProviderType::FreeEnergyLambda;
+    constexpr int                       coordIndex         = 0;
+    constexpr double                    origin             = 0;
+    constexpr double                    end                = c_numLambdaStates - 1;
+    constexpr double                    period             = 0;
+    constexpr double                    diffusion          = 1e-4 / (0.12927243028700 * 2);
+    auto                                awhDimBuffer =
+            awhDimParamSerialized(coordinateProvider, coordIndex, origin, end, period, diffusion);
+    auto                    awhDimArrayRef = gmx::arrayRefFromArray(&awhDimBuffer, 1);
+    const AwhTestParameters params(getAwhTestParameters(AwhHistogramGrowthType::ExponentialLinear,
+                                                        AwhPotentialType::Umbrella,
+                                                        awhDimArrayRef,
+                                                        false,
+                                                        0.4,
+                                                        true,
+                                                        1.0,
+                                                        c_numLambdaStates));
+
+    const double mdTimeStep = 0.1;
+
+    Bias bias(-1,
+              params.awhParams,
+              params.awhParams.awhBiasParams()[0],
+              params.dimParams,
+              params.beta,
+              mdTimeStep,
+              nullptr,
+              "",
+              Bias::ThisRankWillDoIO::No);
+
+    /* Some energies to use as base values (to which some noise is added later on). */
+    std::vector<double> neighborLambdaEnergies(c_numLambdaStates, 0);
+    std::vector<double> neighborLambdaDhdl(c_numLambdaStates, 0);
+
+    // Set last foreign energy to a too large negative value compared to zero
+    neighborLambdaEnergies[c_numLambdaStates - 1] =
+            -0.51 * gmx::detail::c_largePositiveExponent / params.beta;
+
+    int      umbrellaGridpointIndex = bias.state().coordState().umbrellaGridpoint();
+    awh_dvec coordValue = { bias.getGridCoordValue(umbrellaGridpointIndex)[0], 0, 0, 0 };
+
+    double potential     = 0;
+    double potentialJump = 0;
+
+    EXPECT_THROW_GMX(bias.calcForceAndUpdateBias(coordValue,
+                                                 neighborLambdaEnergies,
+                                                 neighborLambdaDhdl,
+                                                 &potential,
+                                                 &potentialJump,
+                                                 0,
+                                                 0,
+                                                 params.awhParams.seed(),
+                                                 nullptr),
+                     SimulationInstabilityError);
 }
 
 } // namespace test

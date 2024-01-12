@@ -72,6 +72,7 @@ class Awh;
 class ForceBuffersView;
 class ForceWithVirial;
 class ImdSession;
+struct MDModulesNotifiers;
 class MdrunScheduleWorkload;
 class MDLogger;
 class StepWorkload;
@@ -104,6 +105,7 @@ void do_force(FILE*                               log,
               const t_commrec*                    cr,
               const gmx_multisim_t*               ms,
               const t_inputrec&                   inputrec,
+              const gmx::MDModulesNotifiers&      mdModulesNotifiers,
               gmx::Awh*                           awh,
               gmx_enfrot*                         enforcedRotation,
               gmx::ImdSession*                    imdSession,
@@ -114,6 +116,7 @@ void do_force(FILE*                               log,
               const gmx_localtop_t*               top,
               const matrix                        box,
               gmx::ArrayRefWithPadding<gmx::RVec> coordinates,
+              gmx::ArrayRef<gmx::RVec>            velocities,
               const history_t*                    hist,
               gmx::ForceBuffersView*              force,
               tensor                              vir_force,
@@ -121,13 +124,12 @@ void do_force(FILE*                               log,
               gmx_enerdata_t*                     enerd,
               gmx::ArrayRef<const real>           lambda,
               t_forcerec*                         fr,
-              gmx::MdrunScheduleWorkload*         runScheduleWork,
+              const gmx::MdrunScheduleWorkload&   runScheduleWork,
               gmx::VirtualSitesHandler*           vsite,
               rvec                                mu_tot,
               double                              t,
               gmx_edsam*                          ed,
               CpuPpLongRangeNonbondeds*           longRangeNonbondeds,
-              int                                 legacyFlags,
               const DDBalanceRegionHandler&       ddBalanceRegionHandler);
 
 /* Communicate coordinates (if parallel).

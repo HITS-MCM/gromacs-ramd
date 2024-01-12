@@ -77,9 +77,9 @@ void extendStateWithOriresHistory(const gmx_mtop_t& mtop, const t_inputrec& ir, 
     if (numRestraints > 0 && ir.orires_tau > 0)
     {
         /* Extend the state with the orires history */
-        globalState->flags |= enumValueToBitMask(StateEntry::OrireInitF);
+        globalState->addEntry(StateEntry::OrireInitF);
         globalState->hist.orire_initf = 1;
-        globalState->flags |= enumValueToBitMask(StateEntry::OrireDtav);
+        globalState->addEntry(StateEntry::OrireDtav);
         globalState->hist.orire_Dtav.resize(numRestraints * 5);
     }
 }
@@ -88,9 +88,9 @@ namespace
 {
 
 //! Creates and returns a list of global atom indices of the orientation restraint fit group
-std::vector<gmx::index> fitGlobalAtomIndices(const gmx_mtop_t& mtop)
+std::vector<gmx::Index> fitGlobalAtomIndices(const gmx_mtop_t& mtop)
 {
-    std::vector<gmx::index> indices;
+    std::vector<gmx::Index> indices;
 
     for (int i = 0; i < mtop.natoms; i++)
     {
@@ -445,7 +445,7 @@ real calc_orires_dev(const gmx_multisim_t* ms,
 
     clear_rvec(com);
     double     mtot               = 0.0;
-    gmx::index referenceListIndex = 0;
+    gmx::Index referenceListIndex = 0;
     for (const int fitLocalAtomIndex : fitLocalAtomIndices)
     {
         const gmx::RVec& xLocal  = xWholeMolecules[fitLocalAtomIndex];

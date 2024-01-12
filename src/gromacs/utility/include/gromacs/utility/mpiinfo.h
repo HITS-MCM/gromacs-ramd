@@ -34,22 +34,31 @@
 #ifndef GMX_UTILITY_MPI_INFO_H
 #define GMX_UTILITY_MPI_INFO_H
 
+#include <string_view>
+
 namespace gmx
 {
 /*! \brief Enum describing GPU-aware support in underlying MPI library.
+ *
+ * Ordinal, so that the lowest value can represent the minimal level of
+ * support found across a set of devices, perhaps across nodes or ranks.
  */
 enum class GpuAwareMpiStatus : int
 {
-    Supported,    //!< GPU-aware support available.
-    NotSupported, //!< GPU-aware support NOT available.
-    NotKnown,     //!< GPU-aware support status not known.
-    Forced        //!< GPU-aware support forced using env variable
+    NotSupported = 0, //!< GPU-aware support NOT available or not known.
+    Forced,           //!< GPU-aware support forced using env variable
+    Supported,        //!< GPU-aware support available.
 };
 
+//! Return the string obtained from the MPI library via MPI_Get_library_version
+std::string_view mpiLibraryVersionString();
+
+//! Return whether GROMACS is linked against an MPI library describing itself as Intel MPI
+bool usingIntelMpi();
 
 /*! \brief
  * Wrapper on top of \c MPIX_Query_cuda_support()
- * For MPI implementations which don't support this function, it returns NotKnown
+ * For MPI implementations which don't support this function, it returns \c NotSupported.
  * Even when an MPI implementation does support this function, MPI library might not be
  * robust enough to detect CUDA-aware support at runtime correctly e.g. when UCX PML is used
  * or CUDA is disabled at runtime
@@ -59,7 +68,7 @@ GpuAwareMpiStatus checkMpiCudaAwareSupport();
 
 /*! \brief
  * Wrapper on top of \c MPIX_Query_hip_support() or \c MPIX_Query_rocm_support().
- * For MPI implementations which don't support this function, it returns NotKnown.
+ * For MPI implementations which don't support this function, it returns \c NotSupported.
  *
  * Currently, this function is only supported by MPICH and OpenMPI 5.0-rc, and is not very reliable.
  *
@@ -67,10 +76,11 @@ GpuAwareMpiStatus checkMpiCudaAwareSupport();
 GpuAwareMpiStatus checkMpiHipAwareSupport();
 
 /*! \brief
- * Wrapper on top of \c MPIX_Query_ze_support()
- * For MPI implementations which don't support this function, it returns NotKnown.
+ * Wrapper on top of \c MPIX_Query_ze_support() (for MPICH) or custom
+ * logic (for IntelMPI).
  *
- * Currently, this function is only supported by MPICH, not OpenMPI or IntelMPI.
+ * For other MPI implementations which perhaps don't support the above
+ * function, it returns NotSupported.
  *
  * \returns     LevelZero-aware status in MPI implementation */
 GpuAwareMpiStatus checkMpiZEAwareSupport();

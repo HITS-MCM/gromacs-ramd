@@ -261,6 +261,22 @@ gmx_bool ir_vdw_might_be_zero_at_cutoff(const t_inputrec* ir)
     return (ir_vdw_is_zero_at_cutoff(ir) || ir->vdwtype == VanDerWaalsType::User);
 }
 
+bool ir_haveBoxDeformation(const t_inputrec& ir)
+{
+    for (int i = 0; i < DIM; i++)
+    {
+        for (int j = 0; j < DIM; j++)
+        {
+            if (ir.deform[i][j] != 0.0_real)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static void done_t_rot(t_rot* rot)
 {
     if (rot == nullptr)
@@ -663,12 +679,18 @@ static void pr_awh_bias(FILE* fp, int indent, const gmx::AwhBiasParams& awhBiasP
     PR(opt, awhBiasParams.initialErrorEstimate());
     sprintf(opt, "%s-growth", prefix);
     PS(opt, enumValueToString(awhBiasParams.growthType()));
+    sprintf(opt, "%s-growth-factor", prefix);
+    PR(opt, awhBiasParams.growthFactor());
     sprintf(opt, "%s-target", prefix);
     PS(opt, enumValueToString(awhBiasParams.targetDistribution()));
-    sprintf(opt, "%s-target-beta-scalng", prefix);
+    sprintf(opt, "%s-target-beta-scaling", prefix);
     PR(opt, awhBiasParams.targetBetaScaling());
     sprintf(opt, "%s-target-cutoff", prefix);
     PR(opt, awhBiasParams.targetCutoff());
+    sprintf(opt, "%s-target-metric-scaling", prefix);
+    PS(opt, EBOOL(awhBiasParams.scaleTargetByMetric()));
+    sprintf(opt, "%s-target-metric-scaling-limit", prefix);
+    PR(opt, awhBiasParams.targetMetricScalingLimit());
     sprintf(opt, "%s-user-data", prefix);
     PS(opt, EBOOL(awhBiasParams.userPMFEstimate()));
     sprintf(opt, "%s-share-group", prefix);
@@ -859,6 +881,7 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
                 PI(factorKey.c_str(), mtsLevel.stepFactor);
             }
         }
+        PR("mass-repartition-factor", ir->massRepartitionFactor);
         PS("comm-mode", enumValueToString(ir->comm_mode));
         PI("nstcomm", ir->nstcomm);
 
@@ -893,6 +916,7 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
         PS("pbc", c_pbcTypeNames[ir->pbcType].c_str());
         PS("periodic-molecules", EBOOL(ir->bPeriodicMols));
         PR("verlet-buffer-tolerance", ir->verletbuf_tol);
+        PR("verlet-buffer-pressure-tolerance", ir->verletBufferPressureTolerance);
         PR("rlist", ir->rlist);
 
         /* Options for electrostatics and VdW */
@@ -936,18 +960,25 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
 
         /* Options for weak coupling algorithms */
         PS("ensemble-temperature-setting", enumValueToString(ir->ensembleTemperatureSetting));
-        PR("ensemble-temperature", ir->ensembleTemperature);
+        if (ir->ensembleTemperatureSetting == EnsembleTemperatureSetting::Constant)
+        {
+            PR("ensemble-temperature", ir->ensembleTemperature);
+        }
         PS("tcoupl", enumValueToString(ir->etc));
         PI("nsttcouple", ir->nsttcouple);
         PI("nh-chain-length", ir->opts.nhchainlength);
         PS("print-nose-hoover-chain-variables", EBOOL(ir->bPrintNHChains));
 
         PS("pcoupl", enumValueToString(ir->pressureCouplingOptions.epc));
-        PS("pcoupltype", enumValueToString(ir->pressureCouplingOptions.epct));
-        PI("nstpcouple", ir->pressureCouplingOptions.nstpcouple);
-        PR("tau-p", ir->pressureCouplingOptions.tau_p);
-        pr_matrix(fp, indent, "compressibility", ir->pressureCouplingOptions.compress, bMDPformat);
-        pr_matrix(fp, indent, "ref-p", ir->pressureCouplingOptions.ref_p, bMDPformat);
+        if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
+        {
+            PS("pcoupltype", enumValueToString(ir->pressureCouplingOptions.epct));
+            PI("nstpcouple", ir->pressureCouplingOptions.nstpcouple);
+            PR("tau-p", ir->pressureCouplingOptions.tau_p);
+            pr_matrix(fp, indent, "compressibility", ir->pressureCouplingOptions.compress, bMDPformat);
+            pr_matrix(fp, indent, "ref-p", ir->pressureCouplingOptions.ref_p, bMDPformat);
+        }
+        // Refcoord-scaling is also needed for other algorithms that affect the box
         PS("refcoord-scaling", enumValueToString(ir->pressureCouplingOptions.refcoord_scaling));
 
         if (bMDPformat)
@@ -1088,6 +1119,25 @@ void pr_inputrec(FILE* fp, int indent, const char* title, const t_inputrec* ir, 
 #undef PR
 #undef PI
 
+static void cmpPressureCouplingOptions(FILE*                          fp,
+                                       const PressureCouplingOptions& pco1,
+                                       const PressureCouplingOptions& pco2,
+                                       real                           ftol,
+                                       real                           abstol)
+{
+    GMX_RELEASE_ASSERT(pco1.epc != PressureCoupling::No && pco2.epc != PressureCoupling::No,
+                       "Need p-coupling");
+
+    cmpEnum(fp, "inputrec->pressureCouplingOptions.epct", pco1.epct, pco2.epct);
+    cmp_real(fp, "inputrec->pressureCouplingOptions.tau_p", -1, pco1.tau_p, pco2.tau_p, ftol, abstol);
+    cmp_rvec(fp, "inputrec->pressureCouplingOptions.ref_p(x)", -1, pco1.ref_p[XX], pco2.ref_p[XX], ftol, abstol);
+    cmp_rvec(fp, "inputrec->pressureCouplingOptions.ref_p(y)", -1, pco1.ref_p[YY], pco2.ref_p[YY], ftol, abstol);
+    cmp_rvec(fp, "inputrec->pressureCouplingOptions.ref_p(z)", -1, pco1.ref_p[ZZ], pco2.ref_p[ZZ], ftol, abstol);
+    cmp_rvec(fp, "inputrec->pressureCouplingOptions.compress(x)", -1, pco1.compress[XX], pco2.compress[XX], ftol, abstol);
+    cmp_rvec(fp, "inputrec->pressureCouplingOptions.compress(y)", -1, pco1.compress[YY], pco2.compress[YY], ftol, abstol);
+    cmp_rvec(fp, "inputrec->pressureCouplingOptions.compress(z)", -1, pco1.compress[ZZ], pco2.compress[ZZ], ftol, abstol);
+}
+
 static void cmp_grpopts(FILE* fp, const t_grpopts* opt1, const t_grpopts* opt2, real ftol, real abstol)
 {
     int  i, j;
@@ -1210,6 +1260,13 @@ static void cmp_awhBiasParams(FILE*                     fp,
                abstol);
     cmpEnum<gmx::AwhHistogramGrowthType>(
             fp, "inputrec->awhParams->biaseGrowth", bias1.growthType(), bias2.growthType());
+    cmp_double(fp,
+               "inputrec->awhParams->biasGrowthFactor",
+               biasIndex,
+               bias1.growthFactor(),
+               bias2.growthFactor(),
+               ftol,
+               abstol);
     cmp_bool(fp, "inputrec->awhParams->biasbUserData", biasIndex, bias1.userPMFEstimate(), bias2.userPMFEstimate());
     cmp_double(fp,
                "inputrec->awhParams->biaserror_initial",
@@ -1422,6 +1479,7 @@ void cmp_inputrec(FILE* fp, const t_inputrec* ir1, const t_inputrec* ir2, real f
                 ir1->mtsLevels[1].stepFactor,
                 ir2->mtsLevels[1].stepFactor);
     }
+    cmp_real(fp, "inputrec->massRepartitionFactor", -1, ir1->massRepartitionFactor, ir2->massRepartitionFactor, ftol, abstol);
     cmp_int(fp, "inputrec->pbcType", -1, static_cast<int>(ir1->pbcType), static_cast<int>(ir2->pbcType));
     cmp_bool(fp, "inputrec->bPeriodicMols", -1, ir1->bPeriodicMols, ir2->bPeriodicMols);
     cmpEnum(fp, "inputrec->cutoff_scheme", ir1->cutoff_scheme, ir2->cutoff_scheme);
@@ -1459,7 +1517,11 @@ void cmp_inputrec(FILE* fp, const t_inputrec* ir1, const t_inputrec* ir2, real f
             static_cast<int>(ir2->bContinuation));
     cmp_int(fp, "inputrec->bShakeSOR", -1, static_cast<int>(ir1->bShakeSOR), static_cast<int>(ir2->bShakeSOR));
     cmpEnum(fp, "inputrec->ensembleTemperatureSetting", ir1->ensembleTemperatureSetting, ir2->ensembleTemperatureSetting);
-    cmp_real(fp, "inputrec->ensembleTemperature", -1, ir1->ensembleTemperature, ir2->ensembleTemperature, ftol, abstol);
+    if (ir1->ensembleTemperatureSetting == EnsembleTemperatureSetting::Constant
+        && ir2->ensembleTemperatureSetting == EnsembleTemperatureSetting::Constant)
+    {
+        cmp_real(fp, "inputrec->ensembleTemperature", -1, ir1->ensembleTemperature, ir2->ensembleTemperature, ftol, abstol);
+    }
     cmpEnum(fp, "inputrec->etc", ir1->etc, ir2->etc);
     cmp_int(fp,
             "inputrec->bPrintNHChains",
@@ -1470,59 +1532,13 @@ void cmp_inputrec(FILE* fp, const t_inputrec* ir1, const t_inputrec* ir2, real f
             "inputrec->pressureCouplingOptions.epc",
             ir1->pressureCouplingOptions.epc,
             ir2->pressureCouplingOptions.epc);
-    cmpEnum(fp,
-            "inputrec->pressureCouplingOptions.epct",
-            ir1->pressureCouplingOptions.epct,
-            ir2->pressureCouplingOptions.epct);
-    cmp_real(fp,
-             "inputrec->pressureCouplingOptions.tau_p",
-             -1,
-             ir1->pressureCouplingOptions.tau_p,
-             ir2->pressureCouplingOptions.tau_p,
-             ftol,
-             abstol);
-    cmp_rvec(fp,
-             "inputrec->pressureCouplingOptions.ref_p(x)",
-             -1,
-             ir1->pressureCouplingOptions.ref_p[XX],
-             ir2->pressureCouplingOptions.ref_p[XX],
-             ftol,
-             abstol);
-    cmp_rvec(fp,
-             "inputrec->pressureCouplingOptions.ref_p(y)",
-             -1,
-             ir1->pressureCouplingOptions.ref_p[YY],
-             ir2->pressureCouplingOptions.ref_p[YY],
-             ftol,
-             abstol);
-    cmp_rvec(fp,
-             "inputrec->pressureCouplingOptions.ref_p(z)",
-             -1,
-             ir1->pressureCouplingOptions.ref_p[ZZ],
-             ir2->pressureCouplingOptions.ref_p[ZZ],
-             ftol,
-             abstol);
-    cmp_rvec(fp,
-             "inputrec->pressureCouplingOptions.compress(x)",
-             -1,
-             ir1->pressureCouplingOptions.compress[XX],
-             ir2->pressureCouplingOptions.compress[XX],
-             ftol,
-             abstol);
-    cmp_rvec(fp,
-             "inputrec->pressureCouplingOptions.compress(y)",
-             -1,
-             ir1->pressureCouplingOptions.compress[YY],
-             ir2->pressureCouplingOptions.compress[YY],
-             ftol,
-             abstol);
-    cmp_rvec(fp,
-             "inputrec->pressureCouplingOptions.compress(z)",
-             -1,
-             ir1->pressureCouplingOptions.compress[ZZ],
-             ir2->pressureCouplingOptions.compress[ZZ],
-             ftol,
-             abstol);
+    if (ir1->pressureCouplingOptions.epc != PressureCoupling::No
+        && ir2->pressureCouplingOptions.epc != PressureCoupling::No)
+    {
+        cmpPressureCouplingOptions(
+                fp, ir1->pressureCouplingOptions, ir2->pressureCouplingOptions, ftol, abstol);
+    }
+    // Refcoord-scaling is also needed for other algorithms that affect the box
     cmpEnum(fp,
             "refcoord_scaling",
             ir1->pressureCouplingOptions.refcoord_scaling,
@@ -1530,6 +1546,13 @@ void cmp_inputrec(FILE* fp, const t_inputrec* ir1, const t_inputrec* ir2, real f
     cmp_rvec(fp, "inputrec->posres_com", -1, ir1->posres_com, ir2->posres_com, ftol, abstol);
     cmp_rvec(fp, "inputrec->posres_comB", -1, ir1->posres_comB, ir2->posres_comB, ftol, abstol);
     cmp_real(fp, "inputrec->verletbuf_tol", -1, ir1->verletbuf_tol, ir2->verletbuf_tol, ftol, abstol);
+    cmp_real(fp,
+             "inputrec->verlet-buffer-pressure-tolerance",
+             -1,
+             ir1->verletBufferPressureTolerance,
+             ir2->verletBufferPressureTolerance,
+             ftol,
+             abstol);
     cmp_real(fp, "inputrec->rlist", -1, ir1->rlist, ir2->rlist, ftol, abstol);
     cmp_real(fp, "inputrec->rtpi", -1, ir1->rtpi, ir2->rtpi, ftol, abstol);
     cmpEnum(fp, "inputrec->coulombtype", ir1->coulombtype, ir2->coulombtype);

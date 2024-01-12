@@ -139,10 +139,10 @@ void pme_gpu_free_energy_virial(PmeGpu* pmeGpu);
  * Clears the energy and virial memory on GPU with 0.
  * Should be called at the end of PME computation which returned energy/virial.
  *
- * \param[in] pmeGpu            The PME GPU structure.
- * \param[in] useMdGpuGraph     Whether MD GPU Graph is in use.
+ * \param[in] pmeGpu                          The PME GPU structure.
+ * \param[in] gpuGraphWithSeparatePmeRank     Whether MD GPU Graph with separate PME rank is in use.
  */
-void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu, bool useMdGpuGraph);
+void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu, bool gpuGraphWithSeparatePmeRank);
 
 /*! \libinternal \brief
  * Reallocates and copies the pre-computed B-spline values to the GPU.
@@ -374,6 +374,7 @@ void pme_gpu_destroy_3dfft(const PmeGpu* pmeGpu);
  * \param[in]  useGpuDirectComm          Whether direct GPU PME-PP communication is active
  * \param[in]  pmeCoordinateReceiverGpu  Coordinate receiver object, which must be valid when
  *                                       direct GPU PME-PP communication is active
+ * \param[in]  useMdGpuGraph             Whether MD GPU Graph is in use.
  * \param[in]  wcycle                    The wallclock counter.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_spread(const PmeGpu*         GPU_FUNC_ARGUMENT(pmeGpu),
@@ -385,6 +386,7 @@ GPU_FUNC_QUALIFIER void pme_gpu_spread(const PmeGpu*         GPU_FUNC_ARGUMENT(p
                                        real                  GPU_FUNC_ARGUMENT(lambda),
                                        bool                  GPU_FUNC_ARGUMENT(useGpuDirectComm),
                                        gmx::PmeCoordinateReceiverGpu* GPU_FUNC_ARGUMENT(pmeCoordinateReceiverGpu),
+                                       bool           GPU_FUNC_ARGUMENT(useMdGpuGraph),
                                        gmx_wallcycle* GPU_FUNC_ARGUMENT(wcycle)) GPU_FUNC_TERM;
 
 /*! \libinternal \brief
@@ -421,12 +423,14 @@ GPU_FUNC_QUALIFIER void pme_gpu_solve(const PmeGpu* GPU_FUNC_ARGUMENT(pmeGpu),
  * \param[in]     fftSetup                 Host-side FFT setup structure used in Mixed mode
  * \param[in]     lambda                   The lambda value to use.
  * \param[in]     wcycle                   The wallclock counter.
+ * \param[in]     computeVirial            Whether this is a virial step.
  */
 GPU_FUNC_QUALIFIER void pme_gpu_gather(PmeGpu*               GPU_FUNC_ARGUMENT(pmeGpu),
                                        float**               GPU_FUNC_ARGUMENT(h_grids),
                                        gmx_parallel_3dfft_t* GPU_FUNC_ARGUMENT(fftSetup),
                                        float                 GPU_FUNC_ARGUMENT(lambda),
-                                       gmx_wallcycle* GPU_FUNC_ARGUMENT(wcycle)) GPU_FUNC_TERM;
+                                       gmx_wallcycle*        GPU_FUNC_ARGUMENT(wcycle),
+                                       bool GPU_FUNC_ARGUMENT(computeVirial)) GPU_FUNC_TERM;
 
 
 /*! \brief Sets the device pointer to coordinate data
@@ -442,6 +446,9 @@ GPU_FUNC_QUALIFIER void pme_gpu_set_kernelparam_coordinates(const PmeGpu* GPU_FU
  */
 GPU_FUNC_QUALIFIER DeviceBuffer<gmx::RVec> pme_gpu_get_kernelparam_forces(const PmeGpu* GPU_FUNC_ARGUMENT(pmeGpu))
         GPU_FUNC_TERM_WITH_RETURN(DeviceBuffer<gmx::RVec>{});
+
+GPU_FUNC_QUALIFIER void pme_gpu_set_kernelparam_useNvshmem(const PmeGpu* GPU_FUNC_ARGUMENT(pmeGpu),
+                                                           bool GPU_FUNC_ARGUMENT(useNvshmem)) GPU_FUNC_TERM;
 
 /*! \brief Return pointer to the sync object triggered after the PME force calculation completion
  * \param[in] pmeGpu         The PME GPU structure.

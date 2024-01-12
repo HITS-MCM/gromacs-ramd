@@ -87,7 +87,6 @@ struct t_trxstatus
     t_fileio*            fio;
     gmx_tng_trajectory_t tng;
     int                  natoms;
-    double               BOX[3];
     char*                persistent_line; /* Persistent line for reading g96 trajectories */
 #if GMX_USE_PLUGINS
     gmx_vmdplugin_t* vmdplugin;
@@ -647,7 +646,7 @@ void close_trx(t_trxstatus* status)
     }
     sfree(status->persistent_line);
 #if GMX_USE_PLUGINS
-    sfree(status->vmdplugin);
+    delete status->vmdplugin;
 #endif
     /* The memory in status->xframe is lost here,
      * but the read_first_x/read_next_x functions are deprecated anyhow.
@@ -1057,11 +1056,11 @@ bool read_first_frame(const gmx_output_env_t*      oenv,
                     "the VMD plug-ins.\n"
                     "This will only work in case the VMD plugins are found and it is a trajectory "
                     "format supported by VMD.\n",
-                    fn);
+                    fn.u8string().c_str());
             gmx_fio_fp_close(fio); /*only close the file without removing FIO entry*/
             if (!read_first_vmd_frame(fn, &(*status)->vmdplugin, fr))
             {
-                gmx_fatal(FARGS, "Not supported in read_first_frame: %s", fn);
+                gmx_fatal(FARGS, "Not supported in read_first_frame: %s", fn.u8string().c_str());
             }
 #else
             gmx_fatal(FARGS,

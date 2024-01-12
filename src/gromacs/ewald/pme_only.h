@@ -69,6 +69,7 @@ int gmx_pmeonly(gmx_pme_t**                     pme,
                 t_inputrec*                     ir,
                 PmeRunMode                      runMode,
                 bool                            useGpuPmePpCommunication,
+                bool                            useNvshmem,
                 const gmx::DeviceStreamManager* deviceStreamManager);
 
 #endif

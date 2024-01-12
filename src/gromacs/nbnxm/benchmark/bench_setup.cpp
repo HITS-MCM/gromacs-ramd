@@ -90,10 +90,10 @@ static std::optional<std::string> checkKernelSetup(const KernelBenchOptions& opt
 
     // Check SIMD support
     if ((options.nbnxmSimd != BenchMarkKernels::SimdNo && !GMX_SIMD)
-#ifndef GMX_NBNXN_SIMD_4XN
+#if !GMX_HAVE_NBNXM_SIMD_4XM
         || options.nbnxmSimd == BenchMarkKernels::Simd4XM
 #endif
-#ifndef GMX_NBNXN_SIMD_2XNN
+#if !GMX_HAVE_NBNXM_SIMD_2XMM
         || options.nbnxmSimd == BenchMarkKernels::Simd2XMM
 #endif
     )
@@ -231,18 +231,17 @@ static std::unique_ptr<nonbonded_verlet_t> setupNbnxmForBenchInstance(const Kern
 
     const real atomDensity = system.coordinates.size() / det(system.box);
 
-    nbnxn_put_on_grid(nbv.get(),
-                      system.box,
-                      0,
-                      lowerCorner,
-                      upperCorner,
-                      nullptr,
-                      { 0, int(system.coordinates.size()) },
-                      atomDensity,
-                      atomInfo,
-                      system.coordinates,
-                      0,
-                      nullptr);
+    nbv->putAtomsOnGrid(system.box,
+                        0,
+                        lowerCorner,
+                        upperCorner,
+                        nullptr,
+                        { 0, int(system.coordinates.size()) },
+                        atomDensity,
+                        atomInfo,
+                        system.coordinates,
+                        0,
+                        nullptr);
 
     nbv->constructPairlist(gmx::InteractionLocality::Local, system.excls, 0, &nrnb);
 
@@ -258,12 +257,12 @@ static void expandSimdOptionAndPushBack(const KernelBenchOptions&        options
     if (options.nbnxmSimd == BenchMarkKernels::SimdAuto)
     {
         bool addedInstance = false;
-#ifdef GMX_NBNXN_SIMD_4XN
+#if GMX_HAVE_NBNXM_SIMD_4XM
         optionsList->push_back(options);
         optionsList->back().nbnxmSimd = BenchMarkKernels::Simd4XM;
         addedInstance                 = true;
 #endif
-#ifdef GMX_NBNXN_SIMD_2XNN
+#if GMX_HAVE_NBNXM_SIMD_2XMM
         optionsList->push_back(options);
         optionsList->back().nbnxmSimd = BenchMarkKernels::Simd2XMM;
         addedInstance                 = true;
@@ -371,7 +370,7 @@ static void setupAndRunInstance(const gmx::BenchmarkSystem& system,
 
     const int numIterations = (doWarmup ? options.numWarmupIterations : options.numIterations);
     const PairlistSet& pairlistSet = nbv->pairlistSets().pairlistSet(gmx::InteractionLocality::Local);
-    const gmx::index numPairs = pairlistSet.natpair_ljq_ + pairlistSet.natpair_lj_ + pairlistSet.natpair_q_;
+    const gmx::Index numPairs = pairlistSet.natpair_ljq_ + pairlistSet.natpair_lj_ + pairlistSet.natpair_q_;
     gmx_cycles_t cycles = gmx_cycles_read();
     for (int iter = 0; iter < numIterations; iter++)
     {

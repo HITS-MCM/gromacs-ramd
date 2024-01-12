@@ -61,138 +61,22 @@
 #include "gromacs/utility/stringutil.h"
 
 //! True if only the main rank should print debugging output
-constexpr bool onlyMainDebugPrints = true;
+static constexpr bool sc_onlyMainDebugPrints = true;
 //! True if cycle counter nesting depth debugging prints are enabled
-constexpr bool debugPrintDepth = false;
+static constexpr bool sc_debugPrintDepth = false;
 
-template<int maxLength, typename Container>
-static constexpr bool checkStringsLengths(const Container& strings)
-{
-    // NOLINTNEXTLINE(readability-use-anyofallof) // std::all_of is constexpr only since C++20
-    for (const char* str : strings)
-    {
-        if (std::char_traits<char>::length(str) > maxLength)
-        {
-            return false;
-        }
-    }
-    return true;
-}
 
-/* Each name should not exceed 22 printing characters
-   (ie. terminating null can be twentieth) */
-static const char* enumValuetoString(WallCycleCounter enumValue)
-{
-    constexpr gmx::EnumerationArray<WallCycleCounter, const char*> wallCycleCounterNames = {
-        "Run",
-        "Step",
-        "PP during PME",
-        "Domain decomp.",
-        "DD comm. load",
-        "DD comm. bounds",
-        "Vsite constr.",
-        "Send X to PME",
-        "Neighbor search",
-        "Launch PP GPU ops.",
-        "Comm. coord.",
-        "Force",
-        "Wait + Comm. F",
-        "PME mesh",
-        "PME GPU mesh",
-        "PME redist. X/F",
-        "PME spread",
-        "PME gather",
-        "PME 3D-FFT",
-        "PME 3D-FFT Comm.",
-        "PME solve LJ",
-        "PME solve Elec",
-        "Wait PME GPU D2H",
-        "PME 3D-FFT",
-        "PME solve",
-        "Wait PME GPU gather",
-        "Reduce GPU PME F",
-        "Launch PME GPU ops.",
-        "Wait PME Recv. PP X",
-        "Wait PME GPU spread",
-        "Wait GPU FFT to PME",
-        "PME Halo exch comm",
-        "PME wait for PP",
-        "Wait + Recv. PME F",
-        "Wait Bonded GPU",
-        "Wait GPU NB nonloc.",
-        "Wait GPU NB local",
-        "Wait GPU state copy",
-        "NB X/F buffer ops.",
-        "Vsite spread",
-        "COM pull force",
-        "AWH",
-        "Write traj.",
-        "Update",
-        "Constraints",
-        "Comm. energies",
-        "Enforced rotation",
-        "Add rot. forces",
-        "Position swapping",
-        "IMD",
-        "MD Graph",
-        "Test"
-    };
-    static_assert(checkStringsLengths<22>(wallCycleCounterNames));
-    return wallCycleCounterNames[enumValue];
-}
+#if GMX_USE_ITT
+#    ifdef __clang__
+#        pragma clang diagnostic push
+#        pragma clang diagnostic ignored "-Wzero-as-null-pointer-constant"
+#    endif
+//! Heler for Intel tracing tools instrumentation
+const __itt_domain*  g_ittDomain = __itt_domain_create("GMX");
+__itt_string_handle* g_ittCounterHandles[static_cast<int>(WallCycleCounter::Count)];
+__itt_string_handle* g_ittSubCounterHandles[static_cast<int>(WallCycleSubCounter::Count)];
+#endif
 
-// Clang complains about this function not used in builds without subcounters
-// clang-format off
-CLANG_DIAGNOSTIC_IGNORE(-Wunneeded-internal-declaration)
-// clang-format on
-static const char* enumValuetoString(WallCycleSubCounter enumValue)
-{
-    constexpr gmx::EnumerationArray<WallCycleSubCounter, const char*> wallCycleSubCounterNames = {
-        "DD redist.",
-        "DD NS grid + sort",
-        "DD setup comm.",
-        "DD make top.",
-        "DD make constr.",
-        "DD top. other",
-        "DD GPU ops.",
-        "NS grid local",
-        "NS grid non-local",
-        "NS search local",
-        "NS search non-local",
-        "Bonded F",
-        "Bonded-FEP F",
-        "Restraints F",
-        "Listed buffer ops.",
-        "NB pruning",
-        "NB F kernel",
-        "NB F clear",
-        "NB FEP",
-        "NB FEP reduction",
-        "Launch GPU NB tasks",
-        "Launch GPU Bonded",
-        "Launch state copy",
-        "Ewald F correction",
-        "NB X buffer ops.",
-        "NB F buffer ops.",
-        "Clear force buffer",
-        "Launch GPU NB X ops.",
-        "Launch GPU NB F ops.",
-        "Launch GPU Comm. X",
-        "Launch GPU Comm. F",
-        "Launch GPU update",
-        "Launch PME GPU FFT",
-        "Graph wait pre-capture",
-        "Graph capture",
-        "Graph instantiate/upd.",
-        "Graph wait pre-launch",
-        "Graph launch",
-        "Constraints Comm.", // constraints communication time, note that this counter will contain load imbalance
-        "Test subcounter"
-    };
-    static_assert(checkStringsLengths<22>(wallCycleSubCounterNames));
-    return wallCycleSubCounterNames[enumValue];
-}
-CLANG_DIAGNOSTIC_RESET
 
 /* PME GPU timing events' names - correspond to the enum in the gpu_timing.h */
 static const char* enumValuetoString(PmeStage enumValue)
@@ -221,12 +105,8 @@ std::unique_ptr<gmx_wallcycle> wallcycle_init(FILE* fplog, int resetstep, const 
 
     wc = std::make_unique<gmx_wallcycle>();
 
-    wc->haveInvalidCount = false;
-    wc->wc_barrier       = false;
-    wc->wc_depth         = 0;
-    wc->ewc_prev         = WallCycleCounter::Count;
-    wc->reset_counters   = resetstep;
-    wc->cr               = cr;
+    wc->reset_counters = resetstep;
+    wc->cr             = cr;
 
 
 #if GMX_MPI
@@ -252,67 +132,76 @@ std::unique_ptr<gmx_wallcycle> wallcycle_init(FILE* fplog, int resetstep, const 
     // NOLINTNEXTLINE(readability-misleading-indentation)
     if constexpr (sc_enableWallcycleDebug)
     {
-        wc->count_depth = 0;
-        wc->isMainRank  = MAIN(cr);
+        wc->isMainRank = (cr == nullptr) || MAIN(cr);
     }
+
+#if GMX_USE_ITT
+    for (auto wcc : gmx::EnumerationWrapper<WallCycleCounter>{})
+    {
+        g_ittCounterHandles[static_cast<int>(wcc)] = __itt_string_handle_create(enumValuetoString(wcc));
+    }
+    for (auto wcsc : gmx::EnumerationWrapper<WallCycleSubCounter>{})
+    {
+        g_ittSubCounterHandles[static_cast<int>(wcsc)] =
+                __itt_string_handle_create(enumValuetoString(wcsc));
+    }
+#endif
 
     return wc;
 }
 
-void debug_start_check(gmx_wallcycle* wc, WallCycleCounter ewc)
+#if GMX_USE_ITT
+#    ifdef __clang__
+#        pragma clang diagnostic pop
+#    endif
+#endif
+
+void gmx_wallcycle::checkStart(WallCycleCounter ewc)
 {
     // NOLINTNEXTLINE(readability-misleading-indentation)
     if constexpr (sc_enableWallcycleDebug)
     {
         // NOLINTNEXTLINE(misc-redundant-expression)
-        if (wc->count_depth < 0 || wc->count_depth >= sc_maxWallCycleDepth)
+        if (count_depth < 0 || count_depth >= sc_maxDepth)
         {
-            gmx_fatal(FARGS, "wallcycle counter depth out of range: %d", wc->count_depth + 1);
+            gmx_fatal(FARGS, "wallcycle counter depth out of range: %d", count_depth + 1);
         }
-        wc->counterlist[wc->count_depth] = ewc;
-        wc->count_depth++;
+        counterlist[count_depth] = ewc;
+        count_depth++;
 
-        if (debugPrintDepth && (!onlyMainDebugPrints || wc->isMainRank))
+        if (sc_debugPrintDepth && (!sc_onlyMainDebugPrints || isMainRank))
         {
-            std::string indentStr(4 * wc->count_depth, ' ');
-            fprintf(stderr,
-                    "%swcycle_start depth %d, %s\n",
-                    indentStr.c_str(),
-                    wc->count_depth,
-                    enumValuetoString(ewc));
+            std::string indentStr(4 * count_depth, ' ');
+            fprintf(stderr, "%swcycle_start depth %d, %s\n", indentStr.c_str(), count_depth, enumValuetoString(ewc));
         }
     }
 }
 
-void debug_stop_check(gmx_wallcycle* wc, WallCycleCounter ewc)
+void gmx_wallcycle::checkStop(WallCycleCounter ewc)
 {
     // NOLINTNEXTLINE(readability-misleading-indentation)
     if constexpr (sc_enableWallcycleDebug)
     {
-        if (debugPrintDepth && (!onlyMainDebugPrints || wc->isMainRank))
+        if (sc_debugPrintDepth && (!sc_onlyMainDebugPrints || isMainRank))
         {
-            std::string indentStr(4 * wc->count_depth, ' ');
-            fprintf(stderr,
-                    "%swcycle_stop  depth %d, %s\n",
-                    indentStr.c_str(),
-                    wc->count_depth,
-                    enumValuetoString(ewc));
+            std::string indentStr(4 * count_depth, ' ');
+            fprintf(stderr, "%swcycle_stop  depth %d, %s\n", indentStr.c_str(), count_depth, enumValuetoString(ewc));
         }
 
-        wc->count_depth--;
+        count_depth--;
 
-        if (wc->count_depth < 0)
+        if (count_depth < 0)
         {
             gmx_fatal(FARGS,
                       "wallcycle counter depth out of range when stopping %s: %d",
                       enumValuetoString(ewc),
-                      wc->count_depth);
+                      count_depth);
         }
-        if (wc->counterlist[wc->count_depth] != ewc)
+        if (counterlist[count_depth] != ewc)
         {
             gmx_fatal(FARGS,
                       "wallcycle mismatch at stop, start %s, stop %s",
-                      enumValuetoString(wc->counterlist[wc->count_depth]),
+                      enumValuetoString(counterlist[count_depth]),
                       enumValuetoString(ewc));
         }
     }

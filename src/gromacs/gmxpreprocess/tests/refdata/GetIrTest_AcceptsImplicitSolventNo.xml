@@ -22,6 +22,8 @@ init-step                = 0
 simulation-part          = 1
 ; Multiple time-stepping
 mts                      = no
+; factor by which to increase the mass of the lightest atoms
+mass-repartition-factor  = 1
 ; mode for center of mass motion removal
 comm-mode                = Linear
 ; number of steps for center of mass motion removal
@@ -76,9 +78,11 @@ nstlist                  = 10
 ; Periodic boundary conditions: xyz, no, xy
 pbc                      = xyz
 periodic-molecules       = no
-; Allowed energy error due to the Verlet buffer in kJ/mol/ps per atom,
+; Allowed energy drift due to the Verlet buffer in kJ/mol/ps per atom,
 ; a value of -1 means: use rlist
 verlet-buffer-tolerance  = 0.005
+; Allowed error in the average pressure due to the Verlet buffer for LJ interactions
+verlet-buffer-pressure-tolerance = 0.5
 ; nblist cut-off        
 rlist                    = 1
 ; long-range cut-off for switched potentials
@@ -137,7 +141,7 @@ pcoupl                   = No
 pcoupltype               = Isotropic
 nstpcouple               = -1
 ; Time constant (ps), compressibility (1/bar) and reference P (bar)
-tau-p                    = 1
+tau-p                    = 5
 compressibility          = 
 ref-p                    = 
 ; Scaling of reference coordinates, No, All or COM
@@ -275,6 +279,7 @@ freezegrps               =
 freezedim                = 
 cos-acceleration         = 0
 deform                   = 
+deform-init-flow         = no
 
 ; simulated tempering variables
 simulated-tempering      = no
@@ -312,5 +317,8 @@ density-guided-simulation-active = false
 
 ; QM/MM with CP2K
 qmmm-cp2k-active         = false
+
+; Colvars bias
+colvars-active           = false
 </String>
 </ReferenceData>

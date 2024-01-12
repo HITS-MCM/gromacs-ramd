@@ -136,7 +136,7 @@ void Grid::setDimensions(const int          ddZone,
                          const int          numAtoms,
                          gmx::RVec          lowerCorner,
                          gmx::RVec          upperCorner,
-                         real               atomDensity,
+                         real*              atomDensity,
                          const real         maxAtomGroupRadius,
                          const bool         haveFep,
                          gmx::PinningPolicy pinningPolicy)
@@ -162,12 +162,13 @@ void Grid::setDimensions(const int          ddZone,
     }
 
     /* For the home zone we compute the density when not set (=-1) or when =0 */
-    if (ddZone == 0 && atomDensity <= 0)
+    GMX_ASSERT(atomDensity, "atomDensity cannot be nullptr");
+    if (ddZone == 0 && *atomDensity <= 0)
     {
-        atomDensity = gridAtomDensity(numAtoms, lowerCorner, upperCorner);
+        *atomDensity = gridAtomDensity(numAtoms, lowerCorner, upperCorner);
     }
 
-    dimensions_.atomDensity        = atomDensity;
+    dimensions_.atomDensity        = *atomDensity;
     dimensions_.maxAtomGroupRadius = maxAtomGroupRadius;
 
     rvec size;
@@ -175,10 +176,10 @@ void Grid::setDimensions(const int          ddZone,
 
     if (numAtoms > geometry_.numAtomsPerCell)
     {
-        GMX_ASSERT(atomDensity > 0, "With one or more atoms, the density should be positive");
+        GMX_ASSERT(*atomDensity > 0, "With one or more atoms, the density should be positive");
 
         /* target cell length */
-        const std::array<real, DIM - 1> tlen = getTargetCellLength(geometry_, atomDensity);
+        const std::array<real, DIM - 1> tlen = getTargetCellLength(geometry_, *atomDensity);
 
         /* We round ncx and ncy down, because we get less cell pairs
          * in the pairlist when the fixed cell dimensions (x,y) are
@@ -265,7 +266,7 @@ void Grid::setDimensions(const int          ddZone,
     copy_rvec(size, dimensions_.gridSize);
 }
 
-/* We need to sort paricles in grid columns on z-coordinate.
+/* We need to sort particles in grid columns on z-coordinate.
  * As particle are very often distributed homogeneously, we use a sorting
  * algorithm similar to pigeonhole sort. We multiply the z-coordinate
  * by a factor, cast to an int and try to store in that hole. If the hole
@@ -274,7 +275,7 @@ void Grid::setDimensions(const int          ddZone,
  * 4 is the optimal value for homogeneous particle distribution and allows
  * for an O(#particles) sort up till distributions were all particles are
  * concentrated in 1/4 of the space. No NlogN fallback is implemented,
- * as it can be expensive to detect imhomogeneous particle distributions.
+ * as it can be expensive to detect inhomogeneous particle distributions.
  */
 /*! \brief Ratio of grid cells to atoms */
 static constexpr int c_sortGridRatio = 4;
@@ -703,10 +704,11 @@ static void combine_bounding_box_pairs(const Grid&                      grid,
 /*! \brief Prints the average bb size, used for debug output */
 static void print_bbsizes_simple(FILE* fp, const Grid& grid)
 {
-    dvec ba = { 0 };
+    dvec       ba             = { 0 };
+    const auto iBoundingBoxes = grid.iBoundingBoxes();
     for (int c = 0; c < grid.numCells(); c++)
     {
-        const BoundingBox& bb = grid.iBoundingBoxes()[c];
+        const BoundingBox& bb = iBoundingBoxes[c];
         ba[XX] += bb.upper.x - bb.lower.x;
         ba[YY] += bb.upper.y - bb.lower.y;
         ba[ZZ] += bb.upper.z - bb.lower.z;
@@ -1261,8 +1263,8 @@ void Grid::calcColumnIndices(const Grid::Dimensions&        gridDims,
         cxy_na[i] = 0;
     }
 
-    // Use gmx::index to avoid overflow of int with large atom and thread counts
-    const gmx::index rangeSize     = atomRange.size();
+    // Use gmx::Index to avoid overflow of int with large atom and thread counts
+    const gmx::Index rangeSize     = atomRange.size();
     const int        taskAtomStart = *atomRange.begin() + ((thread + 0) * rangeSize) / nthread;
     const int        taskAtomEnd   = *atomRange.begin() + ((thread + 1) * rangeSize) / nthread;
 
@@ -1447,7 +1449,7 @@ void Grid::setCellIndices(int                            ddZone,
 
     /* Make sure the work array for sorting is large enough */
     const int worstCaseSortBufferSize = ncz_max * numAtomsPerCell * c_sortGridMaxSizeFactor;
-    if (worstCaseSortBufferSize > gmx::index(gridWork[0].sortBuffer.size()))
+    if (worstCaseSortBufferSize > gmx::Index(gridWork[0].sortBuffer.size()))
     {
         for (GridWork& work : gridWork)
         {
@@ -1531,6 +1533,86 @@ void Grid::setCellIndices(int                            ddZone,
             print_bbsizes_supersub(debug, *this);
         }
     }
+}
+
+real generateAndFill2DGrid(Grid*                          grid,
+                           gmx::ArrayRef<GridWork>        gridWork,
+                           gmx::HostVector<int>*          cells,
+                           const rvec                     lowerCorner,
+                           const rvec                     upperCorner,
+                           const gmx::UpdateGroupsCog*    updateGroupsCog,
+                           const gmx::Range<int>          atomRange,
+                           real*                          atomDensity,
+                           const real                     maxAtomGroupRadius,
+                           const bool                     haveFep,
+                           gmx::ArrayRef<const gmx::RVec> x,
+                           const int                      ddZone,
+                           const int*                     move,
+                           const int                      numAtomsMoved,
+                           const bool                     computeGridDensityRatio)
+{
+    const int n = atomRange.size();
+    // grid data used in GPU transfers inherits the gridset pinning policy
+    const auto pinPolicy = cells->get_allocator().pinningPolicy();
+
+    grid->setDimensions(
+            ddZone, n - numAtomsMoved, lowerCorner, upperCorner, atomDensity, maxAtomGroupRadius, haveFep, pinPolicy);
+
+    for (GridWork& work : gridWork)
+    {
+        work.numAtomsPerColumn.resize(grid->numColumns() + 1);
+    }
+
+    /* Make space for the new cell indices */
+    cells->resize(*atomRange.end());
+
+    const int nthread = gmx_omp_nthreads_get(ModuleMultiThread::Pairsearch);
+    GMX_ASSERT(nthread > 0, "We expect the OpenMP thread count to be set");
+
+#pragma omp parallel for num_threads(nthread) schedule(static)
+    for (int thread = 0; thread < nthread; thread++)
+    {
+        try
+        {
+            Grid::calcColumnIndices(grid->dimensions(),
+                                    updateGroupsCog,
+                                    atomRange,
+                                    x,
+                                    ddZone,
+                                    move,
+                                    thread,
+                                    nthread,
+                                    *cells,
+                                    gridWork[thread].numAtomsPerColumn);
+        }
+        GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
+    }
+
+    real gridDensityRatio = 0;
+
+    if (computeGridDensityRatio)
+    {
+        // Compute the effective density ratio on the current grid
+        int64_t sumAtomsInColumnSquared = 0;
+        for (int i = 0; i < grid->numColumns(); i++)
+        {
+            int64_t numAtomsInColumn = 0;
+            for (int thread = 0; thread < nthread; thread++)
+            {
+                numAtomsInColumn += gridWork[thread].numAtomsPerColumn[i];
+            }
+            sumAtomsInColumnSquared += gmx::square(numAtomsInColumn);
+        }
+        // The effective density divided by the uniform density
+        gridDensityRatio =
+                sumAtomsInColumnSquared * grid->numColumns() / gmx::square(real(atomRange.size()));
+        if (debug)
+        {
+            fprintf(debug, "ns grid effective density ratio %f\n", gridDensityRatio);
+        }
+    }
+
+    return gridDensityRatio;
 }
 
 } // namespace Nbnxm

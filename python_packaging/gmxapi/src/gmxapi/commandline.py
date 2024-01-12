@@ -332,9 +332,6 @@ def filemap_to_flag_list(filemap: dict) -> list:
     return result
 
 
-# TODO: (FR4) Use generating function or decorator that can validate kwargs?
-# TODO: (FR4) Outputs need to be fully formed and typed in the object returned
-#  from the helper (decorated function).
 def commandline_operation(
     executable=None,
     arguments=(),
@@ -350,13 +347,20 @@ def commandline_operation(
     Generate a chain of operations to process the named key word arguments and handle
     input/output data dependencies.
 
+    Note that the operation will be executed in a subprocess in an automatically
+    generated subdirectory. See below for more information.
+
     Arguments:
+        arguments: list of positional arguments to insert at ``argv[1]``
         env: Optional replacement for the environment variables seen by the subprocess.
         executable: name of an executable on the path
-        arguments: list of positional arguments to insert at ``argv[1]``
-        input_files: mapping of command-line flags to input file names
+        input_files: mapping of command-line flags to input file paths
         output_files: mapping of command-line flags to output file names
         stdin (str): String input to send to STDIN (terminal input) of the executable (optional).
+
+    .. versionchanged:: 0.5.0
+        Relative paths in *input_files* are considered relative to the current working directory,
+        and are immediately converted to absolute paths.
 
     Multi-line text sent to *stdin* should be joined into a single string.
     E.g.::
@@ -385,6 +389,11 @@ def commandline_operation(
         If specified, *env* replaces the default environment variables map seen by *executable* in the
         subprocess.
 
+    .. versionchanged:: 0.4.1
+        If unspecified, *env* defaults to a **filtered** copy of the current environment
+        (with MPI-related environment variables removed).
+        See :py:func:`gmxapi.runtime.filtered_mpi_environ()`.
+
     In addition to controlling environment variables used for user-input, it may be
     necessary to adjust the environment to prevent the subprocess from inheriting variables that it
     should not. This is particularly relevant if the Python script is launched with ``mpiexec`` and
@@ -394,6 +403,9 @@ def commandline_operation(
     When overriding the environment variables, don't forget to include basic variables
     like PATH that are necessary for the executable to run. `os.getenv` can help.
     E.g. ``commandline_operation(..., env={'PATH': os.getenv('PATH'), ...})``
+
+    See Also:
+        :py:func:`gmxapi.runtime.filtered_mpi_environ()`.
 
     Output:
         The output node of the resulting operation handle contains
@@ -420,6 +432,7 @@ def commandline_operation(
     contacting the developers through any of the various GROMACS community
     channels to further discuss your use case.
     """
+    import gmxapi.runtime
 
     # Implementation details: When used in a script, this function returns an
     # instance of an operation. However, because of the dynamic specification of
@@ -444,9 +457,6 @@ def commandline_operation(
     # only one way of relocating Futures. In this case, though, the dynamic creation of
     # merged_ops doesn't seem right, and commandline_operation should probably be
     # a proper Operation.
-    #
-    # TODO: (FR4+) Characterize the `file` dictionary key type:
-    #  explicitly sequences rather than maybe-string/maybe-sequence-of-strings
     @gmx.function_wrapper(
         output={
             "directory": str,
@@ -488,6 +498,20 @@ def commandline_operation(
 
     if input_files is None:
         input_files = {}
+    normalized_input_files = {}
+    for key, value in input_files.items():
+        if isinstance(value, (str, bytes, pathlib.Path)):
+            normalized_input_files[key] = os.path.abspath(value)
+        elif isinstance(value, Iterable):
+            # Recurse only one layer into sequence values
+            normalized_input_files[key] = list()
+            for element in value:
+                if isinstance(element, (str, bytes, pathlib.Path)):
+                    element = os.path.abspath(element)
+                normalized_input_files[key].append(element)
+        else:
+            normalized_input_files[key] = value
+    input_files = normalized_input_files
     if output_files is None:
         output_files = {}
     try:
@@ -507,16 +531,9 @@ def commandline_operation(
     shell = gmx.make_constant(False)
 
     if env is None:
-
-        @gmx.function_wrapper(
-            # allow_duplicate=True
-        )
-        def _env() -> dict:
-            import os
-
-            return dict(os.environ)
-
-        env = _env().output.data
+        env = gmx.function_wrapper(allow_duplicate=True)(
+            gmxapi.runtime.filtered_mpi_environ
+        )().output.data
     cli_args = {"command": command, "shell": shell, "env": env}
     cli_args.update(**kwargs)
     if stdin is not None:

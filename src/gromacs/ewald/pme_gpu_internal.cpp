@@ -92,13 +92,6 @@
 #include "pme_internal.h"
 #include "pme_solve.h"
 
-/*! \brief
- * CUDA only
- * Atom limit above which it is advantageous to turn on the
- * recalculating of the splines in the gather and using less threads per atom in the spline and spread
- */
-constexpr int c_pmeGpuPerformanceAtomLimit = 23000;
-
 /*! \internal \brief
  * Wrapper for getting a pointer to the plain C++ part of the GPU kernel parameters structure.
  *
@@ -172,7 +165,7 @@ void pme_gpu_free_energy_virial(PmeGpu* pmeGpu)
     }
 }
 
-void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu, const bool useMdGpuGraph)
+void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu, const bool gpuGraphWithSeparatePmeRank)
 {
     for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
     {
@@ -181,7 +174,7 @@ void pme_gpu_clear_energy_virial(const PmeGpu* pmeGpu, const bool useMdGpuGraph)
                                c_virialAndEnergyCount,
                                pmeGpu->archSpecific->pmeStream_);
     }
-    if (pmeGpu->settings.useGpuForceReduction && useMdGpuGraph)
+    if (pmeGpu->settings.useGpuForceReduction && gpuGraphWithSeparatePmeRank)
     {
         // Mark forces ready event after this clearing, otherwise CUDA graph capture fails due to unjoined work
         pmeGpu->archSpecific->pmeForcesReady.markEvent(pmeGpu->archSpecific->pmeStream_);
@@ -245,13 +238,16 @@ void pme_gpu_free_bspline_values(const PmeGpu* pmeGpu)
 
 void pme_gpu_realloc_forces(PmeGpu* pmeGpu)
 {
-    const size_t newForcesSize = pmeGpu->nAtomsAlloc;
+    const size_t newForcesSize =
+            pmeGpu->useNvshmem ? pmeGpu->nvshmemParams->nAtomsAlloc_symmetric : pmeGpu->nAtomsAlloc;
     GMX_ASSERT(newForcesSize > 0, "Bad number of atoms in PME GPU");
     reallocateDeviceBuffer(&pmeGpu->kernelParams->atoms.d_forces,
                            newForcesSize,
                            &pmeGpu->archSpecific->forcesSize,
                            &pmeGpu->archSpecific->forcesSizeAlloc,
-                           pmeGpu->archSpecific->deviceContext_);
+                           pmeGpu->archSpecific->deviceContext_,
+                           pmeGpu->useNvshmem);
+
     pmeGpu->staging.h_forces.reserveWithPadding(pmeGpu->nAtomsAlloc);
     pmeGpu->staging.h_forces.resizeWithPadding(pmeGpu->kernelParams->atoms.nAtoms);
 }
@@ -777,9 +773,9 @@ static void pme_gpu_init_internal(PmeGpu* pmeGpu, const DeviceContext& deviceCon
     pmeGpu->archSpecific.reset(new PmeGpuSpecific(deviceContext, deviceStream));
     pmeGpu->kernelParams.reset(new PmeGpuKernelParams());
 
-    // Use in-place FFT with cuFFTMp or DBFFT.
+    // Use in-place FFT with cuFFTMp or BBFFT.
     pmeGpu->archSpecific->performOutOfPlaceFFT =
-            !((pmeGpu->settings.useDecomposition && GMX_USE_cuFFTMp) || GMX_GPU_FFT_DBFFT);
+            !((pmeGpu->settings.useDecomposition && GMX_USE_cuFFTMp) || GMX_GPU_FFT_BBFFT);
 
     /* This should give better performance, according to the cuFFT documentation.
      * The performance seems to be the same though.
@@ -885,9 +881,9 @@ static gmx::FftBackend getFftBackend(const PmeGpu* pmeGpu)
                         "PME decomposition on oneAPI-compatible GPUs"));
             }
         }
-        else if (GMX_GPU_FFT_DBFFT)
+        else if (GMX_GPU_FFT_BBFFT)
         {
-            return gmx::FftBackend::SyclDbfft;
+            return gmx::FftBackend::SyclBbfft;
         }
         else if (GMX_GPU_FFT_ROCFFT)
         {
@@ -1176,6 +1172,7 @@ static void pme_gpu_reinit_grids(PmeGpu* pmeGpu)
         kernelParamsPtr->grid.complexGridSizePadded[i] = kernelParamsPtr->grid.realGridSize[i];
     }
     /* FFT: n real elements correspond to (n / 2 + 1) complex elements in minor dimension */
+    // NOLINTNEXTLINE(misc-redundant-expression)
     const bool needWorkaroundForOneMkl = (GMX_GPU_SYCL != 0) && (GMX_SYCL_DPCPP != 0)
                                          && pme_gpu_settings(pmeGpu).performGPUFFT; // Issue #4219.
     if (!pme_gpu_settings(pmeGpu).performGPUFFT || needWorkaroundForOneMkl)
@@ -1276,7 +1273,7 @@ static void pme_gpu_copy_common_data_from(const gmx_pme_t* pme)
 static void pme_gpu_select_best_performing_pme_spreadgather_kernels(PmeGpu* pmeGpu)
 {
     if (((GMX_GPU_CUDA != 0) || (GMX_GPU_SYCL != 0))
-        && pmeGpu->kernelParams->atoms.nAtoms > c_pmeGpuPerformanceAtomLimit)
+        && pmeGpu->kernelParams->atoms.nAtoms > pmeGpu->minParticleCountToRecalculateSplines)
     {
         pmeGpu->settings.threadsPerAtom     = ThreadsPerAtom::Order;
         pmeGpu->settings.recalculateSplines = true;
@@ -1422,6 +1419,77 @@ void pme_gpu_reinit_atoms(PmeGpu* pmeGpu, const int nAtoms, const real* chargesA
     const int  nWarps                       = ((nAtoms + atomsPerWarp - 1) / atomsPerWarp);
     pmeGpu->archSpecific->splineCountActive = DIM * nWarps * atomsPerWarp * pmeGpu->common->pme_order;
 
+    if (pmeGpu->useNvshmem)
+    {
+        // find the max nAtomsAlloc among all the ranks for symmetric forces buffer allocation.
+        MPI_Allreduce(
+                &pmeGpu->nAtomsAlloc, &pmeGpu->nvshmemParams->nAtomsAlloc_symmetric, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+
+        int myRank     = -1;
+        int numPpRanks = pmeGpu->nvshmemParams->ppRanksRef.size();
+        MPI_Comm_rank(MPI_COMM_WORLD, &myRank);
+        MPI_Bcast(&numPpRanks, 1, MPI_INT, myRank, MPI_COMM_WORLD);
+        // symmetric buffer allocation used for synchronization purpose
+        // 1 to be used to signal PME to PP rank of put, and
+        // numPpRanks is intended to be used for each PP rank buffer consumption completion
+        // signal to PME to allow to produce it again.
+        reallocateDeviceBuffer(&pmeGpu->kernelParams->forcesReadyNvshmemFlags,
+                               1 + numPpRanks,
+                               &pmeGpu->nvshmemParams->forcesReadyNvshmemFlagsSize,
+                               &pmeGpu->nvshmemParams->forcesReadyNvshmemFlagsSizeAlloc,
+                               pmeGpu->archSpecific->deviceContext_,
+                               true);
+
+        pme_gpu_realloc_forces(pmeGpu);
+
+        /* allocate the ppRanksFInfo host buffer */
+        kernelParamsPtr->ppRanksInfoSize = pmeGpu->nvshmemParams->ppRanksRef.size();
+
+        if (pmeGpu->nvshmemParams->ppRanksFInfo == nullptr)
+        {
+            pmalloc(reinterpret_cast<void**>(&pmeGpu->nvshmemParams->ppRanksFInfo),
+                    kernelParamsPtr->ppRanksInfoSize * sizeof(PpRanksSendFInfo));
+        }
+
+        // prepare the ppRanksFInfo struct for sending it to gpu.
+        int receiverIndex = 0;
+        for (const auto& receiver : pmeGpu->nvshmemParams->ppRanksRef)
+        {
+            auto& ppRankFInfo_prev = pmeGpu->nvshmemParams->ppRanksFInfo[receiverIndex - 1];
+            int   startIndex =
+                    receiverIndex ? ppRankFInfo_prev.startAtomOffset + ppRankFInfo_prev.numAtoms : 0;
+
+            pmeGpu->nvshmemParams->ppRanksFInfo[receiverIndex] = { receiver.rankId, receiver.numAtoms, startIndex };
+            receiverIndex++;
+        }
+
+        reallocateDeviceBuffer(&kernelParamsPtr->ppRanksInfo,
+                               kernelParamsPtr->ppRanksInfoSize,
+                               &pmeGpu->nvshmemParams->ppRanksFInfoSize,
+                               &pmeGpu->nvshmemParams->ppRanksFInfoSizeAlloc,
+                               pmeGpu->archSpecific->deviceContext_);
+        copyToDeviceBuffer(&kernelParamsPtr->ppRanksInfo,
+                           pmeGpu->nvshmemParams->ppRanksFInfo,
+                           0,
+                           kernelParamsPtr->ppRanksInfoSize,
+                           pmeGpu->archSpecific->pmeStream_,
+                           GpuApiCallBehavior::Async,
+                           nullptr);
+        reallocateDeviceBuffer(&kernelParamsPtr->lastProcessedBlockPerPpRank,
+                               kernelParamsPtr->ppRanksInfoSize,
+                               &pmeGpu->nvshmemParams->lastProcessedBlockPerPpRankSize,
+                               &pmeGpu->nvshmemParams->lastProcessedBlockPerPpRankSizeAlloc,
+                               pmeGpu->archSpecific->deviceContext_);
+        clearDeviceBufferAsync(&kernelParamsPtr->lastProcessedBlockPerPpRank,
+                               0,
+                               kernelParamsPtr->ppRanksInfoSize,
+                               pmeGpu->archSpecific->pmeStream_);
+    }
+    else if (haveToRealloc)
+    {
+        pme_gpu_realloc_forces(pmeGpu);
+    }
+
 #if GMX_DOUBLE
     GMX_RELEASE_ASSERT(false, "Only single precision supported");
     GMX_UNUSED_VALUE(charges);
@@ -1442,14 +1510,16 @@ void pme_gpu_reinit_atoms(PmeGpu* pmeGpu, const int nAtoms, const real* chargesA
         /* FIXME: This should be avoided by making a separate templated version of the
          * relevant kernel(s) (probably only pme_gather_kernel). That would require a
          * reduction of the current number of templated parameters of that kernel. */
-        pme_gpu_realloc_and_copy_input_coefficients(
-                pmeGpu, reinterpret_cast<const float*>(chargesA), gridIndex);
+        if (pmeGpu->common->ngrids > 1)
+        {
+            pme_gpu_realloc_and_copy_input_coefficients(
+                    pmeGpu, reinterpret_cast<const float*>(chargesA), gridIndex);
+        }
     }
 #endif
 
     if (haveToRealloc)
     {
-        pme_gpu_realloc_forces(pmeGpu);
         pme_gpu_realloc_spline_data(pmeGpu);
         pme_gpu_realloc_grid_indices(pmeGpu);
     }
@@ -1741,6 +1811,7 @@ void pme_gpu_spread(const PmeGpu*                  pmeGpu,
                     const real                     lambda,
                     const bool                     useGpuDirectComm,
                     gmx::PmeCoordinateReceiverGpu* pmeCoordinateReceiverGpu,
+                    const bool                     useMdGpuGraph,
                     gmx_wallcycle*                 wcycle)
 {
     GMX_ASSERT(
@@ -1853,8 +1924,14 @@ void pme_gpu_spread(const PmeGpu*                  pmeGpu,
             const int numStagesInPipeline = pmeCoordinateReceiverGpu->ppCommNumSenderRanks();
 
             GpuEventSynchronizer* gridsReadyForSpread = &pmeGpu->archSpecific->pmeGridsReadyForSpread;
-            gridsReadyForSpread->markEvent(pmeGpu->archSpecific->pmeStream_);
-            gridsReadyForSpread->setConsumptionLimits(numStagesInPipeline, numStagesInPipeline);
+            // Sync on grid zeroing is required except when GPU graphs are in use,
+            // In which case the sync is already present through the zeroing being
+            // explicitly included in the graph
+            if (!useMdGpuGraph)
+            {
+                gridsReadyForSpread->markEvent(pmeGpu->archSpecific->pmeStream_);
+                gridsReadyForSpread->setConsumptionLimits(numStagesInPipeline, numStagesInPipeline);
+            }
 
             for (int i = 0; i < numStagesInPipeline; i++)
             {
@@ -1866,8 +1943,10 @@ void pme_gpu_spread(const PmeGpu*                  pmeGpu,
                 wallcycle_start(wcycle, WallCycleCounter::LaunchGpuPme);
 
                 DeviceStream* launchStream = pmeCoordinateReceiverGpu->ppCommStream(senderRank);
-                gridsReadyForSpread->enqueueWaitEvent(*launchStream);
-
+                if (!useMdGpuGraph)
+                {
+                    gridsReadyForSpread->enqueueWaitEvent(*launchStream);
+                }
                 // set kernel configuration options specific to this stage of the pipeline
                 std::tie(kernelParamsPtr->pipelineAtomStart, kernelParamsPtr->pipelineAtomEnd) =
                         pmeCoordinateReceiverGpu->ppCommAtomRange(senderRank);
@@ -2253,7 +2332,8 @@ void pme_gpu_gather(PmeGpu*               pmeGpu,
                     real**                h_grids,
                     gmx_parallel_3dfft_t* fftSetup,
                     const float           lambda,
-                    gmx_wallcycle*        wcycle)
+                    gmx_wallcycle*        wcycle,
+                    bool                  computeVirial)
 {
     GMX_ASSERT(
             pmeGpu->common->ngrids == 1 || pmeGpu->common->ngrids == 2,
@@ -2367,6 +2447,16 @@ void pme_gpu_gather(PmeGpu*               pmeGpu,
             kernelParamsPtr->current.scale = 1.0 - lambda;
         }
 
+#if GMX_NVSHMEM
+        kernelParamsPtr->isVirialStep = computeVirial;
+        if (!computeVirial && pmeGpu->useNvshmem)
+        {
+            kernelParamsPtr->forcesReadyNvshmemFlagsCounter++;
+        }
+#else
+        GMX_UNUSED_VALUE(computeVirial);
+#endif
+
 #if c_canEmbedBuffers
         const auto kernelArgs = prepareGpuKernelArguments(kernelPtr, config, kernelParamsPtr);
 #else
@@ -2385,6 +2475,20 @@ void pme_gpu_gather(PmeGpu*               pmeGpu,
 #endif
         launchGpuKernel(
                 kernelPtr, config, pmeGpu->archSpecific->pmeStream_, timingEvent, "PME gather", kernelArgs);
+        if (!computeVirial && pmeGpu->useNvshmem)
+        {
+            KernelLaunchConfig config;
+            config.blockSize[0] = 128;
+            config.blockSize[1] = 1;
+            config.blockSize[2] = 1;
+            config.gridSize[0]  = 1;
+            config.gridSize[1]  = 1;
+            auto kernelPtr_     = pmeGpu->programHandle_->impl_->nvshmemSignalKern;
+
+            const auto kernelArgs_ = prepareGpuKernelArguments(kernelPtr_, config, kernelParamsPtr);
+            launchGpuKernel(
+                    kernelPtr_, config, pmeGpu->archSpecific->pmeStream_, timingEvent, "PME gather", kernelArgs_);
+        }
         pme_gpu_stop_timing(pmeGpu, timingId);
     }
 
@@ -2409,6 +2513,18 @@ DeviceBuffer<gmx::RVec> pme_gpu_get_kernelparam_forces(const PmeGpu* pmeGpu)
     else
     {
         return DeviceBuffer<gmx::RVec>{};
+    }
+}
+
+void pme_gpu_set_kernelparam_useNvshmem(const PmeGpu* pmeGpu, bool useNvshmem)
+{
+    GMX_ASSERT(pmeGpu && pmeGpu->kernelParams,
+               "PME GPU NVSHMEM support can not be set in non-GPU builds or before the GPU PME was "
+               "initialized.");
+
+    if (pmeGpu && pmeGpu->kernelParams)
+    {
+        pmeGpu->kernelParams->useNvshmem = static_cast<int>(useNvshmem);
     }
 }
 

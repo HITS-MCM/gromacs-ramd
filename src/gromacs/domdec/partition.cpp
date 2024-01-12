@@ -71,6 +71,7 @@
 #include "gromacs/mdlib/gmx_omp_nthreads.h"
 #include "gromacs/mdlib/mdatoms.h"
 #include "gromacs/mdlib/vsite.h"
+#include "gromacs/mdrunutility/mdmodulesnotifiers.h"
 #include "gromacs/mdtypes/commrec.h"
 #include "gromacs/mdtypes/forcerec.h"
 #include "gromacs/mdtypes/inputrec.h"
@@ -465,7 +466,7 @@ static void restoreAtomGroups(gmx_domdec_t* dd, const t_state* state)
     /* Copy back the global charge group indices from state
      * and rebuild the local charge group to atom index.
      */
-    for (gmx::index i = 0; i < atomGroupsState.ssize(); i++)
+    for (gmx::Index i = 0; i < atomGroupsState.ssize(); i++)
     {
         globalAtomGroupIndices[i] = atomGroupsState[i];
     }
@@ -2537,7 +2538,7 @@ static void orderVector(gmx::ArrayRef<const gmx_cgsort_t> sort,
                         gmx::ArrayRef<T>                  vectorToSort,
                         std::vector<T>*                   workVector)
 {
-    if (gmx::index(workVector->size()) < sort.ssize())
+    if (gmx::Index(workVector->size()) < sort.ssize())
     {
         workVector->resize(sort.size());
     }
@@ -2585,15 +2586,15 @@ static void dd_sort_state(gmx_domdec_t* dd, t_forcerec* fr, t_state* state)
     GMX_RELEASE_ASSERT(cgsort.ssize() == dd->numHomeAtoms,
                        "We should sort all the home atom groups");
 
-    if (state->flags & enumValueToBitMask(StateEntry::X))
+    if (state->hasEntry(StateEntry::X))
     {
         orderVector(cgsort, makeArrayRef(state->x), rvecBuffer.buffer);
     }
-    if (state->flags & enumValueToBitMask(StateEntry::V))
+    if (state->hasEntry(StateEntry::V))
     {
         orderVector(cgsort, makeArrayRef(state->v), rvecBuffer.buffer);
     }
-    if (state->flags & enumValueToBitMask(StateEntry::Cgp))
+    if (state->hasEntry(StateEntry::Cgp))
     {
         orderVector(cgsort, makeArrayRef(state->cg_p), rvecBuffer.buffer);
     }
@@ -2751,6 +2752,7 @@ void dd_partition_system(FILE*                     fplog,
                          t_state*                  state_global,
                          const gmx_mtop_t&         top_global,
                          const t_inputrec&         inputrec,
+                         const MDModulesNotifiers& mdModulesNotifiers,
                          gmx::ImdSession*          imdSession,
                          pull_t*                   pull_work,
                          t_state*                  state_local,
@@ -3115,18 +3117,17 @@ void dd_partition_system(FILE*                     fplog,
 
         set_zones_size(dd, state_local->box, &ddbox, 0, 1, ncg_moved);
 
-        nbnxn_put_on_grid(fr->nbv.get(),
-                          state_local->box,
-                          0,
-                          comm->zones.size[0].bb_x0,
-                          comm->zones.size[0].bb_x1,
-                          comm->updateGroupsCog.get(),
-                          { 0, dd->numHomeAtoms },
-                          comm->zones.dens_zone0,
-                          fr->atomInfo,
-                          state_local->x,
-                          ncg_moved,
-                          bRedist ? comm->movedBuffer.data() : nullptr);
+        fr->nbv->putAtomsOnGrid(state_local->box,
+                                0,
+                                comm->zones.size[0].bb_x0,
+                                comm->zones.size[0].bb_x1,
+                                comm->updateGroupsCog.get(),
+                                { 0, dd->numHomeAtoms },
+                                comm->zones.dens_zone0,
+                                fr->atomInfo,
+                                state_local->x,
+                                ncg_moved,
+                                bRedist ? comm->movedBuffer.data() : nullptr);
 
         if (debug)
         {
@@ -3135,7 +3136,7 @@ void dd_partition_system(FILE*                     fplog,
         dd_sort_state(dd, fr, state_local);
 
         /* After sorting and compacting we set the correct size */
-        state_change_natoms(state_local, comm->atomRanges.numHomeAtoms());
+        state_local->changeNumAtoms(comm->atomRanges.numHomeAtoms());
 
         /* Rebuild all the indices */
         dd->ga2la->clear(false);
@@ -3252,9 +3253,7 @@ void dd_partition_system(FILE*                     fplog,
     /* Make space for the extra coordinates for virtual site
      * or constraint communication.
      */
-    state_local->natoms = comm->atomRanges.numAtomsTotal();
-
-    state_change_natoms(state_local, state_local->natoms);
+    state_local->changeNumAtoms(comm->atomRanges.numAtomsTotal());
 
     int nat_f_novirsum;
     if (vsite && vsite->numInterUpdategroupVirtualSites())
@@ -3367,6 +3366,12 @@ void dd_partition_system(FILE*                     fplog,
         /* Set the env var GMX_DD_DEBUG if you suspect corrupted indices */
         check_index_consistency(dd, top_global.natoms, "after partitioning");
     }
+
+    // Now we have made the local atom sets and x is up to date, MDModules can be signaled
+    MDModulesAtomsRedistributedSignal mdModulesAtomsRedistributedSignal(
+            state_local->box,
+            gmx::makeConstArrayRef(state_local->x).subArray(0, comm->atomRanges.numHomeAtoms()));
+    mdModulesNotifiers.simulationSetupNotifier_.notify(mdModulesAtomsRedistributedSignal);
 
     wallcycle_stop(wcycle, WallCycleCounter::Domdec);
 }

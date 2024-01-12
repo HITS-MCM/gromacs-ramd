@@ -66,12 +66,16 @@ void broadcastStateWithoutDynamics(MPI_Comm communicator,
     /* Broadcasts the state sizes and flags from the main to all ranks
      * in cr->mpi_comm_mygroup.
      */
-    block_bc(communicator, state->natoms);
-    block_bc(communicator, state->flags);
+    int numAtoms = state->numAtoms();
+    block_bc(communicator, numAtoms);
+    state->changeNumAtoms(numAtoms);
+    int flags = state->flags();
+    block_bc(communicator, flags);
+    state->setFlags(flags);
 
     for (auto i : gmx::EnumerationArray<StateEntry, bool>::keys())
     {
-        if (state->flags & enumValueToBitMask(i))
+        if (state->hasEntry(i))
         {
             switch (i)
             {
@@ -83,7 +87,7 @@ void broadcastStateWithoutDynamics(MPI_Comm communicator,
                 case StateEntry::FepState: block_bc(communicator, state->fep_state); break;
                 case StateEntry::Box: block_bc(communicator, state->box); break;
                 case StateEntry::X:
-                    bcastPaddedRVecVector(communicator, &state->x, state->natoms);
+                    bcastPaddedRVecVector(communicator, &state->x, state->numAtoms());
                     break;
                 default:
                     GMX_RELEASE_ASSERT(false,
@@ -115,7 +119,7 @@ static void bc_tpxheader(MPI_Comm communicator, TpxFileHeader* tpx)
 
 static void bc_tprCharBuffer(MPI_Comm communicator, bool isMainRank, std::vector<char>* charBuffer)
 {
-    int elements = charBuffer->size();
+    std::size_t elements = charBuffer->size();
     block_bc(communicator, elements);
 
     nblock_abc(isMainRank, communicator, elements, charBuffer);

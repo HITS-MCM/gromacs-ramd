@@ -40,12 +40,18 @@ if(GMX_OPENMP)
     # OpenMP check must come before other CFLAGS!
     find_package(OpenMP)
     if(NOT OPENMP_FOUND)
-        if(CMAKE_CXX_COMPILER MATCHES "dpcpp")
-            message(WARNING "The Intel dpcpp compiler does not support OpenMP; consider using the icx (C) & icpx (C++) compilers from the Intel HPC toolkit instead. For now, we are turning off OpenMP.")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
+            message(FATAL_ERROR "The compiler you are using does not support OpenMP parallelism, "
+                "Apple has unfortunately explicitly disabled OpenMP in their clang-derived compiler. "
+                "You can disable OpenMP in Gromacs with -DGMX_OPENMP=OFF, but instead "
+                "we recommend installing the unsupported library distributed by the R "
+                "project from https://mac.r-project.org/openmp/ - or switch to gcc.")
         else()
-            message(WARNING "The compiler you are using does not support OpenMP parallelism. This might hurt your performance a lot, in particular with GPUs. Try using a more recent version, or a different compiler. For now, we are proceeding by turning off OpenMP.")
+            message(FATAL_ERROR "The compiler you are using does not support OpenMP parallelism. "
+                "This might hurt your performance a lot, in particular with GPUs. "
+                "Try using a more recent version, or a different compiler. "
+                "If you don't want to use OpenMP, disable it explicitly with -DGMX_OPENMP=OFF")
         endif()
-        set(GMX_OPENMP OFF CACHE STRING "Whether GROMACS will use OpenMP parallelism." FORCE)
     endif()
 endif()
 gmx_dependent_cache_variable(GMX_OPENMP_MAX_THREADS

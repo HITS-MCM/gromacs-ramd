@@ -103,9 +103,9 @@ public:
      *           with the index needed during (de-)serialization.
      *  \throws  On index being out of range.
      */
-    StringTableEntry at(gmx::index index) const;
+    StringTableEntry at(gmx::Index index) const;
     //! Bracket operator.
-    StringTableEntry operator[](gmx::index index) const;
+    StringTableEntry operator[](gmx::Index index) const;
     //! Handle file IO.
     void serializeStringTable(gmx::ISerializer* serializer);
 
@@ -158,7 +158,7 @@ public:
 
     //! Compare entries by indices. Same string should always have same index.
     bool operator==(const StringTableEntry& o) const { return tableIndex_ == o.tableIndex_; }
-    //! Unequal comparisson.
+    //! Unequal comparison.
     bool operator!=(const StringTableEntry& o) const { return !(*this == o); }
     //! Access to underlying view.
     const std::string& operator*() const { return entry_; }
