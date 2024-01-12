@@ -1,0 +1,17 @@
+[
+    {
+        "name": "foss/2022a",
+        "compilers": {
+            "C": "/hits/sw/its/doserbd/cascade/software/GCCcore/11.3.0/bin/gcc",
+            "CXX": "/hits/sw/its/doserbd/cascade/software/GCCcore/11.3.0/bin/g++"
+        },
+        "environmentVariables": {
+            "CMAKE_PREFIX_PATH": "/hits/sw/its/doserbd/cascade/software/CUDA/11.7.0:/hits/sw/its/doserbd/cascade/software/ScaLAPACK/2.2.0-gompi-2022a-fb:/hits/sw/its/doserbd/cascade/software/FFTW.MPI/3.3.10-gompi-2022a:/hits/sw/its/doserbd/cascade/software/FFTW/3.3.10-GCC-11.3.0:/hits/sw/its/doserbd/cascade/software/FlexiBLAS/3.2.0-GCC-11.3.0:/hits/sw/its/doserbd/cascade/software/OpenBLAS/0.3.20-GCC-11.3.0:/hits/sw/its/doserbd/cascade/software/OpenMPI/4.1.4-GCC-11.3.0:/hits/sw/its/doserbd/cascade/software/UCC/1.0.0-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/PMIx/4.1.2-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/libfabric/1.15.1-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/UCX/1.12.1-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/libevent/2.1.12-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/OpenSSL/1.1:/hits/sw/its/doserbd/cascade/software/hwloc/2.7.1-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/binutils/2.38-GCCcore-11.3.0:/hits/sw/its/doserbd/cascade/software/GCCcore/11.3.0"
+        },
+        // "modules": [
+        //     "foss/2022a",
+        //     "CUDA/11.7.0"
+        // ],
+        "isTrusted": true
+    }
+]
