@@ -630,8 +630,8 @@ void gmx::LegacySimulator::do_md()
     std::unique_ptr<RAMD> ramd = nullptr;
     if (ir->bRAMD)
     {
-        ramd = std::make_unique<RAMD>(*ir->ramdParams, pull_work, &step, startingBehavior, cr, nfile, fnm, oenv, fplog);
-        fr->forceProviders->addForceProvider(ramd.get());
+        ramd = std::make_unique<RAMD>(*ir->ramdParams, pullWork_, &step, startingBehavior_, cr_, nFile_, fnm_, oenv_, fpLog_);
+        fr_->forceProviders->addForceProvider(ramd.get());
     }
 
     /* To minimize communication, compute_globals computes the COM velocity
