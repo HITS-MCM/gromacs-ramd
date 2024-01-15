@@ -1,10 +1,13 @@
 {
     "recommendations": [
-        "eamodio.gitlens",
+        "alefragnani.numbered-bookmarks",
+        "github.vscode-github-actions",
         "kriegalex.vscode-cudacpp",
+        "mechatroner.rainbow-csv",
+        "mhutchie.git-graph",
         "ms-python.python",
         "ms-vscode.cmake-tools",
         "ms-vscode.cpptools",
-        "twxs.cmake"
+        "twxs.cmake",
     ]
 }
