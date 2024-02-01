@@ -1,6 +1,7 @@
 from dash import Dash, html, dcc, callback, Output, Input
 import plotly.express as px
 import pandas as pd
+import numpy as np
 
 app = Dash(__name__)
 
@@ -19,8 +20,11 @@ app.layout = html.Div([
     Input('interval-component', 'n_intervals')
 )
 def update_graph(value):
-    df = pd.read_csv('ramd.cvs')
-    # df = pd.DataFrame({'dist1': [0.1, 0.2]}, index=[0, 0.002])
+    ramd = np.loadtxt('build/tests/ramd-2.xvg', comments=['#', '@'])
+    columns = ['time']
+    for i in range(ramd[0].size - 1):
+        columns.append('distance' + str(i))
+    df = pd.DataFrame(ramd, columns=columns)
     return px.line(df, x='time', y=df.columns)
 
 if __name__ == '__main__':
