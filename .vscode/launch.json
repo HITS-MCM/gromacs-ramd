@@ -390,7 +390,7 @@
                     "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "CMake: build tests"
+            "preLaunchTask": "CMake: build ramd-test"
         },
         {
             "name": "(gdb) PullTest",
