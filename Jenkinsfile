@@ -38,7 +38,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-20.04'
+              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-22.04'
             }
           }
           steps {
@@ -82,7 +82,7 @@ pipeline {
           agent {
             docker {
               reuseNode true
-              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-20.04'
+              image 'mcr.microsoft.com/vscode/devcontainers/cpp:0-ubuntu-22.04'
             }
           }
           steps {
