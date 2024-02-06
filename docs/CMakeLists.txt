@@ -362,6 +362,7 @@ if (SPHINX_FOUND)
         how-to/special.rst
         how-to/visualize.rst
         install-guide/index.rst
+        install-guide/exotic.rst
         reference-manual/plots/GMX_logos/gmx_logo_blue.svg
         release-notes/index.rst
         release-notes/2024/major/highlights.rst
@@ -378,6 +379,7 @@ if (SPHINX_FOUND)
         release-notes/2023/2023.2.rst
         release-notes/2023/2023.3.rst
         release-notes/2023/2023.4.rst
+        release-notes/2023/2023.5.rst
         release-notes/2023/major/highlights.rst
         release-notes/2023/major/features.rst
         release-notes/2023/major/performance.rst
