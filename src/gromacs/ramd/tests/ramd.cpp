@@ -38,10 +38,14 @@
 #include <gtest/gtest.h>
 
 #include "gromacs/commandline/filenm.h"
+#include "gromacs/fileio/warninp.h"
 #include "gromacs/gmxlib/network.h"
+#include "gromacs/gmxpreprocess/readir.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pulling/pull_internal.h"
+#include "gromacs/topology/topology.h"
+#include "testutils/topologyhelpers.h"
 
 namespace gmx
 {
@@ -54,14 +58,39 @@ struct RAMDTest : public ::testing::Test
 {
 protected:
 
-    RAMDParams params;
     std::unique_ptr<RAMD> ramd;
-    std::unique_ptr<t_commrec> cr;
-    pull_t pull;
-    t_pull_coord coord_params;
+    std::unique_ptr<t_commrec> cr = std::make_unique<t_commrec>();
 
     void SetUp() override
     {
+
+        t_inputrec ir;
+        ir.bPull = true;
+        ir.pull = std::make_unique<pull_params_t>();
+
+        t_pull_coord coord_params;
+        coord_params.eType = PullingAlgorithm::External;
+        coord_params.externalPotentialProvider = "RAMD";
+        ir.pull->coord.push_back(coord_params);
+        ir.pull->coord.push_back(coord_params);
+        ir.pull->coord.push_back(coord_params);
+
+        t_pull_group pull_group;
+        ir.pull->ngroup = 1;
+        ir.pull->group.push_back(pull_group);
+
+        gmx_mtop_t mtop;
+        addNWaterMolecules(&mtop, 2);
+        mtop.finalize();
+
+        t_state state;
+        WarningHandler wi{true, 0};
+
+        pull_t* pull = set_pull_init(
+            &ir, mtop, state.x, state.box, state.lambda[FreeEnergyPerturbationCouplingType::Mass], &wi);
+
+        int64_t step = 0;
+        RAMDParams params;
         params.seed = 9876;
         params.ngroup = 1;
         snew(params.group, 1);
@@ -73,23 +102,11 @@ protected:
         params.old_angle_dist = false;
         params.eval_freq = 1;
 
-        cr = std::make_unique<t_commrec>();
-
         t_filenm fnm[] = {
             { efXVG, "-ramd", "ramd", ffOPTWR }
         };
 
-        int64_t step = 0;
-        coord_params.eType = PullingAlgorithm::External;
-        coord_params.externalPotentialProvider = "RAMD";
-        pull.coord.push_back(pull_coord_work_t(coord_params));
-        pull.coord.push_back(pull_coord_work_t(coord_params));
-        pull.coord.push_back(pull_coord_work_t(coord_params));
-        // pull.group.push_back(pull_group_work_t{});
-        pull.numUnregisteredExternalPotentials = 3;
-        pull.pbcType = PbcType::No;
-
-        ramd = std::make_unique<RAMD>(params, &pull, &step, StartingBehavior::NewSimulation,
+        ramd = std::make_unique<RAMD>(params, pull, &step, StartingBehavior::NewSimulation,
             cr.get(), 1, fnm, nullptr);
     }
 
@@ -116,7 +133,7 @@ TEST_F(RAMDTest, calculateForces)
     gmx_enerdata_t enerd(1, 0);
     ForceProviderOutput forceProviderOutput(&forceWithVirial, &enerd);
 
-    // ramd->calculateForces(forceProviderInput, &forceProviderOutput);
+    ramd->calculateForces(forceProviderInput, &forceProviderOutput);
 }
 
 } // namespace
