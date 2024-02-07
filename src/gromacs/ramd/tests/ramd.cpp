@@ -33,18 +33,20 @@
  */
 #include "gmxpre.h"
 
-#include "gromacs/ramd/ramd.h"
-
 #include <gtest/gtest.h>
 
 #include "gromacs/commandline/filenm.h"
+#include "gromacs/fileio/tpxio.h"
 #include "gromacs/fileio/warninp.h"
 #include "gromacs/gmxlib/network.h"
 #include "gromacs/gmxpreprocess/readir.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pulling/pull_internal.h"
+#include "gromacs/ramd/ramd.h"
 #include "gromacs/topology/topology.h"
+#include "testutils/cmdlinetest.h"
+#include "testutils/testfilemanager.h"
 #include "testutils/topologyhelpers.h"
 
 namespace gmx
@@ -63,27 +65,35 @@ protected:
 
     void SetUp() override
     {
+        // t_inputrec ir;
+        // ir.bPull = true;
+        // ir.pull = std::make_unique<pull_params_t>();
 
-        t_inputrec ir;
-        ir.bPull = true;
-        ir.pull = std::make_unique<pull_params_t>();
+        // t_pull_coord coord_params;
+        // coord_params.eType = PullingAlgorithm::External;
+        // coord_params.externalPotentialProvider = "RAMD";
+        // ir.pull->coord.push_back(coord_params);
+        // ir.pull->coord.push_back(coord_params);
+        // ir.pull->coord.push_back(coord_params);
 
-        t_pull_coord coord_params;
-        coord_params.eType = PullingAlgorithm::External;
-        coord_params.externalPotentialProvider = "RAMD";
-        ir.pull->coord.push_back(coord_params);
-        ir.pull->coord.push_back(coord_params);
-        ir.pull->coord.push_back(coord_params);
+        // t_pull_group pull_group;
+        // ir.pull->ngroup = 1;
+        // ir.pull->group.push_back(pull_group);
 
-        t_pull_group pull_group;
-        ir.pull->ngroup = 1;
-        ir.pull->group.push_back(pull_group);
+        // gmx_mtop_t mtop;
+        // addNWaterMolecules(&mtop, 2);
+        // mtop.finalize();
+
+        // t_state state;
+
+        // CommandLine cmdline;
+        // cmdline.addOption("grompp");
 
         gmx_mtop_t mtop;
-        addNWaterMolecules(&mtop, 2);
-        mtop.finalize();
-
+        t_inputrec ir;
         t_state state;
+        read_tpx_state(TestFileManager::getInputFilePath("data/1WDHI/topol.tpr").u8string(), &ir, &state, &mtop);
+
         WarningHandler wi{true, 0};
 
         pull_t* pull = set_pull_init(

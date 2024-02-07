@@ -79,7 +79,13 @@
         "variant": "cpp",
         "__functional_base": "cpp",
         "locale": "cpp",
-        "any": "cpp"
+        "any": "cpp",
+        "charconv": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp"
     },
     "cmake.configureOnOpen": false,
     "python.analysis.typeCheckingMode": "basic",
