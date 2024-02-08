@@ -67,7 +67,6 @@ public:
     */
     RAMD(const RAMDParams&           params,
          pull_t*                     pull,
-         int64_t*                    pstep,
          const gmx::StartingBehavior startingBehavior,
          const t_commrec*            cr,
          int                         nfile,
@@ -94,9 +93,6 @@ private:
 
     /// PULL work structure
     pull_t* pull;
-
-    /// Pointer to the current MD step
-    int64_t* pstep;
 
     /// Random pull direction
     RandomSphericalDirectionGenerator random_spherical_direction_generator;
