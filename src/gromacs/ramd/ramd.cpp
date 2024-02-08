@@ -54,7 +54,6 @@ namespace gmx
 
 RAMD::RAMD(const RAMDParams&           params,
            pull_t*                     pull,
-           int64_t*                    pstep,
            const gmx::StartingBehavior startingBehavior,
            const t_commrec*            cr,
            int                         nfile,
@@ -63,7 +62,6 @@ RAMD::RAMD(const RAMDParams&           params,
            FILE*                       log)
   : params(params),
     pull(pull),
-    pstep(pstep),
     random_spherical_direction_generator(params.seed, params.old_angle_dist),
     direction(params.ngroup),
     com_rec_prev(params.ngroup),
@@ -107,17 +105,18 @@ RAMD::RAMD(const RAMDParams&           params,
 }
 
 void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
-                           ForceProviderOutput*      forceProviderOutput)
+                           [[maybe_unused]] ForceProviderOutput* forceProviderOutput)
 {
     t_pbc pbc;
     set_pbc(&pbc, pull->pbcType, forceProviderInput.box_);
 
-    if (MAIN(cr) and out and (*pstep % params.eval_freq == 0))
+    auto step = forceProviderInput.step_;
+    if (MAIN(cr) and out and (step % params.eval_freq == 0))
     {
         fprintf(out, "%.4f", forceProviderInput.t_);
     }
 
-    if (*pstep == 0)
+    if (step == 0)
     {
         // Store COM positions for first evaluation
         for (int g = 0; g < params.ngroup; ++g)
@@ -134,11 +133,11 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             }
         }
     }
-    else if (*pstep % params.eval_freq == 0)
+    else if (step % params.eval_freq == 0)
     {
         if (MAIN(cr) and debug)
         {
-            fprintf(debug, "==== RAMD ==== evaluation %ld\n", *pstep);
+            fprintf(debug, "==== RAMD ==== evaluation %ld\n", step);
         }
         for (int g = 0; g < params.ngroup; ++g)
         {
@@ -174,7 +173,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 if (MAIN(cr))
                 {
                     fprintf(this->log, "==== RAMD ==== RAMD group %d has exited the binding site in step %ld\n",
-                            g, *pstep);
+                            g, step);
                 }
             } else if (ligand_exited[g] == 1) {
                 ligand_exited[g] = 0;
@@ -212,7 +211,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
-    if (MAIN(cr) and (*pstep % params.eval_freq == 0))
+    if (MAIN(cr) and (step % params.eval_freq == 0))
     {
         if (out)
         {
@@ -223,7 +222,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         // Exit if all ligand-receptor COM distances are larger than max_dist
         if (std::accumulate(ligand_exited.begin(), ligand_exited.end(), 0) == params.ngroup)
         {
-            fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", *pstep);
+            fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
             this->write_trajectory = true;
             gmx_set_stop_condition(StopCondition::Next);
         }

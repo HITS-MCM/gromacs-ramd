@@ -45,7 +45,6 @@
 #include "gromacs/pulling/pull_internal.h"
 #include "gromacs/ramd/ramd.h"
 #include "gromacs/topology/topology.h"
-#include "testutils/cmdlinetest.h"
 #include "testutils/testfilemanager.h"
 #include "testutils/topologyhelpers.h"
 
@@ -56,83 +55,28 @@ namespace test
 namespace
 {
 
-struct RAMDTest : public ::testing::Test
+TEST(RAMDTest, CalculateForces1WDHI)
 {
-protected:
+    gmx_mtop_t mtop;
+    t_inputrec ir;
+    t_state state;
+    read_tpx_state(TestFileManager::getInputFilePath("data/1WDHI/topol.tpr").u8string(), &ir, &state, &mtop);
 
-    std::unique_ptr<RAMD> ramd;
-    std::unique_ptr<t_commrec> cr = std::make_unique<t_commrec>();
+    WarningHandler wi{true, 0};
 
-    void SetUp() override
-    {
-        // t_inputrec ir;
-        // ir.bPull = true;
-        // ir.pull = std::make_unique<pull_params_t>();
+    pull_t* pull = set_pull_init(
+        &ir, mtop, state.x, state.box, state.lambda[FreeEnergyPerturbationCouplingType::Mass], &wi);
 
-        // t_pull_coord coord_params;
-        // coord_params.eType = PullingAlgorithm::External;
-        // coord_params.externalPotentialProvider = "RAMD";
-        // ir.pull->coord.push_back(coord_params);
-        // ir.pull->coord.push_back(coord_params);
-        // ir.pull->coord.push_back(coord_params);
+    t_filenm fnm[] = {
+        { efXVG, "-ramd", "ramd", ffOPTWR }
+    };
 
-        // t_pull_group pull_group;
-        // ir.pull->ngroup = 1;
-        // ir.pull->group.push_back(pull_group);
+    auto cr = std::make_unique<t_commrec>();
+    auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
+        cr.get(), 1, fnm, nullptr);
 
-        // gmx_mtop_t mtop;
-        // addNWaterMolecules(&mtop, 2);
-        // mtop.finalize();
+    ASSERT_NEAR(0.0, pull->coord[0].scalarForce, 1e-6);
 
-        // t_state state;
-
-        // CommandLine cmdline;
-        // cmdline.addOption("grompp");
-
-        gmx_mtop_t mtop;
-        t_inputrec ir;
-        t_state state;
-        read_tpx_state(TestFileManager::getInputFilePath("data/1WDHI/topol.tpr").u8string(), &ir, &state, &mtop);
-
-        WarningHandler wi{true, 0};
-
-        pull_t* pull = set_pull_init(
-            &ir, mtop, state.x, state.box, state.lambda[FreeEnergyPerturbationCouplingType::Mass], &wi);
-
-        int64_t step = 0;
-        RAMDParams params;
-        params.seed = 9876;
-        params.ngroup = 1;
-        snew(params.group, 1);
-        params.group->force = 600.0;
-        params.group->max_dist = 4.0;
-        params.group->r_min_dist = 0.025;
-        params.eval_freq = 50;
-        params.force_out_freq = 50;
-        params.old_angle_dist = false;
-        params.eval_freq = 1;
-
-        t_filenm fnm[] = {
-            { efXVG, "-ramd", "ramd", ffOPTWR }
-        };
-
-        ramd = std::make_unique<RAMD>(params, pull, &step, StartingBehavior::NewSimulation,
-            cr.get(), 1, fnm, nullptr);
-    }
-
-    void TearDown() override
-    {
-        ramd.reset();
-    }
-};
-
-TEST_F(RAMDTest, construction)
-{
-    EXPECT_TRUE(ramd);
-}
-
-TEST_F(RAMDTest, calculateForces)
-{
     PaddedVector<RVec> x = {{0, 0, 0}};
     std::vector<real> chargeA{1};
     matrix box = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
@@ -144,6 +88,8 @@ TEST_F(RAMDTest, calculateForces)
     ForceProviderOutput forceProviderOutput(&forceWithVirial, &enerd);
 
     ramd->calculateForces(forceProviderInput, &forceProviderOutput);
+
+    ASSERT_NEAR(528.87046337127686, pull->coord[0].scalarForce, 1e-6);
 }
 
 } // namespace
