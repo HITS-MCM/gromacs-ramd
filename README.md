@@ -1,4 +1,4 @@
-[![Build Status](https://jenkins.h-its.org/buildStatus/icon?job=MCM/HITS-MCM/gromacs-ramd/release-2020)](https://jenkins.h-its.org/job/MCM/job/HITS-MCM/job/gromacs-ramd/job/release-2020/)
+[![Build Status](https://jenkins.h-its.org/buildStatus/icon?job=MCM/HITS-MCM/gromacs-ramd/main)](https://jenkins.h-its.org/job/MCM/job/HITS-MCM/job/gromacs-ramd/job/main/)
 
 # Random Acceleration Molecular Dynamics (RAMD)
 
@@ -10,7 +10,7 @@ applied to a molecule in the system.
 
 ## Installation
 
-See http://manual.gromacs.org/documentation/2020/install-guide/index.html
+See http://manual.gromacs.org/documentation/current/install-guide/index.html
 
 ## HPC deployment with EasyBuild
 
