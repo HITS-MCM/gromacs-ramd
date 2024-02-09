@@ -39,12 +39,15 @@
 #include "gromacs/fileio/tpxio.h"
 #include "gromacs/fileio/warninp.h"
 #include "gromacs/gmxlib/network.h"
+#include "gromacs/gmxpreprocess/grompp.h"
 #include "gromacs/gmxpreprocess/readir.h"
 #include "gromacs/mdtypes/enerdata.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pulling/pull_internal.h"
 #include "gromacs/ramd/ramd.h"
 #include "gromacs/topology/topology.h"
+
+#include "testutils/cmdlinetest.h"
 #include "testutils/testfilemanager.h"
 #include "testutils/topologyhelpers.h"
 
@@ -90,6 +93,41 @@ TEST(RAMDTest, CalculateForces1WDHI)
     ramd->calculateForces(forceProviderInput, &forceProviderOutput);
 
     ASSERT_NEAR(528.87046337127686, pull->coord[0].scalarForce, 1e-6);
+}
+
+TEST(RAMDTest, binding_residues)
+{
+    CommandLine cmdline;
+    cmdline.addOption("grompp");
+    cmdline.addOption("-f", TestFileManager::getInputFilePath("data/4water.mdp").u8string());
+    cmdline.addOption("-c", TestFileManager::getInputFilePath("data/4water.gro").u8string());
+    cmdline.addOption("-p", TestFileManager::getInputFilePath("data/4water.top").u8string());
+    cmdline.addOption("-n", TestFileManager::getInputFilePath("data/4water.ndx").u8string());
+    gmx::test::TestFileManager fileManager;
+    std::string outTprFilename = fileManager.getTemporaryFilePath("4water.tpr").u8string();
+    cmdline.addOption("-o", outTprFilename);
+
+    ASSERT_EQ(0, gmx_grompp(cmdline.argc(), cmdline.argv()));
+
+    gmx_mtop_t mtop;
+    t_inputrec ir;
+    t_state state;
+    read_tpx_state(outTprFilename.c_str(), &ir, &state, &mtop);
+
+    WarningHandler wi{true, 0};
+
+    pull_t* pull = set_pull_init(
+        &ir, mtop, state.x, state.box, state.lambda[FreeEnergyPerturbationCouplingType::Mass], &wi);
+
+    t_filenm fnm[] = {
+        { efXVG, "-ramd", "ramd", ffOPTWR }
+    };
+
+    auto cr = std::make_unique<t_commrec>();
+    auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
+        cr.get(), 1, fnm, nullptr);
+
+    ASSERT_NEAR(0.0, pull->coord[0].scalarForce, 1e-6);
 }
 
 } // namespace
