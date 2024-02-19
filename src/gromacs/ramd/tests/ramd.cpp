@@ -127,7 +127,15 @@ TEST(RAMDTest, binding_residues)
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
         cr.get(), 1, fnm, nullptr);
 
-    ASSERT_EQ(0, ramd->getParams().group[0].binding_residues);
+    ASSERT_EQ(5, pull->params.group.size());
+    ASSERT_EQ(0, pull->params.group[0].ind.size());
+
+    ASSERT_EQ((std::vector<int>{0, 1, 2}), pull->params.group[1].ind);
+    ASSERT_EQ((std::vector<int>{3, 4, 5}), pull->params.group[2].ind);
+    ASSERT_EQ((std::vector<int>{0, 1, 2}), pull->params.group[3].ind);
+    ASSERT_EQ((std::vector<int>{6, 7, 8}), pull->params.group[4].ind);
+
+    ASSERT_EQ((std::vector<int>{}), ramd->getParams().group[0].binding_residues);
 }
 
 } // namespace
