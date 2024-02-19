@@ -44,12 +44,12 @@ namespace gmx
 /// Parameters for RAMD group
 struct RAMDGroup
 {
-    real force;                        ///< Force to be applied in kcal/mol/Angstrom
-    real max_dist;                     ///< Specifies the distance in Angstrom between the COMs of the ligand
-                                       ///  and the receptor when the simulation is stopped
-    real r_min_dist;                   ///< Specifies the minimum distance in Angstrom
-                                       ///  to be traveled by the ligand in one RAMD step
-    std::vector<int> binding_residues; ///< The global atoms numbers of the binding residues
+    real force;           ///< Force to be applied in kcal/mol/Angstrom
+    real max_dist;        ///< Specifies the distance in Angstrom between the COMs of the ligand
+                          ///  and the receptor when the simulation is stopped
+    real r_min_dist;      ///< Specifies the minimum distance in Angstrom
+                          ///  to be traveled by the ligand in one RAMD step
+    int binding_residues; ///< Group index (ndx-file) of the binding residues
 };
 
 /// Parameters for Random Acceleration Molecular Dynamics (RAMD)

@@ -127,7 +127,7 @@ TEST(RAMDTest, binding_residues)
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
         cr.get(), 1, fnm, nullptr);
 
-    ASSERT_NEAR(0.0, pull->coord[0].scalarForce, 1e-6);
+    ASSERT_EQ(0, ramd->getParams().group[0].binding_residues);
 }
 
 } // namespace
