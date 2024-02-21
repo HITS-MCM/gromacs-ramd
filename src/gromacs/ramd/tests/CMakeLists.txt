@@ -42,4 +42,5 @@ target_link_libraries(ramd-test PRIVATE
     math
     muparser
     ramd
+    topology
 )

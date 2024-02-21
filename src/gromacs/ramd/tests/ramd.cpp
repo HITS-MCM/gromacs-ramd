@@ -45,6 +45,7 @@
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/pulling/pull_internal.h"
 #include "gromacs/ramd/ramd.h"
+#include "gromacs/topology/mtop_util.h"
 #include "gromacs/topology/topology.h"
 
 #include "testutils/cmdlinetest.h"
@@ -136,6 +137,12 @@ TEST(RAMDTest, binding_residues)
     ASSERT_EQ((std::vector<int>{6, 7, 8}), pull->params.group[4].ind);
 
     ASSERT_EQ((std::vector<int>{}), ramd->getParams().group[0].binding_residues);
+
+    t_atoms atoms = gmx_mtop_global_atoms(mtop);
+    ASSERT_EQ(atoms.atom[0].resind, 0);
+    ASSERT_EQ(atoms.nres, 4);
+    ASSERT_EQ(std::string(atoms.resinfo[0].name[0]), "SOL");
+    ASSERT_EQ(std::string(atoms.resinfo[1].name[0]), "SOL");
 }
 
 } // namespace
