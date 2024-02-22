@@ -77,7 +77,7 @@ TEST(RAMDTest, CalculateForces1WDHI)
 
     auto cr = std::make_unique<t_commrec>();
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
-        cr.get(), 1, fnm, nullptr);
+        cr.get(), 1, fnm, nullptr, mtop);
 
     ASSERT_NEAR(0.0, pull->coord[0].scalarForce, 1e-6);
 
@@ -126,7 +126,7 @@ TEST(RAMDTest, binding_residues)
 
     auto cr = std::make_unique<t_commrec>();
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
-        cr.get(), 1, fnm, nullptr);
+        cr.get(), 1, fnm, nullptr, mtop);
 
     ASSERT_EQ(5, pull->params.group.size());
     ASSERT_EQ(0, pull->params.group[0].ind.size());
@@ -143,6 +143,7 @@ TEST(RAMDTest, binding_residues)
     ASSERT_EQ(atoms.nres, 4);
     ASSERT_EQ(std::string(atoms.resinfo[0].name[0]), "SOL");
     ASSERT_EQ(std::string(atoms.resinfo[1].name[0]), "SOL");
+    ASSERT_EQ(std::string(atoms.atomtype[0][0]), "OW_spc");
 }
 
 } // namespace
