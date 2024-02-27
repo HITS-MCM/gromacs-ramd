@@ -4278,6 +4278,13 @@ void do_index(const char*                    mdparin,
 
         process_pull_groups(ir->pull->group, inputrecStrings->pullGroupNames, defaultIndexGroups);
 
+        t_pull_group new_group;
+        new_group.ind.push_back(1);
+        new_group.ind.push_back(2);
+        new_group.ind.push_back(3);
+        ir->pull->group.push_back(new_group);
+        ir->pull->ngroup++;
+
         checkPullCoords(ir->pull->group, ir->pull->coord);
     }
 
