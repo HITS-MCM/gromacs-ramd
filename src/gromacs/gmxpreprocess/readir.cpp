@@ -4285,6 +4285,21 @@ void do_index(const char*                    mdparin,
         ir->pull->group.push_back(new_group);
         ir->pull->ngroup++;
 
+        t_pull_group new_group2;
+        new_group2.ind.push_back(4);
+        new_group2.ind.push_back(5);
+        new_group2.ind.push_back(6);
+        ir->pull->group.push_back(new_group2);
+        ir->pull->ngroup++;
+
+        t_pull_coord new_coord;
+        new_coord.ngroup = 2;
+        new_coord.group[0] = ir->ramdParams->ngroup * 2 + 1;
+        new_coord.group[1] = ir->ramdParams->ngroup * 2 + 2;
+        new_coord.coordIndex = ir->pull->ncoord;
+        ir->pull->coord.push_back(new_coord);
+        ir->pull->ncoord++;
+
         checkPullCoords(ir->pull->group, ir->pull->coord);
     }
 

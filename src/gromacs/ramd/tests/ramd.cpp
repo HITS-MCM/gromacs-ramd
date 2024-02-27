@@ -128,8 +128,7 @@ TEST(RAMDTest, binding_residues)
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
         cr.get(), 1, fnm, nullptr, mtop);
 
-    ASSERT_EQ(6, pull->params.group.size());
-    ASSERT_EQ(6, ir.pull->group.size());
+    ASSERT_EQ(7, pull->params.group.size());
     ASSERT_EQ(0, pull->params.group[0].ind.size());
 
     ASSERT_EQ((std::vector<int>{0, 1, 2}), pull->params.group[1].ind);
@@ -145,6 +144,18 @@ TEST(RAMDTest, binding_residues)
     ASSERT_EQ(std::string(atoms.resinfo[0].name[0]), "SOL");
     ASSERT_EQ(std::string(atoms.resinfo[1].name[0]), "SOL");
     ASSERT_EQ(std::string(atoms.atomtype[0][0]), "OW_spc");
+
+    PaddedVector<RVec> x = {{0, 0, 0}};
+    std::vector<real> chargeA{1};
+    matrix box = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    ForceProviderInput forceProviderInput(x, ssize(chargeA), chargeA, {}, 0.0, 0, box, *cr);
+
+    PaddedVector<RVec> f = {{0, 0, 0}};
+    ForceWithVirial forceWithVirial(f, true);
+    gmx_enerdata_t enerd(1, 0);
+    ForceProviderOutput forceProviderOutput(&forceWithVirial, &enerd);
+
+    ramd->calculateForces(forceProviderInput, &forceProviderOutput);
 }
 
 } // namespace

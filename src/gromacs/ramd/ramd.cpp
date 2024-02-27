@@ -215,6 +215,15 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
+    for (int g = params.ngroup; g < (pull->params.ngroup - 1) / 2; ++g)
+    {
+        DVec com_rec_curr = pull->group[g * 2 + 1].x;   // 3
+        DVec com_lig_curr = pull->group[g * 2 + 2].x;   // 4
+        DVec curr_dist_vect;
+        pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
+        auto curr_dist = std::sqrt(curr_dist_vect.norm2());
+    }
+
     if (MAIN(cr) and (step % params.eval_freq == 0))
     {
         if (out)
