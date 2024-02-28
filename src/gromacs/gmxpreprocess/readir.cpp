@@ -4284,6 +4284,7 @@ void do_index(const char*                    mdparin,
             new_group.ind.push_back(1);
             new_group.ind.push_back(2);
             new_group.ind.push_back(3);
+            new_group.pbcatom = 2;
             ir->pull->group.push_back(new_group);
             ir->pull->ngroup++;
 
@@ -4291,6 +4292,7 @@ void do_index(const char*                    mdparin,
             new_group2.ind.push_back(4);
             new_group2.ind.push_back(5);
             new_group2.ind.push_back(6);
+            new_group2.pbcatom = 5;
             ir->pull->group.push_back(new_group2);
             ir->pull->ngroup++;
 
