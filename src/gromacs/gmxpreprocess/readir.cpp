@@ -4281,18 +4281,18 @@ void do_index(const char*                    mdparin,
         if (ir->bRAMD)
         {
             t_pull_group new_group;
+            new_group.ind.push_back(0);
             new_group.ind.push_back(1);
             new_group.ind.push_back(2);
-            new_group.ind.push_back(3);
-            new_group.pbcatom = 2;
+            new_group.pbcatom = 1;
             ir->pull->group.push_back(new_group);
             ir->pull->ngroup++;
 
             t_pull_group new_group2;
+            new_group2.ind.push_back(3);
             new_group2.ind.push_back(4);
             new_group2.ind.push_back(5);
-            new_group2.ind.push_back(6);
-            new_group2.pbcatom = 5;
+            new_group2.pbcatom = 4;
             ir->pull->group.push_back(new_group2);
             ir->pull->ngroup++;
 
@@ -4301,6 +4301,9 @@ void do_index(const char*                    mdparin,
             new_coord.group[0] = ir->ramdParams->ngroup * 2 + 1;
             new_coord.group[1] = ir->ramdParams->ngroup * 2 + 2;
             new_coord.coordIndex = ir->pull->ncoord;
+            new_coord.dim = {1, 1, 1};
+            new_coord.vec = {1, 0, 0};
+            new_coord.eGeom = PullGroupGeometry::Direction;
             ir->pull->coord.push_back(new_coord);
             ir->pull->ncoord++;
         }

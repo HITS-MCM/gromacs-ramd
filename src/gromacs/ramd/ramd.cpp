@@ -215,6 +215,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
+    // Extra groups for residence time computation
     for (int g = params.ngroup; g < (pull->params.ngroup - 1) / 2; ++g)
     {
         DVec com_rec_curr = pull->group[g * 2 + 1].x;   // 3
