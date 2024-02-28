@@ -4302,8 +4302,7 @@ void do_index(const char*                    mdparin,
             new_coord.group[1] = ir->ramdParams->ngroup * 2 + 2;
             new_coord.coordIndex = ir->pull->ncoord;
             new_coord.dim = {1, 1, 1};
-            new_coord.vec = {1, 0, 0};
-            new_coord.eGeom = PullGroupGeometry::Direction;
+            new_coord.eGeom = PullGroupGeometry::Distance;
             ir->pull->coord.push_back(new_coord);
             ir->pull->ncoord++;
         }
