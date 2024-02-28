@@ -62,6 +62,8 @@ struct RAMDParams
     int force_out_freq;           ///< Every 'force_out_freq' steps detailed output of forces will be written
     gmx_bool old_angle_dist;      ///< Use old angle distribution
     gmx_bool connected_ligands;   ///< Behavior of re-entering ligands into the dissociation radius
+    real residence_distance;      ///< Residence distance
+                                  /// If the ligand is within this distance from the receptor, it is considered to be bound
 };
 
 } // namespace gmx

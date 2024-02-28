@@ -216,6 +216,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
     }
 
     // Extra groups for residence time computation
+    std::vector<real> residence_contacts;
     for (int g = params.ngroup; g < (pull->params.ngroup - 1) / 2; ++g)
     {
         DVec com_rec_curr = pull->group[g * 2 + 1].x;   // 3
@@ -223,6 +224,11 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         DVec curr_dist_vect;
         pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
         auto curr_dist = std::sqrt(curr_dist_vect.norm2());
+        residence_contacts.push_back(curr_dist);
+    }
+
+    if (std::accumulate(std::begin(residence_contacts), std::end(residence_contacts), 0.0) / std::size(residence_contacts) > params.residence_distance) {
+        fprintf(this->log, "==== RAMD ==== Residence time obtained after %ld steps.\n", step);
     }
 
     if (MAIN(cr) and (step % params.eval_freq == 0))
