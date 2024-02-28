@@ -227,8 +227,10 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         residence_contacts.push_back(curr_dist);
     }
 
-    if (std::accumulate(std::begin(residence_contacts), std::end(residence_contacts), 0.0) / std::size(residence_contacts) > params.residence_distance) {
-        fprintf(this->log, "==== RAMD ==== Residence time obtained after %ld steps.\n", step);
+    if (MAIN(cr) and out) {
+        if (std::accumulate(std::begin(residence_contacts), std::end(residence_contacts), 0.0) / std::size(residence_contacts) > params.residence_distance) {
+            fprintf(this->log, "==== RAMD ==== Residence time obtained after %ld steps.\n", step);
+        }
     }
 
     if (MAIN(cr) and (step % params.eval_freq == 0))
