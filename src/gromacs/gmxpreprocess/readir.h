@@ -181,6 +181,8 @@ pull_t* set_pull_init(t_inputrec*                    ir,
 void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, WarningHandler* wi);
 /* Reads the ramd parameters, returns a list of the ramd group names */
 
+void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> defaultIndexGroups);
+
 std::vector<std::string> read_rotparams(std::vector<t_inpfile>* inp, t_rot* rot, WarningHandler* wi);
 /* Reads enforced rotation parameters, returns a list of the rot group names */
 

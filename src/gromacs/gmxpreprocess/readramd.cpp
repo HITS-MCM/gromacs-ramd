@@ -38,6 +38,7 @@
 #include "gromacs/gmxpreprocess/readir.h"
 #include "gromacs/mdtypes/inputrec.h"
 #include "gromacs/mdtypes/ramd_params.h"
+#include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/topology/topology.h"
 #include "gromacs/utility/cstringutil.h"
 #include "gromacs/utility/smalloc.h"
@@ -109,4 +110,34 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
     }
 
     ramdparams->connected_ligands = getEnum<Boolean>(inp, "ramd-connected-ligands", wi) != Boolean::No;
+}
+
+
+void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> defaultIndexGroups)
+{
+    t_pull_group new_group;
+    new_group.ind.push_back(0);
+    new_group.ind.push_back(1);
+    new_group.ind.push_back(2);
+    new_group.pbcatom = 1;
+    ir->pull->group.push_back(new_group);
+    ir->pull->ngroup++;
+
+    t_pull_group new_group2;
+    new_group2.ind.push_back(3);
+    new_group2.ind.push_back(4);
+    new_group2.ind.push_back(5);
+    new_group2.pbcatom = 4;
+    ir->pull->group.push_back(new_group2);
+    ir->pull->ngroup++;
+
+    t_pull_coord new_coord;
+    new_coord.ngroup = 2;
+    new_coord.group[0] = ir->ramdParams->ngroup * 2 + 1;
+    new_coord.group[1] = ir->ramdParams->ngroup * 2 + 2;
+    new_coord.coordIndex = ir->pull->ncoord;
+    new_coord.dim = {1, 1, 1};
+    new_coord.eGeom = PullGroupGeometry::Distance;
+    ir->pull->coord.push_back(new_coord);
+    ir->pull->ncoord++;   
 }
