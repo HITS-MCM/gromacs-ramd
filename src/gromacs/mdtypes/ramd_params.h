@@ -49,7 +49,8 @@ struct RAMDGroup
                           ///  and the receptor when the simulation is stopped
     real r_min_dist;      ///< Specifies the minimum distance in Angstrom
                           ///  to be traveled by the ligand in one RAMD step
-    std::vector<int> binding_residues; ///< The global atoms numbers of the binding residues
+    std::string bind_res_receptor; ///< The binding residues of the receptor
+    std::string bind_res_ligand;   ///< The binding residues of the ligand
 };
 
 /// Parameters for Random Acceleration Molecular Dynamics (RAMD)

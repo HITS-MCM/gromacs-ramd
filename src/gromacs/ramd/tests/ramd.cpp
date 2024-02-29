@@ -136,7 +136,8 @@ TEST(RAMDTest, binding_residues)
     ASSERT_EQ((std::vector<int>{0, 1, 2}), pull->params.group[3].ind);
     ASSERT_EQ((std::vector<int>{6, 7, 8}), pull->params.group[4].ind);
 
-    ASSERT_EQ((std::vector<int>{}), ramd->getParams().group[0].binding_residues);
+    ASSERT_EQ("1SOL", ramd->getParams().group[0].bind_res_receptor);
+    ASSERT_EQ("2SOL", ramd->getParams().group[0].bind_res_ligand);
 
     t_atoms atoms = gmx_mtop_global_atoms(mtop);
     ASSERT_EQ(atoms.atom[0].resind, 0);
