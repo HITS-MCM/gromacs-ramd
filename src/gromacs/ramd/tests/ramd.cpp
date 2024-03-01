@@ -61,10 +61,22 @@ namespace
 
 TEST(RAMDTest, CalculateForces1WDHI)
 {
+    CommandLine cmdline;
+    cmdline.addOption("grompp");
+    cmdline.addOption("-f", TestFileManager::getInputFilePath("data/1WDHI/ramd.mdp").u8string());
+    cmdline.addOption("-c", TestFileManager::getInputFilePath("data/1WDHI/1WDHI_box.gro").u8string());
+    cmdline.addOption("-p", TestFileManager::getInputFilePath("data/1WDHI/topol.top").u8string());
+    cmdline.addOption("-n", TestFileManager::getInputFilePath("data/1WDHI/1WDHI.ndx").u8string());
+    gmx::test::TestFileManager fileManager;
+    std::string outTprFilename = fileManager.getTemporaryFilePath("1WDHI.tpr").u8string();
+    cmdline.addOption("-o", outTprFilename);
+
+    ASSERT_EQ(0, gmx_grompp(cmdline.argc(), cmdline.argv()));
+
     gmx_mtop_t mtop;
     t_inputrec ir;
     t_state state;
-    read_tpx_state(TestFileManager::getInputFilePath("data/1WDHI/topol.tpr").u8string(), &ir, &state, &mtop);
+    read_tpx_state(outTprFilename.c_str(), &ir, &state, &mtop);
 
     WarningHandler wi{true, 0};
 
