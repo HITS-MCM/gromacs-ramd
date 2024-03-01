@@ -46,9 +46,6 @@
 
 void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, WarningHandler* wi)
 {
-    char buf[STRLEN];
-    char readBuffer[STRLEN];
-
     ramdparams->seed = get_eint(inp, "ramd-seed", 1234, wi);
     ramdparams->ngroup = get_eint(inp, "ramd-ngroups", 1, wi);
 
@@ -72,17 +69,8 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
         ramdgrp.force = get_ereal(inp, ramd_prefix + "-force", 600, wi);
         ramdgrp.r_min_dist = get_ereal(inp, ramd_prefix + "-r-min-dist", 0.0025, wi);
         ramdgrp.max_dist = get_ereal(inp, ramd_prefix + "-max-dist", 4.0, wi);
-
-        sprintf(buf, "%s-receptor-res", ramd_prefix.c_str());
-        setStringEntry(inp, buf, readBuffer, "");
-        ramdgrp.bind_res_receptor = readBuffer;
-
-        sprintf(buf, "%s-ligand-res", ramd_prefix.c_str());
-        setStringEntry(inp, buf, readBuffer, "");
-        ramdgrp.bind_res_ligand = readBuffer;
-
-        // ramdgrp->bind_res_receptor = get_estr(inp, ramd_prefix + "-receptor-res", "bind_res_receptor");
-        // ramdgrp->bind_res_ligand = get_estr(inp, ramd_prefix + "-ligand-res", "bind_res_ligand");
+        ramdgrp.bind_res_receptor = get_estr(inp, ramd_prefix + "-receptor-res", "bind_res_receptor");
+        ramdgrp.bind_res_ligand = get_estr(inp, ramd_prefix + "-ligand-res", "bind_res_ligand");
 
         ramdparams->group.emplace_back(ramdgrp);
     }
@@ -126,20 +114,12 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
 }
 
 
-void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> defaultIndexGroups)
+void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGroups)
 {
-    // at_aromatic="((resname PHE TRP TYR HIS HIE HID HE2) and (name CZ* CD* CE* CG* CH* NE* ND*))"
-    // at_positive="((resname ARG LYS ) and (name NH* NZ)) or ((resname HIP ) and (name HD HE))"   #please note that for resname HIP also, name ND NE can be used
-    // at_negative=" ((resname ASP GLU) and (name OE* OD*))"
-    // at_Hdon="(resname TYR SER LYS GLN ARG HIS ASN THR and (not backbone) and (name O* N*))"
-    // at_Hacc=" (resname GLU ASP GLN and (not backbone) and (name O*))"
-    // at_sulfur="(protein and (name S*))"
-    // at_hydrophob="(protein and (name C* S*) and (not (name CG and resname ASN ASP)) and (not (name CD and resname GLU GLN ARG)) and (not (name CZ and resname TYR ARG)) and (not (name CE and resname LYS)) and (not (name CB and resname SER THR)) and (not backbone))"
-    // at_BB_positive="backbone and name N"
-    // at_BB_negative="backbone and name O"
+    if (find_group(ir->ramdParams->group[0].bind_res_receptor.c_str(), indexGroups) == -1) return;
 
-    const int gid = getGroupIndex(ir->ramdParams->group[0].bind_res_receptor, defaultIndexGroups);
-    auto group = defaultIndexGroups[gid].particleIndices;
+    const int gid = getGroupIndex(ir->ramdParams->group[0].bind_res_receptor, indexGroups);
+    auto group = indexGroups[gid].particleIndices;
 
     t_pull_group new_group;
     new_group.ind.push_back(0);
