@@ -1525,6 +1525,9 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
                     serializer->doReal(&ir->ramdParams->group[g].force);
                     serializer->doReal(&ir->ramdParams->group[g].max_dist);
                     serializer->doReal(&ir->ramdParams->group[g].r_min_dist);
+                    serializer->doString(&ir->ramdParams->group[g].bind_res_receptor);
+                    serializer->doString(&ir->ramdParams->group[g].bind_res_ligand);
+
                 }
                 serializer->doInt(&ir->ramdParams->eval_freq);
                 serializer->doInt(&ir->ramdParams->force_out_freq);

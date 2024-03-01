@@ -165,5 +165,5 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> defaultIn
     new_coord.dim = {1, 1, 1};
     new_coord.eGeom = PullGroupGeometry::Distance;
     ir->pull->coord.push_back(new_coord);
-    ir->pull->ncoord++;   
+    ir->pull->ncoord++;
 }
