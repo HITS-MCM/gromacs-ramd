@@ -16,13 +16,15 @@
    1    2
 [ receptor_Hacc ]
    1    2
-[ receptor_sulfur ]
-   1    2
 [ receptor_hydrophob ]
+   1    2
+[ receptor_backbone ]
    1    2
 [ receptor_backbone_positive ]
    1    2
 [ receptor_backbone_negative ]
+   1    2
+[ receptor_carbon_not_backbone ]
    1    2
 [ ligand_aromatic ]
    1    2
@@ -34,11 +36,13 @@
    1    2
 [ ligand_Hacc ]
    1    2
-[ ligand_sulfur ]
-   1    2
 [ ligand_hydrophob ]
+   1    2
+[ ligand_backbone ]
    1    2
 [ ligand_backbone_positive ]
    1    2
 [ ligand_backbone_negative ]
+   1    2
+[ ligand_carbon_not_backbone ]
    1    2

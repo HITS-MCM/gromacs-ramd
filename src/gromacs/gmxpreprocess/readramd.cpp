@@ -127,10 +127,11 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         "negative",
         "Hdon",
         "Hacc",
-        "sulfur",
         "hydrophob",
+        "backbone",
         "backbone_positive",
-        "backbone_negative"
+        "backbone_negative",
+        "carbon_not_backbone"
     };
 
     for (auto& interaction_name : interaction_names)
