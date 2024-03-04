@@ -4278,7 +4278,7 @@ void do_index(const char*                    mdparin,
 
         process_pull_groups(ir->pull->group, inputrecStrings->pullGroupNames, defaultIndexGroups);
 
-        if (ir->bRAMD)
+        if (ir->bRAMD && ir->ramdParams->use_residence_dist)
         {
             add_residence_time_groups(ir, defaultIndexGroups);
         }

@@ -116,7 +116,12 @@ Please use following mdp options:
    dissociation radius. The simulation stops when all ligands have left the
    dissociation radius. Default value is 'yes'.
 
- * residence-distance
+ * ramd-use-residence-dist
+
+   If 'yes', the residence time will be printed to the log file.
+   Default value is 'no'.
+
+ * ramd-residence-dist
 
    Residence distance in nm. If the ligand is within this distance from the receptor, it is considered to be bound.
    Default value is 0.55 nm.

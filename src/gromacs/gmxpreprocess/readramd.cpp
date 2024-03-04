@@ -111,16 +111,34 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
     }
 
     ramdparams->connected_ligands = getEnum<Boolean>(inp, "ramd-connected-ligands", wi) != Boolean::No;
-    ramdparams->residence_distance = get_ereal(inp, "ramd-residence-distance", 0.55, wi);
+    ramdparams->use_residence_dist = getEnum<Boolean>(inp, "ramd-use-residence-dist", wi) != Boolean::No;
+    ramdparams->residence_dist = get_ereal(inp, "ramd-residence-dist", 0.55, wi);
 }
 
 
 void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGroups)
 {
-    if (find_group(ir->ramdParams->group[0].bind_res_receptor.c_str(), indexGroups) == -1) return;
+    std::string receptor = ir->ramdParams->group[0].bind_res_receptor;
+    std::string ligand = ir->ramdParams->group[0].bind_res_ligand;
 
-    const int gid = getGroupIndex(ir->ramdParams->group[0].bind_res_receptor, indexGroups);
-    auto group = indexGroups[gid].particleIndices;
+    std::vector<std::string> interaction_names{
+        "aromatic",
+        "positive",
+        "negative",
+        "Hdon",
+        "Hacc",
+        "sulfur",
+        "hydrophob",
+        "backbone_positive",
+        "backbone_negative"
+    };
+
+    for (auto& interaction_name : interaction_names)
+    {
+        const int gid1 = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
+        auto group = indexGroups[gid1].particleIndices;
+        const int gid2 = getGroupIndex((ligand + "_" + interaction_name).c_str(), indexGroups);
+    }
 
     t_pull_group new_group;
     new_group.ind.push_back(0);

@@ -140,7 +140,8 @@ TEST(RAMDTest, binding_residues)
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
         cr.get(), 1, fnm, nullptr, mtop);
 
-    ASSERT_EQ(0.75, ramd->getParams().residence_distance);
+    ASSERT_TRUE(ramd->getParams().use_residence_dist);
+    ASSERT_EQ(0.75, ramd->getParams().residence_dist);
     ASSERT_EQ(7, pull->params.group.size());
     ASSERT_EQ(0, pull->params.group[0].ind.size());
 
@@ -149,8 +150,8 @@ TEST(RAMDTest, binding_residues)
     ASSERT_EQ((std::vector<int>{0, 1, 2}), pull->params.group[3].ind);
     ASSERT_EQ((std::vector<int>{6, 7, 8}), pull->params.group[4].ind);
 
-    ASSERT_EQ("1SOL", ramd->getParams().group[0].bind_res_receptor);
-    ASSERT_EQ("2SOL", ramd->getParams().group[0].bind_res_ligand);
+    ASSERT_EQ("receptor", ramd->getParams().group[0].bind_res_receptor);
+    ASSERT_EQ("ligand", ramd->getParams().group[0].bind_res_ligand);
 
     t_atoms atoms = gmx_mtop_global_atoms(mtop);
     ASSERT_EQ(atoms.atom[0].resind, 0);
