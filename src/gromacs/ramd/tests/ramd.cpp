@@ -112,10 +112,10 @@ TEST(RAMDTest, binding_residues)
 {
     CommandLine cmdline;
     cmdline.addOption("grompp");
-    cmdline.addOption("-f", TestFileManager::getInputFilePath("data/4water.mdp").u8string());
-    cmdline.addOption("-c", TestFileManager::getInputFilePath("data/4water.gro").u8string());
-    cmdline.addOption("-p", TestFileManager::getInputFilePath("data/4water.top").u8string());
-    cmdline.addOption("-n", TestFileManager::getInputFilePath("data/4water.ndx").u8string());
+    cmdline.addOption("-f", TestFileManager::getInputFilePath("data/4water/4water.mdp").u8string());
+    cmdline.addOption("-c", TestFileManager::getInputFilePath("data/4water/4water.gro").u8string());
+    cmdline.addOption("-p", TestFileManager::getInputFilePath("data/4water/4water.top").u8string());
+    cmdline.addOption("-n", TestFileManager::getInputFilePath("data/4water/4water.ndx").u8string());
     gmx::test::TestFileManager fileManager;
     std::string outTprFilename = fileManager.getTemporaryFilePath("4water.tpr").u8string();
     cmdline.addOption("-o", outTprFilename);
