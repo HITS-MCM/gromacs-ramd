@@ -140,6 +140,7 @@ TEST(RAMDTest, binding_residues)
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
         cr.get(), 1, fnm, nullptr, mtop);
 
+    ASSERT_EQ(0.75, ramd->getParams().residence_distance);
     ASSERT_EQ(7, pull->params.group.size());
     ASSERT_EQ(0, pull->params.group[0].ind.size());
 

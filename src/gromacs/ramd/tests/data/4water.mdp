@@ -20,6 +20,7 @@ ramd-seed                = 1234
 ramd-eval-freq           = 10
 ramd-force-out-freq      = 10
 ramd-old-angle-dist      = no
+ramd-residence-distance  = 0.75
 ramd-ngroups             = 2
 
 ramd-group1-receptor     = 1SOL

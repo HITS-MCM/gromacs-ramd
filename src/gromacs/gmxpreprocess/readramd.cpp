@@ -111,7 +111,7 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
     }
 
     ramdparams->connected_ligands = getEnum<Boolean>(inp, "ramd-connected-ligands", wi) != Boolean::No;
-    ramdparams->residence_distance = get_ereal(inp, "residence-distance", 0.55, wi);
+    ramdparams->residence_distance = get_ereal(inp, "ramd-residence-distance", 0.55, wi);
 }
 
 

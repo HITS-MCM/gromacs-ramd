@@ -1533,6 +1533,7 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
                 serializer->doInt(&ir->ramdParams->force_out_freq);
                 serializer->doBool(&ir->ramdParams->old_angle_dist);
                 serializer->doBool(&ir->ramdParams->connected_ligands);
+                serializer->doReal(&ir->ramdParams->residence_distance);
             }
         }
     }

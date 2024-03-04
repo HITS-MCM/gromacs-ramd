@@ -44,10 +44,10 @@ namespace gmx
 /// Parameters for RAMD group
 struct RAMDGroup
 {
-    real force;           ///< Force to be applied in kcal/mol/Angstrom
-    real max_dist;        ///< Specifies the distance in Angstrom between the COMs of the ligand
+    real force;           ///< Force to be applied in kcal/mol/nm
+    real max_dist;        ///< Specifies the distance in nm between the COMs of the ligand
                           ///  and the receptor when the simulation is stopped
-    real r_min_dist;      ///< Specifies the minimum distance in Angstrom
+    real r_min_dist;      ///< Specifies the minimum distance in nm
                           ///  to be traveled by the ligand in one RAMD step
     std::string bind_res_receptor; ///< The binding residues of the receptor
     std::string bind_res_ligand;   ///< The binding residues of the ligand
@@ -63,7 +63,7 @@ struct RAMDParams
     int force_out_freq;           ///< Every 'force_out_freq' steps detailed output of forces will be written
     gmx_bool old_angle_dist;      ///< Use old angle distribution
     gmx_bool connected_ligands;   ///< Behavior of re-entering ligands into the dissociation radius
-    real residence_distance;      ///< Residence distance
+    real residence_distance;      ///< Residence distance in nm
                                   /// If the ligand is within this distance from the receptor, it is considered to be bound
 };
 
