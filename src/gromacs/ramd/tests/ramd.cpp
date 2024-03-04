@@ -142,7 +142,7 @@ TEST(RAMDTest, binding_residues)
 
     ASSERT_TRUE(ramd->getParams().use_residence_dist);
     ASSERT_EQ(0.75, ramd->getParams().residence_dist);
-    ASSERT_EQ(7, pull->params.group.size());
+    ASSERT_EQ(25, pull->params.group.size());
     ASSERT_EQ(0, pull->params.group[0].ind.size());
 
     ASSERT_EQ((std::vector<int>{0, 1, 2}), pull->params.group[1].ind);

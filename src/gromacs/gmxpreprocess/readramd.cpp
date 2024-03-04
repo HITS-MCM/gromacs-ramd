@@ -134,36 +134,31 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         "carbon_not_backbone"
     };
 
+    int id_group = ir->pull->ngroup;
     for (auto& interaction_name : interaction_names)
     {
-        const int gid1 = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
-        auto group = indexGroups[gid1].particleIndices;
-        const int gid2 = getGroupIndex((ligand + "_" + interaction_name).c_str(), indexGroups);
+        const int receptor_gid = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
+        t_pull_group receptor_group;
+        receptor_group.ind = indexGroups[receptor_gid].particleIndices;
+        receptor_group.pbcatom = 1;
+        ir->pull->group.push_back(receptor_group);
+        ir->pull->ngroup++;
+
+        const int ligand_gid = getGroupIndex((ligand + "_" + interaction_name).c_str(), indexGroups);
+        t_pull_group ligand_group;
+        ligand_group.ind = indexGroups[ligand_gid].particleIndices;
+        ligand_group.pbcatom = 4;
+        ir->pull->group.push_back(ligand_group);
+        ir->pull->ngroup++;
+
+        t_pull_coord new_coord;
+        new_coord.ngroup = 2;
+        new_coord.group[0] = id_group++;
+        new_coord.group[1] = id_group++;
+        new_coord.coordIndex = ir->pull->ncoord;
+        new_coord.dim = {1, 1, 1};
+        new_coord.eGeom = PullGroupGeometry::Distance;
+        ir->pull->coord.push_back(new_coord);
+        ir->pull->ncoord++;
     }
-
-    t_pull_group new_group;
-    new_group.ind.push_back(0);
-    new_group.ind.push_back(1);
-    new_group.ind.push_back(2);
-    new_group.pbcatom = 1;
-    ir->pull->group.push_back(new_group);
-    ir->pull->ngroup++;
-
-    t_pull_group new_group2;
-    new_group2.ind.push_back(3);
-    new_group2.ind.push_back(4);
-    new_group2.ind.push_back(5);
-    new_group2.pbcatom = 4;
-    ir->pull->group.push_back(new_group2);
-    ir->pull->ngroup++;
-
-    t_pull_coord new_coord;
-    new_coord.ngroup = 2;
-    new_coord.group[0] = ir->ramdParams->ngroup * 2 + 1;
-    new_coord.group[1] = ir->ramdParams->ngroup * 2 + 2;
-    new_coord.coordIndex = ir->pull->ncoord;
-    new_coord.dim = {1, 1, 1};
-    new_coord.eGeom = PullGroupGeometry::Distance;
-    ir->pull->coord.push_back(new_coord);
-    ir->pull->ncoord++;
 }
