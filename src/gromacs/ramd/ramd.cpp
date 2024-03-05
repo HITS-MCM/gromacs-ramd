@@ -82,6 +82,11 @@ RAMD::RAMD(const RAMDParams&           params,
         direction[g] = random_spherical_direction_generator();
     }
 
+    for (int g = 2 * params.ngroup + 1; g < pull->params.ngroup; ++g)
+    {
+        pull->group[g].needToCalcCom = true;
+    }
+
     if (MAIN(cr) and opt2bSet("-ramd", nfile, fnm))
     {
         auto filename = std::string(opt2fn("-ramd", nfile, fnm));

@@ -149,7 +149,6 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         {"ligand_carbon_not_backbone", "receptor_carbon_not_backbone"}
     };
 
-    int id_group = ir->pull->ngroup;
     for (auto& interaction_name : atom_group_names)
     {
         const int receptor_gid = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
@@ -165,15 +164,5 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         ligand_group.pbcatom = 4;
         ir->pull->group.push_back(ligand_group);
         ir->pull->ngroup++;
-
-        t_pull_coord new_coord;
-        new_coord.ngroup = 2;
-        new_coord.group[0] = id_group++;
-        new_coord.group[1] = id_group++;
-        new_coord.coordIndex = ir->pull->ncoord;
-        new_coord.dim = {1, 1, 1};
-        new_coord.eGeom = PullGroupGeometry::Distance;
-        ir->pull->coord.push_back(new_coord);
-        ir->pull->ncoord++;
     }
 }
