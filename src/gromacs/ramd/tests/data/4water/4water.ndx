@@ -12,11 +12,11 @@
    1    2
 [ receptor_negative ]
    1    2
-[ receptor_Hdon ]
+[ receptor_hydrogen_donor ]
    1    2
-[ receptor_Hacc ]
+[ receptor_hydrogen_acceptor ]
    1    2
-[ receptor_hydrophob ]
+[ receptor_hydrophobic ]
    1    2
 [ receptor_backbone ]
    1    2
@@ -32,11 +32,11 @@
    3    4
 [ ligand_negative ]
    3    4
-[ ligand_Hdon ]
+[ ligand_hydrogen_donor ]
    3    4
-[ ligand_Hacc ]
+[ ligand_hydrogen_acceptor ]
    3    4
-[ ligand_hydrophob ]
+[ ligand_hydrophobic ]
    3    4
 [ ligand_backbone ]
    3    4

@@ -121,21 +121,36 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
     std::string receptor = ir->ramdParams->group[0].bind_res_receptor;
     std::string ligand = ir->ramdParams->group[0].bind_res_ligand;
 
-    std::vector<std::string> interaction_names{
+    std::vector<std::string> atom_group_names{
         "aromatic",
         "positive",
         "negative",
-        "Hdon",
-        "Hacc",
-        "hydrophob",
+        "hydrogen_donor",
+        "hydrogen_acceptor",
+        "hydrophobic",
         "backbone",
         "backbone_positive",
         "backbone_negative",
         "carbon_not_backbone"
     };
 
+    std::vector<std::tuple<std::string, std::string>> interactions{
+        {"ligand_positive", "receptor_negative"},
+        {"ligand_negative", "receptor_positive"},
+        {"ligand_hydrogen_donor", "receptor_hydrogen_acceptor"},
+        {"ligand_hydrogen_acceptor", "receptor_hydrogen_donor"},
+        {"ligand_aromatic", "receptor_aromatic"},
+        {"ligand_hydrophobic", "receptor_hydrophobic"},
+        {"ligand_backbone_positive", "receptor_hydrogen_acceptor"},
+        {"ligand_backbone_negative", "receptor_hydrogen_donor"},
+        {"ligand_hydrogen_donor", "receptor_backbone_negative"},
+        {"ligand_hydrogen_acceptor", "receptor_backbone_positive"},
+        {"ligand_backbone", "receptor_backbone"},
+        {"ligand_carbon_not_backbone", "receptor_carbon_not_backbone"}
+    };
+
     int id_group = ir->pull->ngroup;
-    for (auto& interaction_name : interaction_names)
+    for (auto& interaction_name : atom_group_names)
     {
         const int receptor_gid = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
         t_pull_group receptor_group;
