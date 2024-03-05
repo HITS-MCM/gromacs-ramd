@@ -84,7 +84,9 @@ RAMD::RAMD(const RAMDParams&           params,
 
     for (int g = 2 * params.ngroup + 1; g < pull->params.ngroup; ++g)
     {
-        pull->group[g].needToCalcCom = true;
+        if (!pull->group[g].params_.ind.empty()){
+           pull->group[g].needToCalcCom = true;
+        }
     }
 
     if (MAIN(cr) and opt2bSet("-ramd", nfile, fnm))
