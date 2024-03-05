@@ -122,16 +122,16 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
     std::string ligand = ir->ramdParams->group[0].bind_res_ligand;
 
     std::vector<std::string> atom_group_names{
-        "aromatic",
-        "positive",
-        "negative",
-        "hydrogen_donor",
-        "hydrogen_acceptor",
-        "hydrophobic",
-        "backbone",
-        "backbone_positive",
-        "backbone_negative",
-        "carbon_not_backbone"
+        "aromatic",           // 0
+        "positive",           // 1
+        "negative",           // 2
+        "hydrogen_donor",     // 3 
+        "hydrogen_acceptor",  // 4
+        "hydrophobic",        // 5
+        "backbone",           // 6
+        "backbone_positive",  // 7
+        "backbone_negative",  // 8
+        "carbon_not_backbone" // 9
     };
 
     std::vector<std::tuple<std::string, std::string>> interactions{
@@ -148,20 +148,34 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         {"ligand_backbone", "receptor_backbone"},
         {"ligand_carbon_not_backbone", "receptor_carbon_not_backbone"}
     };
+    // std::vector<std::tuple<int, int>> interactions{
+    //     {11, 2},
+    //     {12, 1},
+    //     {13, 4},
+    //     {14, 3},
+    //     {10, 0},
+    //     {15, 5},
+    //     {17, 4},
+    //     {18, 3},
+    //     {13, 8},
+    //     {14, 7},
+    //     {16, 6},
+    //     {19, 9}
+    // };
 
     for (auto& interaction_name : atom_group_names)
     {
         const int receptor_gid = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
         t_pull_group receptor_group;
         receptor_group.ind = indexGroups[receptor_gid].particleIndices;
-        receptor_group.pbcatom = 1;
+        receptor_group.pbcatom = 0;
         ir->pull->group.push_back(receptor_group);
         ir->pull->ngroup++;
 
         const int ligand_gid = getGroupIndex((ligand + "_" + interaction_name).c_str(), indexGroups);
         t_pull_group ligand_group;
         ligand_group.ind = indexGroups[ligand_gid].particleIndices;
-        ligand_group.pbcatom = 4;
+        ligand_group.pbcatom = 0;
         ir->pull->group.push_back(ligand_group);
         ir->pull->ngroup++;
     }
