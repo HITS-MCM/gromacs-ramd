@@ -787,11 +787,19 @@ class StandardInputDescription(_op.InputDescription):
         # Note also that that hash() has internal salt that is regenerated for every process.
         # TODO: Use input fingerprint for more useful identification.
         # 8 bytes is probably enough.
-        uid = hashlib.md5("mdrun{cls._number_issued}".encode("utf8")).digest()
         if input not in cls._uids:
+            uid = hashlib.md5(f"mdrun{cls._number_issued}".encode("utf8")).digest()
+            existing = [key for key, value in cls._uids.items() if uid == value]
+            if existing:
+                raise exceptions.ProtocolError(
+                    f"Calculated uid {uid.hex()} for input {input}, but uid is already used by "
+                    + ", ".join(repr(edge) for edge in existing)
+                    + "."
+                )
             cls._uids[input] = uid
             cls._number_issued += 1
         else:
+            uid = cls._uids[input]
             logger.debug(f"Reissuing uid for mdrun({input}): {uid.hex()}")
         new_uid = f"mdrun_{uid.hex()}"
         return new_uid
@@ -990,13 +998,19 @@ def mdrun(
     For mdrun command line options that do not take a value (e.g. ``-noappend``),
     use ``None`` as the dictionary value.
 
-    Note:
-        New function names will be appearing to handle tasks that are separate
+    Warning:
+        Run time argument processing does not have Python bindings at this time.
+        key-value pairs are passed as plain text to the underlying library.
+        Usage errors can be hard to discover. Refer to the MD log file in the output
+        directory for messages regarding argument processing.
 
-        "simulate" is plausibly a dispatcher or base class for various tasks
-        dispatched by mdrun. Specific work factories are likely "minimize,"
-        "test_particle_insertion," "legacy_simulation" (do_md), or "simulation"
-        composition (which may be leap-frog, vv, and other algorithms)
+        Note, in particular, that the available ``mdrun`` arguments can depend on the
+        GROMACS build configuration, such as whether an MPI library or thread-MPI
+        is enabled.
+
+    See Also:
+        The :doc:`/onlinehelp/gmx-mdrun` command line tool.
+
     """
     # The job of this function is to arrange for the creation of a workflow node
     # by transforming arguments into a DataSourceCollection and providing the

@@ -1386,12 +1386,9 @@ void check_ir(const char*                    mdparin,
         sprintf(warn_buf,
                 "The %s barostat does not generate any strictly correct ensemble, "
                 "and should not be used for new production simulations (in our opinion). "
-                "For isotropic scaling we would recommend the %s barostat that also "
-                "ensures fast relaxation without oscillations, and for anisotropic "
-                "scaling you likely want to use the %s barostat.",
+                "We recommend using the %s barostat instead.",
                 enumValueToString(ir->pressureCouplingOptions.epc),
-                enumValueToString(PressureCoupling::CRescale),
-                enumValueToString(PressureCoupling::ParrinelloRahman));
+                enumValueToString(PressureCoupling::CRescale));
         wi->addWarning(warn_buf);
     }
 
@@ -1401,6 +1398,21 @@ void check_ir(const char*                    mdparin,
         wi->addNote(
                 "Old option for pressure coupling given: "
                 "changing \"Isotropic\" to \"Berendsen\"\n");
+    }
+
+    if (ir->pressureCouplingOptions.epc == PressureCoupling::CRescale)
+    {
+        switch (ir->pressureCouplingOptions.epct)
+        {
+            case PressureCouplingType::Isotropic:
+            case PressureCouplingType::SemiIsotropic:
+            case PressureCouplingType::SurfaceTension: break; // supported
+            default:
+                sprintf(err_buf,
+                        "C-rescale does not support pressure coupling type %s yet\n",
+                        enumValueToString(ir->pressureCouplingOptions.epct));
+                wi->addError(err_buf);
+        }
     }
 
     if (ir->pressureCouplingOptions.epc != PressureCoupling::No)
@@ -3782,9 +3794,13 @@ static void processEnsembleTemperature(t_inputrec* ir, const bool allAtomsCouple
             }
             else if (doSimulatedAnnealing(*ir) && ir->opts.ngtc > 1)
             {
+                // We could support ensemble temperature if all annealing groups have the same
+                // temperature, but that is bug-prone, so we don't implement that.
                 fprintf(stderr,
                         "Simulated tempering is used with multiple T-coupling groups: setting the "
                         "ensemble temperature to not available\n");
+                ir->ensembleTemperatureSetting = EnsembleTemperatureSetting::NotAvailable;
+                ir->ensembleTemperature        = -1;
             }
             else if (doSimulatedAnnealing(*ir) || ir->bSimTemp)
             {

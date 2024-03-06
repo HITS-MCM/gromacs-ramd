@@ -1694,12 +1694,12 @@ static void set_verlet_buffer(const gmx_mtop_t*              mtop,
     listSetup1x1.cluster_size_i = 1;
     listSetup1x1.cluster_size_j = 1;
     const real rlist_1x1        = calcVerletBufferSize(
-            *mtop, effectiveAtomDensity, *ir, ir->nstlist, ir->nstlist - 1, buffer_temp, listSetup1x1);
+            *mtop, effectiveAtomDensity, *ir, -1, ir->nstlist, ir->nstlist - 1, buffer_temp, listSetup1x1);
 
     /* Set the pair-list buffer size in ir */
     VerletbufListSetup listSetup4x4 = verletbufGetSafeListSetup(ListSetupType::CpuNoSimd);
     ir->rlist                       = calcVerletBufferSize(
-            *mtop, effectiveAtomDensity, *ir, ir->nstlist, ir->nstlist - 1, buffer_temp, listSetup4x4);
+            *mtop, effectiveAtomDensity, *ir, -1, ir->nstlist, ir->nstlist - 1, buffer_temp, listSetup4x4);
 
     const int n_nonlin_vsite = gmx::countNonlinearVsites(*mtop);
     if (n_nonlin_vsite > 0)
@@ -2207,7 +2207,7 @@ int gmx_grompp(int argc, char* argv[])
                     "lead to instabilities. If you really want to combine position restraints with "
                     "pressure coupling, we suggest to use %s pressure coupling instead.",
                     enumValueToString(ir->pressureCouplingOptions.epc),
-                    enumValueToString(PressureCoupling::Berendsen));
+                    enumValueToString(PressureCoupling::CRescale));
             wi.addNote(warningMessage);
         }
 
@@ -2581,19 +2581,21 @@ int gmx_grompp(int argc, char* argv[])
         {
             copy_mat(ir->pressureCouplingOptions.compress, compressibility);
         }
+        real initLambda = 0;
+        if (ir->efep != FreeEnergyPerturbationType::No)
+        {
+            if (ir->fepvals->init_fep_state >= 0)
+            {
+                initLambda = ir->fepvals->all_lambda[static_cast<int>(
+                        FreeEnergyPerturbationCouplingType::Fep)][ir->fepvals->init_fep_state];
+            }
+            else
+            {
+                initLambda = ir->fepvals->init_lambda;
+            }
+        }
         setStateDependentAwhParams(
-                ir->awhParams.get(),
-                *ir->pull,
-                pull,
-                state.box,
-                ir->pbcType,
-                compressibility,
-                *ir,
-                ir->efep != FreeEnergyPerturbationType::No ? ir->fepvals->all_lambda[static_cast<int>(
-                        FreeEnergyPerturbationCouplingType::Fep)][ir->fepvals->init_fep_state]
-                                                           : 0,
-                sys,
-                &wi);
+                ir->awhParams.get(), *ir->pull, pull, state.box, ir->pbcType, compressibility, *ir, initLambda, sys, &wi);
     }
 
     if (ir->bPull || ir->bRAMD)

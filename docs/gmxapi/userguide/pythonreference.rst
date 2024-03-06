@@ -2,6 +2,8 @@
 gmxapi Python module reference
 ==============================
 
+Version |gmxapi-version|.
+
 .. Concise reference documentation extracted directly from code.
 .. For new and non-backwards-compatible features, API versions must be given.
 
@@ -146,6 +148,17 @@ Utilities
 .. autofunction:: logical_not
 
 .. autofunction:: make_constant
+
+Run time details
+----------------
+
+.. note:: The *gmxapi.runtime* Python module is evolving. Some details are not yet well specified.
+
+.. automodule:: gmxapi.runtime
+
+.. autofunction:: filtered_mpi_environ
+
+.. autodata:: filtered_prefixes
 
 Status messages and Logging
 ===========================

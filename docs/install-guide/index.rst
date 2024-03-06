@@ -128,7 +128,8 @@ gcc.
 
 The xlc compiler is not supported and version 16.1 does not compile on
 POWER architectures for |Gromacs|\ -\ |version|. We recommend to use
-the gcc compiler instead, as it is being extensively tested.
+the GCC compiler, version 9.x to 11.x. Note: there are
+:ref:`known issues <gmx-users-known-issues>` with GCC 12 and newer.
 
 You may also need the most recent version of other compiler toolchain
 components beside the compiler itself (e.g. assembler or linker);
@@ -143,8 +144,11 @@ these will be honored. For configuration of other compilers, read on.
 On Linux, the clang compilers typically use for their C++ library
 the libstdc++ which comes with g++. For |Gromacs|, we require
 the compiler to support libstc++ version 7.1 or higher. To select a
-particular libstdc++ library, provide the path to g++ with
-``-DGMX_GPLUSPLUS_PATH=/path/to/g++``.
+particular libstdc++ library for a compiler whose default standard
+library does not work, provide the path to g++ with
+``-DGMX_GPLUSPLUS_PATH=/path/to/g++``. Note that if you then build
+a further project that depends on |Gromacs| you will need to arrange
+to use the same compiler and libstdc++.
 
 To build with clang and llvm's libcxx standard library, use
 ``-DCMAKE_CXX_FLAGS=-stdlib=libc++``.
@@ -414,10 +418,36 @@ options:
 
 Please make sure `cuFFTMp's hardware and software requirements
 <https://docs.nvidia.com/hpc-sdk/cufftmp/usage/requirements.html>`_
-are met before trying to use GPU PME decomposition feature.
-Also, since cuFFTMp internally uses `NVSHMEM <https://developer.nvidia.com/nvshmem>`_ it is advisable to refer to the `NVSHMEM FAQ page
+are met before trying to use GPU PME decomposition feature.  In
+particular, cuFFTMp internally uses `NVSHMEM
+<https://developer.nvidia.com/nvshmem>`_, and it is vital that the
+NVSHMEM and cuFFTMp versions in use are compatible. Some versions of
+the NVIDIA HPC SDK include two versions of NVSHMEM, where the cuFFTMp
+compatible variant can be found at
+``Linux_x86_64/<SDK_version>/comm_libs/<CUDA_version>/nvshmem_cufftmp_compat``. If
+that directory does not exist in the SDK, then there only exists a
+single (compatible) version at
+``Linux_x86_64/<SDK_version>/comm_libs/<CUDA_version>/nvshmem``. The
+version can be selected by, prior to both compilation and running,
+updating the LD_LIBRARY_PATH environment variable as follows:
+
+::
+
+    export LD_LIBRARY_PATH=<path to compatible NVSHMEM folder>/lib:$LD_LIBRARY_PATH
+	  
+It is advisable to refer to the `NVSHMEM FAQ page
 <https://docs.nvidia.com/hpc-sdk/nvshmem/api/faq.html#general-faqs>`_ for
 any issues faced at runtime.
+
+* Note that, for NVHPC SDK 23.3 or higher, there is an issue compiling
+  with cuFFTMp support when building on a node without a CUDA driver
+  installed (e.g. the front end of an HPC cluster). To work around
+  this issue one can compile on a node that does have a CUDA driver
+  installed, or use the following additional flags:
+
+::
+
+-DCMAKE_CXX_FLAGS="-L <PATH_TO_CUDA_TOOLKIT>/lib64/stubs -lnvidia-ml -lcuda"
 
 .. _heffte installation:
 

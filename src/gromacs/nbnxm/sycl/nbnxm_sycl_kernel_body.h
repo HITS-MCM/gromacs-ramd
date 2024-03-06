@@ -53,6 +53,25 @@
 template<bool doPruneNBL, bool doCalcEnergies, enum Nbnxm::ElecType elecType, enum Nbnxm::VdwType vdwType, int subGroupSize>
 class NbnxmKernel;
 
+/*! \brief Macro to control the enablement of manually-packed Float3 structure.
+ *
+ * If enabled (default), the explicit packed math will be used on devices where
+ * it is known to be beneficial (currently, AMD MI250X / gfx90a).
+ * If disabled, packed math will never be explicitly  used.
+ *
+ * This only controls the use of AmdPackedFloat3 datastructure, not the layout
+ * of fCi buffer.
+ *
+ * See issue #4854 */
+#define GMX_NBNXM_ENABLE_PACKED_FLOAT3 1
+
+
+#if (GMX_NBNXM_ENABLE_PACKED_FLOAT3 && defined(__AMDGCN__) && defined(__gfx90a__))
+using FCiFloat3 = AmdPackedFloat3;
+#else
+using FCiFloat3 = Float3;
+#endif
+
 namespace Nbnxm
 {
 
@@ -500,10 +519,11 @@ static inline void reduceForceJ(sycl::local_ptr<float>   sm_buf,
  * Note that this reduction is unoptimized and some of the barrier synchronization
  * used could be avoided on >=8-wide architectures.
  */
-static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
-                                                const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                                const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                                const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
+template<typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float>   sm_buf,
+                                                const FCiBufferWrapperX& fCiBufX,
+                                                const FCiBufferWrapperY& fCiBufY,
+                                                const FCiBufferWrapperZ& fCiBufZ,
                                                 const bool               calcFShift,
                                                 const sycl::nd_item<3>   itemIdx,
                                                 const int                tidxi,
@@ -522,9 +542,9 @@ static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxi;
         // Store i-forces in local memory
-        sm_buf[tidx]                 = fCiBufX[ciOffset];
-        sm_buf[bufStride + tidx]     = fCiBufY[ciOffset];
-        sm_buf[2 * bufStride + tidx] = fCiBufZ[ciOffset];
+        sm_buf[tidx]                 = fCiBufX(ciOffset);
+        sm_buf[bufStride + tidx]     = fCiBufY(ciOffset);
+        sm_buf[2 * bufStride + tidx] = fCiBufZ(ciOffset);
         itemIdx.barrier(fence_space::local_space);
 
         // Reduce the initial c_clSize values for each i atom to half every step by using c_clSize * i threads.
@@ -603,18 +623,19 @@ static inline void reduceForceIAndFShiftGeneric(sycl::local_ptr<float> sm_buf,
  * Three steps (e.g., AMD CDNA, c_clSize == 8, subGroupSize == 64): similar to the two-step
  * approach, but we have two times less atomicFetchAdd's.
  */
-template<int numShuffleReductionSteps>
-static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                                 const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                                 const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
-                                                 const bool               calcFShift,
-                                                 const sycl::nd_item<3>   itemIdx,
-                                                 const int                tidxi,
-                                                 const int                tidxj,
-                                                 const int                sci,
-                                                 const int                shift,
-                                                 sycl::global_ptr<Float3> a_f,
-                                                 sycl::global_ptr<Float3> a_fShift)
+template<int numShuffleReductionSteps, typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+typename std::enable_if_t<numShuffleReductionSteps != 1, void> static inline reduceForceIAndFShiftShuffles(
+        const FCiBufferWrapperX& fCiBufX,
+        const FCiBufferWrapperY& fCiBufY,
+        const FCiBufferWrapperZ& fCiBufZ,
+        const bool               calcFShift,
+        const sycl::nd_item<3>   itemIdx,
+        const int                tidxi,
+        const int                tidxj,
+        const int                sci,
+        const int                shift,
+        sycl::global_ptr<Float3> a_f,
+        sycl::global_ptr<Float3> a_fShift)
 {
     const sycl::sub_group sg = itemIdx.get_sub_group();
     static_assert(numShuffleReductionSteps == 2 || numShuffleReductionSteps == 3);
@@ -631,9 +652,9 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
     for (int ciOffset = 0; ciOffset < c_nbnxnGpuNumClusterPerSupercluster; ciOffset++)
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxj;
-        float     fx   = fCiBufX[ciOffset];
-        float     fy   = fCiBufY[ciOffset];
-        float     fz   = fCiBufZ[ciOffset];
+        float     fx   = fCiBufX(ciOffset);
+        float     fy   = fCiBufY(ciOffset);
+        float     fz   = fCiBufZ(ciOffset);
 
         // Transpose values so DPP-based reduction can be used later
         fx = sycl::select_from_group(sg, fx, tidxi * c_clSize + tidxj);
@@ -689,9 +710,9 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
     for (int ciOffset = 0; ciOffset < c_nbnxnGpuNumClusterPerSupercluster; ciOffset++)
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxi;
-        float     fx   = fCiBufX[ciOffset];
-        float     fy   = fCiBufY[ciOffset];
-        float     fz   = fCiBufZ[ciOffset];
+        float     fx   = fCiBufX(ciOffset);
+        float     fy   = fCiBufY(ciOffset);
+        float     fz   = fCiBufZ(ciOffset);
 
         // First reduction step
         fx += sycl_2020::shift_left(sg, fx, c_clSize);
@@ -748,18 +769,19 @@ static inline void reduceForceIAndFShiftShuffles(const float fCiBufX[c_nbnxnGpuN
  * is poorly handled by some hardware (e.g., Intel Gen9-11 and Xe LP). This can be remediated
  * by using local memory reduction after shuffles, but that's a TODO.
  */
-template<>
-inline void reduceForceIAndFShiftShuffles<1>(const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                             const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                             const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
-                                             const bool               calcFShift,
-                                             const sycl::nd_item<3>   itemIdx,
-                                             const int                tidxi,
-                                             const int                tidxj,
-                                             const int                sci,
-                                             const int                shift,
-                                             sycl::global_ptr<Float3> a_f,
-                                             sycl::global_ptr<Float3> a_fShift)
+template<int numShuffleReductionSteps, typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+typename std::enable_if_t<numShuffleReductionSteps == 1, void> static inline reduceForceIAndFShiftShuffles(
+        const FCiBufferWrapperX& fCiBufX,
+        const FCiBufferWrapperY& fCiBufY,
+        const FCiBufferWrapperZ& fCiBufZ,
+        const bool               calcFShift,
+        const sycl::nd_item<3>   itemIdx,
+        const int                tidxi,
+        const int                tidxj,
+        const int                sci,
+        const int                shift,
+        sycl::global_ptr<Float3> a_f,
+        sycl::global_ptr<Float3> a_fShift)
 {
     const sycl::sub_group sg = itemIdx.get_sub_group();
     SYCL_ASSERT(sg.get_max_local_range()[0] >= 2 * c_clSize
@@ -772,9 +794,9 @@ inline void reduceForceIAndFShiftShuffles<1>(const float fCiBufX[c_nbnxnGpuNumCl
     for (int ciOffset = 0; ciOffset < c_nbnxnGpuNumClusterPerSupercluster; ciOffset++)
     {
         const int aidx = (sci * c_nbnxnGpuNumClusterPerSupercluster + ciOffset) * c_clSize + tidxi;
-        float     fx   = fCiBufX[ciOffset];
-        float     fy   = fCiBufY[ciOffset];
-        float     fz   = fCiBufZ[ciOffset];
+        float     fx   = fCiBufX(ciOffset);
+        float     fy   = fCiBufY(ciOffset);
+        float     fz   = fCiBufZ(ciOffset);
         // First reduction step
         fx += sycl_2020::shift_left(sg, fx, c_clSize);
         fy += sycl_2020::shift_right(sg, fy, c_clSize);
@@ -821,12 +843,12 @@ inline void reduceForceIAndFShiftShuffles<1>(const float fCiBufX[c_nbnxnGpuNumCl
  *
  * This implementation works only with power of two array sizes.
  */
-template<bool useShuffleReduction, int subGroupSize>
-static inline void reduceForceIAndFShift(sycl::local_ptr<float> sm_buf,
-                                         const float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster],
-                                         const float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster],
-                                         const float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster],
-                                         const bool  calcFShift,
+template<bool useShuffleReduction, int subGroupSize, typename FCiBufferWrapperX, typename FCiBufferWrapperY, typename FCiBufferWrapperZ>
+static inline void reduceForceIAndFShift(sycl::local_ptr<float>   sm_buf,
+                                         const FCiBufferWrapperX& fCiBufX,
+                                         const FCiBufferWrapperY& fCiBufY,
+                                         const FCiBufferWrapperZ& fCiBufZ,
+                                         const bool               calcFShift,
                                          const sycl::nd_item<3>   itemIdx,
                                          const int                tidxi,
                                          const int                tidxj,
@@ -1009,15 +1031,23 @@ static auto nbnxmKernel(sycl::handler&                                          
         // and in cases where prunedClusterPairSize != subGroupSize we can't use it anyway
         const unsigned imeiIdx = tidx / prunedClusterPairSize;
 
-        float fCiBufX[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
-        float fCiBufY[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
-        float fCiBufZ[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
+#if defined(__SYCL_DEVICE_ONLY__) && defined(__AMDGCN__)
+        FCiFloat3 fCiBuf_[c_nbnxnGpuNumClusterPerSupercluster]; // i force buffer
         for (int i = 0; i < c_nbnxnGpuNumClusterPerSupercluster; i++)
         {
-            fCiBufX[i] = float(0.0F);
-            fCiBufY[i] = float(0.0F);
-            fCiBufZ[i] = float(0.0F);
+            fCiBuf_[i] = { 0.0F, 0.0F, 0.0F };
         }
+        auto fCiBufX = [&](auto i) -> float& { return fCiBuf_[i][XX]; };
+        auto fCiBufY = [&](auto i) -> float& { return fCiBuf_[i][YY]; };
+        auto fCiBufZ = [&](auto i) -> float& { return fCiBuf_[i][ZZ]; };
+#else
+        float fCiBufX_[c_nbnxnGpuNumClusterPerSupercluster] = { 0.0F }; // i force buffer
+        float fCiBufY_[c_nbnxnGpuNumClusterPerSupercluster] = { 0.0F }; // i force buffer
+        float fCiBufZ_[c_nbnxnGpuNumClusterPerSupercluster] = { 0.0F }; // i force buffer
+        auto  fCiBufX = [&](auto i) -> float& { return fCiBufX_[i]; };
+        auto  fCiBufY = [&](auto i) -> float& { return fCiBufY_[i]; };
+        auto  fCiBufZ = [&](auto i) -> float& { return fCiBufZ_[i]; };
+#endif
 
         const nbnxn_sci_t nbSci          = a_plistSci[bidx];
         const int         sci            = nbSci.sci;
@@ -1366,9 +1396,13 @@ static auto nbnxmKernel(sycl::handler&                                          
                             /* accumulate j forces in registers */
                             fCjBuf -= forceIJ;
                             /* accumulate i forces in registers */
-                            fCiBufX[i] += forceIJ[0];
-                            fCiBufY[i] += forceIJ[1];
-                            fCiBufZ[i] += forceIJ[2];
+#if defined(__SYCL_DEVICE_ONLY__) && defined(__AMDGCN__)
+                            fCiBuf_[i] += FCiFloat3(forceIJ);
+#else
+                            fCiBufX(i) += forceIJ[0];
+                            fCiBufY(i) += forceIJ[1];
+                            fCiBufZ(i) += forceIJ[2];
+#endif
                         } // (r2 < rCoulombSq) && notExcluded
                     }     // (imask & maskJI)
                     /* shift the mask bit by 1 */

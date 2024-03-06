@@ -566,7 +566,7 @@ static void do_fepvals(gmx::ISerializer* serializer, t_lambda* fepvals, int file
     }
     if (fepvals->sc_r_power != 6.0)
     {
-        gmx_fatal(FARGS, "sc-r-power=48 is no longer supported");
+        gmx_fatal(FARGS, "Only sc-r-power=6 is supported. Value in file is %f", fepvals->sc_r_power);
     }
     serializer->doReal(&fepvals->sc_sigma);
     if (serializer->reading())
@@ -3059,7 +3059,7 @@ static void do_tpx_state_second(gmx::ISerializer* serializer, TpxFileHeader* tpx
         serializer->doRvecArray(x, tpx->natoms);
     }
 
-    do_test(serializer, tpx->bV, v);
+    // We cannot call do_test() with v as some "integrators" don't use v
     if (tpx->bV)
     {
         if (serializer->reading())
@@ -3074,6 +3074,15 @@ static void do_tpx_state_second(gmx::ISerializer* serializer, TpxFileHeader* tpx
         else
         {
             serializer->doRvecArray(v, tpx->natoms);
+        }
+    }
+    else if (v)
+    {
+        // Velocities are not present in the tpr file, but v has been passed here.
+        // We clear v for backward compatibility.
+        for (int i = 0; i < tpx->natoms; i++)
+        {
+            clear_rvec(v[i]);
         }
     }
 

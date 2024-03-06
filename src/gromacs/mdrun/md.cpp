@@ -940,16 +940,28 @@ void gmx::LegacySimulator::do_md()
         // exchange).
         if (useGpuForUpdate && bNS && !bFirstStep && !bExchanged)
         {
+            if (usedMdGpuGraphLastStep)
+            {
+                // Wait on coordinates produced from GPU graph
+                stateGpu->waitCoordinatesUpdatedOnDevice();
+            }
             stateGpu->copyVelocitiesFromGpu(state->v, AtomLocality::Local);
             stateGpu->copyCoordinatesFromGpu(state->x, AtomLocality::Local);
             stateGpu->waitVelocitiesReadyOnHost(AtomLocality::Local);
             stateGpu->waitCoordinatesReadyOnHost(AtomLocality::Local);
         }
 
-        // We only need to calculate virtual velocities if we are writing them in the current step
+        // We need to calculate virtual velocities if we are writing them in the current step.
+        // They also need to be periodically updated. Every 1000 steps is arbitrary, but a reasonable number.
+        // The reason why the velocities need to be updated regularly is that the virtual site coordinates
+        // are updated using these velocities during integration. Those coordinates are used for, e.g., domain
+        // decomposition. Before computing any forces the positions of the virtual sites are recalculated.
+        // This fixes a bug, #4879, which was introduced in MR !979.
+        const int  c_virtualSiteVelocityUpdateInterval = 1000;
         const bool needVirtualVelocitiesThisStep =
                 (vsite != nullptr)
-                && (do_per_step(step, ir->nstvout) || checkpointHandler->isCheckpointingStep());
+                && (do_per_step(step, ir->nstvout) || checkpointHandler->isCheckpointingStep()
+                    || do_per_step(step, c_virtualSiteVelocityUpdateInterval));
 
         if (vsite != nullptr)
         {
@@ -1137,7 +1149,9 @@ void gmx::LegacySimulator::do_md()
 
         if (simulationWork.useMdGpuGraph)
         {
-            if (bNS)
+            // Reset graph on search step (due to changing neighbour list etc)
+            // or virial step (due to changing shifts and box).
+            if (bNS || bCalcVir)
             {
                 fr->mdGraph[MdGraphEvenOrOddStep::EvenStep]->reset();
                 fr->mdGraph[MdGraphEvenOrOddStep::OddStep]->reset();
@@ -1146,7 +1160,7 @@ void gmx::LegacySimulator::do_md()
             {
                 mdGraph->setUsedGraphLastStep(usedMdGpuGraphLastStep);
                 bool canUseMdGpuGraphThisStep =
-                        !bCalcVir && !doTemperatureScaling && !doParrinelloRahman && !bGStat
+                        !bNS && !bCalcVir && !doTemperatureScaling && !doParrinelloRahman && !bGStat
                         && !needHalfStepKineticEnergy && !do_per_step(step, ir->nstxout)
                         && !do_per_step(step, ir->nstxout_compressed)
                         && !do_per_step(step, ir->nstvout) && !do_per_step(step, ir->nstfout)
@@ -1674,9 +1688,13 @@ void gmx::LegacySimulator::do_md()
             if (mdGraph->graphIsCapturingThisStep())
             {
                 mdGraph->endRecord();
-                // Force graph reinstantiation (instead of graph exec update) with PME tuning,
-                // since the GPU kernels chosen by the FFT library can vary with grid size
-                bool forceGraphReinstantiation = pme_loadbal_is_active(pme_loadbal);
+                // Force graph reinstantiation (instead of graph exec
+                // update): with PME tuning, since the GPU kernels
+                // chosen by the FFT library can vary with grid size;
+                // or with an odd nstlist, since the odd/even step
+                // pruning pattern will change
+                bool forceGraphReinstantiation =
+                        pme_loadbal_is_active(pme_loadbal) || ((ir->nstlist % 2) == 1);
                 mdGraph->createExecutableGraph(forceGraphReinstantiation);
             }
             if (mdGraph->useGraphThisStep())

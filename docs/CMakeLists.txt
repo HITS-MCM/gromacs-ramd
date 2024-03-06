@@ -365,6 +365,9 @@ if (SPHINX_FOUND)
         reference-manual/plots/GMX_logos/gmx_logo_blue.svg
         release-notes/index.rst
         release-notes/2023/2023.1.rst
+        release-notes/2023/2023.2.rst
+        release-notes/2023/2023.3.rst
+        release-notes/2023/2023.4.rst
         release-notes/2023/major/highlights.rst
         release-notes/2023/major/features.rst
         release-notes/2023/major/performance.rst
@@ -577,7 +580,6 @@ if (SPHINX_FOUND)
             gmxapi/index.rst
             gmxapi/userguide/install.rst
             gmxapi/userguide/usage.rst
-            gmxapi/userguide/userguide.rst
     )
 
     if (GMX_PYTHON_PACKAGE)

@@ -44,13 +44,16 @@ if(POLICY CMP0135) # From CMake 3.24
     # We don't care about DOWNLOAD_EXTRACT_TIMESTAMP; prefer the new behavior
     cmake_policy(SET CMP0135 NEW)
 endif()
+if(POLICY CMP0146) # From CMake 3.27
+    # We still use FindCUDA
+    cmake_policy(SET CMP0146 OLD)
+endif()
 
 # CMake modules/macros are in a subdirectory to keep this file cleaner
 # This needs to be set before project() in order to pick up toolchain files
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Platform
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/external/cmake
     )
 
 if(APPLE)
@@ -76,7 +79,7 @@ endif()
 
 # The GROMACS convention is that these are the version number of the next
 # release that is going to be made from this branch.
-project(Gromacs VERSION 2023.1)
+project(Gromacs VERSION 2023.4)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

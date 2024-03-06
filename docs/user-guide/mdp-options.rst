@@ -893,9 +893,13 @@ Ewald
 .. mdp:: pme-order
 
    (4)
-   Interpolation order for PME. 4 equals cubic interpolation. You
-   might try 6/8/10 when running in parallel and simultaneously
-   decrease grid dimension.
+   The number of grid points along a dimension to which a charge is
+   mapped. The actual order of the PME interpolation is one less,
+   e.g. the default of 4 gives cubic interpolation. Supported values
+   are 3 to 12 (max 8 for P3M-AD). When running in parallel, it can be
+   worth to switch to 5 and simultaneously increase the grid spacing.
+   Note that on the CPU only values 4 and 5 have SIMD acceleration and
+   GPUs only support the value 4.
 
 .. mdp:: ewald-rtol
 
@@ -1120,10 +1124,7 @@ Pressure coupling
       Exponential relaxation pressure coupling with time constant
       :mdp:`tau-p`, including a stochastic term to enforce correct
       volume fluctuations.  The box is scaled every :mdp:`nstpcouple`
-      steps. It can be used for both equilibration and production,
-      but presently it cannot be used for full anisotropic coupling.
-      This requires a (constant or variable) ensemble temperature
-      to be available.
+      steps. It can be used for both equilibration and production.
 
    .. mdp-value:: Parrinello-Rahman
 
@@ -1132,7 +1133,7 @@ Pressure coupling
       atoms is coupled to this. No instantaneous scaling takes
       place. As for Nose-Hoover temperature coupling the time constant
       :mdp:`tau-p` is the period of pressure fluctuations at
-      equilibrium. This is probably a better method when you want to
+      equilibrium. This is a good method when you want to
       apply pressure scaling during data collection, but beware that
       you can get very large oscillations if you are starting from a
       different pressure. For simulations where the exact fluctations
@@ -2040,8 +2041,10 @@ AWH adaptive biasing
 .. mdp:: awh1-error-init
 
    (10.0) [kJ mol\ :sup:`-1`]
-   Estimated initial average error of the PMF for this bias. This value together with the
-   given diffusion constant(s) :mdp:`awh1-dim1-diffusion` determine the initial biasing rate.
+   Estimated initial average error of the PMF for this bias. This value together with an
+   estimate of the crossing time, based on the length of the sampling interval and the
+   given diffusion constant(s) :mdp:`awh1-dim1-diffusion`, determine the initial biasing rate.
+   With multiple dimensions, the longest crossing time is used.
    The error is obviously not known *a priori*. Only a rough estimate of :mdp:`awh1-error-init`
    is needed however.
    As a  general guideline, leave :mdp:`awh1-error-init` to its default value when starting a new

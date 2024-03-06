@@ -1,0 +1,212 @@
+GROMACS 2023.3 release notes
+----------------------------
+
+This version was released on October 19th, 2023. These release notes
+document the changes that have taken place in |Gromacs| since the
+previous 2023.2 version, to fix known issues. It also incorporates all
+fixes made in version 2022.6 and earlier, which you can find described
+in the :ref:`release-notes`.
+
+.. Note to developers!
+   Please use """"""" to underline the individual entries for fixed issues in the subfolders,
+   otherwise the formatting on the webpage is messed up.
+   Also, please use the syntax :issue:`number` to reference issues on GitLab, without
+   a space between the colon and number!
+
+Fixes where mdrun could behave incorrectly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+mdrun now prints an estimate of the pressure deviation due to cut-off effects
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Missing pair interactions due to using a constant pairlist over nstlist-1 steps
+cause a minor energy drift, but can in certain cases cause a measurable increase
+in pressure over the nstlist-1 steps due to missing Lennard-Jones interactions
+close to the cut-off. Now mdrun prints the average error in the pressure due to
+these missing LJ interactions.
+
+:issue:`4861`
+
+The pressure deviation due to cut-off effects can now be controlled
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+As a temporary solution, the effect of missing Lennard-Jones interactions on
+the pressure can be limited by setting the environment variable
+GMX_VERLET_BUFFER_PRESSURE_TOLERANCE to the desired tolerance in bar.
+
+:issue:`4861`
+
+Enable AWH to read 3D or higher-dimension user data
+"""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Mdrun could not start due to an error when reading in awh input data
+with dimensionality larger than two.
+
+:issue:`4828`
+
+Allow restraining the rotation of a group of atoms during energy minimization
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Avoid a segfault when using energy minimization together with enforced rotation. 
+
+:issue:`4865`
+
+Fix missing force buffer clearing with GPU DD and CPU bonded interactions
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+In simulations with domain decomposition using direct GPU communication for halo exchange
+(feature enabled with the GMX_ENABLE_DIRECT_GPU_COMM variable), a missing force buffer clearing prior to
+force halo exchange could lead to incorrect forces in cases where during a decomposition
+phase CPU-computed bonded interactions are not present whereas during the previous
+decomposition there were. Such errors are made significantly less likely by the lack of
+dynamic load balancing support with GPU-resident simulations that use GPU halo exchange.
+
+:issue:`4858`
+
+Improve Verlet buffer estimation for systems with no or weak electrostatics
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+For systems which are dominated by LJ interactions, e.g. coarse-grained,
+the Verlet buffer estimate could be too small, because only the first
+derivative of the potential was taken into account. Now also the second
+and third derivatives are added. This can have a minor negative effect
+on performance.
+
+:issue:`4885`
+
+Update virtual site velocities to avoid constraint instabilities
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Virtual site velocities were only re-computed when writing velocities, but they are
+still integrated. This causes errors to accumulate. Now the velocities are updated
+at regular intervals in order to avoid (too) large velocities. This could cause
+runs to crash with a segmentation fault or domain decomposition error. Note that
+virtual site velocities are only used for output, they do not affect the positions.
+
+:issue:`4879`
+
+Add workaround for OpenCL bug on AppleSilicon GPUs
+""""""""""""""""""""""""""""""""""""""""""""""""""
+
+After a resource leak was fixed in 2023.2, the OpenCL became broken
+on M1 Macs (and likely other AppleSilicon GPUs).
+
+:issue:`4852`
+
+Fixes for ``gmx`` tools
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Fix legends in AWH data XVG extracted from AWH energy file 
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+To avoid confusion, dimension legends, in the AWH data file XVG extracted from the AWH energy file
+with ``gmx awh``, now start from the second dimension (the first column cannot have a legend).
+Dimension legends have also been modified to awh-dim%d (where %d is the dimension number).
+
+:issue:`4873`
+
+Correctly dump VSITE2FD virtual sites
+"""""""""""""""""""""""""""""""""""""
+
+Systems with virtual site VSITE2FD (2 atoms with fixed distance) could previously
+not be handled by ``gmx dump``. Note that this had no effect on simulation.
+
+:issue:`4845`
+
+Fix DSSP tool
+"""""""""""""
+
+Fixed handling of Pi-helices in ``gmx dssp`` tool so now it produces output
+identical to original DSSP v4.1+.
+
+:issue:`4811`
+
+Fix editconf -d with -noc
+"""""""""""""""""""""""""
+
+Unit cell vectors are now correctly output when running ``gmx editconf -noc -d`` 
+which sets the box size to the largest dimensions of the system, but without
+centering.
+
+:issue:`4875`
+
+Fix calculation of rotational kinetic energy in gmx traj
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Computing the rotational kinetic energy using ``gmx traj -ekr ekr.xvg`` 
+now returns correct results.
+
+:issue:`4889`
+
+
+Fixes that affect portability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+|Gromacs| can be compiled with Clang 16 with libc++ standard library
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Unlike libstd++, libc++ follows C++ standards more strictly and therefore
+doesn't provide removed standard library classes. To enable compiling of
+|Gromacs| with Clang 16 and libc++, legacy symbols were replaced with modern
+C++17 equivalents in the bundled clFFT sources. The issue only
+affected OpenCL builds of |Gromacs|. 
+
+|Gromacs| automatically finds oneAPI libraries in new layout
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+MKL and SYCL-support libraries were reorganized in oneAPI 2023.2. Now
+|Gromacs| automatically finds the libraries it needs in both new and
+old layouts.
+
+Miscellaneous
+^^^^^^^^^^^^^
+
+Fix compilation for VMD plugin
+""""""""""""""""""""""""""""""
+
+This got broken with the changes for path handling.
+
+Fixes :issue:`4832`
+
+Unsupported anisotropic C-rescale rejected at preprocessing time
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+This pressure coupling setting previously resulted in an error at 
+simulation runtime instead.
+
+Fixes :issue:`4847`
+
+CUDA Graph fixes related to neighbour search steps
+""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When using the experimental CUDA Graphs feature, previously the code
+would crash for: runs where steps that involve virial calculations do
+not coincide with neighbour search (NS) steps - this issue is fixed by
+ensuring that CUDA Graphs are suitably updated on virial steps; runs
+where CUDA graphs are active on steps immediately preceding NS steps -
+this issue is fixed by adding necessary synchronization at the start
+of NS steps; and runs with an odd nstlist value - this is fixed by
+forcing graph reinstantiation rather than graph update in this case to
+correctly capture the odd/even pruning pattern into the graph.
+
+Fixes :issue:`4813`
+
+Fix velocity vector copying in constr_vsiten
+""""""""""""""""""""""""""""""""""""""""""""
+
+Fixed velocity vector copying in the function ``constr_vsiten``
+because an energy minimization doesn't need a velocity vector.
+The fix avoids copying an empty vector and the corresponding SegFault.
+
+Fixes :issue:`4814`
+
+Work around the performance regression on AMD MI250X with ROCm 5.5 or newer
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+With ROCm 5.5 and 5.6, some NBNXM kernels experienced up to 23% performance
+regression on MI250X compared to ROCm 5.3. We backported two patches from
+the 2024 branch that mostly mitigates this effect. There can still be
+a slowdown around 2% with ROCm 5.5+.
+
+:issue:`4874`
+
