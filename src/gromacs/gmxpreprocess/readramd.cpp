@@ -58,12 +58,12 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
         inp->emplace_back(0, 1, false, false, false, pull1_prefix + "-name",
             get_estr(inp, ramd_prefix + "-receptor", "Protein"));
         inp->emplace_back(0, 1, false, false, false, pull1_prefix + "-pbcatom",
-            get_estr(inp, ramd_prefix + "-receptor-pbc-atom", "0"));
+            get_estr(inp, ramd_prefix + "-receptor-pbcatom", "0"));
 
         inp->emplace_back(0, 1, false, false, false, pull2_prefix + "-name",
             get_estr(inp, ramd_prefix + "-ligand", "INH"));
         inp->emplace_back(0, 1, false, false, false, pull2_prefix + "-pbcatom",
-            get_estr(inp, ramd_prefix + "-ligand-pbc-atom", "0"));
+            get_estr(inp, ramd_prefix + "-ligand-pbcatom", "0"));
 
         ramdgrp->force = get_ereal(inp, ramd_prefix + "-force", 600, wi);
         ramdgrp->r_min_dist = get_ereal(inp, ramd_prefix + "-r-min-dist", 0.0025, wi);
