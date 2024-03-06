@@ -83,7 +83,7 @@
 #include "testutils/testasserts.h"
 #include "testutils/testinit.h"
 
-#include "spc72_coords.h"
+#include "spc27_coords.h"
 
 namespace gmx
 {
@@ -133,7 +133,7 @@ struct TestSystem
 {
     /*! \brief Constructor
      *
-     * Generates test system of a cubic box partially filled with 72 water molecules.
+     * Generates test system of a cubic box partially filled with 27 water molecules.
      * It has parts with uncharged molecules, normal SPC/E and part with full LJ.
      */
     TestSystem(LJCombinationRule ljCombinationRule);
@@ -215,13 +215,13 @@ TestSystem::TestSystem(const LJCombinationRule ljCombinationRule)
     nonbondedParameters[6] = nonbondedParameters[2];
     nonbondedParameters[7] = nonbondedParameters[3];
 
-    coordinates = spc72Coordinates;
-    copy_mat(spc72Box, box);
+    coordinates = spc27Coordinates;
+    copy_mat(spc27Box, box);
     put_atoms_in_box(PbcType::Xyz, box, coordinates);
 
-    int numAtoms = coordinates.size();
-    GMX_RELEASE_ASSERT(numAtoms % numAtomsInMolecule == 0,
-                       "Coordinates should match whole molecules");
+    const int numAtoms = coordinates.size();
+    GMX_RELEASE_ASSERT(numAtoms % (3 * numAtomsInMolecule) == 0,
+                       "Coordinates should be a multiple of 3 x whole water molecules");
 
     atomTypes.resize(numAtoms);
     charges.resize(numAtoms);
@@ -619,6 +619,7 @@ public:
         stepWork.computeEnergy = true;
 
         // Resize the energy output buffers to 1 to trigger the non-energy-group kernel
+        nbv_->nbat().paramsDeprecated().nenergrp = 1;
         nbv_->nbat().out[0].Vvdw.resize(1);
         nbv_->nbat().out[0].Vc.resize(1);
 
@@ -700,6 +701,7 @@ public:
         }
 
         // Now call the energy group pair kernel
+        nbv_->nbat().paramsDeprecated().nenergrp = c_numEnergyGroups;
         nbv_->nbat().out[0].Vvdw.resize(square(c_numEnergyGroups));
         nbv_->nbat().out[0].Vc.resize(square(c_numEnergyGroups));
         stepWork.computeEnergy = true;
