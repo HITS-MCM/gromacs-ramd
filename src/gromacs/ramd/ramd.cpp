@@ -259,9 +259,9 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         }
     }
 
-    if (MAIN(cr) and (step % params.eval_freq == 0))
+    if (step % params.eval_freq == 0)
     {
-        if (out)
+        if (MAIN(cr) and out)
         {
             fprintf(out, "\n");
             fflush(out);
@@ -270,7 +270,10 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
         // Exit if all ligand-receptor COM distances are larger than max_dist
         if (std::accumulate(ligand_exited.begin(), ligand_exited.end(), 0) == params.ngroup)
         {
-            fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
+            if (MAIN(cr))
+            {
+                fprintf(this->log, "==== RAMD ==== GROMACS will be stopped after %ld steps.\n", step);
+            }
             this->write_trajectory = true;
             gmx_set_stop_condition(StopCondition::Next);
         }
