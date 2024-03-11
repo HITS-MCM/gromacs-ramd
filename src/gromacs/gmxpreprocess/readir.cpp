@@ -3127,6 +3127,18 @@ void get_ir(const char*     mdparin,
     sfree(dumstr[1]);
 }
 
+bool groupExists(const std::string& s, gmx::ArrayRef<const IndexGroup> indexGroups)
+{
+    for (int i = 0; i < gmx::ssize(indexGroups); i++)
+    {
+        if (gmx_strcasecmp(s.c_str(), indexGroups[i].name.c_str()) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 int getGroupIndex(const std::string& s, gmx::ArrayRef<const IndexGroup> indexGroups)
 {
     for (int i = 0; i < gmx::ssize(indexGroups); i++)

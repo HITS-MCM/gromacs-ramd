@@ -136,18 +136,24 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
 
     for (auto& interaction_name : atom_group_names)
     {
-        const int receptor_gid = getGroupIndex((receptor + "_" + interaction_name).c_str(), indexGroups);
-        t_pull_group receptor_group;
-        receptor_group.ind = indexGroups[receptor_gid].particleIndices;
-        receptor_group.pbcatom = 0;
-        ir->pull->group.push_back(receptor_group);
-        ir->pull->ngroup++;
+        std::string receptor_group_string = receptor + "_" + interaction_name;
+        if (groupExists(receptor_group_string, indexGroups)) {
+            const int receptor_gid = getGroupIndex(receptor_group_string.c_str(), indexGroups);
+            t_pull_group receptor_group;
+            receptor_group.ind = indexGroups[receptor_gid].particleIndices;
+            receptor_group.pbcatom = 0;
+            ir->pull->group.push_back(receptor_group);
+            ir->pull->ngroup++;
+        }
 
-        const int ligand_gid = getGroupIndex((ligand + "_" + interaction_name).c_str(), indexGroups);
-        t_pull_group ligand_group;
-        ligand_group.ind = indexGroups[ligand_gid].particleIndices;
-        ligand_group.pbcatom = 0;
-        ir->pull->group.push_back(ligand_group);
-        ir->pull->ngroup++;
+        std::string ligand_group_string = ligand + "_" + interaction_name;
+        if (groupExists(ligand_group_string, indexGroups)) {
+            const int ligand_gid = getGroupIndex(ligand_group_string.c_str(), indexGroups);
+            t_pull_group ligand_group;
+            ligand_group.ind = indexGroups[ligand_gid].particleIndices;
+            ligand_group.pbcatom = 0;
+            ir->pull->group.push_back(ligand_group);
+            ir->pull->ngroup++;
+        }
     }
 }

@@ -121,6 +121,9 @@ void check_ir(const char*                    mdparin,
               t_gromppopts*                  opts,
               WarningHandler*                wi);
 
+//! Returns true if string \p s is in \p indexGroups
+bool groupExists(const std::string& s, gmx::ArrayRef<const IndexGroup> indexGroups);
+
 //! Returns the index of string \p s in \p indexGroups or exit with a verbose fatal error when not found
 int getGroupIndex(const std::string& s, gmx::ArrayRef<const IndexGroup> indexGroups);
 

@@ -141,20 +141,6 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 fprintf(out, "\t%g", dist);
             }
         }
-
-        // Extra groups for residence time computation
-        if (MAIN(cr) and out)
-        {
-            for (int g = params.ngroup; g < (pull->params.ngroup - 1) / 2; ++g)
-            {
-                DVec com_rec_curr = pull->group[g * 2 + 1].x;
-                DVec com_lig_curr = pull->group[g * 2 + 2].x;
-                DVec curr_dist_vect;
-                pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
-                auto curr_dist = std::sqrt(curr_dist_vect.norm2());
-                fprintf(out, "\t%g", curr_dist);
-            }
-        }
     }
     else if (step % params.eval_freq == 0)
     {
@@ -232,14 +218,17 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             com_lig_prev[g] = com_lig_curr;
             com_rec_prev[g] = com_rec_curr;
         }
+    }
 
+    if (step % params.eval_freq == 0)
+    {
         if (params.use_residence_dist)
         {
             // Extra groups for residence time computation
             std::vector<real> residence_contacts;
             for (auto [ligand_idx, receptor_idx] : this->interactions)
             {
-                // if (pull->group[receptor_idx].params_.ind.empty() or pull->group[ligand_idx].params_.ind.empty()) continue;
+                if (pull->group[receptor_idx].params_.ind.empty() or pull->group[ligand_idx].params_.ind.empty()) continue;
                 DVec com_rec_curr = pull->group[2 * params.ngroup + receptor_idx].x;
                 DVec com_lig_curr = pull->group[2 * params.ngroup + ligand_idx].x;
                 DVec curr_dist_vect;
@@ -259,10 +248,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
                 }
             }
         }
-    }
 
-    if (step % params.eval_freq == 0)
-    {
         if (MAIN(cr) and out)
         {
             fprintf(out, "\n");

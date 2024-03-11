@@ -225,7 +225,7 @@
                      "-f", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.mdp",
                      "-c", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.gro",
                      "-p", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.top",
-                     "-n", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.ndx",
+                     "-n", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water2.ndx",
                      "-o", "topol.tpr"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/tests",
