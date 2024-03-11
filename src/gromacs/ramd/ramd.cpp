@@ -111,8 +111,6 @@ RAMD::RAMD(const RAMDParams&           params,
         }
         fflush(out);
     }
-
-    t_atoms atoms = gmx_mtop_global_atoms(mtop);
 }
 
 void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
@@ -235,26 +233,30 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             com_rec_prev[g] = com_rec_curr;
         }
 
-        // Extra groups for residence time computation
-        std::vector<real> residence_contacts;
-        for (auto [ligand_idx, receptor_idx] : this->interactions)
+        if (params.use_residence_dist)
         {
-            DVec com_rec_curr = pull->group[receptor_idx].x;
-            DVec com_lig_curr = pull->group[ligand_idx].x;
-            DVec curr_dist_vect;
-            pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
-            auto curr_dist = std::sqrt(curr_dist_vect.norm2());
-            residence_contacts.push_back(curr_dist);
-
-            if (MAIN(cr) and out)
+            // Extra groups for residence time computation
+            std::vector<real> residence_contacts;
+            for (auto [ligand_idx, receptor_idx] : this->interactions)
             {
-                fprintf(out, "\t%g", curr_dist);
-            }
-        }
+                // if (pull->group[receptor_idx].params_.ind.empty() or pull->group[ligand_idx].params_.ind.empty()) continue;
+                DVec com_rec_curr = pull->group[2 * params.ngroup + receptor_idx].x;
+                DVec com_lig_curr = pull->group[2 * params.ngroup + ligand_idx].x;
+                DVec curr_dist_vect;
+                pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
+                auto curr_dist = std::sqrt(curr_dist_vect.norm2());
+                residence_contacts.push_back(curr_dist);
 
-        if (MAIN(cr)) {
-            if (std::accumulate(std::begin(residence_contacts), std::end(residence_contacts), 0.0) / std::size(residence_contacts) > params.residence_dist) {
-                fprintf(this->log, "==== RAMD ==== Residence time obtained after %ld steps.\n", step);
+                if (MAIN(cr) and out)
+                {
+                    fprintf(out, "\t%g", curr_dist);
+                }
+            }
+
+            if (MAIN(cr)) {
+                if (std::accumulate(std::begin(residence_contacts), std::end(residence_contacts), 0.0) / std::size(residence_contacts) > params.residence_dist) {
+                    fprintf(this->log, "==== RAMD ==== Residence time obtained after %ld steps.\n", step);
+                }
             }
         }
     }
