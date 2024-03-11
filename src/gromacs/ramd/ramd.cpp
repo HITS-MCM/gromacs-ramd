@@ -237,10 +237,10 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
 
         // Extra groups for residence time computation
         std::vector<real> residence_contacts;
-        for (int g = params.ngroup; g < (pull->params.ngroup - 1) / 2; ++g)
+        for (auto [ligand_idx, receptor_idx] : this->interactions)
         {
-            DVec com_rec_curr = pull->group[g * 2 + 1].x;
-            DVec com_lig_curr = pull->group[g * 2 + 2].x;
+            DVec com_rec_curr = pull->group[receptor_idx].x;
+            DVec com_lig_curr = pull->group[ligand_idx].x;
             DVec curr_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
             auto curr_dist = std::sqrt(curr_dist_vect.norm2());

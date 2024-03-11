@@ -125,7 +125,7 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         "aromatic",           // 0
         "positive",           // 1
         "negative",           // 2
-        "hydrogen_donor",     // 3 
+        "hydrogen_donor",     // 3
         "hydrogen_acceptor",  // 4
         "hydrophobic",        // 5
         "backbone",           // 6
@@ -133,35 +133,6 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         "backbone_negative",  // 8
         "carbon_not_backbone" // 9
     };
-
-    std::vector<std::tuple<std::string, std::string>> interactions{
-        {"ligand_positive", "receptor_negative"},
-        {"ligand_negative", "receptor_positive"},
-        {"ligand_hydrogen_donor", "receptor_hydrogen_acceptor"},
-        {"ligand_hydrogen_acceptor", "receptor_hydrogen_donor"},
-        {"ligand_aromatic", "receptor_aromatic"},
-        {"ligand_hydrophobic", "receptor_hydrophobic"},
-        {"ligand_backbone_positive", "receptor_hydrogen_acceptor"},
-        {"ligand_backbone_negative", "receptor_hydrogen_donor"},
-        {"ligand_hydrogen_donor", "receptor_backbone_negative"},
-        {"ligand_hydrogen_acceptor", "receptor_backbone_positive"},
-        {"ligand_backbone", "receptor_backbone"},
-        {"ligand_carbon_not_backbone", "receptor_carbon_not_backbone"}
-    };
-    // std::vector<std::tuple<int, int>> interactions{
-    //     {11, 2},
-    //     {12, 1},
-    //     {13, 4},
-    //     {14, 3},
-    //     {10, 0},
-    //     {15, 5},
-    //     {17, 4},
-    //     {18, 3},
-    //     {13, 8},
-    //     {14, 7},
-    //     {16, 6},
-    //     {19, 9}
-    // };
 
     for (auto& interaction_name : atom_group_names)
     {
