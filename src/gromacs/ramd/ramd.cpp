@@ -228,12 +228,15 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             std::vector<real> residence_contacts;
             for (auto [ligand_idx, receptor_idx] : this->interactions)
             {
-                if (pull->group[receptor_idx].params_.ind.empty() or pull->group[ligand_idx].params_.ind.empty()) continue;
-                DVec com_rec_curr = pull->group[2 * params.ngroup + receptor_idx].x;
-                DVec com_lig_curr = pull->group[2 * params.ngroup + ligand_idx].x;
-                DVec curr_dist_vect;
-                pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
-                auto curr_dist = std::sqrt(curr_dist_vect.norm2());
+                real curr_dist = 0.0;
+                if (!(pull->group[receptor_idx].params_.ind.empty() or pull->group[ligand_idx].params_.ind.empty()))
+                {
+                    DVec com_rec_curr = pull->group[2 * params.ngroup + receptor_idx].x;
+                    DVec com_lig_curr = pull->group[2 * params.ngroup + ligand_idx].x;
+                    DVec curr_dist_vect;
+                    pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
+                    curr_dist = std::sqrt(curr_dist_vect.norm2());
+                }
                 residence_contacts.push_back(curr_dist);
 
                 if (MAIN(cr) and out)
