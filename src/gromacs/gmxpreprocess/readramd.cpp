@@ -121,22 +121,25 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
     std::string receptor = ir->ramdParams->group[0].bind_res_receptor;
     std::string ligand = ir->ramdParams->group[0].bind_res_ligand;
 
-    std::vector<std::string> atom_group_names{
-        "aromatic",           // 0
-        "positive",           // 1
-        "negative",           // 2
-        "hydrogen_donor",     // 3
-        "hydrogen_acceptor",  // 4
-        "hydrophobic",        // 5
-        "backbone",           // 6
-        "backbone_positive",  // 7
-        "backbone_negative",  // 8
-        "carbon_not_backbone" // 9
-    };
-
-    for (auto& interaction_name : atom_group_names)
+    int nb_bind_res_receptor = 0;
+    int nb_bind_res_ligand = 0;
+    for (int i = 0; i < gmx::ssize(indexGroups); i++)
     {
-        std::string receptor_group_string = receptor + "_" + interaction_name;
+        if (gmx_wcmatch((receptor + "_group*").c_str(), indexGroups[i].name.c_str()) == 0)
+        {
+            ++nb_bind_res_receptor;
+        }
+        if (gmx_wcmatch((ligand + "_group*").c_str(), indexGroups[i].name.c_str()) == 0)
+        {
+            ++nb_bind_res_ligand;
+        }
+    }
+
+    GMX_ASSERT(nb_bind_res_receptor == nb_bind_res_ligand, "Number of receptor binding groups must be equal to number of ligand binding groups.");
+
+    for (int i = 0; i < nb_bind_res_receptor; ++i)
+    {
+        std::string receptor_group_string = receptor + "_group_" + std::to_string(i + 1);
         if (groupExists(receptor_group_string, indexGroups)) {
             const int receptor_gid = getGroupIndex(receptor_group_string.c_str(), indexGroups);
             t_pull_group receptor_group;
@@ -146,7 +149,7 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
             ir->pull->ngroup++;
         }
 
-        std::string ligand_group_string = ligand + "_" + interaction_name;
+        std::string ligand_group_string = ligand + "_group_" + std::to_string(i + 1);
         if (groupExists(ligand_group_string, indexGroups)) {
             const int ligand_gid = getGroupIndex(ligand_group_string.c_str(), indexGroups);
             t_pull_group ligand_group;
