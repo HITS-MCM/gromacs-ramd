@@ -30,7 +30,8 @@
     // Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
     "remoteUser": "vscode",
 
-    "mounts": [
-        "source=${localEnv:HOME}/data/gromacs-ramd,target=/data,type=bind,consistency=cached"
-    ]
+    // Mount external data volume for debugging purposes
+    // "mounts": [
+    //     "source=/hits/fast/its/doserbd/data/gromacs-ramd,target=/data,type=bind,consistency=cached"
+    // ]
 }
