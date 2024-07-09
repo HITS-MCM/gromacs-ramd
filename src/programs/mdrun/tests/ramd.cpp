@@ -296,30 +296,84 @@ const std::string water4_mdp_base = R"(
     DispCorr                 = no
     Tcoupl                   = no
     Pcoupl                   = no
-
-    ramd                     = yes
-    ramd-seed                = 1234
-    ramd-eval-freq           = 10
-    ramd-force-out-freq      = 10
-    ramd-old-angle-dist      = no
-    ramd-ngroups             = 2
-    ramd-group1-receptor     = 1SOL
-    ramd-group1-ligand       = 2SOL
-    ramd-group1-force        = 100
-    ramd-group1-max-dist     = 1.0
-    ramd-group1-r-min-dist   = 0.0025
-    ramd-group2-receptor     = 1SOL
-    ramd-group2-ligand       = 3SOL
-    ramd-group2-force        = 100
-    ramd-group2-max-dist     = 1.0
-    ramd-group2-r-min-dist   = 0.0025
 )";
 
 TEST_F(RAMDTest, RAMD_connected_ligands)
 {
     runner_.useTopGroAndNdxFromDatabase("4water");
     auto mdpContents = water4_mdp_base + R"(
-        ramd-connected-ligands = no
+        ramd                     = yes
+        ramd-seed                = 1234
+        ramd-eval-freq           = 10
+        ramd-force-out-freq      = 10
+        ramd-old-angle-dist      = no
+        ramd-ngroups             = 2
+        ramd-group1-receptor     = 1SOL
+        ramd-group1-ligand       = 2SOL
+        ramd-group1-force        = 100
+        ramd-group1-max-dist     = 1.0
+        ramd-group1-r-min-dist   = 0.0025
+        ramd-group2-receptor     = 1SOL
+        ramd-group2-ligand       = 3SOL
+        ramd-group2-force        = 100
+        ramd-group2-max-dist     = 1.0
+        ramd-group2-r-min-dist   = 0.0025
+        ramd-connected-ligands   = no
+    )";
+    runner_.useStringAsMdpFile(mdpContents);
+
+    CommandLine caller;
+    caller.addOption("-ramd");
+    caller.addOption("-reprod");
+
+    EXPECT_EQ(0, runner_.callGrompp());
+    ASSERT_EQ(2, runner_.callMdrun(caller));
+    gmx_reset_stop_condition();
+
+    TextReader reader_log(runner_.logFileName_);
+    std::string line;
+    int number_of_steps = -1;
+    while (reader_log.readLine(&line)) {
+        if (line.find("==== RAMD ==== GROMACS will be stopped after") != std::string::npos) {
+            number_of_steps = stoi(gmx::splitString(line)[8]);
+        }
+    }
+    EXPECT_EQ(number_of_steps, 630);
+
+    TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
+    // std::cout << reader_pullx.readAll();
+    while (reader_pullx.readLine(&line)) {
+        if (line.rfind("0.000", 0) != std::string::npos) {
+            EXPECT_EQ(std::string("0.0593702"), gmx::splitString(line)[1]);
+        }
+    }
+
+    TextReader reader_ramd(fileManager_.getTemporaryFilePath("state.xvg"));
+    // std::cout << reader_ramd.readAll();
+    while (reader_ramd.readLine(&line)) {
+        if (line.rfind("0.000", 0) != std::string::npos) {
+            EXPECT_EQ(std::string("0.423961"), gmx::splitString(line)[1]);
+        }
+    }
+}
+
+TEST_F(RAMDTest, RAMD_residence_time)
+{
+    runner_.useTopGroAndNdxFromDatabase("4water");
+    auto mdpContents = water4_mdp_base + R"(
+        ramd                     = yes
+        ramd-seed                = 1234
+        ramd-eval-freq           = 10
+        ramd-force-out-freq      = 10
+        ramd-old-angle-dist      = no
+        ramd-ngroups             = 1
+        ramd-group1-receptor     = 1SOL
+        ramd-group1-ligand       = 2SOL
+        ramd-group1-force        = 100
+        ramd-group1-max-dist     = 1.0
+        ramd-group1-r-min-dist   = 0.0025
+        ramd-use-residence-dist  = yes
+        ramd-residence-dist      = 0.6
     )";
     runner_.useStringAsMdpFile(mdpContents);
 
