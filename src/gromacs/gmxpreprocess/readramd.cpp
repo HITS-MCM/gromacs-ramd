@@ -69,8 +69,8 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
         ramdgrp.force = get_ereal(inp, ramd_prefix + "-force", 600, wi);
         ramdgrp.r_min_dist = get_ereal(inp, ramd_prefix + "-r-min-dist", 0.0025, wi);
         ramdgrp.max_dist = get_ereal(inp, ramd_prefix + "-max-dist", 4.0, wi);
-        ramdgrp.bind_res_receptor = get_estr(inp, ramd_prefix + "-receptor-res", "bind_res_receptor");
-        ramdgrp.bind_res_ligand = get_estr(inp, ramd_prefix + "-ligand-res", "bind_res_ligand");
+        ramdgrp.bind_res_receptor = get_estr(inp, ramd_prefix + "-receptor-res", "receptor");
+        ramdgrp.bind_res_ligand = get_estr(inp, ramd_prefix + "-ligand-res", "ligand");
 
         ramdparams->group.emplace_back(ramdgrp);
     }
