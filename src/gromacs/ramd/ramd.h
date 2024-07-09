@@ -44,7 +44,6 @@
 #include "gromacs/mdtypes/mdatom.h"
 #include "gromacs/mdtypes/ramd_params.h"
 #include "gromacs/ramd/randomsphericaldirectiongenerator.h"
-#include "gromacs/topology/mtop_util.h"
 
 struct pull_t;
 
@@ -73,7 +72,6 @@ public:
          int                         nfile,
          const t_filenm              fnm[],
          const gmx_output_env_t*     oenv,
-         const gmx_mtop_t&           mtop,
          FILE*                       log = nullptr);
 
     //! \copydoc IForceProvider::calculateForces()

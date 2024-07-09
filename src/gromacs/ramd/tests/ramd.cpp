@@ -89,7 +89,7 @@ TEST(RAMDTest, CalculateForces1WDHI)
 
     auto cr = std::make_unique<t_commrec>();
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
-        cr.get(), 1, fnm, nullptr, mtop);
+        cr.get(), 1, fnm, nullptr);
 
     ASSERT_NEAR(0.0, pull->coord[0].scalarForce, 1e-6);
 
@@ -138,7 +138,7 @@ TEST(RAMDTest, binding_residues)
 
     auto cr = std::make_unique<t_commrec>();
     auto ramd = std::make_unique<RAMD>(*ir.ramdParams, pull, StartingBehavior::NewSimulation,
-        cr.get(), 1, fnm, nullptr, mtop);
+        cr.get(), 1, fnm, nullptr);
 
     ASSERT_TRUE(ramd->getParams().use_residence_dist);
     ASSERT_EQ(0.75, ramd->getParams().residence_dist);

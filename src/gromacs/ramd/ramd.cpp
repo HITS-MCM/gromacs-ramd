@@ -45,9 +45,8 @@
 #include "gromacs/mdlib/sighandler.h"
 #include "gromacs/mdtypes/pull_params.h"
 #include "gromacs/pbcutil/pbc.h"
-#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/pulling/pull.h"
-#include "gromacs/topology/atoms.h"
+#include "gromacs/pulling/pull_internal.h"
 #include "gromacs/utility/fatalerror.h"
 
 namespace gmx
@@ -60,7 +59,6 @@ RAMD::RAMD(const RAMDParams&           params,
            int                         nfile,
            const t_filenm              fnm[],
            const gmx_output_env_t*     oenv,
-           const gmx_mtop_t&           mtop,
            FILE*                       log)
   : params(params),
     pull(pull),
