@@ -123,21 +123,6 @@ private:
     /// Logfile
     FILE* log;
 
-    std::vector<std::tuple<int, int>> interactions
-    {
-        {11, 2},   // {"ligand_positive", "receptor_negative"},
-        {12, 1},   // {"ligand_negative", "receptor_positive"},
-        {13, 4},   // {"ligand_hydrogen_donor", "receptor_hydrogen_acceptor"},
-        {14, 3},   // {"ligand_hydrogen_acceptor", "receptor_hydrogen_donor"},
-        {10, 0},   // {"ligand_aromatic", "receptor_aromatic"},
-        {15, 5},   // {"ligand_hydrophobic", "receptor_hydrophobic"},
-        {17, 4},   // {"ligand_backbone_positive", "receptor_hydrogen_acceptor"},
-        {18, 3},   // {"ligand_backbone_negative", "receptor_hydrogen_donor"},
-        {13, 8},   // {"ligand_hydrogen_donor", "receptor_backbone_negative"},
-        {14, 7},   // {"ligand_hydrogen_acceptor", "receptor_backbone_positive"},
-        {16, 6},   // {"ligand_backbone", "receptor_backbone"},
-        {19, 9}    // {"ligand_carbon_not_backbone", "receptor_carbon_not_backbone"}
-    };
 };
 
 } // namespace gmx
