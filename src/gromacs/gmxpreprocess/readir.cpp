@@ -4279,6 +4279,13 @@ void do_index(const char*                    mdparin,
         }
     }
 
+    if (ir->bRAMD && ir->ramdParams->use_residence_dist)
+    {
+        add_residence_time_groups(ir, defaultIndexGroups);
+        inputrecStrings->pullGroupNames.push_back("receptor_group_1");
+        inputrecStrings->pullGroupNames.push_back("ligand_group_1");
+    }
+
     if (ir->bPull || ir->bRAMD)
     {
         for (int i = 1; i < ir->pull->ngroup; i++)
@@ -4289,11 +4296,6 @@ void do_index(const char*                    mdparin,
         }
 
         process_pull_groups(ir->pull->group, inputrecStrings->pullGroupNames, defaultIndexGroups);
-
-        if (ir->bRAMD && ir->ramdParams->use_residence_dist)
-        {
-            add_residence_time_groups(ir, defaultIndexGroups);
-        }
 
         checkPullCoords(ir->pull->group, ir->pull->coord);
     }

@@ -393,7 +393,7 @@ TEST_F(RAMDTest, RAMD_residence_time)
             number_of_steps = stoi(gmx::splitString(line)[8]);
         }
     }
-    EXPECT_EQ(number_of_steps, 630);
+    EXPECT_EQ(number_of_steps, 620);
 
     TextReader reader_pullx(fileManager_.getTemporaryFilePath("state_pullx.xvg"));
     // std::cout << reader_pullx.readAll();
