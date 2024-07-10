@@ -116,7 +116,8 @@ void read_ramdparams(std::vector<t_inpfile>* inp, gmx::RAMDParams* ramdparams, W
 }
 
 
-void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGroups)
+void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGroups,
+    std::vector<std::string>& pullGroupNames)
 {
     std::string receptor = ir->ramdParams->group[0].bind_res_receptor;
     std::string ligand = ir->ramdParams->group[0].bind_res_ligand;
@@ -140,6 +141,7 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
     for (int i = 0; i < nb_bind_res_receptor; ++i)
     {
         std::string receptor_group_string = receptor + "_group_" + std::to_string(i + 1);
+        pullGroupNames.push_back(receptor_group_string);
         if (groupExists(receptor_group_string, indexGroups)) {
             const int receptor_gid = getGroupIndex(receptor_group_string.c_str(), indexGroups);
             t_pull_group receptor_group;
@@ -150,6 +152,7 @@ void add_residence_time_groups(t_inputrec* ir, std::vector<IndexGroup> indexGrou
         }
 
         std::string ligand_group_string = ligand + "_group_" + std::to_string(i + 1);
+        pullGroupNames.push_back(ligand_group_string);
         if (groupExists(ligand_group_string, indexGroups)) {
             const int ligand_gid = getGroupIndex(ligand_group_string.c_str(), indexGroups);
             t_pull_group ligand_group;

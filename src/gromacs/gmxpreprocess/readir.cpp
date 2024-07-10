@@ -4281,9 +4281,7 @@ void do_index(const char*                    mdparin,
 
     if (ir->bRAMD && ir->ramdParams->use_residence_dist)
     {
-        add_residence_time_groups(ir, defaultIndexGroups);
-        inputrecStrings->pullGroupNames.push_back("receptor_group_1");
-        inputrecStrings->pullGroupNames.push_back("ligand_group_1");
+        add_residence_time_groups(ir, defaultIndexGroups, inputrecStrings->pullGroupNames);
     }
 
     if (ir->bPull || ir->bRAMD)
