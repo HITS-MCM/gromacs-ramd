@@ -225,7 +225,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             // Extra groups for residence time computation
             int nb_residence_contacts = (std::size(pull->group) - 2 * params.ngroup - 1) / 2;
             GMX_ASSERT(nb_residence_contacts > 0, "nb_residence_contacts > 0");
-            auto residence_groups = std::begin(pull->group) + 2 * params.ngroup - 1;
+            auto residence_groups = std::end(pull->group) - 2 * nb_residence_contacts;
             std::vector<real> residence_dist(nb_residence_contacts);
             for (int g = 0; g < nb_residence_contacts; ++g)
             {
