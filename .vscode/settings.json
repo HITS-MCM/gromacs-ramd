@@ -97,4 +97,5 @@
     "editor.codeActionsOnSave": {
         "source.organizeImports": "explicit"
     },
+    "sarif-viewer.connectToGithubCodeScanning": "off",
 }
