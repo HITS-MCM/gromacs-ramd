@@ -570,7 +570,7 @@ SelectionCollection& SelectionCollection::operator=(SelectionCollection rhs)
     return *this;
 }
 
-void SelectionCollection::swap(SelectionCollection& rhs)
+void SelectionCollection::swap(SelectionCollection& rhs) noexcept
 {
     using std::swap;
     swap(impl_, rhs.impl_);
@@ -766,7 +766,7 @@ SelectionList SelectionCollection::parseInteractive(int                count,
 }
 
 
-SelectionList SelectionCollection::parseFromFile(const std::string& filename)
+SelectionList SelectionCollection::parseFromFile(const std::filesystem::path& filename)
 {
 
     try
@@ -780,7 +780,8 @@ SelectionList SelectionCollection::parseFromFile(const std::string& filename)
     }
     catch (GromacsException& ex)
     {
-        ex.prependContext(formatString("Error in parsing selections from file '%s'", filename.c_str()));
+        ex.prependContext(formatString("Error in parsing selections from file '%s'",
+                                       filename.string().c_str()));
         throw;
     }
 }
@@ -961,7 +962,7 @@ void SelectionCollection::printXvgrInfo(FILE* out) const
     std::fprintf(out, "#\n");
 }
 
-void swap(SelectionCollection& lhs, SelectionCollection& rhs)
+void swap(SelectionCollection& lhs, SelectionCollection& rhs) noexcept
 {
     lhs.swap(rhs);
 }

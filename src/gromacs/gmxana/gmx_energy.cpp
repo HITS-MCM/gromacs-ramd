@@ -849,10 +849,10 @@ if (tt != NOTSET)
     fprintf(fp, "\nTemperature dependent fluctuation properties at T = %g.\n", tt);
     fprintf(fp, "\nHeat capacities obtained from fluctuations do *not* include\n");
     fprintf(fp, "quantum corrections. If you want to get a more accurate estimate\n");
-    fprintf(fp, "please use the g_dos program.\n\n");
+    fprintf(fp, "please use the gmx dos program.\n\n");
     fprintf(fp,
             "WARNING: Please verify that your simulations are converged and perform\n"
-            "a block-averaging error analysis (not implemented in g_energy yet)\n");
+            "a block-averaging error analysis (not implemented in gmx energy yet)\n");
 
     if (debug != nullptr)
     {
@@ -892,7 +892,7 @@ if (tt != NOTSET)
     {
         fprintf(fp, "Cp-Cv                                    =  %10g J/(mol K)\n", dcp);
     }
-    please_cite(fp, "Allen1987a");
+    please_cite(fp, "Allen2017");
 }
 else
 {
@@ -1509,7 +1509,7 @@ static void do_dhdl(t_enxframe*             fr,
                call open_dhdl to open the file */
             /* TODO this is an ugly hack that needs to be fixed: this will only
                work if the order of data is always the same and if we're
-               only using the g_energy compiled with the mdrun that produced
+               only using the gmx energy compiled with the mdrun that produced
                the ener.edr. */
             *fp_dhdl = open_dhdl(filename, ir, oenv);
         }

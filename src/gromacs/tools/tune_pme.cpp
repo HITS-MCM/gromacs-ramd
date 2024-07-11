@@ -688,11 +688,12 @@ static void check_mdrun_works(gmx_bool    bThreads,
     FILE*      fp;
     const char filename[] = "benchtest.log";
 
-    /* This string should always be identical to the one in copyrite.c,
-     * gmx_print_version_info() in the GMX_MPI section */
-    const char match_mpi[]     = "MPI library:        MPI";
+    /* This string should always be identical to the one in
+     * utility/binaryinformation.cpp gmx_print_version_info()
+     * in the GMX_MPI section */
+    const char match_mpi[]     = "MPI library:         MPI";
     const char match_mdrun[]   = "Executable: ";
-    const char match_nogpu[]   = "GPU support:        disabled";
+    const char match_nogpu[]   = "GPU support:         disabled";
     gmx_bool   bMdrun          = FALSE;
     gmx_bool   bMPI            = FALSE;
     gmx_bool   bHaveGpuSupport = TRUE;
@@ -1140,7 +1141,7 @@ static void make_benchmark_tprs(const char* fn_sim_tpr,  /* READ : User-provided
         /* Write the benchmark tpr file */
         fn_bench_tprs[j] =
                 gmx_strdup(gmx::concatenateBeforeExtension(fn_sim_tpr, gmx::formatString("_bench%.2d", j))
-                                   .u8string()
+                                   .string()
                                    .c_str());
 
         fprintf(stdout, "Writing benchmark tpr %s with nsteps=", fn_bench_tprs[j]);

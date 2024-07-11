@@ -997,14 +997,6 @@ real thole_pol(int             nbonds,
     return V;
 }
 
-// Avoid gcc 386 -O3 code generation bug in this function (see Issue
-// #3205 for more information)
-#if defined(__GNUC__) && defined(__i386__) && defined(__OPTIMIZE__)
-#    pragma GCC push_options
-#    pragma GCC optimize("O1")
-#    define avoid_gcc_i386_o3_code_generation_bug
-#endif
-
 template<BondedKernelFlavor flavor>
 std::enable_if_t<flavor != BondedKernelFlavor::ForcesSimdWhenAvailable || !GMX_SIMD_HAVE_REAL, real>
 angles(int             nbonds,
@@ -1088,11 +1080,6 @@ angles(int             nbonds,
 
     return vtot;
 }
-
-#ifdef avoid_gcc_i386_o3_code_generation_bug
-#    pragma GCC pop_options
-#    undef avoid_gcc_i386_o3_code_generation_bug
-#endif
 
 #if GMX_SIMD_HAVE_REAL
 
@@ -3229,12 +3216,12 @@ real cmap_dihs(int                 nbonds,
         const real ra21 = iprod(a1, a1);       /* 5 */
         const real rb21 = iprod(b1, b1);       /* 5 */
         const real rg21 = iprod(r1_kj, r1_kj); /* 5 */
-        const real rg1  = sqrt(rg21);
+        const real rg1  = std::sqrt(rg21);
 
         const real rgr1  = 1.0 / rg1;
         const real ra2r1 = 1.0 / ra21;
         const real rb2r1 = 1.0 / rb21;
-        const real rabr1 = sqrt(ra2r1 * rb2r1);
+        const real rabr1 = std::sqrt(ra2r1 * rb2r1);
 
         const real sin_phi1 = rg1 * rabr1 * iprod(a1, h1) * (-1);
 
@@ -3286,12 +3273,12 @@ real cmap_dihs(int                 nbonds,
         const real ra22 = iprod(a2, a2);       /* 5 */
         const real rb22 = iprod(b2, b2);       /* 5 */
         const real rg22 = iprod(r2_kj, r2_kj); /* 5 */
-        const real rg2  = sqrt(rg22);
+        const real rg2  = std::sqrt(rg22);
 
         const real rgr2  = 1.0 / rg2;
         const real ra2r2 = 1.0 / ra22;
         const real rb2r2 = 1.0 / rb22;
-        const real rabr2 = sqrt(ra2r2 * rb2r2);
+        const real rabr2 = std::sqrt(ra2r2 * rb2r2);
 
         const real sin_phi2 = rg2 * rabr2 * iprod(a2, h2) * (-1);
 

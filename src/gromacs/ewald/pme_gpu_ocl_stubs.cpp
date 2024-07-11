@@ -42,6 +42,7 @@
 #include "gmxpre.h"
 
 #include "gromacs/fft/parallel_3dfft.h"
+#include "gromacs/utility/basedefinitions.h"
 
 #include "pme_gpu_grid.h"
 #include "pme_gpu_types.h"
@@ -49,10 +50,7 @@
 #include "pme_gpu_types_host_impl.h"
 
 // [[noreturn]] attributes must be added in the common headers, so it's easier to silence the warning here
-#if defined(__clang__)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wmissing-noreturn"
-#endif // (__clang__)
+CLANG_DIAGNOSTIC_IGNORE("-Wmissing-noreturn")
 
 void pmeGpuGridHaloExchange(const PmeGpu* /*pmeGpu*/, gmx_wallcycle* /*wcycle*/)
 {
@@ -67,7 +65,7 @@ void pmeGpuGridHaloExchangeReverse(const PmeGpu* /*pmeGpu*/, gmx_wallcycle* /*wc
 template<bool forward>
 void convertPmeGridToFftGrid(const PmeGpu* /*pmeGpu*/,
                              float* /*h_fftRealGrid*/,
-                             gmx_parallel_3dfft_t* /*fftSetup*/,
+                             gmx_parallel_3dfft* /*fftSetup*/,
                              const int /*gridIndex*/)
 {
     GMX_THROW(gmx::NotImplementedError("PME decomposition is not implemented in OpenCL"));
@@ -81,12 +79,12 @@ void convertPmeGridToFftGrid(const PmeGpu* /*pmeGpu*/, DeviceBuffer<float>* /*d_
 
 template void convertPmeGridToFftGrid<true>(const PmeGpu* /*pmeGpu*/,
                                             float* /*h_fftRealGrid*/,
-                                            gmx_parallel_3dfft_t* /*fftSetup*/,
+                                            gmx_parallel_3dfft* /*fftSetup*/,
                                             const int /*gridIndex*/);
 
 template void convertPmeGridToFftGrid<false>(const PmeGpu* /*pmeGpu*/,
                                              float* /*h_fftRealGrid*/,
-                                             gmx_parallel_3dfft_t* /*fftSetup*/,
+                                             gmx_parallel_3dfft* /*fftSetup*/,
                                              const int /*gridIndex*/);
 
 template void convertPmeGridToFftGrid<true>(const PmeGpu* /*pmeGpu*/,
@@ -97,6 +95,4 @@ template void convertPmeGridToFftGrid<false>(const PmeGpu* /*pmeGpu*/,
                                              DeviceBuffer<float>* /*d_fftRealGrid*/,
                                              const int /*gridIndex*/);
 
-#if defined(__clang__)
-#    pragma clang diagnostic pop
-#endif // (__clang__)
+CLANG_DIAGNOSTIC_RESET

@@ -45,6 +45,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include <type_traits>
+
 #include "gromacs/utility/gmxassert.h"
 #include "gromacs/utility/real.h"
 
@@ -453,22 +455,22 @@ constexpr int64_t exactDiv(int64_t a, int64_t b)
  */
 static inline int roundToInt(float x)
 {
-    return static_cast<int>(rintf(x));
+    return static_cast<int>(std::rintf(x));
 }
 //! Round double to int
 static inline int roundToInt(double x)
 {
-    return static_cast<int>(rint(x));
+    return static_cast<int>(std::rint(x));
 }
 //! Round float to int64_t
 static inline int64_t roundToInt64(float x)
 {
-    return static_cast<int64_t>(rintf(x));
+    return static_cast<int64_t>(std::rintf(x));
 }
 //! Round double to int64_t
 static inline int64_t roundToInt64(double x)
 {
-    return static_cast<int64_t>(rint(x));
+    return static_cast<int64_t>(std::rint(x));
 }
 
 //! \brief Check whether \p v is an integer power of 2.
@@ -478,10 +480,26 @@ template<typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
  * space, unless --expt-relaxed-constexpr flag is set */
 __host__ __device__
 #endif
-        static inline constexpr bool
+        static constexpr bool
         isPowerOfTwo(const T v)
 {
     return (v > 0) && ((v & (v - 1)) == 0);
+}
+
+/*! \brief Return \p numerator divided by \p denominator rounded up to the next integer.
+ *
+ * \param[in] numerator   Numerator, a non-negative integer.
+ * \param[in] denominator Denominator, a positive integer.
+ *
+ * \warning The sum of \p numerator and \p denominator should fit into \c T
+ */
+template<typename T>
+constexpr T divideRoundUp(T numerator, T denominator)
+{
+    static_assert(std::is_integral_v<T>, "Only integer types are supported");
+    GMX_ASSERT(std::is_unsigned_v<T> || numerator >= 0, "Nominator should be non-negative");
+    GMX_ASSERT(denominator > 0, "Denominator should be positive");
+    return (numerator + denominator - 1) / denominator;
 }
 
 } // namespace gmx

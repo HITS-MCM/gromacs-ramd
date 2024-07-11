@@ -527,8 +527,8 @@ static void low_get_pull_coord_dr(const pull_t&            pull,
                   "box size (%f).\n%s",
                   pcrd.params_.group[groupIndex0],
                   pcrd.params_.group[groupIndex1],
-                  sqrt(dr2),
-                  sqrt(0.98 * 0.98 * max_dist2),
+                  std::sqrt(dr2),
+                  std::sqrt(0.98 * 0.98 * max_dist2),
                   pcrd.params_.eGeom == PullGroupGeometry::Direction
                           ? "You might want to consider using \"pull-geometry = "
                             "direction-periodic\" instead.\n"
@@ -1082,7 +1082,7 @@ static void do_constraint(struct pull_t* pull,
             switch (coord.params_.eGeom)
             {
                 case PullGroupGeometry::Distance:
-                    bConverged = fabs(dnorm(unc_ij) - coord.value_ref) < pull->params.constr_tol;
+                    bConverged = std::fabs(dnorm(unc_ij) - coord.value_ref) < pull->params.constr_tol;
                     break;
                 case PullGroupGeometry::Direction:
                 case PullGroupGeometry::DirectionPBC:
@@ -1093,7 +1093,7 @@ static void do_constraint(struct pull_t* pull,
                     }
                     inpr = diprod(unc_ij, vec);
                     dsvmul(inpr, vec, unc_ij);
-                    bConverged = fabs(diprod(unc_ij, vec) - coord.value_ref) < pull->params.constr_tol;
+                    bConverged = std::fabs(diprod(unc_ij, vec) - coord.value_ref) < pull->params.constr_tol;
                     break;
                 default:
                     GMX_ASSERT(false,
@@ -1313,7 +1313,7 @@ static PullCoordVectorForces calculateVectorForces(const pull_coord_work_t& pcrd
 
         double cos_theta, cos_theta2;
 
-        cos_theta  = cos(spatialData.value);
+        cos_theta  = std::cos(spatialData.value);
         cos_theta2 = gmx::square(cos_theta);
 
         /* The force at theta = 0, pi is undefined so we should not apply any force.
@@ -1358,7 +1358,7 @@ static PullCoordVectorForces calculateVectorForces(const pull_coord_work_t& pcrd
 
         /* The angle-axis force is exactly the same as the angle force (above) except that in
            this case the second vector (dr23) is replaced by the pull vector. */
-        cos_theta  = cos(spatialData.value);
+        cos_theta  = std::cos(spatialData.value);
         cos_theta2 = gmx::square(cos_theta);
 
         if (cos_theta2 < 1)

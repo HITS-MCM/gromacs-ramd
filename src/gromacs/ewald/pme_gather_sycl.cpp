@@ -47,6 +47,7 @@
 #include "gromacs/gpu_utils/sycl_kernel_utils.h"
 #include "gromacs/gpu_utils/syclutils.h"
 #include "gromacs/math/functions.h"
+#include "gromacs/utility/basedefinitions.h"
 
 #include "pme_gpu_calculate_splines_sycl.h"
 #include "pme_gpu_constants.h"
@@ -270,7 +271,7 @@ inline void calculateAndStoreGridForces(sycl::local_ptr<Float3>             sm_f
  * \tparam wrapY          A boolean which tells if the grid overlap in dimension Y should
  *                        be wrapped.
  * \tparam numGrids       The number of grids to use in the kernel. Can be 1 or 2.
- * \tparam writeGlobal    Tells if we should read spline values from global memory.
+ * \tparam readGlobal     Tells if we should read spline values from global memory.
  * \tparam threadsPerAtom How many threads work on each atom.
  * \tparam subGroupSize   Size of the sub-group.
  */
@@ -688,10 +689,7 @@ void PmeGatherKernel<order, wrapX, wrapY, numGrids, readGlobal, threadsPerAtom, 
  * translation unit [-Wweak-template-vtables]" warning.
  * It is only explicitly instantiated in this translation unit, so we should be safe.
  */
-#ifdef __clang__
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wweak-template-vtables"
-#endif
+CLANG_DIAGNOSTIC_IGNORE("-Wweak-template-vtables")
 
 #define INSTANTIATE_3(order, numGrids, readGlobal, threadsPerAtom, subGroupSize) \
     template class PmeGatherKernel<order, true, true, numGrids, readGlobal, threadsPerAtom, subGroupSize>;
@@ -712,6 +710,4 @@ INSTANTIATE(4, 16); // TODO: Choose best value, Issue #4153.
 INSTANTIATE(4, 32);
 INSTANTIATE(4, 64);
 
-#ifdef __clang__
-#    pragma clang diagnostic pop
-#endif
+CLANG_DIAGNOSTIC_RESET

@@ -45,10 +45,8 @@
 #include "gromacs/gpu_utils/gputraits.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/utility/stringutil.h"
 
 class DeviceStream;
-enum class GpuApiCallBehavior;
 
 #ifndef DOXYGEN
 
@@ -154,8 +152,7 @@ inline void launchGpuKernel(void*                     kernel,
 
 /* To properly mark function as [[noreturn]], we must do it everywhere it is declared, which
  * will pollute common headers.*/
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wmissing-noreturn"
+CLANG_DIAGNOSTIC_IGNORE("-Wmissing-noreturn")
 
 /*! \brief Pretend to check a SYCL stream for unfinished work (dummy implementation).
  *
@@ -166,7 +163,7 @@ static inline bool haveStreamTasksCompleted(const DeviceStream& /* deviceStream 
     GMX_THROW(gmx::NotImplementedError("Not implemented on SYCL yet"));
 }
 
-#    pragma clang diagnostic pop
+CLANG_DIAGNOSTIC_RESET
 
 #endif // !DOXYGEN
 

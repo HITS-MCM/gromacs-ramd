@@ -32,7 +32,6 @@
 # the research papers on the package. Check out https://www.gromacs.org.
 
 include(CMakeParseArguments)
-include(gmxClangCudaUtils)
 
 set(GMX_TEST_TIMEOUT_FACTOR "1" CACHE STRING "Scaling factor to apply for test timeouts")
 mark_as_advanced(GMX_TEST_TIMEOUT_FACTOR)
@@ -125,6 +124,7 @@ function (gmx_add_gtest_executable EXENAME)
         set(_multi_value_keywords
             CPP_SOURCE_FILES
             CUDA_CU_SOURCE_FILES
+            HIP_CPP_SOURCE_FILES
             GPU_CPP_SOURCE_FILES
             OPENCL_CPP_SOURCE_FILES
             SYCL_CPP_SOURCE_FILES
@@ -158,41 +158,46 @@ function (gmx_add_gtest_executable EXENAME)
                  TEST_USES_DYNAMIC_REGISTRATION=true)
         endif()
 
-        if (ARG_NVSHMEM AND GMX_NVSHMEM)
+        if (GMX_GPU_CUDA)
             add_executable(${EXENAME} ${UNITTEST_TARGET_OPTIONS}
                 ${ARG_CPP_SOURCE_FILES}
                 ${ARG_CUDA_CU_SOURCE_FILES}
                 ${ARG_GPU_CPP_SOURCE_FILES})
-            set_target_properties(${EXENAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-            set_target_properties(${EXENAME} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-            target_link_libraries(${EXENAME} PRIVATE nvshmem_host_lib nvshmem_device_lib)
-            # disable CUDA_ARCHITECTURES to use gencode info from GMX_CUDA_NVCC_GENCODE_FLAGS
-            set_target_properties(${EXENAME}  PROPERTIES CUDA_ARCHITECTURES OFF)
-            target_compile_options(${EXENAME} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${GMX_CUDA_NVCC_GENCODE_FLAGS}>)
-        elseif (GMX_GPU_CUDA AND NOT GMX_CLANG_CUDA)
-            # Work around FindCUDA that prevents using target_link_libraries()
-            # with keywords otherwise...
-            set(CUDA_LIBRARIES PRIVATE ${CUDA_LIBRARIES})
-            cuda_add_executable(${EXENAME} ${UNITTEST_TARGET_OPTIONS}
-                ${ARG_CPP_SOURCE_FILES}
-                ${ARG_CUDA_CU_SOURCE_FILES}
-                ${ARG_GPU_CPP_SOURCE_FILES})
+            if (GMX_CLANG_CUDA)
+                set_target_properties(${EXENAME} PROPERTIES CUDA_ARCHITECTURES "${_CUDA_CLANG_GENCODE_FLAGS}")
+                target_compile_options(${EXENAME} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${GMX_CUDA_CLANG_FLAGS}>")
+            else()
+                set_target_properties(${EXENAME} PROPERTIES CUDA_ARCHITECTURES "${GMX_CUDA_NVCC_GENCODE_FLAGS}")
+                target_compile_options(${EXENAME} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:${GMX_CUDA_NVCC_FLAGS}>")
+            endif()
+            set_source_files_properties(${ARG_GPU_CPP_SOURCE_FILES} PROPERTIES LANGUAGE CUDA)
+        elseif (GMX_GPU_HIP)
+            set_source_files_properties(${ARG_HIP_CPP_SOURCE_FILES} PROPERTIES LANGUAGE HIP)
+            set_source_files_properties(${ARG_GPU_CPP_SOURCE_FILES} PROPERTIES LANGUAGE HIP)
+            add_executable(${EXENAME} ${UNITTEST_TARGET_OPTIONS}
+                    ${ARG_CPP_SOURCE_FILES}
+                    ${ARG_HIP_CPP_SOURCE_FILES}
+                    ${ARG_GPU_CPP_SOURCE_FILES})
+
+            set_target_properties(${EXENAME}  PROPERTIES HIP_ARCHITECTURES OFF)
+            set_property(TARGET ${EXENAME} PROPERTY HIP_STANDARD ${CMAKE_CXX_STANDARD})
+            target_compile_options(${EXENAME} PRIVATE $<$<COMPILE_LANGUAGE:HIP>:${GMX_HIP_HIPCC_FLAGS}>)
         else()
             add_executable(${EXENAME} ${UNITTEST_TARGET_OPTIONS}
                 ${ARG_CPP_SOURCE_FILES})
         endif()
 
+        if (ARG_NVSHMEM AND GMX_NVSHMEM)
+            set_target_properties(${EXENAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+            set_target_properties(${EXENAME} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+            target_link_libraries(${EXENAME} PRIVATE nvshmem_host_lib nvshmem_device_lib)
+        endif()
+
         if (GMX_GPU_CUDA)
-            if (GMX_CLANG_CUDA)
-                target_sources(${EXENAME} PRIVATE
-                    ${ARG_CUDA_CU_SOURCE_FILES}
-                    ${ARG_GPU_CPP_SOURCE_FILES})
-                set_source_files_properties(${ARG_GPU_CPP_SOURCE_FILES} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
-                gmx_compile_cuda_file_with_clang(${ARG_CUDA_CU_SOURCE_FILES})
-                gmx_compile_cuda_file_with_clang(${ARG_GPU_CPP_SOURCE_FILES})
-                if(ARG_CUDA_CU_SOURCE_FILES OR ARG_GPU_CPP_SOURCE_FILES)
-                    target_link_libraries(${EXENAME} PRIVATE ${GMX_EXTRA_LIBRARIES})
-                endif()
+            target_link_libraries(${EXENAME} PRIVATE CUDA::cudart_static)
+        elseif (GMX_GPU_HIP)
+            if(ARG_HIP_CPP_SOURCE_FILES OR ARG_GPU_CPP_SOURCE_FILES)
+                target_link_libraries(${EXENAME} PRIVATE hip::host)
             endif()
         elseif (GMX_GPU_OPENCL)
             target_sources(${EXENAME} PRIVATE ${ARG_OPENCL_CPP_SOURCE_FILES} ${ARG_GPU_CPP_SOURCE_FILES})
@@ -201,7 +206,7 @@ function (gmx_add_gtest_executable EXENAME)
             endif()
         elseif (GMX_GPU_SYCL)
             target_sources(${EXENAME} PRIVATE ${ARG_SYCL_CPP_SOURCE_FILES} ${ARG_GPU_CPP_SOURCE_FILES})
-            if(ARG_SYCL_CPP_SOURCE_FILES OR ARG_GPU_CPP_SOURCE_FILES OR ARG_HARDWARE_DETECTION)
+            if(ARG_SYCL_CPP_SOURCE_FILES OR ARG_GPU_CPP_SOURCE_FILES)
                 add_sycl_to_target(
                     TARGET ${EXENAME}
                     SOURCES ${ARG_SYCL_CPP_SOURCE_FILES} ${ARG_GPU_CPP_SOURCE_FILES}
@@ -260,7 +265,13 @@ endfunction()
 #   INTEGRATION_TEST      requires the use of the IntegrationTest label in CTest
 #   SLOW_TEST             requires the use of the SlowTest label in CTest, and
 #                         increase the length of the ctest timeout.
-#   IGNORE_LEAKS          Skip some memory safety checks.
+#   IGNORE_LEAKS          Skip leak detection with LeakSanitzer (LSAN) during
+#                         AddressSanizer (ASAN) tests.
+#                         Using this allows us to implement tests that call legacy GROMACS
+#                         infrastructure that still leaks memory, but also blocks us from
+#                         catching new leaks in code called by those test. It should be used
+#                         sparingly. Typical use cases are test code calling legacy routines like
+#                         preprocessing and analysis tools, or that have been ported from regressiontests.
 #   QUICK_GPU_TEST        marks tests that use GPUs and are fast (< 10 seconds on a desktop GPU in Release build);
 #                         currently this label is used to select tests for CUDA Compute Sanitizer runs.
 #   SLOW_GPU_TEST         marks all other tests that should run on a GPU, used to make sure GPU CI only runs GPU
@@ -277,6 +288,7 @@ function (gmx_register_gtest_test NAME EXENAME)
         set(_xml_path ${CMAKE_BINARY_DIR}/Testing/Temporary/${NAME}.xml)
         set(_labels GTest)
         set(_timeout 30)
+        set(_nproc 1)
         if (ARG_INTEGRATION_TEST)
             list(APPEND _labels IntegrationTest)
             # Slow build configurations should have longer timeouts.
@@ -304,6 +316,7 @@ function (gmx_register_gtest_test NAME EXENAME)
         if (ARG_OPENMP_THREADS)
             if (GMX_OPENMP)
                 list(APPEND _cmd -ntomp ${ARG_OPENMP_THREADS})
+                math(EXPR _nproc "${_nproc} * ${ARG_OPENMP_THREADS}")
             endif()
         endif()
         if (ARG_MPI_RANKS)
@@ -319,6 +332,7 @@ function (gmx_register_gtest_test NAME EXENAME)
             elseif (GMX_THREAD_MPI)
                 list(APPEND _cmd -ntmpi ${ARG_MPI_RANKS})
             endif()
+            math(EXPR _nproc "${_nproc} * ${ARG_MPI_RANKS}")
         endif()
         if (ARG_QUICK_GPU_TEST)
             list(APPEND _labels QuickGpuTest)
@@ -331,6 +345,7 @@ function (gmx_register_gtest_test NAME EXENAME)
         set_tests_properties(${NAME} PROPERTIES LABELS "${_labels}")
         math(EXPR _timeout "${_timeout} * ${GMX_TEST_TIMEOUT_FACTOR}")
         set_tests_properties(${NAME} PROPERTIES TIMEOUT ${_timeout})
+        set_tests_properties(${NAME} PROPERTIES PROCESSORS ${_nproc})
         add_dependencies(tests ${EXENAME})
     endif()
 endfunction ()
@@ -358,4 +373,3 @@ function (gmx_add_mpi_unit_test NAME EXENAME RANKS)
         gmx_register_gtest_test(${NAME} ${EXENAME} ${_test_labels} MPI_RANKS ${RANKS})
     endif()
 endfunction()
-

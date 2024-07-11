@@ -42,11 +42,11 @@ include(GetCompilerInfo.cmake)
 get_compiler_info(C BUILD_C_COMPILER)
 get_compiler_info(CXX BUILD_CXX_COMPILER)
 if(GMX_GPU_CUDA)
-    if(NOT GMX_CLANG_CUDA)
-        GMX_SET_CUDA_NVCC_FLAGS()
-    endif()
-
     get_cuda_compiler_info(CUDA_COMPILER_INFO CUDA_DEVICE_COMPILER_FLAGS CUDA_HOST_COMPILER_FLAGS)
+endif()
+
+if(GMX_GPU_HIP)
+    get_hip_compiler_info(HIP_COMPILER_INFO HIP_COMPILER_FLAGS)
 endif()
 
 # Make a file with compiler flags used for libgromacs for each

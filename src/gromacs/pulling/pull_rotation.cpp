@@ -674,7 +674,7 @@ static double calc_beta_max(real min_gaussian, real slab_dist)
         gmx_fatal(FARGS, "min_gaussian of flexible rotation groups must be <%g", GAUSS_NORM);
     }
 
-    return std::sqrt(-2.0 * sigma * sigma * log(min_gaussian / GAUSS_NORM));
+    return std::sqrt(-2.0 * sigma * sigma * std::log(min_gaussian / GAUSS_NORM));
 }
 
 
@@ -693,7 +693,7 @@ static inline real gaussian_weight(rvec curr_x, const gmx_enfrotgrp* erg, int n)
     /* Define the sigma value */
     sigma = 0.7 * erg->rotg->slab_dist;
     /* Calculate the Gaussian value of slab n for position curr_x */
-    return norm * exp(-0.5 * gmx::square(calc_beta(curr_x, erg, n) / sigma));
+    return norm * std::exp(-0.5 * gmx::square(calc_beta(curr_x, erg, n) / sigma));
 }
 
 
@@ -800,8 +800,8 @@ static void calc_rotmat(const rvec vec,
     copy_rvec(vec, rot_vec);
 
     /* Precompute some variables: */
-    cosa   = cos(radangle);
-    sina   = sin(radangle);
+    cosa   = std::cos(radangle);
+    sina   = std::sin(radangle);
     OMcosa = 1.0 - cosa;
     dumxy  = rot_vec[XX] * rot_vec[YY] * OMcosa;
     dumxz  = rot_vec[XX] * rot_vec[ZZ] * OMcosa;
@@ -1351,7 +1351,7 @@ static void align_with_z(rvec* s, /* Structure to align */
 
     /* Calculate the angle for the fitting procedure */
     cprod(axis, zet, rot_axis);
-    angle = acos(axis[2]);
+    angle = std::acos(axis[2]);
     if (angle < 0.0)
     {
         angle += M_PI;
@@ -1577,7 +1577,7 @@ static real opt_angle_analytic(rvec*      ref_s,
     }
 
     /* Determine the optimal rotation angle: */
-    opt_angle = (-1.0) * acos(rot_matrix[0][0]) * 180.0 / M_PI;
+    opt_angle = (-1.0) * std::acos(rot_matrix[0][0]) * 180.0 / M_PI;
     if (rot_matrix[0][1] < 0.0)
     {
         opt_angle = (-1.0) * opt_angle;
@@ -2551,7 +2551,7 @@ static inline int get_first_slab(const gmx_enfrotgrp* erg,
                                  const gmx::RVec& firstatom) /* First atom after sorting along the rotation vector v */
 {
     /* Find the first slab for the first atom */
-    return static_cast<int>(ceil(
+    return static_cast<int>(std::ceil(
             static_cast<double>((iprod(firstatom, erg->vec) - erg->max_beta) / erg->rotg->slab_dist)));
 }
 
@@ -2559,7 +2559,7 @@ static inline int get_first_slab(const gmx_enfrotgrp* erg,
 static inline int get_last_slab(const gmx_enfrotgrp* erg, const gmx::RVec& lastatom) /* Last atom along v */
 {
     /* Find the last slab for the last atom */
-    return static_cast<int>(floor(
+    return static_cast<int>(std::floor(
             static_cast<double>((iprod(lastatom, erg->vec) + erg->max_beta) / erg->rotg->slab_dist)));
 }
 

@@ -111,16 +111,13 @@ public:
 
     bool                              useUpdateGroups() const { return useUpdateGroups_; }
     real                              maxUpdateGroupRadius() const { return maxUpdateGroupRadius_; }
-    ArrayRef<const RangePartitioning> updateGroupingPerMoleculeType() const
-    {
-        return updateGroupingPerMoleculeType_;
-    }
+    ArrayRef<const RangePartitioning> updateGroupingPerMoleculeType() const;
 
 private:
     //! Whether update groups are in use
     bool useUpdateGroups_ = false;
     //! The update groupings within each respective molecule type, empty when not in use
-    std::vector<RangePartitioning> updateGroupingPerMoleculeType_ = {};
+    std::vector<RangePartitioning> updateGroupingPerMoleculeType_;
     //! The maximum radius of any update group, 0 when not in use
     real maxUpdateGroupRadius_ = 0.0_real;
 };
@@ -139,6 +136,8 @@ private:
  * requirements, such that makeUpdateGroupingsPerMoleculeType()
  * returns a non-empty vector.
  *
+ * mdrun -rerun does not support update groups (PBC corrections needed).
+ *
  * When we have constraints and/or vsites, it is beneficial to use
  * update groups (when possible) to allow independent update of
  * groups. But if there are no constraints or vsites, then there is no
@@ -150,6 +149,7 @@ private:
 UpdateGroups makeUpdateGroups(const gmx::MDLogger&             mdlog,
                               std::vector<RangePartitioning>&& updateGroupingPerMoleculeType,
                               real                             maxUpdateGroupRadius,
+                              bool                             doRerun,
                               bool                             useDomainDecomposition,
                               bool                             systemHasConstraintsOrVsites,
                               real                             cutoffMargin);

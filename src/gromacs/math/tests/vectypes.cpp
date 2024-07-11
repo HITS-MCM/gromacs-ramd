@@ -46,6 +46,7 @@
 
 #include "gromacs/math/vectypes.h"
 
+#include <array>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -482,7 +483,9 @@ TEST(RVecTest, CopyAssignmentWorks)
 TEST(RVecTest, MoveConstructorWorks)
 {
     RVec v(1, 2, 3);
-    RVec copy(v);
+    // We are testing for correctness and don't care about performance
+    // NOLINTNEXTLINE(performance-move-const-arg)
+    RVec copy(std::move(v));
     EXPECT_EQ(1, copy[XX]);
     EXPECT_EQ(2, copy[YY]);
     EXPECT_EQ(3, copy[ZZ]);
@@ -492,10 +495,31 @@ TEST(RVecTest, MoveAssignmentWorks)
 {
     RVec v(1, 2, 3);
     RVec copy;
-    copy = v;
+    // We are testing for correctness and don't care about performance
+    // NOLINTNEXTLINE(performance-move-const-arg)
+    copy = std::move(v);
     EXPECT_EQ(1, copy[XX]);
     EXPECT_EQ(2, copy[YY]);
     EXPECT_EQ(3, copy[ZZ]);
+}
+
+TEST(RVecTest, UsableInConstexpr)
+{
+    // Check that we can use gmx::RVec as constexpr and common operations work
+    constexpr std::array<RVec, 2> a{ RVec{ 0, 1, 2 }, RVec{ -1, -2, -3.3 } };
+    static_assert(a[0][0] == 0);
+    constexpr RVec b = [](RVec v) {
+        v *= 2;
+        return v;
+    }(a[0]);
+    static_assert(b == RVec{ 0, 2, 4 });
+    static_assert(b.toIVec() == IVec{ 0, 2, 4 });
+    static_assert(b.toDVec() == DVec{ 0, 2, 4 });
+    static_assert(scaleByVector(a[0], a[0]) == RVec{ 0, 1, 4 });
+    static_assert(a[0].norm2() == 5);
+    static_assert(a[0].dot(b) == 10);
+    static_assert(elementWiseMax(a[0], a[1]) == a[0]);
+    static_assert(elementWiseMin(a[0], a[1]) == a[1]);
 }
 
 } // namespace

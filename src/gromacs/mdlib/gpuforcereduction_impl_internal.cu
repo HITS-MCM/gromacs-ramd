@@ -46,7 +46,7 @@
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/devicebuffer.h"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/gpu_utils/vectype_ops.cuh"
 
 #if GMX_NVSHMEM
@@ -140,7 +140,7 @@ void launchForceReductionKernel(int                        numAtoms,
     config.blockSize[0]     = c_threadsPerBlock;
     config.blockSize[1]     = 1;
     config.blockSize[2]     = 1;
-    config.gridSize[0]      = ((numAtoms + 1) + c_threadsPerBlock - 1) / c_threadsPerBlock;
+    config.gridSize[0]      = divideRoundUp((numAtoms + 1), c_threadsPerBlock);
     config.gridSize[1]      = 1;
     config.gridSize[2]      = 1;
     config.sharedMemorySize = 0;

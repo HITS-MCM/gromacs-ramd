@@ -442,7 +442,7 @@ AnalysisNeighborhoodSearchImpl::~AnalysisNeighborhoodSearchImpl()
     PairSearchList::const_iterator i;
     for (i = pairSearchList_.begin(); i != pairSearchList_.end(); ++i)
     {
-        GMX_RELEASE_ASSERT(i->unique(), "Dangling AnalysisNeighborhoodPairSearch reference");
+        GMX_RELEASE_ASSERT(i->use_count() == 1, "Dangling AnalysisNeighborhoodPairSearch reference");
     }
 }
 
@@ -454,7 +454,7 @@ AnalysisNeighborhoodSearchImpl::PairSearchImplPointer AnalysisNeighborhoodSearch
     PairSearchList::const_iterator i;
     for (i = pairSearchList_.begin(); i != pairSearchList_.end(); ++i)
     {
-        if (i->unique())
+        if (i->use_count() == 1)
         {
             return *i;
         }
@@ -504,7 +504,7 @@ bool AnalysisNeighborhoodSearchImpl::initGridCells(const matrix box, bool bSingl
         {
             break;
         }
-        targetsize   = pow(volume * 10 / posCount, static_cast<real>(1. / dimCount));
+        targetsize   = std::pow(volume * 10 / posCount, static_cast<real>(1. / dimCount));
         prevDimCount = dimCount;
     }
 
@@ -687,7 +687,7 @@ int AnalysisNeighborhoodSearchImpl::getGridCellIndex(const rvec cell) const
     ivec icell;
     for (int dd = 0; dd < DIM; ++dd)
     {
-        int cellIndex = static_cast<int>(floor(cell[dd]));
+        int cellIndex = static_cast<int>(std::floor(cell[dd]));
         if (!bGridPBC_[dd])
         {
             const int cellCount = ncelldim_[dd];
@@ -767,8 +767,8 @@ void AnalysisNeighborhoodSearchImpl::initCellRange(const rvec centerCell, ivec c
             endOffset = cellCount - 1;
         }
     }
-    currCell[dim]   = static_cast<int>(floor(startOffset));
-    upperBound[dim] = static_cast<int>(floor(endOffset));
+    currCell[dim]   = static_cast<int>(std::floor(startOffset));
+    upperBound[dim] = static_cast<int>(std::floor(endOffset));
 }
 
 real AnalysisNeighborhoodSearchImpl::computeCutoffExtent(const RVec centerCell, const ivec cell, int dim) const
@@ -1075,7 +1075,7 @@ bool AnalysisNeighborhoodPairSearchImpl::searchNext(Action action)
                 {
                     continue;
                 }
-                const int cellSize = ssize(search_.cells_[ci]);
+                const int cellSize = gmx::ssize(search_.cells_[ci]);
                 for (; cai < cellSize; ++cai)
                 {
                     const int i = search_.cells_[ci][cai];
@@ -1243,7 +1243,7 @@ public:
         SearchList::const_iterator i;
         for (i = searchList_.begin(); i != searchList_.end(); ++i)
         {
-            GMX_RELEASE_ASSERT(i->unique(), "Dangling AnalysisNeighborhoodSearch reference");
+            GMX_RELEASE_ASSERT(i->use_count() == 1, "Dangling AnalysisNeighborhoodSearch reference");
         }
     }
 
@@ -1265,7 +1265,7 @@ AnalysisNeighborhood::Impl::SearchImplPointer AnalysisNeighborhood::Impl::getSea
     SearchList::const_iterator i;
     for (i = searchList_.begin(); i != searchList_.end(); ++i)
     {
-        if (i->unique())
+        if (i->use_count() == 1)
         {
             return *i;
         }

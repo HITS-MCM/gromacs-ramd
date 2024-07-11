@@ -43,6 +43,8 @@
 
 #include "config.h"
 
+#include <climits>
+
 #include <filesystem>
 
 #if GMX_FFT_FFTW3 || GMX_FFT_ARMPL_FFTW3
@@ -52,6 +54,10 @@
 
 #if HAVE_LIBMKL
 #    include <mkl.h>
+#endif
+
+#if GMX_GPU_FFT_ONEMKL
+#    include <oneapi/mkl/dft.hpp>
 #endif
 
 #if HAVE_EXTRAE
@@ -87,6 +93,7 @@
 #include "buildinfo.h"
 #include "contributors.h"
 #include "cuda_version_information.h"
+#include "hip_version_information.h"
 #include "sycl_version_information.h"
 
 namespace
@@ -213,6 +220,27 @@ std::string describeMkl()
 #endif
 }
 
+std::string describeOneMkl()
+{
+#if GMX_GPU_FFT_ONEMKL
+    std::string description = "oneMKL interface library (backends:";
+#    ifdef ONEMKL_USING_CUFFT_BACKEND
+    description += " cuFFT";
+#    endif
+#    ifdef ONEMKL_USING_MKLGPU_BACKEND
+    description += " MKLGPU";
+#    endif
+#    ifdef ONEMKL_USING_ROCFFT_BACKEND
+    description += " rocFFT";
+#    endif
+    description += ")";
+    return description;
+#else
+    GMX_RELEASE_ASSERT(false, "describeOneMkl called in a build without oneMKL");
+    return "";
+#endif
+}
+
 //! Construct a string that describes the library that provides CPU FFT support to this build
 std::string getCpuFftDescriptionString()
 {
@@ -259,9 +287,17 @@ std::string getGpuFftDescriptionString()
         {
             return describeMkl();
         }
+        else if (GMX_GPU_FFT_ONEMKL)
+        {
+            return describeOneMkl();
+        }
         else if (GMX_GPU_FFT_ROCFFT)
         {
             return std::string("rocFFT ") + rocfft_VERSION;
+        }
+        else if (GMX_GPU_FFT_HIPFFT)
+        {
+            return std::string("hipFFT ") + hipfft_VERSION;
         }
         else if (GMX_GPU_FFT_BBFFT)
         {
@@ -269,7 +305,7 @@ std::string getGpuFftDescriptionString()
         }
         else
         {
-            /* Some SYCL builds (e.g., Intel DPC++ for AMD devices) have no support for GPU FFT,
+            /* Some SYCL builds have no support for GPU FFT,
              * but that's a corner case not intended for general users */
             GMX_RELEASE_ASSERT(GMX_GPU_SYCL,
                                "Only the SYCL build can function without a GPU FFT library");
@@ -294,11 +330,15 @@ std::string getMultiGpuFftDescriptionString()
             // distinction does not matter here.
             return gmx::formatString("HeFFTe %s with cuFFT backend", Heffte_VERSION);
         }
+        else if (GMX_GPU_HIP && GMX_GPU_FFT_HIPFFT)
+        {
+            return gmx::formatString("HeFFTe %s with hipFFT backend", Heffte_VERSION);
+        }
         else if (GMX_GPU_SYCL && GMX_GPU_FFT_MKL)
         {
             return gmx::formatString("HeFFTe %s with oneMKL backend", Heffte_VERSION);
         }
-        else if (GMX_GPU_SYCL && GMX_GPU_FFT_ROCFFT)
+        else if ((GMX_GPU_SYCL || GMX_GPU_HIP) && GMX_GPU_FFT_ROCFFT)
         {
             return gmx::formatString("HeFFTe %s with rocFFT backend", Heffte_VERSION);
         }
@@ -355,8 +395,8 @@ void gmx_print_version_info(gmx::TextWriter* writer)
 #else
     writer->writeLine("Precision:           mixed");
 #endif
-    writer->writeLine(
-            formatString("Memory model:        %u bit", static_cast<unsigned>(8 * sizeof(void*))));
+    writer->writeLine(formatString("Memory model:        %u bit",
+                                   static_cast<unsigned>(CHAR_BIT * sizeof(void*))));
 
 #if GMX_THREAD_MPI
     writer->writeLine("MPI library:         thread_mpi");
@@ -450,21 +490,25 @@ void gmx_print_version_info(gmx::TextWriter* writer)
     // Describe the BLAS and LAPACK libraries. We generally don't know
     // much about what external library was detected, but we do in the
     // case of MKL so then it is reported.
-    if (HAVE_LIBMKL && std::strstr(GMX_DESCRIBE_BLAS, "MKL") != nullptr)
+    bool descriptionContainsMkl = std::strstr(GMX_DESCRIBE_BLAS, "MKL") != nullptr;
+    if (HAVE_LIBMKL && descriptionContainsMkl)
     {
         writer->writeLine(formatString("BLAS library:        %s", describeMkl().c_str()));
     }
     else
     {
         writer->writeLine(formatString("BLAS library:        %s", GMX_DESCRIBE_BLAS));
+        GMX_UNUSED_VALUE(descriptionContainsMkl);
     }
-    if (HAVE_LIBMKL && std::strstr(GMX_DESCRIBE_LAPACK, "MKL") != nullptr)
+    descriptionContainsMkl = std::strstr(GMX_DESCRIBE_LAPACK, "MKL") != nullptr;
+    if (HAVE_LIBMKL && descriptionContainsMkl)
     {
         writer->writeLine(formatString("LAPACK library:      %s", describeMkl().c_str()));
     }
     else
     {
         writer->writeLine(formatString("LAPACK library:      %s", GMX_DESCRIBE_LAPACK));
+        GMX_UNUSED_VALUE(descriptionContainsMkl);
     }
 
 #if GMX_GPU_OPENCL
@@ -490,6 +534,12 @@ void gmx_print_version_info(gmx::TextWriter* writer)
     writer->writeLine(formatString("hipSYCL GPU flags:   %s", SYCL_HIPSYCL_DEVICE_COMPILER_FLAGS));
     writer->writeLine(formatString("hipSYCL targets:     %s", SYCL_HIPSYCL_TARGETS));
     writer->writeLine("hipSYCL version:     " + gmx::getSyclCompilerVersion());
+#endif
+#if GMX_GPU_HIP
+    writer->writeLine(formatString("HIP compiler:        %s", HIP_COMPILER_INFO));
+    writer->writeLine(formatString(
+            "HIP compiler flags:  %s %s", HIP_COMPILER_FLAGS, CMAKE_BUILD_CONFIGURATION_CXX_FLAGS));
+    writer->writeLine("HIP driver/runtime:  " + gmx::getHipDriverAndRuntimeVersionString());
 #endif
 }
 
@@ -570,23 +620,21 @@ void printBinaryInformation(TextWriter*                      writer,
     const auto& binaryPath = programContext.fullBinaryPath();
     if (!binaryPath.empty())
     {
-        writer->writeLine(
-                formatString("%sExecutable:   %s%s", prefix, binaryPath.u8string().c_str(), suffix));
+        writer->writeLine(formatString("%sExecutable:   %s%s", prefix, binaryPath.string().c_str(), suffix));
     }
     const gmx::InstallationPrefixInfo installPrefix = programContext.installationPrefix();
     if (!installPrefix.path_.empty())
     {
         writer->writeLine(formatString("%sData prefix:  %s%s%s",
                                        prefix,
-                                       installPrefix.path_.u8string().c_str(),
+                                       installPrefix.path_.string().c_str(),
                                        installPrefix.sourceLayoutTreeLike_ ? " (source tree)" : "",
                                        suffix));
     }
     const auto workingDir = std::filesystem::current_path();
     if (!workingDir.empty())
     {
-        writer->writeLine(
-                formatString("%sWorking dir:  %s%s", prefix, workingDir.u8string().c_str(), suffix));
+        writer->writeLine(formatString("%sWorking dir:  %s%s", prefix, workingDir.string().c_str(), suffix));
     }
     if (settings.bProcessId_)
     {

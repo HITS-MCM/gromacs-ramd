@@ -40,15 +40,16 @@ add_library(gpu_utils INTERFACE)
 gmx_add_libgromacs_sources(
         clfftinitializer.cpp
         device_stream_manager.cpp
-        hostallocator.cpp
         gpu_utils.cpp
         gpueventsynchronizer_helpers.cpp
+        hostallocator.cpp
         nvshmem_utils.cpp
         )
 if(GMX_GPU_OPENCL)
     gmx_add_libgromacs_sources(
         device_context_ocl.cpp
         device_stream_ocl.cpp
+        gpu_utils_impl.cpp
         pmalloc.cpp
         ocl_compiler.cpp
         ocl_caching.cpp
@@ -64,11 +65,24 @@ elseif(GMX_GPU_CUDA)
     _gmx_add_files_to_property(CUDA_SOURCES
         device_stream_manager.cpp
         )
+elseif(GMX_GPU_HIP)
+    gmx_add_libgromacs_sources(
+        device_context.cpp
+        device_stream_hip.cpp
+        gpu_utils_hip.cpp
+        pmalloc_hip.cpp
+        )
+    _gmx_add_files_to_property(HIP_SOURCES
+        device_stream_hip.cpp
+        gpu_utils_hip.cpp
+        pmalloc_hip.cpp
+        )
 elseif(GMX_GPU_SYCL)
     gmx_add_libgromacs_sources(
         devicebuffer_sycl.cpp
         device_context_sycl.cpp
         device_stream_sycl.cpp
+        gpu_utils_impl.cpp
         pmalloc_sycl.cpp
         )
     _gmx_add_files_to_property(SYCL_SOURCES
@@ -83,6 +97,7 @@ else()
     gmx_add_libgromacs_sources(
         device_context.cpp
         device_stream.cpp
+        gpu_utils_impl.cpp
         pmalloc.cpp
     )
 endif()

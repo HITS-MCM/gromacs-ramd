@@ -44,10 +44,6 @@ if(POLICY CMP0135) # From CMake 3.24
     # We don't care about DOWNLOAD_EXTRACT_TIMESTAMP; prefer the new behavior
     cmake_policy(SET CMP0135 NEW)
 endif()
-if(POLICY CMP0146) # From CMake 3.27
-    # We still use FindCUDA
-    cmake_policy(SET CMP0146 OLD)
-endif()
 
 # CMake modules/macros are in a subdirectory to keep this file cleaner
 # This needs to be set before project() in order to pick up toolchain files
@@ -79,9 +75,14 @@ endif()
 
 # The GROMACS convention is that these are the version number of the next
 # release that is going to be made from this branch.
-project(Gromacs VERSION 2024.1)
+project(Gromacs VERSION 2025.0)
 
-set(CMAKE_CXX_STANDARD 17)
+if(NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 17)
+endif()
+if(CMAKE_CXX_STANDARD LESS 17)
+    message(FATAL_ERROR "C++17 or newer is required")
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -91,6 +92,10 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+include(gmxTestIntelLLVM)
+# Run through a number of tests for buggy compilers and other issues
+include(gmxTestCompilerProblems)
+gmx_test_compiler_problems()
 find_package(LibStdCpp)
 
 # Python is first referenced in gmxVersionInfo, so we perform the search early
@@ -231,7 +236,7 @@ gmx_option_multichoice(
     GMX_GPU
     "Framework for GPU acceleration"
     OFF
-    OFF CUDA OpenCL SYCL)
+    OFF CUDA OpenCL SYCL HIP)
 if(GMX_GPU STREQUAL SYCL)
     gmx_option_multichoice(
         GMX_SYCL
@@ -268,8 +273,6 @@ gmx_option_multichoice(
     "AUTO"
     AUTO None SSE2 SSE4.1 AVX_128_FMA AVX_256 AVX2_256 AVX2_128 AVX_512 AVX_512_KNL ARM_NEON_ASIMD ARM_SVE IBM_VSX Reference)
 
-include(gmxTestIntelLLVM)
-
 if (GMX_INTEL_LLVM)
     set(GMX_FFT_LIBRARY_DEFAULT "mkl")
 else()
@@ -298,7 +301,7 @@ gmx_dependent_option(
     GMX_USE_HEFFTE
     "Use HeFFTe for distributed FFT support. Used with CUDA backend"
     OFF
-    "GMX_GPU STREQUAL CUDA OR GMX_GPU STREQUAL SYCL;GMX_MPI")
+    "GMX_GPU STREQUAL CUDA OR GMX_GPU STREQUAL HIP OR GMX_GPU STREQUAL SYCL;GMX_MPI")
 gmx_dependent_option(
     GMX_USE_CUFFTMP
     "Use cuFFTMp for distributed FFT support. Used with CUDA backend"
@@ -316,10 +319,13 @@ gmx_dependent_option(
 # OpenCL           | VkFFT or clFFT according to toolchain
 # SYCL via hipSYCL | VkFFT
 # SYCL via DPCPP   | MKL
+# HIP              | VkFFT
 # =================+======================================
 if (GMX_GPU)
     if (GMX_GPU STREQUAL CUDA)
         set(GMX_GPU_FFT_LIBRARY_DEFAULT "cuFFT")
+    elseif(GMX_GPU STREQUAL HIP)
+        set(GMX_GPU_FFT_LIBRARY_DEFAULT "VkFFT")
     elseif(GMX_GPU STREQUAL OPENCL)
         if (APPLE OR MSVC)
             set(GMX_GPU_FFT_LIBRARY_DEFAULT "VkFFT")
@@ -338,10 +344,10 @@ if (GMX_GPU)
         GMX_GPU_FFT_LIBRARY
         "GPU FFT library"
         "${GMX_GPU_FFT_LIBRARY_DEFAULT}"
-        cuFFT clFFT VkFFT MKL rocFFT BBFFT none)
+        cuFFT hipFFT clFFT VkFFT MKL oneMKL rocFFT BBFFT none)
     # The validity of chosen option is later verified by the selected backend
 
-    foreach (_gpu_fft_library cuFFT clFFT VkFFT MKL rocFFT BBFFT)
+    foreach (_gpu_fft_library cuFFT hipFFT clFFT VkFFT MKL oneMKL rocFFT BBFFT)
         string(TOUPPER "${_gpu_fft_library}" _gpu_fft_library_upper)
         if (GMX_GPU_FFT_LIBRARY STREQUAL ${_gpu_fft_library_upper})
             if (NOT GMX_GPU_FFT_QUIET_AFTER_FIRST_RUN)
@@ -391,9 +397,14 @@ option(GMX_BUILD_FOR_COVERAGE
 mark_as_advanced(GMX_BUILD_FOR_COVERAGE)
 
 option(GMX_DEVELOPER_BUILD
-    "Enable Developer convenience features: always build unit-tests"
+    "Enable Developer convenience features: always build unit-tests, manual also in PDF, enable warnings, and export compile commands"
     OFF)
 mark_as_advanced(GMX_DEVELOPER_BUILD)
+
+if(GMX_DEVELOPER_BUILD)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+    mark_as_advanced(CMAKE_EXPORT_COMPILE_COMMANDS)
+endif()
 
 gmx_set_boolean(GMX_COMPILER_WARNINGS_DEFAULT "NOT SOURCE_IS_SOURCE_DISTRIBUTION")
 option(GMX_COMPILER_WARNINGS
@@ -440,10 +451,6 @@ gmx_c_flags()
 # might not also work for C++ compilation.
 set(EXTRA_C_FLAGS "")
 set(EXTRA_CXX_FLAGS "")
-
-# Run through a number of tests for buggy compilers and other issues
-include(gmxTestCompilerProblems)
-gmx_test_compiler_problems()
 
 # Implement double-precision option. This is complicated because we
 # need installed headers to use the precision mode of the build that
@@ -692,11 +699,16 @@ gmx_manage_simd()
 set(REQUIRED_CUDA_VERSION 11.0)
 set(REQUIRED_CUDA_COMPUTE_CAPABILITY 3.5)
 
+# We start supporting HIP from version 5.2
+set(REQUIRED_HIP_VERSION 5.2)
+
 if(GMX_GPU)
 
     string(TOUPPER "${GMX_GPU}" _gmx_gpu_uppercase)
     if(${_gmx_gpu_uppercase} STREQUAL "CUDA")
         include(gmxManageCuda)
+    elseif(${_gmx_gpu_uppercase} STREQUAL "HIP")
+        include(gmxManageHip)
     elseif(${_gmx_gpu_uppercase} STREQUAL "OPENCL")
         message(STATUS "GPU support with OpenCL is deprecated. It is still fully supported (and " 
             "recommended for Apple GPUs). Please use CUDA for running on NVIDIA GPUs and "
@@ -718,7 +730,7 @@ if(GMX_GPU)
         endif()
     endif()
     # Only OpenCL and SYCL support changing the default cluster size
-    if (${_gmx_gpu_uppercase} STREQUAL "CUDA")
+    if (${_gmx_gpu_uppercase} STREQUAL "CUDA" OR ${_gmx_gpu_uppercase} STREQUAL "HIP")
         if (GMX_GPU_NB_CLUSTER_SIZE AND NOT "${GMX_GPU_NB_CLUSTER_SIZE}" EQUAL 8)
             message(FATAL_ERROR "Changing GMX_GPU_NB_CLUSTER_SIZE is not supported in CUDA (the default GMX_GPU_NB_CLUSTER_SIZE=8 is used)")
         endif()
@@ -744,9 +756,9 @@ if(GMX_GPU)
         mark_as_advanced(GMX_GPU_NB_CLUSTER_SIZE)
     endif()
 
-    if (NOT (${_gmx_gpu_uppercase} STREQUAL "SYCL"))
+    if (NOT (${_gmx_gpu_uppercase} STREQUAL "SYCL" OR ${_gmx_gpu_uppercase} STREQUAL "HIP"))
         if (GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT)
-            message(FATAL_ERROR "Disabling cluster pair splitting is only supported in SYCL, set GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT=off otherwise")
+            message(FATAL_ERROR "Disabling cluster pair splitting is only supported with SYCL or HIP, set GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT=off otherwise")
         endif()
     endif()
 endif()
@@ -759,7 +771,7 @@ mark_as_advanced(GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Z)
 
 # For build with CUDA/SYCL and Lib-MPI, check if underlying MPI implementation is GPU-aware
 # GPU-aware MPI allows direct GPU communication without staging data through host
-if((GMX_GPU_CUDA OR GMX_GPU_SYCL) AND GMX_LIB_MPI)
+if((GMX_GPU_CUDA OR GMX_GPU_HIP OR GMX_GPU_SYCL) AND GMX_LIB_MPI)
     include(gmxManageGpuAwareMpi)
 else()
     set(HAVE_MPI_EXT 0)
@@ -777,14 +789,16 @@ if(GMX_GPU_CUDA AND NOT GMX_GPU_FFT_CUFFT)
 endif()
 
 if(GMX_USE_HEFFTE)
-    if(NOT GMX_GPU_CUDA AND NOT GMX_GPU_SYCL)
-        message(FATAL_ERROR "HeFFTe support requires a CUDA or SYCL build")
+    if(NOT GMX_GPU_CUDA AND NOT GMX_GPU_HIP AND NOT GMX_GPU_SYCL)
+        message(FATAL_ERROR "HeFFTe support requires a CUDA, HIP or SYCL build")
     endif()
     if(NOT GMX_LIB_MPI)
         message(FATAL_ERROR "HeFFTe support requires a library MPI build")
     endif()
     if(GMX_GPU_CUDA)
         find_package(Heffte 2.2.0 REQUIRED CUDA)
+    elseif(GMX_GPU_HIP)
+        find_package(Heffte 2.2.0 REQUIRED ROCM)
     elseif(GMX_GPU_SYCL)
         if(GMX_GPU_FFT_ROCFFT)
             find_package(Heffte 2.2.0 REQUIRED ROCM)
@@ -979,9 +993,9 @@ else()
     # Set the RPATH as relative to the executable location to make the
     # binaries relocatable.
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin") #Assume OS X >=10.5
-        set(CMAKE_INSTALL_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
+        list(APPEND CMAKE_INSTALL_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
     else()
-        set(CMAKE_INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+        list(APPEND CMAKE_INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
     endif()
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
     set(CMAKE_MACOSX_RPATH 1)

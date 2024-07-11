@@ -602,8 +602,8 @@ submit(const DeviceStream& deviceStream, size_t myGridX, size_t myGridY, sycl::u
 
     const sycl::range<3>    localSize{ 1, threadsAlongYDim, threadsAlongZDim };
     const sycl::range<3>    groupRange{ myGridX,
-                                     (myGridY + threadsAlongYDim - 1) / threadsAlongYDim,
-                                     (pmeSize[ZZ] + threadsAlongZDim - 1) / threadsAlongZDim };
+                                     gmx::divideRoundUp<size_t>(myGridY, threadsAlongYDim),
+                                     gmx::divideRoundUp<size_t>(pmeSize[ZZ], threadsAlongZDim) };
     const sycl::nd_range<3> range{ groupRange * localSize, localSize };
 
     sycl::queue q = deviceStream.stream();
@@ -1275,8 +1275,8 @@ public:
 
         const sycl::range<3>    localSize{ 1, threadsAlongYDim, threadsAlongZDim };
         const sycl::range<3>    groupRange{ localFftNData[XX],
-                                         (localFftNData[YY] + threadsAlongYDim - 1) / threadsAlongYDim,
-                                         (localFftNData[ZZ] + threadsAlongZDim - 1) / threadsAlongZDim };
+                                         gmx::divideRoundUp<size_t>(localFftNData[YY], threadsAlongYDim),
+                                         gmx::divideRoundUp<size_t>(localFftNData[ZZ], threadsAlongZDim) };
         const sycl::nd_range<3> range{ groupRange * localSize, localSize };
 
         sycl::queue q = deviceStream.stream();
@@ -1289,15 +1289,11 @@ public:
 };
 
 template<bool pmeToFft>
-void convertPmeGridToFftGrid(const PmeGpu*         pmeGpu,
-                             float*                h_fftRealGrid,
-                             gmx_parallel_3dfft_t* fftSetup,
-                             const int             gridIndex)
+void convertPmeGridToFftGrid(const PmeGpu* pmeGpu, float* h_fftRealGrid, gmx_parallel_3dfft* fftSetup, const int gridIndex)
 {
     ivec localFftNDataAsIvec, localFftOffset, localFftSizeAsIvec;
 
-    gmx_parallel_3dfft_real_limits(
-            fftSetup[gridIndex], localFftNDataAsIvec, localFftOffset, localFftSizeAsIvec);
+    gmx_parallel_3dfft_real_limits(fftSetup, localFftNDataAsIvec, localFftOffset, localFftSizeAsIvec);
     const sycl::uint3 localFftNData = { localFftNDataAsIvec[XX],
                                         localFftNDataAsIvec[YY],
                                         localFftNDataAsIvec[ZZ] };
@@ -1400,15 +1396,15 @@ void convertPmeGridToFftGrid(const PmeGpu* pmeGpu, DeviceBuffer<float>* d_fftRea
     }
 }
 
-template void convertPmeGridToFftGrid<true>(const PmeGpu*         pmeGpu,
-                                            float*                h_fftRealGrid,
-                                            gmx_parallel_3dfft_t* fftSetup,
-                                            const int             gridIndex);
+template void convertPmeGridToFftGrid<true>(const PmeGpu*       pmeGpu,
+                                            float*              h_fftRealGrid,
+                                            gmx_parallel_3dfft* fftSetup,
+                                            const int           gridIndex);
 
-template void convertPmeGridToFftGrid<false>(const PmeGpu*         pmeGpu,
-                                             float*                h_fftRealGrid,
-                                             gmx_parallel_3dfft_t* fftSetup,
-                                             const int             gridIndex);
+template void convertPmeGridToFftGrid<false>(const PmeGpu*       pmeGpu,
+                                             float*              h_fftRealGrid,
+                                             gmx_parallel_3dfft* fftSetup,
+                                             const int           gridIndex);
 
 template void convertPmeGridToFftGrid<true>(const PmeGpu*        pmeGpu,
                                             DeviceBuffer<float>* d_fftRealGrid,

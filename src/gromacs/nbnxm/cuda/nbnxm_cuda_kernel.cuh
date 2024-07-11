@@ -46,7 +46,7 @@
 
 #include "gromacs/gpu_utils/cuda_arch_utils.cuh"
 #include "gromacs/gpu_utils/cuda_kernel_utils.cuh"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/math/units.h"
 #include "gromacs/math/utilities.h"
 #include "gromacs/pbcutil/ishift.h"
@@ -155,7 +155,7 @@ __launch_bounds__(THREADS_PER_BLOCK)
         __global__ void NB_KERNEL_FUNC_NAME(nbnxn_kernel, _F_cuda)
 #    endif /* CALC_ENERGIES */
 #endif     /* PRUNE_NBL */
-                (NBAtomDataGpu atdat, NBParamGpu nbparam, Nbnxm::gpu_plist plist, bool bCalcFshift)
+                (NBAtomDataGpu atdat, NBParamGpu nbparam, Nbnxm::GpuPairlist plist, bool bCalcFshift)
 #ifdef FUNCTION_DECLARATION_ONLY
                         ; /* Only do function declaration, omit the function body. */
 #else
@@ -271,7 +271,7 @@ __launch_bounds__(THREADS_PER_BLOCK)
 #        if !defined CALC_ENERGIES && !defined PRUNE_NBL
 #            if (defined EL_CUTOFF || defined EL_RF                                            \
                  || defined EL_EWALD_ANY && !defined LJ_FORCE_SWITCH && !defined LJ_POT_SWITCH \
-                            && (!defined LJ_COMB_LB || GMX_PTX_ARCH == 800))
+                            && (defined LJ_COMB_GEOM || GMX_PTX_ARCH == 800))
     static constexpr int jmLoopUnrollFactor = 4;
 #            else
     static constexpr int jmLoopUnrollFactor = 2;
@@ -420,6 +420,7 @@ __launch_bounds__(THREADS_PER_BLOCK)
 #    endif /* CALC_ENERGIES */
 
 #    ifdef EXCLUSION_FORCES
+    // Note that we use & instead of && for performance (benchmarked in 2017)
     const int nonSelfInteraction = !(nb_sci.shift == gmx::c_centralShiftIndex & tidxj <= tidxi);
 #    endif
 

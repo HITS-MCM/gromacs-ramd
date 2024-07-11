@@ -40,7 +40,6 @@
 #include "gromacs/simd/simd.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/gmxassert.h"
-#include "gromacs/utility/smalloc.h"
 #include "gromacs/utility/typetraits.h"
 
 #include "pme_internal.h"
@@ -227,7 +226,7 @@ struct do_fspline
         const real* const gmx_restrict dthy = spline_->dtheta.coefficients[YY] + norder;
         const real* const gmx_restrict dthz = spline_->dtheta.coefficients[ZZ] + norder;
 
-        struct pme_spline_work* const work = pme_->spline_work;
+        const pme_spline_work& work = *pme_->spline_work;
 
         const int offset = idxZ & 3;
 
@@ -239,10 +238,10 @@ struct do_fspline
         loadOrderU(thz, order, offset, &tz_S0, &tz_S1);
         loadOrderU(dthz, order, offset, &dz_S0, &dz_S1);
 
-        tz_S0 = selectByMask(tz_S0, work->mask_S0[offset]);
-        dz_S0 = selectByMask(dz_S0, work->mask_S0[offset]);
-        tz_S1 = selectByMask(tz_S1, work->mask_S1[offset]);
-        dz_S1 = selectByMask(dz_S1, work->mask_S1[offset]);
+        tz_S0 = selectByMask(tz_S0, work.mask_S0[offset]);
+        dz_S0 = selectByMask(dz_S0, work.mask_S0[offset]);
+        tz_S1 = selectByMask(tz_S1, work.mask_S1[offset]);
+        dz_S1 = selectByMask(dz_S1, work.mask_S1[offset]);
 
         for (int ithx = 0; (ithx < order); ithx++)
         {
@@ -293,12 +292,12 @@ private:
 };
 
 
-void gather_f_bsplines(const gmx_pme_t*    pme,
-                       const real*         grid,
-                       gmx_bool            bClearF,
-                       const PmeAtomComm*  atc,
-                       const splinedata_t* spline,
-                       real                scale)
+void gather_f_bsplines(const gmx_pme_t*          pme,
+                       gmx::ArrayRef<const real> grid,
+                       gmx_bool                  bClearF,
+                       const PmeAtomComm*        atc,
+                       const splinedata_t*       spline,
+                       real                      scale)
 {
     /* sum forces for local particles */
 
@@ -313,6 +312,8 @@ void gather_f_bsplines(const gmx_pme_t*    pme,
     const real rzx = pme->recipbox[ZZ][XX];
     const real rzy = pme->recipbox[ZZ][YY];
     const real rzz = pme->recipbox[ZZ][ZZ];
+
+    const real* gmx_restrict gridPtr = grid.data();
 
     /* Extract the buffer for force output */
     rvec* gmx_restrict force = as_rvec_array(atc->f.data());
@@ -334,7 +335,7 @@ void gather_f_bsplines(const gmx_pme_t*    pme,
         if (coefficient != 0)
         {
             RVec       f;
-            const auto spline_func = do_fspline(pme, grid, atc, spline, nn);
+            const auto spline_func = do_fspline(pme, gridPtr, atc, spline, nn);
 
             switch (order)
             {
@@ -360,20 +361,21 @@ void gather_f_bsplines(const gmx_pme_t*    pme,
 }
 
 
-real gather_energy_bsplines(gmx_pme_t* pme, const real* grid, PmeAtomComm* atc)
+real gather_energy_bsplines(gmx_pme_t* pme, gmx::ArrayRef<const real> grid, PmeAtomComm* atc)
 {
     splinedata_t* spline;
     int           ithx, ithy, ithz, i0, j0, k0;
     int           index_x, index_xy;
     int*          idxptr;
     real          energy, pot, tx, ty, coefficient, gval;
-    real *        thx, *thy, *thz;
     int           norder;
     int           order;
 
     spline = &atc->spline[0];
 
     order = pme->pme_order;
+
+    const real* gmx_restrict gridPtr = grid.data();
 
     energy = 0;
     for (int n = 0; n < atc->numAtoms(); n++)
@@ -390,9 +392,9 @@ real gather_energy_bsplines(gmx_pme_t* pme, const real* grid, PmeAtomComm* atc)
             k0 = idxptr[ZZ];
 
             /* Pointer arithmetic alert, next three statements */
-            thx = spline->theta.coefficients[XX] + norder;
-            thy = spline->theta.coefficients[YY] + norder;
-            thz = spline->theta.coefficients[ZZ] + norder;
+            const real* thx = spline->theta.coefficients[XX] + norder;
+            const real* thy = spline->theta.coefficients[YY] + norder;
+            const real* thz = spline->theta.coefficients[ZZ] + norder;
 
             pot = 0;
             for (ithx = 0; (ithx < order); ithx++)
@@ -407,7 +409,7 @@ real gather_energy_bsplines(gmx_pme_t* pme, const real* grid, PmeAtomComm* atc)
 
                     for (ithz = 0; (ithz < order); ithz++)
                     {
-                        gval = grid[index_xy + (k0 + ithz)];
+                        gval = gridPtr[index_xy + (k0 + ithz)];
                         pot += tx * ty * thz[ithz] * gval;
                     }
                 }

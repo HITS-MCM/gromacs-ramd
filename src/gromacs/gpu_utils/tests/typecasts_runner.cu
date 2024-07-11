@@ -45,7 +45,7 @@
 
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/devicebuffer.h"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/hardware/device_information.h"
 #include "gromacs/utility/arrayref.h"
 #include "gromacs/utility/exceptions.h"
@@ -109,9 +109,9 @@ void convertRVecToFloat3OnDevice(ArrayRef<gmx::RVec>       h_rVecOutput,
                                  ArrayRef<const gmx::RVec> h_rVecInput,
                                  const TestDevice*         testDevice)
 {
-    testDevice->activate();
     const DeviceContext& deviceContext = testDevice->deviceContext();
     const DeviceStream&  deviceStream  = testDevice->deviceStream();
+    deviceContext.activate();
 
     const int numElements = h_rVecInput.size();
 

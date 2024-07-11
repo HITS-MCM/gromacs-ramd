@@ -44,6 +44,7 @@
 
 #include <cstdio>
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -143,7 +144,7 @@ public:
 
     SelectionCollection(const SelectionCollection& rhs);
     SelectionCollection& operator=(SelectionCollection rhs);
-    void                 swap(SelectionCollection& rhs);
+    void                 swap(SelectionCollection& rhs) noexcept;
 
     /*! \brief
      * Initializes options for setting global properties on the collection.
@@ -335,7 +336,7 @@ public:
      * Some information about the selections only becomes available once
      * compile() has been called; see \ref Selection.
      */
-    SelectionList parseFromFile(const std::string& filename);
+    SelectionList parseFromFile(const std::filesystem::path& filename);
     /*! \brief
      * Parses selection(s) from a string.
      *
@@ -435,7 +436,7 @@ private:
     friend class SelectionEvaluator;
 };
 
-void swap(SelectionCollection& lhs, SelectionCollection& rhs);
+void swap(SelectionCollection& lhs, SelectionCollection& rhs) noexcept;
 
 } // namespace gmx
 

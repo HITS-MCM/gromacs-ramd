@@ -50,7 +50,7 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/devicebuffer.cuh"
 #include "gromacs/gpu_utils/gputraits.h"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/gpu_utils/vectype_ops.cuh"
 #include "gromacs/mdlib/lincs_gpu.h"
 #include "gromacs/pbcutil/pbc_aiuc_cuda.cuh"
@@ -432,9 +432,9 @@ void launchLincsGpuKernel(LincsGpuKernelParameters*   kernelParams,
     config.blockSize[0] = c_threadsPerBlock;
     config.blockSize[1] = 1;
     config.blockSize[2] = 1;
-    config.gridSize[0] = (kernelParams->numConstraintsThreads + c_threadsPerBlock - 1) / c_threadsPerBlock;
-    config.gridSize[1] = 1;
-    config.gridSize[2] = 1;
+    config.gridSize[0]  = divideRoundUp(kernelParams->numConstraintsThreads, c_threadsPerBlock);
+    config.gridSize[1]  = 1;
+    config.gridSize[2]  = 1;
 
     // Shared memory is used to store:
     // -- Current coordinates (3 floats per thread)

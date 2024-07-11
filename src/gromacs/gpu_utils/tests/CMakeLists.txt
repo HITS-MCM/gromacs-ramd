@@ -43,17 +43,21 @@ gmx_add_unit_test(GpuUtilsUnitTests gpu_utils-test HARDWARE_DETECTION
         clfftinitializer.cpp
         device_availability.cpp
         device_stream_manager.cpp
-        hostallocator.cpp
         pinnedmemorychecker.cpp
         
     GPU_CPP_SOURCE_FILES
         device_buffer.cpp
         gpueventsynchronizer.cpp
+        hostallocator.cpp
         typecasts.cpp
 
     CUDA_CU_SOURCE_FILES
         devicetransfers.cu
         typecasts_runner.cu
+
+    HIP_CPP_SOURCE_FILES
+        devicetransfers_hip.cpp
+        typecasts_runner_hip.cpp
 
     OPENCL_CPP_SOURCE_FILES
         devicetransfers_ocl.cpp
@@ -65,7 +69,7 @@ gmx_add_unit_test(GpuUtilsUnitTests gpu_utils-test HARDWARE_DETECTION
         devicetransfers.cpp
     )
 target_link_libraries(gpu_utils-test PRIVATE gpu_utils)
-target_include_directories(gpu_utils-test PRIVATE ${PROJECT_SOURCE_DIR}/src/gromacs/math/tests)
+target_link_libraries(gpu_utils-test PRIVATE math)
 
 if (GMX_NVSHMEM)
     gmx_add_mpi_unit_test(NvshmemTests nvshmem-test 2 HARDWARE_DETECTION NVSHMEM

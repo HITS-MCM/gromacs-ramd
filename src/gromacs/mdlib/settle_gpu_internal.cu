@@ -54,7 +54,7 @@
 #include "gromacs/gpu_utils/cudautils.cuh"
 #include "gromacs/gpu_utils/devicebuffer.h"
 #include "gromacs/gpu_utils/gputraits.h"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/gpu_utils/vectype_ops.cuh"
 #include "gromacs/math/functions.h"
 #include "gromacs/math/vec.h"
@@ -367,9 +367,9 @@ __launch_bounds__(sc_maxThreadsPerBlock) __global__
  * Returns pointer to a CUDA kernel based on provided booleans.
  *
  * \param[in] updateVelocities  If the velocities should be constrained.
- * \param[in] bCalcVir          If virial should be updated.
+ * \param[in] computeVirial     If virial should be updated.
  *
- * \retrun                      Pointer to CUDA kernel
+ * \return                      Pointer to CUDA kernel
  */
 inline auto getSettleKernelPtr(const bool updateVelocities, const bool computeVirial)
 {
@@ -417,7 +417,7 @@ void launchSettleGpuKernel(const int                          numSettles,
     config.blockSize[0] = sc_threadsPerBlock;
     config.blockSize[1] = 1;
     config.blockSize[2] = 1;
-    config.gridSize[0]  = (numSettles + sc_threadsPerBlock - 1) / sc_threadsPerBlock;
+    config.gridSize[0]  = divideRoundUp(numSettles, sc_threadsPerBlock);
     config.gridSize[1]  = 1;
     config.gridSize[2]  = 1;
 

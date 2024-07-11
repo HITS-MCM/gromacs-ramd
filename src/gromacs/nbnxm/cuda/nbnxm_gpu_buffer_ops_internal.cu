@@ -43,7 +43,7 @@
 
 #include "gromacs/nbnxm/nbnxm_gpu_buffer_ops_internal.h"
 
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/gpu_utils/vectype_ops.cuh"
 #include "gromacs/nbnxm/cuda/nbnxm_cuda_types.h"
 #include "gromacs/nbnxm/grid.h"
@@ -128,8 +128,8 @@ void launchNbnxmKernelTransformXToXq(const Grid&          grid,
     config.blockSize[0] = c_bufOpsThreadsPerBlock;
     config.blockSize[1] = 1;
     config.blockSize[2] = 1;
-    config.gridSize[0]  = (grid.numCellsColumnMax() * numAtomsPerCell + c_bufOpsThreadsPerBlock - 1)
-                         / c_bufOpsThreadsPerBlock;
+    config.gridSize[0] =
+            gmx::divideRoundUp(grid.numCellsColumnMax() * numAtomsPerCell, c_bufOpsThreadsPerBlock);
     config.gridSize[1] = numColumns;
     config.gridSize[2] = 1;
     GMX_ASSERT(config.gridSize[0] > 0, "Can not have empty grid, early return above avoids this");

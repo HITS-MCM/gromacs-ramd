@@ -44,7 +44,7 @@
 #include "update_constrain_gpu_internal.h"
 
 #include "gromacs/gpu_utils/cudautils.cuh"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 #include "gromacs/gpu_utils/vectype_ops.cuh"
 
 namespace gmx
@@ -88,7 +88,7 @@ void launchScaleCoordinatesKernel(const int            numAtoms,
     kernelLaunchConfig.blockSize[2]     = 1;
     kernelLaunchConfig.sharedMemorySize = 0;
 
-    kernelLaunchConfig.gridSize[0] = (numAtoms + c_threadsPerBlock - 1) / c_threadsPerBlock;
+    kernelLaunchConfig.gridSize[0] = divideRoundUp(numAtoms, c_threadsPerBlock);
 
     const auto kernelArgs = prepareGpuKernelArguments(
             scaleCoordinates_kernel, kernelLaunchConfig, &numAtoms, asFloat3Pointer(&d_coordinates), &mu);

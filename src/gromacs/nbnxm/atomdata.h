@@ -46,6 +46,9 @@
 
 #include <cstdio>
 
+#include <memory>
+#include <optional>
+
 #include "gromacs/gpu_utils/devicebuffer_datatype.h"
 #include "gromacs/gpu_utils/hostallocator.h"
 #include "gromacs/math/vectypes.h"
@@ -55,8 +58,11 @@
 
 namespace gmx
 {
+template<bool, bool>
+class EnergyAccumulator;
+class EnergyGroupsPerCluster;
 class MDLogger;
-}
+} // namespace gmx
 
 struct NbnxmGpu;
 struct nbnxn_atomdata_t;
@@ -108,15 +114,18 @@ struct nbnxn_atomdata_output_t
 {
     /*! \brief Constructor
      *
-     * \param[in] kernelType              Type of non-bonded kernel
-     * \param[in] numEnergyGroups         The number of energy groups
-     * \param[in] simdEnergyBufferStride  Stride for entries in the energy buffers for SIMD kernels
-     * \param[in] pinningPolicy           Sets the pinning policy for all buffers used on the GPU
+     * \param[in] kernelType       Type of non-bonded kernel
+     * \param[in] numEnergyGroups  The number of energy groups
+     * \param[in] pinningPolicy    Sets the pinning policy for all buffers used on the GPU
      */
-    nbnxn_atomdata_output_t(Nbnxm::KernelType  kernelType,
-                            int                numEnergyGroups,
-                            int                simdEnergyBufferStride,
-                            gmx::PinningPolicy pinningPolicy);
+    nbnxn_atomdata_output_t(Nbnxm::KernelType kernelType, int numEnergyGroups, gmx::PinningPolicy pinningPolicy);
+
+    //! Move constructor
+    nbnxn_atomdata_output_t(nbnxn_atomdata_output_t&&) noexcept;
+
+    //! Destructor
+    ~nbnxn_atomdata_output_t();
+
 
     //! f, size natoms*fstride
     gmx::HostVector<real> f;
@@ -126,10 +135,11 @@ struct nbnxn_atomdata_output_t
     gmx::HostVector<real> Vvdw;
     //! Temporary Coulomb group energy storage
     gmx::HostVector<real> Vc;
-    //! Temporary SIMD Van der Waals group energy storage
-    AlignedVector<real> VSvdw;
-    //! Temporary SIMD Coulomb group energy storage
-    AlignedVector<real> VSc;
+
+    //! Accumulator for energy output with a single energy group
+    std::unique_ptr<gmx::EnergyAccumulator<false, true>> accumulatorSingleEnergies;
+    //! Accumulator for energy output with multiple energy groups
+    std::unique_ptr<gmx::EnergyAccumulator<true, true>> accumulatorGroupEnergies;
 };
 
 /*! \brief Block size in atoms for the non-bonded thread force-buffer reduction.
@@ -175,6 +185,11 @@ const char* enumValueToString(LJCombinationRule enumValue);
  */
 struct nbnxn_atomdata_t
 { //NOLINT(clang-analyzer-optin.performance.Padding)
+
+    nbnxn_atomdata_t(gmx::PinningPolicy pinningPolicy);
+
+    ~nbnxn_atomdata_t();
+
     /*! \internal
      * \brief The actual atom data parameter values */
     struct Params
@@ -202,18 +217,16 @@ struct nbnxn_atomdata_t
         //! Charges per atom, not set with format nbatXYZQ
         gmx::HostVector<real> q;
         //! The number of energy groups
-        int nenergrp;
-        //! 2log(nenergrp)
-        int neg_2log;
-        //! The energy groups, one int entry per cluster, only set when needed
-        gmx::HostVector<int> energrp;
+        int numEnergyGroups;
+        //! The list of energy groups per i-cluster
+        std::unique_ptr<gmx::EnergyGroupsPerCluster> energyGroupsPerCluster;
     };
 
     /*! \internal
      * \brief Diagonal and topology exclusion helper data for all SIMD kernels. */
     struct SimdMasks
     {
-        SimdMasks();
+        SimdMasks(Nbnxm::KernelType kernelType);
 
         //! Helper data for setting up diagonal exclusion masks in the SIMD 4xN kernels
         AlignedVector<real> diagonal_4xn_j_minus_i;
@@ -227,24 +240,34 @@ struct nbnxn_atomdata_t
 
     /*! \brief Constructor
      *
+     * This class only stores one, or no, LJ combination rule parameter list.
+     * With LJ-PME the rule for the LJ PME-grid must match the PME grid combination rule
+     * and there can be no combination rule for the LJ pair parameters.
+     * Without LJ-PME the combination rule should match the combination rule
+     * for the LJ parameters.
+     * An (release) assertion failure will occur when these conditions are not met.
+     *
      * \param[in] pinningPolicy      Sets the pinning policy for all data that might be transferred
      *                               to a GPU
      * \param[in] mdlog              The logger
      * \param[in] kernelType         Nonbonded NxN kernel type
-     * \param[in] enbnxninitcombrule LJ combination rule
-     * \param[in] ntype              Number of atom types
+     * \param[in] ljCombinationRule  The LJ combination rule parameters to generate,
+                                     empty is detect from the LJ parameters
+     * \param[in] pmeLJCombinationRule  The LJ combination rule parameters to generate for the LJ PME-grid part
+     * \param[in] numTypes           Number of atom types
      * \param[in] nbfp               Non-bonded force parameters
-     * \param[in] n_energygroups     Number of energy groups
-     * \param[in] nout               Number of output data structures
+     * \param[in] numEnergyGroups    Number of energy groups
+     * \param[in] numOutputBuffers   Number of output data structures
      */
-    nbnxn_atomdata_t(gmx::PinningPolicy        pinningPolicy,
-                     const gmx::MDLogger&      mdlog,
-                     Nbnxm::KernelType         kernelType,
-                     int                       enbnxninitcombrule,
-                     int                       ntype,
-                     gmx::ArrayRef<const real> nbfp,
-                     int                       n_energygroups,
-                     int                       nout);
+    nbnxn_atomdata_t(gmx::PinningPolicy                      pinningPolicy,
+                     const gmx::MDLogger&                    mdlog,
+                     Nbnxm::KernelType                       kernelType,
+                     const std::optional<LJCombinationRule>& ljCombinationRule,
+                     LJCombinationRule                       pmeLJCombinationRule,
+                     int                                     numTypes,
+                     gmx::ArrayRef<const real>               nbfp,
+                     int                                     numEnergyGroups,
+                     int                                     numOutputBuffers);
 
     //! Returns a const reference to the parameters
     const Params& params() const { return params_; }
@@ -255,27 +278,72 @@ struct nbnxn_atomdata_t
     //! Returns the current total number of atoms stored
     int numAtoms() const { return numAtoms_; }
 
+    //! Returns the number of local atoms
+    int numLocalAtoms() const { return numLocalAtoms_; }
+
     //! Return the coordinate buffer, and q with xFormat==nbatXYZQ
     gmx::ArrayRef<const real> x() const { return x_; }
 
     //! Return the coordinate buffer, and q with xFormat==nbatXYZQ
     gmx::ArrayRef<real> x() { return x_; }
 
-    //! Resizes the coordinate buffer and sets the number of atoms
-    void resizeCoordinateBuffer(int numAtoms);
+    //! Masks for handling exclusions in the SIMD kernels
+    const SimdMasks& simdMasks() const { return simdMasks_; }
+
+    /*! \brief Resizes the coordinate buffer and sets the number of atoms
+     *
+     * \param numAtoms                 The new number of atoms
+     * \param domainDecompositionZone  The domain decomposition zone index
+     */
+    void resizeCoordinateBuffer(int numAtoms, int domainDecompositionZone);
 
     //! Resizes the force buffers for the current number of atoms
     void resizeForceBuffers();
 
+    //! Returns the output buffer for the given \p thread
+    nbnxn_atomdata_output_t& outputBuffer(int thread) { return outputBuffers_[thread]; }
+
+    //! Returns the output buffer for the given \p thread
+    const nbnxn_atomdata_output_t& outputBuffer(int thread) const { return outputBuffers_[thread]; }
+
+    //! Returns the list of output buffers
+    gmx::ArrayRef<const nbnxn_atomdata_output_t> outputBuffers() const { return outputBuffers_; }
+
+    //! Returns whether buffer flags are used
+    bool useBufferFlags() const { return useBufferFlags_; }
+
+    //! Returns the vector of buffer flags
+    std::vector<gmx_bitmask_t>& bufferFlags() { return bufferFlags_; }
+
+    /*! \brief Add the computed forces to \p f, an internal reduction might be performed as well
+     *
+     * \param[in]  locality    If the reduction should be performed on local or non-local atoms.
+     * \param[in]  gridSet     The grids data.
+     * \param[out] totalForce  Buffer to accumulate resulting force
+     */
+    void reduceForces(gmx::AtomLocality locality, const Nbnxm::GridSet& gridSet, rvec* totalForce);
+
+    /*! \brief Clears the force buffer.
+     *
+     * Either the whole buffer is cleared or only the parts used
+     * by thread/task \p outputIndex when useBufferFlags() returns true.
+     *
+     * \param[in]     outputIndex  The index of the output object to clear
+     */
+    void clearForceBuffer(int outputIndex);
+
 private:
+    //! Reduce the output buffers into the first one
+    void reduceForcesOverThreads();
+
     //! The LJ and charge parameters
     Params params_;
     //! The total number of atoms currently stored
     int numAtoms_;
+    //! The number of local atoms
+    int numLocalAtoms_;
 
 public:
-    //! Number of local atoms
-    int natoms_local;
     //! The format of x (and q), enum
     int XFormat;
     //! The format of f, enum
@@ -293,19 +361,18 @@ private:
     //! x and possibly q, size natoms*xstride
     gmx::HostVector<real> x_;
 
-public:
     //! Masks for handling exclusions in the SIMD kernels
-    const SimdMasks simdMasks;
+    SimdMasks simdMasks_;
 
     //! Output data structures, 1 per thread
-    std::vector<nbnxn_atomdata_output_t> out;
+    std::vector<nbnxn_atomdata_output_t> outputBuffers_;
 
     //! Reduction related data
     //! \{
     //! Use the flags or operate on all atoms
-    bool bUseBufferFlags;
+    bool useBufferFlags_;
     //! Flags for buffer zeroing+reduc.
-    std::vector<gmx_bitmask_t> buffer_flags;
+    std::vector<gmx_bitmask_t> bufferFlags_;
     //! \}
 };
 
@@ -313,15 +380,6 @@ public:
  * and fills up to na_round with coordinates that are far away.
  */
 void copy_rvec_to_nbat_real(const int* a, int na, int na_round, const rvec* x, int nbatFormat, real* xnb, int a0);
-
-//! Describes the combination rule in use by this force field
-enum
-{
-    enbnxninitcombruleDETECT,
-    enbnxninitcombruleGEOM,
-    enbnxninitcombruleLB,
-    enbnxninitcombruleNONE
-};
 
 //! Sets the atomdata after pair search
 void nbnxn_atomdata_set(nbnxn_atomdata_t*            nbat,
@@ -365,15 +423,6 @@ void nbnxn_atomdata_x_to_nbat_x_gpu(const Nbnxm::GridSet&   gridSet,
                                     NbnxmGpu*               gpu_nbv,
                                     DeviceBuffer<gmx::RVec> d_x,
                                     GpuEventSynchronizer*   xReadyOnDevice);
-
-/*! \brief Add the computed forces to \p f, an internal reduction might be performed as well
- *
- * \param[in]  nbat        Atom data in NBNXM format.
- * \param[in]  locality    If the reduction should be performed on local or non-local atoms.
- * \param[in]  gridSet     The grids data.
- * \param[out] totalForce  Buffer to accumulate resulting force
- */
-void reduceForces(nbnxn_atomdata_t* nbat, gmx::AtomLocality locality, const Nbnxm::GridSet& gridSet, rvec* totalForce);
 
 //! Add the fshift force stored in nbat to fshift
 void nbnxn_atomdata_add_nbat_fshift_to_fshift(const nbnxn_atomdata_t& nbat, gmx::ArrayRef<gmx::RVec> fshift);

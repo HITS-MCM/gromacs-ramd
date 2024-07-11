@@ -95,7 +95,7 @@ TEST(AtomNonbondedAndKineticProperties, IsAccurate)
     std::vector<real> invMasses = { 8.0, 10.149, 20.051 };
     std::vector<real> charges   = { -2.0, 0.149, -0.951 };
 
-    for (Index i = 0; i < ssize(invMasses); i++)
+    for (Index i = 0; i < gmx::ssize(invMasses); i++)
     {
         AtomNonbondedAndKineticProperties props({ c_resolution, c_resolution, c_resolution });
         props.setMassTypeCharge(1 / invMasses[i], 0, charges[i]);
@@ -112,7 +112,7 @@ TEST(AtomNonbondedAndKineticProperties, ConstraintsWork)
     std::vector<real> invMasses = { 8.0, 10.149, 20.051 };
     std::vector<real> lengths   = { 0.0, 3.2499, 4.9501 };
 
-    for (Index i = 0; i < ssize(invMasses); i++)
+    for (Index i = 0; i < gmx::ssize(invMasses); i++)
     {
         AtomNonbondedAndKineticProperties props({ c_resolution, c_resolution, c_resolution });
         props.setMassTypeCharge(1 / invMasses[i], 0, 0);
@@ -217,6 +217,18 @@ TEST_F(VerletBufferConstraintTest, EqualMasses)
             numPointsBeforeMax >= 20 && numPointsAfterMax >= 20,
             "This test only provides full coverage when we test a sufficient number of points "
             "before and after the location of the maximum value for the exact formula.");
+}
+
+// Issue #5002
+TEST(EffectiveAtomDensity, LargeValuesHandledWell)
+{
+    const std::vector<RVec> coordinates = { { 13.132, -8.229, -2.700 } };
+    const matrix            box         = { { 6.2, 0, 0 }, { 0, 6.2, 0 }, { 0, 0, 6.2 } };
+    const real              cutoff      = 1;
+    const real referenceDensity         = (1) / (coordinates.size() * gmx::power3<real>(6.2 / 6));
+
+    const real density = computeEffectiveAtomDensity(coordinates, box, cutoff, MPI_COMM_NULL);
+    EXPECT_FLOAT_EQ(density, referenceDensity);
 }
 
 } // namespace

@@ -46,14 +46,15 @@
 //! \brief Full warp active thread mask used in CUDA warp-level primitives.
 static constexpr unsigned int c_cudaFullWarpMask = 0xffffffff;
 
-#if defined(SYCL_EXT_ONEAPI_ASSERT) && SYCL_EXT_ONEAPI_ASSERT
+#if defined(SYCL_EXT_ONEAPI_ASSERT) && SYCL_EXT_ONEAPI_ASSERT && !defined(__AMDGCN__)
 #    define SYCL_ASSERT(condition) assert(condition)
 #else
 /* Assertions are not defined in SYCL standard, but they are available as oneAPI extension sycl_ext_oneapi_assert.
  * Technically, asserts should work just fine with hipSYCL, since they are supported by CUDA since sm_20.
  * But with some settings (Clang 14, hipSYCL 0.9.2, RelWithAssert), CUDA build fails at link time:
  * ptxas fatal   : Unresolved extern function '__assert_fail'
- * So, we just disable kernel asserts unless they are promised to be available. */
+ * So, we just disable kernel asserts unless they are promised to be available.
+ * Also disable asserts on AMD GPUs, since they cause `hipErrorIllegalState` (oneAPI 2024.1-2024.2, ROCm 5.4-6.1) */
 #    define SYCL_ASSERT(condition)
 #endif
 
@@ -62,10 +63,9 @@ HIPSYCL_UNIVERSAL_TARGET
 static inline void atomicAddOptimizedAmd(float gmx_unused* ptr, const float gmx_unused delta)
 {
 #    if defined(__gfx908__) // Special function for AMD MI100
-#        pragma clang diagnostic push
-#        pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    CLANG_DIAGNOSTIC_IGNORE("-Wdeprecated-declarations")
     atomicAddNoRet(ptr, delta);
-#        pragma clang diagnostic pop
+    CLANG_DIAGNOSTIC_RESET
 #    elif defined(__gfx90a__) // Special function for AMD MI200
     unsafeAtomicAdd(ptr, delta); // Not checked on real hardware, see #4465
 #    else
@@ -193,141 +193,6 @@ static inline T atomicLoad(T& val)
 #endif
 }
 
-/*! \brief Special packed Float3 flavor to help compiler optimizations on AMD CDNA2 devices.
- *
- * Full FP32 performance of AMD CDNA2 devices, like MI200-series, can only be achieved
- * when operating on float2, in a SIMD2-fashion. Compiler (at least up to ROCm 5.6)
- * can use packed math automatically for normal Float3, but generates a lot of
- * data movement between normal and packed registers. Using this class helps avoid
- * this problem.
- *
- * The approach is based on the similar solution used by AMD and StreamHPC in their port.
- *
- * Currently only used in NBNXM kernels if GMX_NBNXM_ENABLE_PACKED_FLOAT3 is enabled
- *
- * \todo This class shall be removed as soon as the compiler is improved.
- *
- * See issue #4854 for more details.
- */
-struct AmdPackedFloat3
-{
-    typedef float __attribute__((ext_vector_type(2))) Native_float2_;
-
-    /* According to C++ standard, we should give names to all
-     * the types and fields declared below. This, however, makes
-     * this code very verbose, and harms readability in a major
-     * way while this code is aimed to be used in a pretty niche
-     * case with relatively small selection of compilers
-     * (flavors of Clang 14-18, maybe later). So, we prefer
-     * to disable the warnings. */
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnested-anon-types"
-#pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
-    struct __attribute__((packed))
-    {
-        union
-        {
-            Native_float2_ xy_;
-            struct
-            {
-                float x_, y_;
-            };
-        };
-        float z_;
-    };
-#pragma clang diagnostic pop
-    template<typename Index>
-    __attribute__((always_inline)) float operator[](Index i) const
-    {
-        switch (i)
-        {
-            case 0: return xy_.x;
-            case 1: return xy_.y;
-            default: SYCL_ASSERT(i == 2); return z_;
-        }
-    }
-    template<typename Index>
-    __attribute__((always_inline)) float& operator[](Index i)
-    {
-        switch (i)
-        {
-            case 0: return x_;
-            case 1: return y_;
-            default: SYCL_ASSERT(i == 2); return z_;
-        }
-    }
-
-    __attribute__((always_inline)) float          x() const { return xy_.x; }
-    __attribute__((always_inline)) float          y() const { return xy_.y; }
-    __attribute__((always_inline)) Native_float2_ xy() const { return xy_; }
-    __attribute__((always_inline)) float          z() const { return z_; }
-
-    AmdPackedFloat3() = default;
-
-    AmdPackedFloat3(float x, float y, float z) : xy_{ x, y }, z_{ z } {}
-
-    AmdPackedFloat3(Native_float2_ xy, float z) : xy_{ xy }, z_{ z } {}
-
-    AmdPackedFloat3(Float3 r) : xy_{ r[0], r[1] }, z_{ r[2] } {}
-
-    explicit operator Float3() const { return Float3{ xy_.x, xy_.y, z_ }; }
-
-    __attribute__((always_inline)) AmdPackedFloat3& operator=(const AmdPackedFloat3& x)
-    {
-        xy_ = x.xy_;
-        z_  = x.z_;
-        return *this;
-    }
-
-    //! Allow inplace addition for AmdPackedFloat3
-    __attribute__((always_inline)) AmdPackedFloat3& operator+=(const AmdPackedFloat3& right)
-    {
-        return *this = *this + right;
-    }
-    //! Allow inplace subtraction for AmdPackedFloat3
-    __attribute__((always_inline)) AmdPackedFloat3& operator-=(const AmdPackedFloat3& right)
-    {
-        return *this = *this - right;
-    }
-    //! Allow vector addition
-    __attribute__((always_inline)) AmdPackedFloat3 operator+(const AmdPackedFloat3& right) const
-    {
-        return { xy_ + right.xy(), z_ + right.z() };
-    }
-    //! Allow vector subtraction
-    __attribute__((always_inline)) AmdPackedFloat3 operator-(const AmdPackedFloat3& right) const
-    {
-        return { xy_ - right.xy(), z_ - right.z() };
-    }
-    //! Scale vector by a scalar
-    __attribute__((always_inline)) AmdPackedFloat3& operator*=(const float& right)
-    {
-        xy_ *= right;
-        z_ *= right;
-        return *this;
-    }
-
-    //! Length^2 of vector
-    __attribute__((always_inline)) float norm2() const { return dot(*this); }
-
-    //! Return dot product
-    __attribute__((always_inline)) float dot(const AmdPackedFloat3& right) const
-    {
-        return x() * right.x() + y() * right.y() + z() * right.z();
-    }
-};
-static_assert(sizeof(AmdPackedFloat3) == 12);
-
-__attribute__((always_inline)) static AmdPackedFloat3 operator*(const AmdPackedFloat3& v, const float& s)
-{
-    return { v.xy() * s, v.z() * s };
-}
-__attribute__((always_inline)) static AmdPackedFloat3 operator*(const float& s, const AmdPackedFloat3& v)
-{
-    return { v.xy() * s, v.z() * s };
-}
-
-
 /*! \brief Issue an intra sub-group barrier.
  *
  * Equivalent with CUDA's \c syncwarp(c_cudaFullWarpMask).
@@ -378,6 +243,30 @@ __device__ __host__
 
     return __builtin_bit_cast(T, wordList);
 }
+#endif
+
+#if GMX_SYCL_HIPSYCL && !(defined(ACPP_VERSION_MAJOR) && ACPP_VERSION_MAJOR >= 24)
+namespace sycl
+{
+/*! \brief Popcount instruction for SYCL
+ *
+ * sycl::popcount is missing in AdaptiveCpp prior to 24.02.0.
+ * This is very basic version using Clang built-in.
+ */
+template<typename T>
+T popcount(T x)
+{
+    if constexpr (sizeof(T) == 4)
+    {
+        return __builtin_popcount(x);
+    }
+    else
+    {
+        static_assert(sizeof(T) == 8);
+        return __builtin_popcountll(x);
+    }
+}
+} // namespace sycl
 #endif
 
 #endif /* GMX_GPU_UTILS_SYCL_KERNEL_UTILS_H */

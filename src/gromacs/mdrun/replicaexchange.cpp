@@ -176,7 +176,7 @@ static gmx_bool repl_quantity(const gmx_multisim_t* ms, struct gmx_repl_ex* re, 
     bDiff = FALSE;
     for (s = 1; s < ms->numSimulations_; s++)
     {
-        if (fabs(qall[s] - qall[0]) > 1e-5) /* Each quantity normally has 2-4 significant digits */
+        if (std::fabs(qall[s] - qall[0]) > 1e-5) /* Each quantity normally has 2-4 significant digits */
         {
             bDiff = TRUE;
         }
@@ -258,8 +258,11 @@ gmx_repl_ex_t init_replica_exchange(FILE*                            fplog,
     check_multi_int(fplog, ms, static_cast<int>(ir->eI), "the integrator", FALSE);
     check_multi_int64(fplog, ms, ir->init_step + ir->nsteps, "init_step+nsteps", FALSE);
     const int nst = replExParams.exchangeInterval;
-    check_multi_int64(
-            fplog, ms, (ir->init_step + nst - 1) / nst, "first exchange step: init_step/-replex", FALSE);
+    check_multi_int64(fplog,
+                      ms,
+                      gmx::divideRoundUp<int64_t>(ir->init_step, nst),
+                      "first exchange step: init_step/-replex",
+                      FALSE);
     check_multi_int(fplog, ms, static_cast<int>(ir->etc), "the temperature coupling", FALSE);
     check_multi_int(fplog, ms, ir->opts.ngtc, "the number of temperature coupling groups", FALSE);
     check_multi_int(
@@ -1017,7 +1020,7 @@ static void test_for_replica_exchange(FILE*                 fplog,
                 }
                 else
                 {
-                    prob[0] = exp(-delta);
+                    prob[0] = std::exp(-delta);
                 }
                 // roll a number to determine if accepted. For now it is superfluous to
                 // reset, but just in case we ever add more calls in different branches
@@ -1066,7 +1069,7 @@ static void test_for_replica_exchange(FILE*                 fplog,
                     }
                     else
                     {
-                        prob[i] = exp(-delta);
+                        prob[i] = std::exp(-delta);
                     }
                     // roll a number to determine if accepted. For now it is superfluous to
                     // reset, but just in case we ever add more calls in different branches

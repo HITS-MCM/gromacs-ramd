@@ -59,7 +59,7 @@ t_psdata ps_open(const std::filesystem::path& fn, real x1, real y1, real x2, rea
     ps.fp = gmx_fio_fopen(fn, "w");
     fprintf(ps.fp, "%%!PS-Adobe-2.0 EPSF-1.2\n");
     fprintf(ps.fp, "%%%%Creator: GROMACS\n");
-    fprintf(ps.fp, "%%%%Title: %s\n", fn.u8string().c_str());
+    fprintf(ps.fp, "%%%%Title: %s\n", fn.string().c_str());
     fprintf(ps.fp, "%%%%BoundingBox: %g %g %g %g\n", x1, y1, x2, y2);
     fprintf(ps.fp, "%%%%EndComments\n");
     fprintf(ps.fp, "/m {moveto} bind def\n");
@@ -89,7 +89,7 @@ static void ps_selcolor(t_psdata* ps, char* cname)
 
 static gmx::Index search_col(t_psdata* ps, real r, real g, real b)
 {
-    for (gmx::Index i = 0; i < ssize(ps->rgb); ++i)
+    for (gmx::Index i = 0; i < gmx::ssize(ps->rgb); ++i)
     {
         if ((ps->rgb[i].r == r) && (ps->rgb[i].g == g) && (ps->rgb[i].b == b))
         {
@@ -98,7 +98,7 @@ static gmx::Index search_col(t_psdata* ps, real r, real g, real b)
     }
 
     char buf[12];
-    int  indexToBackElement = static_cast<int>(ssize(ps->rgb));
+    int  indexToBackElement = static_cast<int>(gmx::ssize(ps->rgb));
     sprintf(buf, "C%d", indexToBackElement);
     ps_defcolor(ps, r, g, b, buf);
     fprintf(ps->fp, "/B%zu {%s b} bind def\n", ps->rgb.size(), buf);

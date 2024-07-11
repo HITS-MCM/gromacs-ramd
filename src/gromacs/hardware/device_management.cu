@@ -292,8 +292,7 @@ std::vector<std::unique_ptr<DeviceInformation>> findDevices()
         deviceInfoList[i]->prop         = prop;
         deviceInfoList[i]->deviceVendor = DeviceVendor::Nvidia;
 
-        deviceInfoList[i]->supportedSubGroupSizesSize    = 1;
-        deviceInfoList[i]->supportedSubGroupSizesData[0] = 32;
+        deviceInfoList[i]->supportedSubGroupSizes.push_back(32);
 
         deviceInfoList[i]->gpuAwareMpiStatus = gpuAwareMpiStatus;
 
@@ -349,27 +348,23 @@ void setActiveDevice(const DeviceInformation& deviceInfo)
     }
 }
 
-void releaseDevice(DeviceInformation* deviceInfo)
+void releaseDevice()
 {
-    // device was used is that deviceInfo will be non-null.
-    if (deviceInfo != nullptr)
+    cudaError_t stat;
+
+    int gpuid;
+    stat = cudaGetDevice(&gpuid);
+    if (stat == cudaSuccess)
     {
-        cudaError_t stat;
-
-        int gpuid;
-        stat = cudaGetDevice(&gpuid);
-        if (stat == cudaSuccess)
+        if (debug)
         {
-            if (debug)
-            {
-                fprintf(stderr, "Cleaning up context on GPU ID #%d.\n", gpuid);
-            }
+            fprintf(stderr, "Cleaning up context on GPU ID #%d.\n", gpuid);
+        }
 
-            stat = cudaDeviceReset();
-            if (stat != cudaSuccess)
-            {
-                gmx_warning("Failed to free GPU #%d. %s", gpuid, gmx::getDeviceErrorString(stat).c_str());
-            }
+        stat = cudaDeviceReset();
+        if (stat != cudaSuccess)
+        {
+            gmx_warning("Failed to free GPU #%d. %s", gpuid, gmx::getDeviceErrorString(stat).c_str());
         }
     }
 }

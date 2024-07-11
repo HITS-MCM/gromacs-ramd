@@ -110,7 +110,7 @@ double v_q_ewald_lr(double beta, double r)
 {
     if (r == 0)
     {
-        return beta * 2 / sqrt(M_PI);
+        return beta * 2 / std::sqrt(M_PI);
     }
     else
     {
@@ -303,7 +303,7 @@ static double spline3_table_scale(double third_deriv_max, double x_scale, double
 
     /* Force tolerance: single precision accuracy */
     deriv_tol = GMX_FLOAT_EPS;
-    sc_deriv  = sqrt(third_deriv_max / (6 * 4 * deriv_tol * x_scale)) * x_scale;
+    sc_deriv  = std::sqrt(third_deriv_max / (6 * 4 * deriv_tol * x_scale)) * x_scale;
 
     /* Don't try to be more accurate on energy than the precision */
     func_tol = std::max(func_tol, static_cast<double>(GMX_REAL_EPS));
@@ -569,13 +569,17 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
     gmx_bool bAllZero, bZeroV, bZeroF;
     double   tabscale;
 
-    nny               = 2 * ntab + 1;
-    std::string libfn = gmx::findLibraryFile(filename).u8string();
+    nny                               = 2 * ntab + 1;
+    const std::filesystem::path libfn = gmx::findLibraryFile(filename);
     gmx::MultiDimArray<std::vector<double>, gmx::dynamicExtents2D> xvgData    = readXvgData(libfn);
     int                                                            numColumns = xvgData.extent(0);
     if (numColumns != nny)
     {
-        gmx_fatal(FARGS, "Trying to read file %s, but nr columns = %d, should be %d", libfn.c_str(), numColumns, nny);
+        gmx_fatal(FARGS,
+                  "Trying to read file %s, but nr columns = %d, should be %d",
+                  libfn.string().c_str(),
+                  numColumns,
+                  nny);
     }
     int numRows = xvgData.extent(1);
 
@@ -586,7 +590,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
         {
             gmx_fatal(FARGS,
                       "The first distance in file %s is %f nm instead of %f nm",
-                      libfn.c_str(),
+                      libfn.string().c_str(),
                       yy[0][0],
                       0.0);
         }
@@ -606,7 +610,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
         {
             gmx_fatal(FARGS,
                       "The angles in file %s should go from %f to %f instead of %f to %f\n",
-                      libfn.c_str(),
+                      libfn.string().c_str(),
                       start,
                       end,
                       yy[0][0],
@@ -618,7 +622,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
 
     if (fp)
     {
-        fprintf(fp, "Read user tables from %s with %d data points.\n", libfn.c_str(), numRows);
+        fprintf(fp, "Read user tables from %s with %d data points.\n", libfn.string().c_str(), numRows);
         if (angle == 0)
         {
             fprintf(fp, "Tabscale = %g points/nm\n", tabscale);
@@ -637,7 +641,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
                 dx0 = yy[0][i - 1] - yy[0][i - 2];
                 dx1 = yy[0][i] - yy[0][i - 1];
                 /* Check for 1% deviation in spacing */
-                if (fabs(dx1 - dx0) >= 0.005 * (fabs(dx0) + fabs(dx1)))
+                if (std::fabs(dx1 - dx0) >= 0.005 * (std::fabs(dx0) + std::fabs(dx1)))
                 {
                     gmx_fatal(FARGS,
                               "In table file '%s' the x values are not equally spaced: %f %f %f",
@@ -697,7 +701,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
                     numf = -(vp - vm) * 0.5 * tabscale;
                     if (f + numf != 0)
                     {
-                        ssd += fabs(2 * (f - numf) / (f + numf));
+                        ssd += std::fabs(2 * (f - numf) / (f + numf));
                     }
                     ns++;
                 }
@@ -711,7 +715,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
                         "%% from minus the numerical derivative of the potential\n",
                         ns,
                         k,
-                        libfn.c_str(),
+                        libfn.string().c_str(),
                         gmx::roundToInt64(100 * ssd));
                 if (debug)
                 {
@@ -730,7 +734,7 @@ static std::vector<t_tabledata> read_tables(FILE* fp, const char* filename, int 
     }
     if (bAllZero && fp)
     {
-        fprintf(fp, "\nNOTE: All elements in table %s are zero\n\n", libfn.c_str());
+        fprintf(fp, "\nNOTE: All elements in table %s are zero\n\n", libfn.string().c_str());
     }
 
     std::vector<t_tabledata> td;
@@ -870,7 +874,7 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 Vcut = -rc6;
                 break;
             case etabLJ6Ewald:
-                Vcut = -rc6 * exp(-ewclj * ewclj * rc2)
+                Vcut = -rc6 * std::exp(-ewclj * ewclj * rc2)
                        * (1 + ewclj * ewclj * rc2 + gmx::power4(ewclj) * rc2 * rc2 / 2);
                 break;
             case etabLJ12:
@@ -889,7 +893,7 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 /* No need for preventing the usage of modifiers with RF */
                 Vcut = 0.0;
                 break;
-            case etabEXPMIN: Vcut = exp(-rc); break;
+            case etabEXPMIN: Vcut = std::exp(-rc); break;
             default:
                 gmx_fatal(FARGS,
                           "Cannot apply new potential-shift modifier to interaction type '%s' yet. "
@@ -997,19 +1001,19 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
             case etabEwald:
             case etabEwaldSwitch:
                 Vtab = std::erfc(ewc * r) / r;
-                Ftab = std::erfc(ewc * r) / r2 + exp(-(ewc * ewc * r2)) * ewc * M_2_SQRTPI / r;
+                Ftab = std::erfc(ewc * r) / r2 + std::exp(-(ewc * ewc * r2)) * ewc * M_2_SQRTPI / r;
                 break;
             case etabEwaldUser:
             case etabEwaldUserSwitch:
                 /* Only calculate the negative of the reciprocal space contribution */
                 Vtab = -std::erf(ewc * r) / r;
-                Ftab = -std::erf(ewc * r) / r2 + exp(-(ewc * ewc * r2)) * ewc * M_2_SQRTPI / r;
+                Ftab = -std::erf(ewc * r) / r2 + std::exp(-(ewc * ewc * r2)) * ewc * M_2_SQRTPI / r;
                 break;
             case etabLJ6Ewald:
-                Vtab = -r6 * exp(-ewclj * ewclj * r2)
+                Vtab = -r6 * std::exp(-ewclj * ewclj * r2)
                        * (1 + ewclj * ewclj * r2 + gmx::power4(ewclj) * r2 * r2 / 2);
                 Ftab = 6.0 * Vtab / r
-                       - r6 * exp(-ewclj * ewclj * r2) * gmx::power5(ewclj) * ewclj * r2 * r2 * r;
+                       - r6 * std::exp(-ewclj * ewclj * r2) * gmx::power5(ewclj) * ewclj * r2 * r2 * r;
                 break;
             case etabRF:
             case etabRF_ZERO:
@@ -1022,7 +1026,7 @@ static void fill_table(t_tabledata* td, int tp, const interaction_const_t* ic, g
                 }
                 break;
             case etabEXPMIN:
-                expr = exp(-r);
+                expr = std::exp(-r);
                 Vtab = expr;
                 Ftab = expr;
                 break;

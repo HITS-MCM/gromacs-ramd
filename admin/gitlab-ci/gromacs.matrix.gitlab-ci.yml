@@ -3,8 +3,6 @@
 # This file contains job templates. Actual job configurations are inside gromacs.matrix/ directory.
 
 .gromacs:base:configure:
-  extends:
-    - .variables:default
   stage: configure-build
   cache: {}
   variables:
@@ -26,8 +24,6 @@
       - $BUILD_DIR
 
 .gromacs:base:release:configure:
-  extends:
-    - .variables:default
   stage: release-configure
   cache: {}
   variables:
@@ -142,8 +138,6 @@
       - $BUILD_DIR/scan_html
 
 .gromacs:base:test:
-  extends:
-    - .variables:default
   stage: test
   cache: {}
   retry:
@@ -162,8 +156,6 @@
     expire_in: 1 week
 
 .gromacs:base:regressiontest:
-  extends:
-    - .variables:default
   variables:
     KUBERNETES_CPU_LIMIT: 4
     KUBERNETES_CPU_REQUEST: 4
@@ -212,13 +204,14 @@ include:
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.gcc-11-cuda-11.7.1-cudagraphs.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.gcc-11-cuda-11.7.1-release.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.gcc-11-cuda-11.7.1-nvshmem.gitlab-ci.yml'
-  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.gcc-12-release.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.hipsycl-0.9.4.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.acpp-23.10.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.oneapi-2024.0-opencl.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.oneapi-2024.0-opencl-release.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.oneapi-2024.0-sycl.gitlab-ci.yml'
-  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.oneapi-2023.2.0-amd-nightly.gitlab-ci.yml'
-  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.intel-llvm-nvidia-nightly.gitlab-ci.yml'
+  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.oneapi-2024.2-amd-nightly.gitlab-ci.yml'
+  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.oneapi-2024.2-nvidia-nightly.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs-gcc-9-cp2k-8.2-nightly.gitlab-ci.yml'
   - local: '/admin/gitlab-ci/gromacs.matrix/gromacs-gcc-9-cp2k-9.1-nightly.gitlab-ci.yml'
+  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.amdclang-rocm-5.7.1.gitlab-ci.yml'
+  - local: '/admin/gitlab-ci/gromacs.matrix/gromacs.gcc-9-rocm-6.0.2.gitlab-ci.yml'

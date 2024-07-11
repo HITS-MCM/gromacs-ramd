@@ -52,11 +52,11 @@ namespace Nbnxm
 
 static int getNbnxmSubGroupSize(const DeviceInformation& deviceInfo)
 {
-    if (deviceInfo.supportedSubGroupSizesSize == 1)
+    if (deviceInfo.supportedSubGroupSizes.size() == 1)
     {
-        return deviceInfo.supportedSubGroupSizesData[0];
+        return deviceInfo.supportedSubGroupSizes[0];
     }
-    else if (deviceInfo.supportedSubGroupSizesSize > 1)
+    else if (deviceInfo.supportedSubGroupSizes.size() > 1)
     {
         switch (deviceInfo.deviceVendor)
         {
@@ -102,33 +102,32 @@ extern template void launchNbnxmKernelHelper<64, true, true>(NbnxmGpu* nb, const
 // clang-format on
 
 template<int subGroupSize>
-void launchNbnxmKernel(NbnxmGpu* nb, const gmx::StepWorkload& stepWork, const InteractionLocality iloc)
+void launchNbnxmKernel(NbnxmGpu* nb, const gmx::StepWorkload& stepWork, const InteractionLocality iloc, bool doPrune)
 {
-    const bool doPruneNBL     = (nb->plist[iloc]->haveFreshList && !nb->didPrune[iloc]);
     const bool doCalcEnergies = stepWork.computeEnergy;
 
     gmx::dispatchTemplatedFunction(
             [&](auto doPruneNBL_, auto doCalcEnergies_) {
                 launchNbnxmKernelHelper<subGroupSize, doPruneNBL_, doCalcEnergies_>(nb, stepWork, iloc);
             },
-            doPruneNBL,
+            doPrune,
             doCalcEnergies);
 }
 
-void launchNbnxmKernel(NbnxmGpu* nb, const gmx::StepWorkload& stepWork, const InteractionLocality iloc)
+void launchNbnxmKernel(NbnxmGpu* nb, const gmx::StepWorkload& stepWork, const InteractionLocality iloc, bool doPrune)
 {
     const int subGroupSize = getNbnxmSubGroupSize(nb->deviceContext_->deviceInfo());
     switch (subGroupSize)
     {
         // Ensure any changes are in sync with device_management_sycl.cpp, nbnxm_sycl_kernel_body.h, and the #if above
 #if SYCL_NBNXM_SUPPORTS_SUBGROUP_SIZE_8
-        case 8: launchNbnxmKernel<8>(nb, stepWork, iloc); break;
+        case 8: launchNbnxmKernel<8>(nb, stepWork, iloc, doPrune); break;
 #endif
 #if SYCL_NBNXM_SUPPORTS_SUBGROUP_SIZE_32
-        case 32: launchNbnxmKernel<32>(nb, stepWork, iloc); break;
+        case 32: launchNbnxmKernel<32>(nb, stepWork, iloc, doPrune); break;
 #endif
 #if SYCL_NBNXM_SUPPORTS_SUBGROUP_SIZE_64
-        case 64: launchNbnxmKernel<64>(nb, stepWork, iloc); break;
+        case 64: launchNbnxmKernel<64>(nb, stepWork, iloc, doPrune); break;
 #endif
         default: GMX_RELEASE_ASSERT(false, "Unsupported sub-group size");
     }

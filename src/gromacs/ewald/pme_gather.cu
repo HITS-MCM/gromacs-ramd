@@ -43,7 +43,7 @@
 #include <cassert>
 
 #include "gromacs/gpu_utils/cuda_kernel_utils.cuh"
-#include "gromacs/gpu_utils/typecasts.cuh"
+#include "gromacs/gpu_utils/typecasts_cuda_hip.h"
 
 #include "pme.cuh"
 #include "pme_gpu_calculate_splines.cuh"
@@ -238,7 +238,7 @@ __device__ __forceinline__ void reduce_atom_forces(float3* __restrict__ sm_force
  * \param[in] pnz                 The padded grid real size in the Z dimension.
  * \param[in] atomIndexLocal      The atom index for this thread.
  * \param[in] splineIndexBase     The base value of the spline parameter index.
- * \param[in] tdz                 The theta and dtheta in the Z dimension.
+ * \param[in] splineIndexZ        The theta and dtheta in the Z dimension.
  * \param[in] sm_gridlineIndices  Shared memory array of grid line indices.
  * \param[in] sm_theta            Shared memory array of atom theta values.
  * \param[in] sm_dtheta           Shared memory array of atom dtheta values.

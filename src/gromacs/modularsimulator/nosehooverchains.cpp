@@ -255,6 +255,8 @@ void NoseHooverChainsData::build(NhcUsage                                nhcUsag
     });
 }
 
+NoseHooverChainsData::~NoseHooverChainsData() = default;
+
 void NoseHooverGroup::finalizeUpdate(real couplingTimeStep)
 {
     coordinateTime_ += couplingTimeStep;
@@ -406,8 +408,8 @@ void NoseHooverGroup::doCheckpoint(CheckpointData<operation>* checkpointData)
 //! Broadcast values read from checkpoint over DD ranks
 void NoseHooverGroup::broadcastCheckpointValues(const gmx_domdec_t* dd)
 {
-    dd_bcast(dd, ssize(xi_) * int(sizeof(real)), xi_.data());
-    dd_bcast(dd, ssize(xiVelocities_) * int(sizeof(real)), xiVelocities_.data());
+    dd_bcast(dd, gmx::ssize(xi_) * int(sizeof(real)), xi_.data());
+    dd_bcast(dd, gmx::ssize(xiVelocities_) * int(sizeof(real)), xiVelocities_.data());
     dd_bcast(dd, int(sizeof(real)), &coordinateTime_);
 }
 
@@ -522,7 +524,7 @@ real NoseHooverGroup::applyNhc(real currentKineticEnergy, const real couplingTim
                 // Last thermostat in chain doesn't get scaled.
                 const real localScalingFactor =
                         (chainPosition < chainLength_ - 1)
-                                ? exp(-0.25 * timeStep * xiVelocities_[chainPosition + 1])
+                                ? std::exp(-0.25 * timeStep * xiVelocities_[chainPosition + 1])
                                 : 1.0;
                 xiVelocities_[chainPosition] = localScalingFactor
                                                * (xiVelocities_[chainPosition] * localScalingFactor
@@ -554,7 +556,7 @@ real NoseHooverGroup::applyNhc(real currentKineticEnergy, const real couplingTim
                 // Last thermostat in chain doesn't get scaled.
                 const real localScalingFactor =
                         (chainPosition < chainLength_ - 1)
-                                ? exp(-0.25 * timeStep * xiVelocities_[chainPosition + 1])
+                                ? std::exp(-0.25 * timeStep * xiVelocities_[chainPosition + 1])
                                 : 1.0;
                 xiVelocities_[chainPosition] = localScalingFactor
                                                * (xiVelocities_[chainPosition] * localScalingFactor

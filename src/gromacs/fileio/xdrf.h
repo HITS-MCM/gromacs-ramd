@@ -34,19 +34,15 @@
 #ifndef GMX_FILEIO_XDRF_H
 #define GMX_FILEIO_XDRF_H
 
+#include "config.h"
+
 #include <cstdio>
 
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/real.h"
 
-#ifdef __PGI /*Portland group compiler*/
-#    define int64_t long long
-#endif
-
-#include "config.h"
-
 #if GMX_INTERNAL_XDR
-#    include "gromacs/fileio/gmx_internal_xdr.h"
+#    include "rpc_xdr/xdr.h"
 #else
 #    include <rpc/rpc.h>
 #    include <rpc/xdr.h>

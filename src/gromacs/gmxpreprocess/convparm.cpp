@@ -125,7 +125,7 @@ static int assign_param(t_functype                ftype,
          * zero parameters (e.g. an index to a Cmap interaction, or LJ parameters), but
          * we use it for angles and torsions that are typically generated automatically.
          */
-        all_param_zero = all_param_zero && fabs(old[j]) < GMX_REAL_MIN;
+        all_param_zero = all_param_zero && std::fabs(old[j]) < GMX_REAL_MIN;
     }
 
     if (all_param_zero)
@@ -141,9 +141,9 @@ static int assign_param(t_functype                ftype,
     {
         case F_G96ANGLES:
             /* Post processing of input data: store cosine iso angle itself */
-            newparam->harmonic.rA  = cos(old[0] * gmx::c_deg2Rad);
+            newparam->harmonic.rA  = std::cos(old[0] * gmx::c_deg2Rad);
             newparam->harmonic.krA = old[1];
-            newparam->harmonic.rB  = cos(old[2] * gmx::c_deg2Rad);
+            newparam->harmonic.rB  = std::cos(old[2] * gmx::c_deg2Rad);
             newparam->harmonic.krB = old[3];
             break;
         case F_G96BONDS:
@@ -293,7 +293,7 @@ static int assign_param(t_functype                ftype,
             /* If both force constants are zero there is no interaction. Return -1 to signal
              * this entry should NOT be added.
              */
-            if (fabs(newparam->pdihs.cpA) < GMX_REAL_MIN && fabs(newparam->pdihs.cpB) < GMX_REAL_MIN)
+            if (std::fabs(newparam->pdihs.cpA) < GMX_REAL_MIN && std::fabs(newparam->pdihs.cpB) < GMX_REAL_MIN)
             {
                 return -1;
             }
@@ -418,8 +418,8 @@ static int assign_param(t_functype                ftype,
             newparam->vsite.f = old[5];
             break;
         case F_VSITE3FAD:
-            newparam->vsite.a = old[1] * cos(gmx::c_deg2Rad * old[0]);
-            newparam->vsite.b = old[1] * sin(gmx::c_deg2Rad * old[0]);
+            newparam->vsite.a = old[1] * std::cos(gmx::c_deg2Rad * old[0]);
+            newparam->vsite.b = old[1] * std::sin(gmx::c_deg2Rad * old[0]);
             newparam->vsite.c = old[2];
             newparam->vsite.d = old[3];
             newparam->vsite.e = old[4];

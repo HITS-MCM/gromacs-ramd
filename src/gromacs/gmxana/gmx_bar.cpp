@@ -236,10 +236,8 @@ static void lambda_components_add(lambda_components_t* lc, const char* name, siz
         srenew(lc->names, lc->Nalloc);
     }
     snew(lc->names[lc->N], name_length + 1);
-    // clang-format off
     // GCC 12.1 has a false positive about the missing \0. But it is already there, nothing to worry about.
-    GCC_DIAGNOSTIC_IGNORE(-Wstringop-truncation)
-    // clang-format on
+    GCC_DIAGNOSTIC_IGNORE("-Wstringop-truncation")
     std::strncpy(lc->names[lc->N], name, name_length);
     GCC_DIAGNOSTIC_RESET
     lc->N++;
@@ -1148,7 +1146,7 @@ static barres_t* barres_list_create(sim_data_t* sd, int* nres, gmx_bool use_dhdl
             gmx_fatal(FARGS,
                       "There is no path between the states X & Y below that is covered by foreign "
                       "lambdas:\ncannot proceed with BAR.\nUse thermodynamic integration of dH/dl "
-                      "by calculating the averages of dH/dl\nwith g_analyze and integrating "
+                      "by calculating the averages of dH/dl\nwith gmx analyze and integrating "
                       "them.\nAlternatively, use the -extp option if (and only if) the "
                       "Hamiltonian\ndepends linearly on lambda, which is NOT normally the "
                       "case.\n\n%s\n%s\n",

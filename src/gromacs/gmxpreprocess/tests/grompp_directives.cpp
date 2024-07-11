@@ -86,15 +86,15 @@ TEST_F(GromppDirectiveTest, edgeCaseAtomTypeNames)
     CommandLine cmdline;
     cmdline.addOption("grompp");
 
-    const std::string mdpInputFileName = fileManager_.getTemporaryFilePath("directives.mdp").u8string();
+    const std::string mdpInputFileName = fileManager_.getTemporaryFilePath("directives.mdp").string();
     gmx::TextWriter::writeFileFromString(mdpInputFileName, mdpContentString_);
     cmdline.addOption("-f", mdpInputFileName);
 
 
-    cmdline.addOption("-c", TestFileManager::getInputFilePath("directives.gro").u8string());
-    cmdline.addOption("-p", TestFileManager::getInputFilePath("directives.top").u8string());
+    cmdline.addOption("-c", TestFileManager::getInputFilePath("directives.gro").string());
+    cmdline.addOption("-p", TestFileManager::getInputFilePath("directives.top").string());
 
-    std::string outTprFilename = fileManager_.getTemporaryFilePath("directives.tpr").u8string();
+    std::string outTprFilename = fileManager_.getTemporaryFilePath("directives.tpr").string();
     cmdline.addOption("-o", outTprFilename);
 
     ASSERT_EQ(0, gmx_grompp(cmdline.argc(), cmdline.argv()));
@@ -102,7 +102,7 @@ TEST_F(GromppDirectiveTest, edgeCaseAtomTypeNames)
         gmx_mtop_t top_after;
         t_inputrec ir_after;
         t_state    state;
-        read_tpx_state(outTprFilename.c_str(), &ir_after, &state, &top_after);
+        read_tpx_state(outTprFilename, &ir_after, &state, &top_after);
 
         int indexInMoltype = top_after.molblock[0].type;
 
@@ -113,6 +113,56 @@ TEST_F(GromppDirectiveTest, edgeCaseAtomTypeNames)
         EXPECT_EQ(top_after.moltype[indexInMoltype].atoms.atom[2].atomnumber, 7);
         EXPECT_EQ(top_after.moltype[indexInMoltype].atoms.atom[3].atomnumber, -1);
     }
+}
+
+TEST_F(GromppDirectiveTest, NoteOnDihedralNotSumToZero)
+{
+    CommandLine cmdline;
+    cmdline.addOption("grompp");
+
+    std::string mdpString = mdpContentString_;
+    mdpString += "define = -DDIHEDRAL_SUM_NOT_ZERO";
+
+    const std::string mdpInputFileName = fileManager_.getTemporaryFilePath("directives.mdp").string();
+    gmx::TextWriter::writeFileFromString(mdpInputFileName, mdpString);
+    cmdline.addOption("-f", mdpInputFileName);
+
+
+    cmdline.addOption("-c", TestFileManager::getInputFilePath("directives.gro").string());
+    cmdline.addOption("-p", TestFileManager::getInputFilePath("directives.top").string());
+
+    std::string outTprFilename = fileManager_.getTemporaryFilePath("directives.tpr").string();
+    cmdline.addOption("-o", outTprFilename);
+
+    // We cannot directly check printing of a note, but we at least check that it terminates
+    // successfully.
+    EXPECT_EQ(gmx_grompp(cmdline.argc(), cmdline.argv()), 0);
+}
+
+TEST_F(GromppDirectiveTest, WarnOnDihedralSumDifferentForFreeEnergy)
+{
+    CommandLine cmdline;
+    cmdline.addOption("grompp");
+
+    std::string mdpString = mdpContentString_;
+    mdpString +=
+            "define = -DDIHEDRAL_SUM_DIFFERENT_STATEA_STATEB\n"
+            "free-energy = yes\n"
+            "init-lambda = 0.5";
+
+    const std::string mdpInputFileName = fileManager_.getTemporaryFilePath("directives.mdp").string();
+    gmx::TextWriter::writeFileFromString(mdpInputFileName, mdpString);
+    cmdline.addOption("-f", mdpInputFileName);
+
+
+    cmdline.addOption("-c", TestFileManager::getInputFilePath("directives.gro").string());
+    cmdline.addOption("-p", TestFileManager::getInputFilePath("directives.top").string());
+
+    std::string outTprFilename = fileManager_.getTemporaryFilePath("directives.tpr").string();
+    cmdline.addOption("-o", outTprFilename);
+
+    GMX_EXPECT_DEATH_IF_SUPPORTED(gmx_grompp(cmdline.argc(), cmdline.argv()),
+                                  "undesired offset in dHdl values");
 }
 
 } // namespace

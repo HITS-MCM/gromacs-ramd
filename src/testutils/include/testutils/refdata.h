@@ -49,6 +49,7 @@
 #include <memory>
 #include <string>
 
+#include "gromacs/math/gmxcomplex.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/classhelpers.h"
 
@@ -110,6 +111,10 @@ enum class ReferenceDataMode : int
     //! Marks the end of the enum
     Count
 };
+
+/*! \libinternal \brief
+ * Returns the global mode describing how reference data is handled. */
+ReferenceDataMode referenceDataMode();
 
 /*! \libinternal \brief
  * Initializes reference data handling.
@@ -493,6 +498,13 @@ public:
     {
         checkKeyValueTreeValue(value, id);
     }
+    //! Check a single complex number value.
+    void checkValue(const t_complex& value, const char* id)
+    {
+        checkValue(value.re, id);
+        checkValue(value.im, id);
+    }
+
     /*!\}*/
 
     /*! \brief

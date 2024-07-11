@@ -473,13 +473,13 @@ void lockLogFile(t_fileio* logfio, const std::filesystem::path& logFilename)
             auto message = formatString(
                     "Failed to lock: %s. Already running "
                     "simulation?",
-                    logFilename.u8string().c_str());
+                    logFilename.string().c_str());
             GMX_THROW(FileIOError(message));
         }
         else
         {
             auto message = formatString(
-                    "Failed to lock: %s. %s.", logFilename.u8string().c_str(), std::strerror(errno));
+                    "Failed to lock: %s. %s.", logFilename.string().c_str(), std::strerror(errno));
             GMX_THROW(FileIOError(message));
         }
     }
@@ -568,7 +568,7 @@ To help you identify which directories need attention, the %d
 simulations wanted the following respective behaviors:
 )",
                                            ms->numSimulations_);
-        for (Index simIndex = 0; simIndex != ssize(startingBehaviors); ++simIndex)
+        for (Index simIndex = 0; simIndex != gmx::ssize(startingBehaviors); ++simIndex)
         {
             auto behavior = static_cast<StartingBehavior>(startingBehaviors[simIndex]);
             message += formatString(
@@ -609,7 +609,7 @@ simulation checkpoint files were from the following respective
 simulation parts:
 )",
                                            ms->numSimulations_);
-        for (Index partIndex = 0; partIndex != ssize(simulationParts); ++partIndex)
+        for (Index partIndex = 0; partIndex != gmx::ssize(simulationParts); ++partIndex)
         {
             message += formatString("  Simulation %6zd: %d\n", partIndex, simulationParts[partIndex]);
         }

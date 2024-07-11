@@ -1317,7 +1317,7 @@ static void do_update_sd(int                                 start,
                 f,
                 step,
                 seed,
-                haveDDAtomOrdering(*cr) ? cr->dd->globalAtomIndices.data() : nullptr,
+                (cr != nullptr && haveDDAtomOrdering(*cr)) ? cr->dd->globalAtomIndices.data() : nullptr,
                 dtPressureCouple,
                 parrinelloRahmanMToUseThisStep);
     }
@@ -1553,7 +1553,7 @@ void restore_ekinstate_from_state(const t_commrec* cr, gmx_ekindata_t* ekind, co
 void getThreadAtomRange(int numThreads, int threadIndex, int numAtoms, int* startAtom, int* endAtom)
 {
     constexpr int blockSize = UpdateSimdTraits::width;
-    const int     numBlocks = (numAtoms + blockSize - 1) / blockSize;
+    const int     numBlocks = divideRoundUp(numAtoms, blockSize);
 
     *startAtom = ((numBlocks * threadIndex) / numThreads) * blockSize;
     *endAtom   = ((numBlocks * (threadIndex + 1)) / numThreads) * blockSize;
@@ -1637,8 +1637,7 @@ void Update::Impl::update_sd_second_half(const t_inputrec&                 input
 
         /* Constrain the coordinates upd->xp for half a time step */
         bool computeVirial = false;
-        constr->apply(do_log,
-                      do_ene,
+        constr->apply(do_log || do_ene,
                       step,
                       1,
                       0.5,

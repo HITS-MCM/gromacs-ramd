@@ -191,6 +191,9 @@ void gmx::LegacySimulator::do_rerun()
 
     double cycles;
 
+    GMX_RELEASE_ASSERT(cr_->dd == nullptr || !ddUsesUpdateGroups(*cr_->dd),
+                       "Update groups are not supported with rerun");
+
     SimulationSignals signals;
     // Most global communnication stages don't propagate mdrun
     // signals, and will use this object to achieve that.
@@ -535,7 +538,7 @@ void gmx::LegacySimulator::do_rerun()
         {
             if (rerun_fr.bLambda)
             {
-                ir->fepvals->init_lambda = rerun_fr.lambda;
+                ir->fepvals->init_lambda_without_states = rerun_fr.lambda;
             }
             else
             {

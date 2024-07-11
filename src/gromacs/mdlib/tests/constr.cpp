@@ -448,7 +448,7 @@ public:
     {
 
         // Test if all the constraints are satisfied
-        for (Index c = 0; c < ssize(testData.constraints_) / 3; c++)
+        for (Index c = 0; c < gmx::ssize(testData.constraints_) / 3; c++)
         {
             real r0 = testData.constraintsR0_.at(testData.constraints_.at(3 * c));
             int  i  = testData.constraints_.at(3 * c + 1);
@@ -493,7 +493,7 @@ public:
     static void checkConstrainsDirection(const ConstraintsTestData& testData, t_pbc pbc)
     {
 
-        for (Index c = 0; c < ssize(testData.constraints_) / 3; c++)
+        for (Index c = 0; c < gmx::ssize(testData.constraints_) / 3; c++)
         {
             int  i = testData.constraints_.at(3 * c + 1);
             int  j = testData.constraints_.at(3 * c + 2);
@@ -689,7 +689,7 @@ TEST_P(ConstraintsTest, SatisfiesConstraints)
         // SHAKE tolerance=0.00002: 0.1
         const float virialRelativeTolerance = (runner->name().substr(0, 5) == "SHAKE" ? 0.1F : 0.02F);
         FloatingPointTolerance virialTolerance =
-                absoluteTolerance(fabs(virialTrace) / 3 * virialRelativeTolerance);
+                absoluteTolerance(std::fabs(virialTrace) / 3 * virialRelativeTolerance);
 
         checker_.setDefaultTolerance(virialTolerance);
         checkVirialTensor(testData);

@@ -193,8 +193,8 @@ public:
 
     EnergyOutputTest() :
         ekindata_(tcgInit_, EnsembleTemperatureSetting::NotAvailable, -1.0_real, false, cosAccel_, 1),
-        logFilename_(fileManager_.getTemporaryFilePath(".log").u8string()),
-        edrFilename_(fileManager_.getTemporaryFilePath(".edr").u8string()),
+        logFilename_(fileManager_.getTemporaryFilePath(".log").string()),
+        edrFilename_(fileManager_.getTemporaryFilePath(".edr").string()),
         log_(std::fopen(logFilename_.c_str(), "w")),
         logFileGuard_(log_),
         checker_(refData_.rootChecker())
@@ -497,7 +497,7 @@ public:
             ekindata_.setCurrentReferenceTemperature(i, *testValue);
         }
 
-        for (Index k = 0; k < ssize(mtop_.groups.groups[SimulationAtomGroupType::TemperatureCoupling])
+        for (Index k = 0; k < gmx::ssize(mtop_.groups.groups[SimulationAtomGroupType::TemperatureCoupling])
                                       * inputrec_.opts.nhchainlength;
              k++)
         {

@@ -129,12 +129,21 @@ _rocm_extra_packages = [
     #             apt_keys=['http://repo.radeon.com/rocm/rocm.gpg.key'],
     #             apt_repositories=['deb [arch=amd64] http://repo.radeon.com/rocm/apt/X.Y.Z/ ubuntu main']
     "clinfo",
-    "hipfft",
     "libelf1",
+]
+
+_rocm_version_dependent_packages = [
+    # The following require
+    #             apt_keys=['http://repo.radeon.com/rocm/rocm.gpg.key'],
+    #             apt_repositories=['deb [arch=amd64] http://repo.radeon.com/rocm/apt/X.Y.Z/ ubuntu main']
+    "hipfft",
+    "hipfft-dev",
     "rocfft",
     "rocfft-dev",
-    "rocm-opencl",
+    "rocprim",
+    "rocprim-dev",
     "rocm-dev",
+    "rocm-opencl",
 ]
 
 # Extra packages required to build CP2K
@@ -268,6 +277,7 @@ def hpccm_distro_name(args) -> str:
             raise RuntimeError("Logic error: unsupported CentOS distribution selected.")
     elif args.ubuntu is not None:
         name_mapping = {
+            "24.04": "ubuntu24",
             "22.04": "ubuntu22",
             "20.04": "ubuntu20",
             "18.04": "ubuntu18",
@@ -314,7 +324,23 @@ def get_rocm_packages(args) -> typing.List[str]:
     if args.rocm is None:
         return []
     else:
-        return _rocm_extra_packages
+        packages = _rocm_extra_packages
+        packages.extend(get_rocm_version_dependent_packages(args))
+        return packages
+
+
+def get_rocm_version_dependent_packages(args) -> typing.List[str]:
+    packages = []
+    rocm_version = args.rocm
+    rocm_version_parsed = [int(i) for i in rocm_version.split(".")]
+    # if the version does not contain the final patch version, add it manually to make sure that
+    # we can install the packages
+    if len(rocm_version_parsed) < 3:
+        rocm_version = rocm_version + ".0"
+    for entry in _rocm_version_dependent_packages:
+        packages.append(entry + rocm_version)
+
+    return packages
 
 
 def get_rocm_repository(args) -> "hpccm.building_blocks.base":
@@ -366,12 +392,10 @@ def get_compiler(
             compiler = compiler_build_stage.runtime(_from="oneapi")
             # Prepare the toolchain (needed only for builds done within the Dockerfile, e.g.
             # OpenMPI builds, which don't currently work for other reasons)
-            oneapi_version_major = int(args.oneapi.split(".")[0])
-            if oneapi_version_major < 2023:
-                path = f"/opt/intel/oneapi/compiler/{args.oneapi}/linux/bin/intel64"
-            else:
+            if args.oneapi.startswith("2024.0"):
                 path = f"/opt/intel/oneapi/compiler/{args.oneapi}/linux/bin"
-
+            else:
+                path = f"/opt/intel/oneapi/compiler/{args.oneapi}/bin"
             oneapi_toolchain = hpccm.toolchain(
                 CC=f"{path}/icx",
                 CXX=f"{path}/icpx",
@@ -509,7 +533,10 @@ def get_oneapi_plugins(args):
                 "Need CODEPLAY_API_TOKEN env. variable to install oneAPI plugins"
             )
         backend_version = {"nvidia": args.cuda, "amd": args.rocm}[variant]
-        url = f"https://developer.codeplay.com/api/v1/products/download?product=oneapi&variant={variant}&filters[]=linux&filters[]={backend_version}&aat={token}"
+        if backend_version.count(".") == 2:
+            backend_version = ".".join(backend_version.split(".")[:2])  # 12.0.1 -> 12.0
+        oneapi_version = args.oneapi
+        url = f"https://developer.codeplay.com/api/v1/products/download?product=oneapi&version={oneapi_version}&variant={variant}&filters[]=linux&filters[]={backend_version}&aat={token}"
         outfile = f"/tmp/oneapi_plugin_{variant}.sh"
         blocks.append(
             hpccm.primitives.shell(
@@ -524,6 +551,15 @@ def get_oneapi_plugins(args):
         _add_plugin("nvidia")
     if args.oneapi_plugin_amd:
         _add_plugin("amd")
+        # Need to make ROCm libraries discoverable
+        blocks.append(
+            hpccm.primitives.shell(
+                commands=[
+                    "echo '/opt/rocm/lib/' > /etc/ld.so.conf.d/rocm.conf",
+                    "ldconfig",
+                ]
+            )
+        )
     return blocks
 
 

@@ -35,8 +35,12 @@
 #ifndef GMX_NBNXM_PAIRLIST_H
 #define GMX_NBNXM_PAIRLIST_H
 
+#include "config.h"
+
 #include <cstddef>
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -47,8 +51,6 @@
 #include "gromacs/utility/defaultinitializationallocator.h"
 #include "gromacs/utility/enumerationhelpers.h"
 #include "gromacs/utility/real.h"
-
-#include "pairlistparams.h"
 
 struct NbnxnPairlistCpuWork;
 struct NbnxnPairlistGpuWork;
@@ -98,6 +100,7 @@ class JClusterList
 public:
     //! The list of packed j-cluster groups
     FastVector<nbnxn_cj_t> list_;
+
     //! Return the j-cluster index for \c index from the pack list
     int cj(int index) const { return list_[index].cj; }
     //! Return the exclusion mask for \c index
@@ -139,18 +142,6 @@ public:
 // TODO: Rename according to convention when moving into Nbnxn namespace
 //! All interaction mask is the same for all kernels
 constexpr unsigned int NBNXN_INTERACTION_MASK_ALL = 0xffffffffU;
-//! 4x4 kernel diagonal mask
-constexpr unsigned int NBNXN_INTERACTION_MASK_DIAG = 0x08ceU;
-//! 4x2 kernel diagonal masks
-//! \{
-constexpr unsigned int NBNXN_INTERACTION_MASK_DIAG_J2_0 = 0x0002U;
-constexpr unsigned int NBNXN_INTERACTION_MASK_DIAG_J2_1 = 0x002fU;
-//! \}
-//! 4x8 kernel diagonal masks
-//! \{
-constexpr unsigned int NBNXN_INTERACTION_MASK_DIAG_J8_0 = 0xf0f8fcfeU;
-constexpr unsigned int NBNXN_INTERACTION_MASK_DIAG_J8_1 = 0x0080c0e0U;
-//! \}
 //! \}
 
 /*! \brief Lower limit for square interaction distances in nonbonded kernels.
@@ -166,9 +157,27 @@ constexpr double c_nbnxnMinDistanceSquared = 1.0e-36;
 #else
 // The worst intermediate value we might evaluate is r^-12, which
 // means we should ensure r^2 stays above pow(GMX_FLOAT_MAX,-1.0/6.0)*1.01 (some margin)
-constexpr float c_nbnxnMinDistanceSquared = 3.82e-07F; // r > 6.2e-4
+constexpr float      c_nbnxnMinDistanceSquared  = 3.82e-07F; // r > 6.2e-4
 #endif
 
+//! The i- and j-cluster size for GPU lists, 8 atoms for CUDA, set at configure time for OpenCL and SYCL
+#if GMX_GPU_OPENCL || GMX_GPU_SYCL
+static constexpr int c_nbnxnGpuClusterSize = GMX_GPU_NB_CLUSTER_SIZE;
+#else
+static constexpr int c_nbnxnGpuClusterSize      = 8;
+#endif
+
+/*! \brief The number of clusters along a direction in a pair-search grid cell for GPU lists
+ *
+ * Typically all 2, but X can be 1 when targeting Intel Ponte Vecchio */
+//! \{
+static constexpr int c_gpuNumClusterPerCellZ = GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Z;
+static constexpr int c_gpuNumClusterPerCellY = GMX_GPU_NB_NUM_CLUSTER_PER_CELL_Y;
+static constexpr int c_gpuNumClusterPerCellX = GMX_GPU_NB_NUM_CLUSTER_PER_CELL_X;
+//! \}
+//! The number of clusters in a pair-search grid cell for GPU lists
+static constexpr int c_gpuNumClusterPerCell =
+        c_gpuNumClusterPerCellZ * c_gpuNumClusterPerCellY * c_gpuNumClusterPerCellX;
 
 /*! \brief The number of clusters in a super-cluster, used for GPU
  *
@@ -181,6 +190,31 @@ constexpr int c_nbnxnGpuNumClusterPerSupercluster =
  * of integers containing 32 bits.
  */
 constexpr int c_nbnxnGpuJgroupSize = (32 / c_nbnxnGpuNumClusterPerSupercluster);
+
+/*! \brief The number of sub-parts used for data storage for a GPU cluster pair
+ *
+ * In CUDA the number of threads in a warp is 32 and we have cluster pairs
+ * of 8*8=64 atoms, so it's convenient to store data for cluster pair halves,
+ * i.e. split in 2.
+ *
+ * On architectures with 64-wide execution however it is better to avoid splitting
+ * (e.g. AMD GCN, CDNA and later).
+ */
+#if GMX_GPU_NB_DISABLE_CLUSTER_PAIR_SPLIT
+static constexpr int c_nbnxnGpuClusterpairSplit = 1;
+#else
+static constexpr int c_nbnxnGpuClusterpairSplit = 2;
+#endif
+
+//! The fixed size of the exclusion mask array for a half GPU cluster pair
+static constexpr int c_nbnxnGpuExclSize =
+        c_nbnxnGpuClusterSize * c_nbnxnGpuClusterSize / c_nbnxnGpuClusterpairSplit;
+
+//! Whether we want to use GPU for neighbour list sorting
+constexpr bool nbnxmSortListsOnGpu()
+{
+    return (GMX_GPU_CUDA || GMX_GPU_SYCL);
+}
 
 /*! \internal
  * \brief Simple pair-list i-unit
@@ -198,10 +232,17 @@ struct nbnxn_ci_t
 };
 
 //! Grouped pair-list i-unit
-typedef struct nbnxn_sci
+struct nbnxn_sci_t
 {
     //! Returns the number of j-cluster groups in this entry
     int numJClusterGroups() const { return cjPackedEnd - cjPackedBegin; }
+
+    //! Check if two instances are the same.
+    bool operator==(const nbnxn_sci_t& other) const
+    {
+        return sci == other.sci && shift == other.shift && cjPackedBegin == other.cjPackedBegin
+               && cjPackedEnd == other.cjPackedEnd;
+    }
 
     //! i-super-cluster
     int sci;
@@ -211,7 +252,7 @@ typedef struct nbnxn_sci
     int cjPackedBegin;
     //! End index into cjPacked (ie. one past the last element)
     int cjPackedEnd;
-} nbnxn_sci_t;
+};
 
 //! Interaction data for a j-group for one warp
 struct nbnxn_im_ei_t
@@ -220,16 +261,27 @@ struct nbnxn_im_ei_t
     unsigned int imask = 0U;
     //! Index into the exclusion array for 1 warp, default index 0 which means no exclusions
     int excl_ind = 0;
+    //! Check if two instances are the same.
+    bool operator==(const nbnxn_im_ei_t& other) const
+    {
+        return imask == other.imask && excl_ind == other.excl_ind;
+    }
 };
 
 //! Packed j-cluster list element
-typedef struct
+struct nbnxn_cj_packed_t
 {
     //! The packed j-clusters
     int cj[c_nbnxnGpuJgroupSize];
     //! The i-cluster mask data for 2 warps
     nbnxn_im_ei_t imei[c_nbnxnGpuClusterpairSplit];
-} nbnxn_cj_packed_t;
+    //! Check if two instances are the same.
+    bool operator==(const nbnxn_cj_packed_t& other) const
+    {
+        return std::equal(std::begin(imei), std::end(imei), std::begin(other.imei), std::end(other.imei))
+               && std::equal(std::begin(cj), std::end(cj), std::begin(other.cj), std::end(other.cj));
+    }
+};
 
 /*! \brief Packed j-cluster list
  *
@@ -280,12 +332,17 @@ struct nbnxn_excl_t
 
     //! Topology exclusion interaction bits per warp
     unsigned int pair[c_nbnxnGpuExclSize];
+    //! Check if two instances are the same.
+    bool operator==(const nbnxn_excl_t& other) const
+    {
+        return std::equal(std::begin(pair), std::end(pair), std::begin(other.pair), std::end(other.pair));
+    }
 };
 
 //! Cluster pairlist type for use on CPUs
 struct NbnxnPairlistCpu
 {
-    NbnxnPairlistCpu();
+    NbnxnPairlistCpu(int iClusterSize);
 
     //! Cache protection
     gmx_cache_protect_t cp0;

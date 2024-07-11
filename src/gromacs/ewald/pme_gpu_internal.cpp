@@ -59,7 +59,7 @@
 #include "gromacs/gpu_utils/device_context.h"
 #include "gromacs/gpu_utils/device_stream.h"
 #include "gromacs/gpu_utils/gpu_utils.h"
-#include "gromacs/gpu_utils/pmalloc.h"
+#include "gromacs/gpu_utils/hostallocator.h"
 #if GMX_GPU_SYCL
 #    include "gromacs/gpu_utils/syclutils.h"
 #endif
@@ -140,8 +140,6 @@ void pme_gpu_synchronize(const PmeGpu* pmeGpu)
 
 void pme_gpu_alloc_energy_virial(PmeGpu* pmeGpu)
 {
-    const size_t energyAndVirialSize = c_virialAndEnergyCount * sizeof(float);
-
     GMX_ASSERT(
             pmeGpu->common->ngrids == 1 || pmeGpu->common->ngrids == 2,
             "Only one (normal Coulomb PME) or two (FEP coulomb PME) PME grids can be used on GPU");
@@ -151,7 +149,9 @@ void pme_gpu_alloc_energy_virial(PmeGpu* pmeGpu)
         allocateDeviceBuffer(&pmeGpu->kernelParams->constants.d_virialAndEnergy[gridIndex],
                              c_virialAndEnergyCount,
                              pmeGpu->archSpecific->deviceContext_);
-        pmalloc(reinterpret_cast<void**>(&pmeGpu->staging.h_virialAndEnergy[gridIndex]), energyAndVirialSize);
+        gmx::changePinningPolicy(&pmeGpu->staging.h_virialAndEnergy[gridIndex],
+                                 gmx::PinningPolicy::PinnedIfSupported);
+        pmeGpu->staging.h_virialAndEnergy[gridIndex].resize(c_virialAndEnergyCount);
     }
 }
 
@@ -160,8 +160,7 @@ void pme_gpu_free_energy_virial(PmeGpu* pmeGpu)
     for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
     {
         freeDeviceBuffer(&pmeGpu->kernelParams->constants.d_virialAndEnergy[gridIndex]);
-        pfree(pmeGpu->staging.h_virialAndEnergy[gridIndex]);
-        pmeGpu->staging.h_virialAndEnergy[gridIndex] = nullptr;
+        pmeGpu->staging.h_virialAndEnergy[gridIndex].clear();
     }
 }
 
@@ -207,19 +206,19 @@ void pme_gpu_realloc_and_copy_bspline_values(PmeGpu* pmeGpu, const int gridIndex
     if (shouldRealloc)
     {
         /* Reallocate the host buffer */
-        pfree(pmeGpu->staging.h_splineModuli[gridIndex]);
-        pmalloc(reinterpret_cast<void**>(&pmeGpu->staging.h_splineModuli[gridIndex]),
-                newSplineValuesSize * sizeof(float));
+        changePinningPolicy(&pmeGpu->staging.h_splineModuli[gridIndex],
+                            gmx::PinningPolicy::PinnedIfSupported);
+        pmeGpu->staging.h_splineModuli[gridIndex].resize(newSplineValuesSize);
     }
     for (int i = 0; i < DIM; i++)
     {
-        memcpy(pmeGpu->staging.h_splineModuli[gridIndex] + splineValuesOffset[i],
+        memcpy(pmeGpu->staging.h_splineModuli[gridIndex].data() + splineValuesOffset[i],
                pmeGpu->common->bsp_mod[i].data(),
                pmeGpu->common->bsp_mod[i].size() * sizeof(float));
     }
     /* TODO: pin original buffer instead! */
     copyToDeviceBuffer(&pmeGpu->kernelParams->grid.d_splineModuli[gridIndex],
-                       pmeGpu->staging.h_splineModuli[gridIndex],
+                       pmeGpu->staging.h_splineModuli[gridIndex].data(),
                        0,
                        newSplineValuesSize,
                        pmeGpu->archSpecific->pmeStream_,
@@ -227,11 +226,11 @@ void pme_gpu_realloc_and_copy_bspline_values(PmeGpu* pmeGpu, const int gridIndex
                        nullptr);
 }
 
-void pme_gpu_free_bspline_values(const PmeGpu* pmeGpu)
+void pme_gpu_free_bspline_values(PmeGpu* pmeGpu)
 {
     for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
     {
-        pfree(pmeGpu->staging.h_splineModuli[gridIndex]);
+        pmeGpu->staging.h_splineModuli[gridIndex].clear();
         freeDeviceBuffer(&pmeGpu->kernelParams->grid.d_splineModuli[gridIndex]);
     }
 }
@@ -346,20 +345,20 @@ void pme_gpu_realloc_spline_data(PmeGpu* pmeGpu)
     // the host side reallocation
     if (shouldRealloc)
     {
-        pfree(pmeGpu->staging.h_theta);
-        pmalloc(reinterpret_cast<void**>(&pmeGpu->staging.h_theta), newSplineDataSize * sizeof(float));
-        pfree(pmeGpu->staging.h_dtheta);
-        pmalloc(reinterpret_cast<void**>(&pmeGpu->staging.h_dtheta), newSplineDataSize * sizeof(float));
+        changePinningPolicy(&pmeGpu->staging.h_theta, gmx::PinningPolicy::PinnedIfSupported);
+        pmeGpu->staging.h_theta.resize(newSplineDataSize);
+        changePinningPolicy(&pmeGpu->staging.h_dtheta, gmx::PinningPolicy::PinnedIfSupported);
+        pmeGpu->staging.h_dtheta.resize(newSplineDataSize);
     }
 }
 
-void pme_gpu_free_spline_data(const PmeGpu* pmeGpu)
+void pme_gpu_free_spline_data(PmeGpu* pmeGpu)
 {
     /* Two arrays of the same size */
     freeDeviceBuffer(&pmeGpu->kernelParams->atoms.d_theta);
     freeDeviceBuffer(&pmeGpu->kernelParams->atoms.d_dtheta);
-    pfree(pmeGpu->staging.h_theta);
-    pfree(pmeGpu->staging.h_dtheta);
+    pmeGpu->staging.h_theta.clear();
+    pmeGpu->staging.h_dtheta.clear();
 }
 
 void pme_gpu_realloc_grid_indices(PmeGpu* pmeGpu)
@@ -371,14 +370,14 @@ void pme_gpu_realloc_grid_indices(PmeGpu* pmeGpu)
                            &pmeGpu->archSpecific->gridlineIndicesSize,
                            &pmeGpu->archSpecific->gridlineIndicesSizeAlloc,
                            pmeGpu->archSpecific->deviceContext_);
-    pfree(pmeGpu->staging.h_gridlineIndices);
-    pmalloc(reinterpret_cast<void**>(&pmeGpu->staging.h_gridlineIndices), newIndicesSize * sizeof(int));
+    changePinningPolicy(&pmeGpu->staging.h_gridlineIndices, gmx::PinningPolicy::PinnedIfSupported);
+    pmeGpu->staging.h_gridlineIndices.resize(newIndicesSize);
 }
 
-void pme_gpu_free_grid_indices(const PmeGpu* pmeGpu)
+void pme_gpu_free_grid_indices(PmeGpu* pmeGpu)
 {
     freeDeviceBuffer(&pmeGpu->kernelParams->atoms.d_gridlineIndices);
-    pfree(pmeGpu->staging.h_gridlineIndices);
+    pmeGpu->staging.h_gridlineIndices.clear();
 }
 
 void pme_gpu_realloc_grids(PmeGpu* pmeGpu)
@@ -690,26 +689,26 @@ void pme_gpu_copy_output_spread_grid(const PmeGpu* pmeGpu, float* h_grid, const 
     pmeGpu->archSpecific->syncSpreadGridD2H.markEvent(pmeGpu->archSpecific->pmeStream_);
 }
 
-void pme_gpu_copy_output_spread_atom_data(const PmeGpu* pmeGpu)
+void pme_gpu_copy_output_spread_atom_data(PmeGpu* pmeGpu)
 {
     auto*     kernelParamsPtr = pmeGpu->kernelParams.get();
     const int nAtoms          = pmeGpu->kernelParams->atoms.nAtoms;
 
-    copyFromDeviceBuffer(pmeGpu->staging.h_dtheta,
+    copyFromDeviceBuffer(pmeGpu->staging.h_dtheta.data(),
                          &kernelParamsPtr->atoms.d_dtheta,
                          0,
                          pmeGpu->archSpecific->splineCountActive,
                          pmeGpu->archSpecific->pmeStream_,
                          pmeGpu->settings.transferKind,
                          nullptr);
-    copyFromDeviceBuffer(pmeGpu->staging.h_theta,
+    copyFromDeviceBuffer(pmeGpu->staging.h_theta.data(),
                          &kernelParamsPtr->atoms.d_theta,
                          0,
                          pmeGpu->archSpecific->splineCountActive,
                          pmeGpu->archSpecific->pmeStream_,
                          pmeGpu->settings.transferKind,
                          nullptr);
-    copyFromDeviceBuffer(pmeGpu->staging.h_gridlineIndices,
+    copyFromDeviceBuffer(pmeGpu->staging.h_gridlineIndices.data(),
                          &kernelParamsPtr->atoms.d_gridlineIndices,
                          0,
                          nAtoms * DIM,
@@ -734,21 +733,21 @@ void pme_gpu_copy_input_gather_atom_data(const PmeGpu* pmeGpu)
             &kernelParamsPtr->atoms.d_theta, 0, splineDataSize, pmeGpu->archSpecific->pmeStream_);
 
     copyToDeviceBuffer(&kernelParamsPtr->atoms.d_dtheta,
-                       pmeGpu->staging.h_dtheta,
+                       pmeGpu->staging.h_dtheta.data(),
                        0,
                        splineDataSize,
                        pmeGpu->archSpecific->pmeStream_,
                        pmeGpu->settings.transferKind,
                        nullptr);
     copyToDeviceBuffer(&kernelParamsPtr->atoms.d_theta,
-                       pmeGpu->staging.h_theta,
+                       pmeGpu->staging.h_theta.data(),
                        0,
                        splineDataSize,
                        pmeGpu->archSpecific->pmeStream_,
                        pmeGpu->settings.transferKind,
                        nullptr);
     copyToDeviceBuffer(&kernelParamsPtr->atoms.d_gridlineIndices,
-                       pmeGpu->staging.h_gridlineIndices,
+                       pmeGpu->staging.h_gridlineIndices.data(),
                        0,
                        kernelParamsPtr->atoms.nAtoms * DIM,
                        pmeGpu->archSpecific->pmeStream_,
@@ -880,6 +879,10 @@ static gmx::FftBackend getFftBackend(const PmeGpu* pmeGpu)
                         "GROMACS must be built with HeFFTe to enable fully GPU-offloaded "
                         "PME decomposition on oneAPI-compatible GPUs"));
             }
+        }
+        else if (GMX_GPU_FFT_ONEMKL)
+        {
+            return gmx::FftBackend::SyclOneMkl;
         }
         else if (GMX_GPU_FFT_BBFFT)
         {
@@ -1030,6 +1033,7 @@ void pme_gpu_getEnergyAndVirial(const gmx_pme_t& pme, const float lambda, PmeOut
     GMX_ASSERT(lambda == 1.0 || pmeGpu->common->ngrids == 2,
                "Invalid combination of lambda and number of grids");
 
+#ifndef __FAST_MATH__ // -ffast-math implies -fno-honor-infinities -fno-honor-nans
     for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
     {
         for (int j = 0; j < c_virialAndEnergyCount; j++)
@@ -1038,6 +1042,7 @@ void pme_gpu_getEnergyAndVirial(const gmx_pme_t& pme, const float lambda, PmeOut
                        "PME GPU produces incorrect energy/virial.");
         }
     }
+#endif
     for (int dim1 = 0; dim1 < DIM; dim1++)
     {
         for (int dim2 = 0; dim2 < DIM; dim2++)
@@ -1095,9 +1100,9 @@ static void pme_gpu_getForceOutput(PmeGpu* pmeGpu, PmeOutput* output)
     }
 }
 
-PmeOutput pme_gpu_getOutput(const gmx_pme_t& pme, const bool computeEnergyAndVirial, const real lambdaQ)
+PmeOutput pme_gpu_getOutput(gmx_pme_t* pme, const bool computeEnergyAndVirial, const real lambdaQ)
 {
-    PmeGpu* pmeGpu = pme.gpu;
+    PmeGpu* pmeGpu = pme->gpu;
 
     PmeOutput output;
 
@@ -1107,11 +1112,11 @@ PmeOutput pme_gpu_getOutput(const gmx_pme_t& pme, const bool computeEnergyAndVir
     {
         if (pme_gpu_settings(pmeGpu).performGPUSolve)
         {
-            pme_gpu_getEnergyAndVirial(pme, lambdaQ, &output);
+            pme_gpu_getEnergyAndVirial(*pme, lambdaQ, &output);
         }
         else
         {
-            get_pme_ener_vir_q(pme.solve_work, pme.nthread, &output);
+            pme->pmeSolve->getCoulombEnergyAndVirial(&output);
         }
     }
     return output;
@@ -1246,17 +1251,27 @@ static void pme_gpu_copy_common_data_from(const gmx_pme_t* pme)
     }
     for (int i = 0; i < DIM; i++)
     {
-        pmeGpu->common->bsp_mod[i].assign(pme->bsp_mod[i], pme->bsp_mod[i] + pmeGpu->common->nk[i]);
+        pmeGpu->common->bsp_mod[i].assign(pme->bsp_mod[i].data(),
+                                          pme->bsp_mod[i].data() + pmeGpu->common->nk[i]);
     }
-    const int cellCount = c_pmeNeighborUnitcellCount;
+    GMX_ASSERT(gmx::ssize(pme->fshx) == c_pmeNeighborUnitcellCount * pme->nkx,
+               "Unexpected fshx size");
+    GMX_ASSERT(gmx::ssize(pme->fshy) == c_pmeNeighborUnitcellCount * pme->nky,
+               "Unexpected fshy size");
+    GMX_ASSERT(gmx::ssize(pme->fshz) == c_pmeNeighborUnitcellCount * pme->nkz,
+               "Unexpected fshz size");
     pmeGpu->common->fsh.resize(0);
-    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshx, pme->fshx + cellCount * pme->nkx);
-    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshy, pme->fshy + cellCount * pme->nky);
-    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshz, pme->fshz + cellCount * pme->nkz);
+    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshx.begin(), pme->fshx.end());
+    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshy.begin(), pme->fshy.end());
+    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshz.begin(), pme->fshz.end());
+    pmeGpu->common->fsh.insert(pmeGpu->common->fsh.end(), pme->fshz.begin(), pme->fshz.end());
+    GMX_ASSERT(gmx::ssize(pme->nnx) == c_pmeNeighborUnitcellCount * pme->nkx, "Unexpected nnx size");
+    GMX_ASSERT(gmx::ssize(pme->nny) == c_pmeNeighborUnitcellCount * pme->nky, "Unexpected nny size");
+    GMX_ASSERT(gmx::ssize(pme->nnz) == c_pmeNeighborUnitcellCount * pme->nkz, "Unexpected nnz size");
     pmeGpu->common->nn.resize(0);
-    pmeGpu->common->nn.insert(pmeGpu->common->nn.end(), pme->nnx, pme->nnx + cellCount * pme->nkx);
-    pmeGpu->common->nn.insert(pmeGpu->common->nn.end(), pme->nny, pme->nny + cellCount * pme->nky);
-    pmeGpu->common->nn.insert(pmeGpu->common->nn.end(), pme->nnz, pme->nnz + cellCount * pme->nkz);
+    pmeGpu->common->nn.insert(pmeGpu->common->nn.end(), pme->nnx.begin(), pme->nnx.end());
+    pmeGpu->common->nn.insert(pmeGpu->common->nn.end(), pme->nny.begin(), pme->nny.end());
+    pmeGpu->common->nn.insert(pmeGpu->common->nn.end(), pme->nnz.begin(), pme->nnz.end());
     pmeGpu->common->runMode       = pme->runMode;
     pmeGpu->common->isRankPmeOnly = !pme->bPPnode;
     pmeGpu->common->boxScaler     = pme->boxScaler.get();
@@ -1445,10 +1460,10 @@ void pme_gpu_reinit_atoms(PmeGpu* pmeGpu, const int nAtoms, const real* chargesA
         /* allocate the ppRanksFInfo host buffer */
         kernelParamsPtr->ppRanksInfoSize = pmeGpu->nvshmemParams->ppRanksRef.size();
 
-        if (pmeGpu->nvshmemParams->ppRanksFInfo == nullptr)
+        if (pmeGpu->nvshmemParams->ppRanksFInfo.empty())
         {
-            pmalloc(reinterpret_cast<void**>(&pmeGpu->nvshmemParams->ppRanksFInfo),
-                    kernelParamsPtr->ppRanksInfoSize * sizeof(PpRanksSendFInfo));
+            changePinningPolicy(&pmeGpu->nvshmemParams->ppRanksFInfo, gmx::PinningPolicy::PinnedIfSupported);
+            pmeGpu->nvshmemParams->ppRanksFInfo.resize(kernelParamsPtr->ppRanksInfoSize);
         }
 
         // prepare the ppRanksFInfo struct for sending it to gpu.
@@ -1469,7 +1484,7 @@ void pme_gpu_reinit_atoms(PmeGpu* pmeGpu, const int nAtoms, const real* chargesA
                                &pmeGpu->nvshmemParams->ppRanksFInfoSizeAlloc,
                                pmeGpu->archSpecific->deviceContext_);
         copyToDeviceBuffer(&kernelParamsPtr->ppRanksInfo,
-                           pmeGpu->nvshmemParams->ppRanksFInfo,
+                           pmeGpu->nvshmemParams->ppRanksFInfo.data(),
                            0,
                            kernelParamsPtr->ppRanksInfoSize,
                            pmeGpu->archSpecific->pmeStream_,
@@ -1802,10 +1817,9 @@ static int manageSyncWithPpCoordinateSenderGpu(const PmeGpu*                  pm
     return senderRank;
 }
 
-void pme_gpu_spread(const PmeGpu*                  pmeGpu,
+void pme_gpu_spread(PmeGpu*                        pmeGpu,
                     GpuEventSynchronizer*          xReadyOnDevice,
-                    real**                         h_grids,
-                    gmx_parallel_3dfft_t*          fftSetup,
+                    gmx::ArrayRef<PmeAndFftGrids>  h_grids,
                     bool                           computeSplines,
                     bool                           spreadCharges,
                     const real                     lambda,
@@ -2063,7 +2077,8 @@ void pme_gpu_spread(const PmeGpu*                  pmeGpu,
             // non-contiguous data - need to run kernel
             for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
             {
-                float* h_grid = h_grids[gridIndex];
+                float* h_grid   = h_grids[gridIndex].fftgrid;
+                auto*  fftSetup = h_grids[gridIndex].pfft_setup.get();
 
                 convertPmeGridToFftGrid<true>(pmeGpu, h_grid, fftSetup, gridIndex);
             }
@@ -2072,7 +2087,8 @@ void pme_gpu_spread(const PmeGpu*                  pmeGpu,
         {
             for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
             {
-                float* h_grid = h_grids[gridIndex];
+                float* h_grid = h_grids[gridIndex].fftgrid;
+
                 pme_gpu_copy_output_spread_grid(pmeGpu, h_grid, gridIndex);
             }
         }
@@ -2087,11 +2103,7 @@ void pme_gpu_spread(const PmeGpu*                  pmeGpu,
     wallcycle_stop(wcycle, WallCycleCounter::LaunchGpuPme);
 }
 
-void pme_gpu_solve(const PmeGpu* pmeGpu,
-                   const int     gridIndex,
-                   t_complex*    h_grid,
-                   GridOrdering  gridOrdering,
-                   bool          computeEnergyAndVirial)
+void pme_gpu_solve(PmeGpu* pmeGpu, const int gridIndex, t_complex* h_grid, GridOrdering gridOrdering, bool computeEnergyAndVirial)
 {
     GMX_ASSERT(
             pmeGpu->common->ngrids == 1 || pmeGpu->common->ngrids == 2,
@@ -2236,7 +2248,7 @@ void pme_gpu_solve(const PmeGpu* pmeGpu,
 
     if (computeEnergyAndVirial)
     {
-        copyFromDeviceBuffer(pmeGpu->staging.h_virialAndEnergy[gridIndex],
+        copyFromDeviceBuffer(pmeGpu->staging.h_virialAndEnergy[gridIndex].data(),
                              &kernelParamsPtr->constants.d_virialAndEnergy[gridIndex],
                              0,
                              c_virialAndEnergyCount,
@@ -2328,12 +2340,11 @@ inline auto selectGatherKernelPtr(const PmeGpu*  pmeGpu,
     return kernelPtr;
 }
 
-void pme_gpu_gather(PmeGpu*               pmeGpu,
-                    real**                h_grids,
-                    gmx_parallel_3dfft_t* fftSetup,
-                    const float           lambda,
-                    gmx_wallcycle*        wcycle,
-                    bool                  computeVirial)
+void pme_gpu_gather(PmeGpu*                       pmeGpu,
+                    gmx::ArrayRef<PmeAndFftGrids> h_grids,
+                    const float                   lambda,
+                    gmx_wallcycle*                wcycle,
+                    bool                          computeVirial)
 {
     GMX_ASSERT(
             pmeGpu->common->ngrids == 1 || pmeGpu->common->ngrids == 2,
@@ -2365,7 +2376,9 @@ void pme_gpu_gather(PmeGpu*               pmeGpu,
             // non-contiguous data - need to run kernel
             for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
             {
-                float* h_grid = h_grids[gridIndex];
+                float* h_grid   = h_grids[gridIndex].fftgrid;
+                auto*  fftSetup = h_grids[gridIndex].pfft_setup.get();
+
                 convertPmeGridToFftGrid<false>(pmeGpu, h_grid, fftSetup, gridIndex);
             }
         }
@@ -2373,7 +2386,8 @@ void pme_gpu_gather(PmeGpu*               pmeGpu,
         {
             for (int gridIndex = 0; gridIndex < pmeGpu->common->ngrids; gridIndex++)
             {
-                const float* h_grid = h_grids[gridIndex];
+                float* h_grid = h_grids[gridIndex].fftgrid;
+
                 pme_gpu_copy_input_gather_grid(pmeGpu, h_grid, gridIndex);
             }
         }

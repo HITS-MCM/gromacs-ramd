@@ -63,8 +63,9 @@ public:
      * Generates the file when needed.
      *
      * \param[in] name The basename of the input files and the generated TPR.
+     * \param[in] mdpContent Optionally, content of the MDP file used to generate the tpr
      */
-    TprAndFileManager(const std::string& name);
+    TprAndFileManager(const std::string& name, const std::string& mdpContent = "");
     //! Access to the string.
     const std::string& tprName() const { return tprFileName_; }
 

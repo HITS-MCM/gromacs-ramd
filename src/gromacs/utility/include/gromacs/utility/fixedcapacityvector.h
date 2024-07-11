@@ -53,7 +53,7 @@ namespace gmx
 
 /*! \brief Vector that behaves likes std::vector but has fixed capacity.
  *
- * \tparam T         Value type of elements.
+ * \tparam T         Value type of elements, should be default constructible
  * \tparam capacity_ The maximum number of elements that can be stored.
  *
  * This class provides a variable size container, but with constant
@@ -78,9 +78,12 @@ namespace gmx
  * \inpublicapi
  * \ingroup module_utility
  */
+
 template<typename T, size_t capacity_>
 class FixedCapacityVector
 {
+    static_assert(std::is_default_constructible_v<T>);
+
 public:
     //! Type of values stored in the vector
     using value_type = T;
@@ -110,13 +113,13 @@ public:
     //! Returns an iterator to the beginning
     iterator begin() noexcept { return data(); }
     //! Returns a const iterator to the end
-    const_iterator end() const noexcept { return end_; }
+    const_iterator end() const noexcept { return data_.data() + size_; }
     //! Returns an iterator to the end
-    iterator end() noexcept { return end_; }
+    iterator end() noexcept { return data_.data() + size_; }
     //! Returns a const iterator to the reverse beginning
-    const_reverse_iterator rbegin() const noexcept { return reverse_iterator(end_); }
+    const_reverse_iterator rbegin() const noexcept { return reverse_iterator(end()); }
     //! Returns an iterator to the reverse beginning
-    reverse_iterator rbegin() noexcept { return reverse_iterator(end_); }
+    reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
     //! Returns a const iterator to the reverse end
     const_reverse_iterator rend() const noexcept { return reverse_iterator(begin()); }
     //! Returns an iterator to the reverse end
@@ -127,11 +130,11 @@ public:
      * \note Use ssize for any expression involving arithmetic operations
          (including loop indices).
      */
-    size_type size() const noexcept { return end_ - data(); }
+    constexpr size_type size() const noexcept { return size_; }
     //! Returns the signed size
-    Index ssize() const noexcept { return end_ - data(); }
+    constexpr Index ssize() const noexcept { return size_; }
     //! Returns whether the vector is empty
-    bool empty() const noexcept { return data() == end_; }
+    constexpr bool empty() const noexcept { return size_ == 0; }
 
     //! Returns the vector capacity (max. number of elements that can be stored)
     static constexpr size_type max_size() noexcept { return capacity_; }
@@ -139,19 +142,19 @@ public:
     static constexpr size_type capacity() noexcept { return capacity_; }
 
     //! Const access an element
-    const_reference operator[](size_type n) const noexcept
+    constexpr const_reference operator[](size_type n) const noexcept
     {
         GMX_ASSERT(n < size(), "Index should be in range");
         return data_[n];
     }
     //! Access an element
-    reference operator[](size_type n) noexcept
+    constexpr reference operator[](size_type n) noexcept
     {
         GMX_ASSERT(n < size(), "Index should be in range");
         return data_[n];
     }
     //! Const access an element, throws an out_of_range exception when out of range
-    const_reference at(size_type n) const
+    constexpr const_reference at(size_type n) const
     {
         if (n >= size())
         {
@@ -160,7 +163,7 @@ public:
         return data_[n];
     }
     //! Access an element, throws an out_of_range exception when out of range
-    reference at(size_type n)
+    constexpr reference at(size_type n)
     {
         if (n >= size())
         {
@@ -169,57 +172,77 @@ public:
         return data_[n];
     }
     //! Returns the first element
-    reference front() const noexcept { return data_.front(); }
+    //! Returns the first element
+    constexpr reference front() noexcept { return data_.front(); }
+    //! Returns the first element (const version)
+    constexpr const_reference front() const noexcept { return data_.front(); }
     //! Returns the last element
-    reference back() const noexcept { return *(end_ - 1); }
+    constexpr reference back() noexcept { return data_[size_ - 1]; }
+    //! Returns the last element (const version)
+    constexpr const_reference back() const noexcept { return data_[size_ - 1]; }
 
     //! Returns a raw pointer to the contents of the array
-    const T* data() const noexcept { return data_.data(); }
+    constexpr const T* data() const noexcept { return data_.data(); }
 
     //! Returns a raw pointer to the contents of the array
-    T* data() noexcept { return data_.data(); }
+    constexpr T* data() noexcept { return data_.data(); }
 
     //! Adds element at the end
-    void push_back(const T& value) noexcept
+    constexpr void push_back(const T& value) noexcept
     {
         GMX_ASSERT(size() < capacity_, "Cannot add more elements than the capacity");
-        *end_ = value;
-        end_++;
+        data_[size_] = value;
+        size_++;
     }
 
     //! Deletes last element
-    void pop_back() noexcept
+    constexpr void pop_back() noexcept
     {
         GMX_ASSERT(!empty(), "Can only delete last element when present");
-        end_--;
+        if constexpr (!std::is_trivially_destructible_v<T>)
+        {
+            ~back();
+        }
+        size_--;
     }
 
     //! Constructs an element at the end
     template<class... Args>
-    reference emplace_back(Args&&... args)
+    constexpr reference emplace_back(Args&&... args)
     {
         GMX_ASSERT(size() < capacity_, "Cannot add more elements than the capacity");
-        if (std::is_move_assignable<T>::value)
+        if constexpr (std::is_move_assignable<T>::value)
         {
-            *end_ = std::move(T(args...));
+            data_[size_] = std::move(T(args...));
         }
         else
         {
-            *end_ = T(args...);
+            data_[size_] = T(args...);
         }
-        end_++;
+        size_++;
 
         return back();
     }
 
     //! Clears content
-    void clear() noexcept { end_ = data(); }
+    constexpr void clear() noexcept
+    {
+        if constexpr (!std::is_trivially_destructible_v<T>)
+        {
+            for (auto& entry : *this)
+            {
+                ~entry;
+            }
+        }
+
+        size_ = 0;
+    }
 
 private:
     //! The elements, stored in a fixed size array
     std::array<T, capacity_> data_;
     //! The size of the vector
-    pointer end_ = data();
+    size_type size_ = 0;
 };
 
 } // namespace gmx

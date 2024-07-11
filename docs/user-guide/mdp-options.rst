@@ -268,7 +268,7 @@ Run control
       Interval for computing the forces in level 2 of the multiple time-stepping
       scheme
 
-.. mdp:: mass-repartitioning-factor
+.. mdp:: mass-repartition-factor
 
       (1) []
       Scales the masses of the lightest atoms in the system by this factor
@@ -1181,9 +1181,9 @@ Pressure coupling
       but beware that you can get very large oscillations if you are
       starting from a different pressure. This requires a constant
       ensemble temperature for the system.
-      Currently it only supports isotropic scaling, and only works without
-      constraints.
-
+      It only supports isotropic scaling, and only works without constraints.
+      MTTK coupling is deprecated.
+      
 .. mdp:: pcoupltype
 
    Specifies the kind of isotropy of the pressure coupling used. Each

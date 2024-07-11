@@ -78,7 +78,7 @@ static int numGrids(const GridSet::DomainSetup& domainSetup)
 
 GridSet::DomainSetup::DomainSetup(const PbcType             pbcType,
                                   const bool                doTestParticleInsertion,
-                                  const ivec*               numDDCells,
+                                  const gmx::IVec*          numDDCells,
                                   const gmx_domdec_zones_t* ddZones) :
     pbcType_(pbcType),
     doTestParticleInsertion_(doTestParticleInsertion),
@@ -94,14 +94,14 @@ GridSet::DomainSetup::DomainSetup(const PbcType             pbcType,
 
 GridSet::GridSet(const PbcType             pbcType,
                  const bool                doTestParticleInsertion,
-                 const ivec*               numDDCells,
+                 const gmx::IVec*          numDDCells,
                  const gmx_domdec_zones_t* ddZones,
                  const PairlistType        pairlistType,
                  const bool                haveFep,
                  const int                 numThreads,
                  gmx::PinningPolicy        pinningPolicy) :
     domainSetup_(pbcType, doTestParticleInsertion, numDDCells, ddZones),
-    grids_(numGrids(domainSetup_), Grid(pairlistType, haveFep_)),
+    grids_(numGrids(domainSetup_), Grid(pairlistType, haveFep_, pinningPolicy)),
     haveFep_(haveFep),
     numRealAtomsLocal_(0),
     numRealAtomsTotal_(0),
@@ -233,7 +233,6 @@ void GridSet::putOnGrid(const matrix                   box,
                                                  atomRange,
                                                  &atomDensity,
                                                  maxAtomGroupRadius,
-                                                 haveFep_,
                                                  x,
                                                  ddZone,
                                                  move,
@@ -247,10 +246,6 @@ void GridSet::putOnGrid(const matrix                   box,
     grid.setCellIndices(
             ddZone, cellOffset, &gridSetData_, gridWork_, atomRange, atomInfo, x, numAtomsMoved, nbat);
 
-    if (gridIndex == 0)
-    {
-        nbat->natoms_local = nbat->numAtoms();
-    }
     if (gridIndex == gmx::ssize(grids_) - 1)
     {
         /* We are done setting up all grids, we can resize the force buffers */

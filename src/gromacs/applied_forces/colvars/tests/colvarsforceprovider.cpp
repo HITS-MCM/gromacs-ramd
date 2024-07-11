@@ -79,27 +79,23 @@ public:
     void PrepareInputForceProvider(const std::string& fileName)
     {
 
-        gmx::test::TestFileManager fileManager_;
-        const std::string          simData =
-                gmx::test::TestFileManager::getTestSimulationDatabaseDirectory().u8string();
+        gmx::test::TestFileManager  fileManager_;
+        const std::filesystem::path simData =
+                gmx::test::TestFileManager::getTestSimulationDatabaseDirectory();
 
         // Generate empty mdp file
         const std::string mdpInputFileName =
-                fileManager_.getTemporaryFilePath(fileName + ".mdp").u8string();
+                fileManager_.getTemporaryFilePath(fileName + ".mdp").string();
         gmx::TextWriter::writeFileFromString(mdpInputFileName, "");
 
         // Generate tpr file
-        const std::string tprName = fileManager_.getTemporaryFilePath(fileName + ".tpr").u8string();
+        const std::string tprName = fileManager_.getTemporaryFilePath(fileName + ".tpr").string();
         {
             gmx::test::CommandLine caller;
             caller.append("grompp");
             caller.addOption("-f", mdpInputFileName);
-            caller.addOption(
-                    "-p",
-                    std::filesystem::path(simData).append(fileName).replace_extension(".top").u8string());
-            caller.addOption(
-                    "-c",
-                    std::filesystem::path(simData).append(fileName).replace_extension(".gro").u8string());
+            caller.addOption("-p", (simData / fileName).replace_extension(".top").string());
+            caller.addOption("-c", (simData / fileName).replace_extension(".gro").string());
             caller.addOption("-o", tprName);
             ASSERT_EQ(0, gmx_grompp(caller.argc(), caller.argv()));
         }
@@ -116,7 +112,7 @@ public:
     void ColvarsConfigStringFromFile(const std::string& filename)
     {
         // Path to the sample colvars input file
-        std::string colvarsInputFile = gmx::test::TestFileManager::getInputFilePath(filename).u8string();
+        std::filesystem::path colvarsInputFile = gmx::test::TestFileManager::getInputFilePath(filename);
 
         colvarsConfigString_ = TextReader::readFileToString(colvarsInputFile);
     }
@@ -146,8 +142,8 @@ public:
     void IncorrectColvarsConfigString()
     {
         // Path to the sample colvars input file
-        std::string colvarsInputFile =
-                gmx::test::TestFileManager::getInputFilePath("colvars_sample.dat").u8string();
+        std::filesystem::path colvarsInputFile =
+                gmx::test::TestFileManager::getInputFilePath("colvars_sample.dat");
 
         colvarsConfigString_ = TextReader::readFileToString(colvarsInputFile);
     }

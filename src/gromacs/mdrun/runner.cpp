@@ -352,7 +352,8 @@ static DevelopmentFeatureFlags manageDevelopmentFeatures(const gmx::MDLogger& md
                     .appendText(
                             "GMX_ENABLE_NVSHMEM environment variable is detected, "
                             "but GROMACS was built without NVSHMEM support. "
-                            "NVSHMEM will be disabled.");
+                            "Direct use of NVSHMEM will be disabled. "
+                            "NVSHMEM may still be used indirectly if cuFFTMp is enabled. ");
         }
     }
 
@@ -628,7 +629,7 @@ static void override_nsteps_cmdline(const gmx::MDLogger& mdlog, int64_t nsteps_c
             sprintf(sbuf_msg,
                     "Overriding nsteps with value passed on the command line: %s steps, %.3g ps",
                     gmx_step_str(nsteps_cmdline, sbuf_steps),
-                    fabs(nsteps_cmdline * ir->delta_t));
+                    std::fabs(nsteps_cmdline * ir->delta_t));
         }
         else
         {
@@ -1426,6 +1427,7 @@ int Mdrunner::mdrunner()
         updateGroups            = makeUpdateGroups(mdlog,
                                         std::move(updateGroupingsPerMoleculeType),
                                         maxUpdateGroupRadius,
+                                        doRerun,
                                         useDomainDecomposition,
                                         systemHasConstraintsOrVsites(mtop),
                                         cutoffMargin);
@@ -1633,7 +1635,7 @@ int Mdrunner::mdrunner()
     if (runScheduleWork.simulationWork.useGpuDirectCommunication && GMX_GPU_CUDA)
     {
         // Don't enable event counting with GPU Direct comm, see #3988.
-        gmx::internal::disableCudaEventConsumptionCounting();
+        gmx::internal::disableGpuEventConsumptionCounting();
     }
 
     if (isSimulationMainRank && GMX_GPU_SYCL)
@@ -1877,7 +1879,6 @@ int Mdrunner::mdrunner()
                     std::make_unique<ListedForcesGpu>(mtop.ffparams,
                                                       fr->ic->epsfac * fr->fudgeQQ,
                                                       inputrec->opts.ngener - inputrec->nwall,
-                                                      *deviceInfo,
                                                       deviceStreamManager->context(),
                                                       deviceStreamManager->bondedStream(),
                                                       wcycle.get());
@@ -2057,7 +2058,8 @@ int Mdrunner::mdrunner()
                                        deviceContext,
                                        pmeStream,
                                        pmeGpuProgram.get(),
-                                       mdlog);
+                                       mdlog,
+                                       nullptr);
             }
             GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR
         }
@@ -2124,7 +2126,7 @@ int Mdrunner::mdrunner()
                                       mtop,
                                       cr,
                                       &atomSets,
-                                      inputrec->fepvals->init_lambda);
+                                      inputrec->fepvals->init_lambda_without_states);
                 if (inputrec->pull->bXOutAverage || inputrec->pull->bFOutAverage)
                 {
                     initPullHistory(pull_work, &observablesHistory);
@@ -2417,7 +2419,7 @@ int Mdrunner::mdrunner()
             // resetting the device before MPI_Finalize() results in crashes inside UCX
             // This can also cause issues in tests that invoke mdrunner() multiple
             // times in the same process; ref #3952.
-            releaseDevice(deviceInfo);
+            releaseDevice();
         }
     }
     GMX_CATCH_ALL_AND_EXIT_WITH_FATAL_ERROR

@@ -241,7 +241,7 @@
                 // Load 6*C6 and 6*C12 for all pairs
                 for (int i = 0; i < c_nRLJ; i++)
                 {
-                    if constexpr (kernelLayout == KernelLayout::r4xM)
+                    if constexpr (c_numJClustersPerSimdRegister == 1)
                     {
                         gatherLoadTranspose<c_simdBestPairAlignment>(
                                 nbfpI[i], type + aj, &c6V[i], &c12V[i]);
@@ -285,10 +285,7 @@
         if constexpr (calculateEnergies && c_needToCheckExclusions)
         {
             /* The potential shift should be removed for excluded pairs */
-            for (int i = 0; i < c_nRLJ; i++)
-            {
-                vLJV[i] = selectByMask(vLJV[i], interactV[i]);
-            }
+            vLJV = genArr<c_nRLJ>([&](int i) { return selectByMask(vLJV[i], interactV[i]); });
         }
 
         if constexpr (haveLJEwaldGeometric)
@@ -306,139 +303,39 @@
             /* frLJ is multiplied later by rinvsq, which is masked for the Coulomb
              * cut-off, but if the VdW cut-off is shorter, we need to mask with that.
              */
-            for (int i = 0; i < c_nRLJ; i++)
-            {
-                frLJV[i] = selectByMask(frLJV[i], withinVdwCutoffV[i]);
-            }
+            frLJV = genArr<c_nRLJ>([&](int i) { return selectByMask(frLJV[i], withinVdwCutoffV[i]); });
         }
 
         if constexpr (calculateEnergies)
         {
             /* The potential shift should be removed for pairs beyond cut-off */
-            for (int i = 0; i < c_nRLJ; i++)
-            {
-                vLJV[i] = selectByMask(vLJV[i],
-                                       haveVdwCutoffCheck ? withinVdwCutoffV[i] : withinCutoffV[i]);
-            }
+            vLJV = genArr<c_nRLJ>([&](int i) {
+                return selectByMask(vLJV[i], haveVdwCutoffCheck ? withinVdwCutoffV[i] : withinCutoffV[i]);
+            });
         }
 
     } // calculateLJInteractions
 
-    if constexpr (calculateEnergies)
-    {
-        /* Energy group indices for two atoms packed into one int */
-        std::array<int, useEnergyGroups ? c_jClusterSize / 2 : 0> gmx_unused egp_jj;
-
-        if constexpr (useEnergyGroups)
-        {
-            /* Extract the group pair index per j pair.
-             * Energy groups are stored per i-cluster, so things get
-             * complicated when the i- and j-cluster size don't match.
-             */
-            static_assert(c_jClusterSize == 2 || c_iClusterSize <= c_jClusterSize);
-
-            if constexpr (c_jClusterSize == 2)
-            {
-                const int egps_j = nbatParams.energrp[cj >> 1];
-                egp_jj[0] = ((egps_j >> ((cj & 1) * egps_jshift)) & egps_jmask) * egps_jstride;
-            }
-            else
-            {
-                for (int jdi = 0; jdi < c_jClusterSize / c_iClusterSize; jdi++)
-                {
-                    const int egps_j = nbatParams.energrp[cj * (c_jClusterSize / c_iClusterSize) + jdi];
-                    for (int jj = 0; jj < (c_iClusterSize / 2); jj++)
-                    {
-                        egp_jj[jdi * (c_iClusterSize / 2) + jj] =
-                                ((egps_j >> (jj * egps_jshift)) & egps_jmask) * egps_jstride;
-                    }
-                }
-            }
-        }
-
-        if constexpr (c_calculateCoulombInteractions)
-        {
-            // Accumulate the Coulomb energies
-            if constexpr (!useEnergyGroups)
-            {
-                for (int i = 0; i < nR; i++)
-                {
-                    vctot_S = vctot_S + vCoulombV[i];
-                }
-            }
-            else
-            {
-                for (int i = 0; i < nR; i++)
-                {
-                    if constexpr (kernelLayout == KernelLayout::r4xM)
-                    {
-                        accumulateGroupPairEnergies4xM<kernelLayout>(vCoulombV[i], vctp[i], egp_jj);
-                    }
-                    else
-                    {
-                        accumulateGroupPairEnergies2xMM<kernelLayout>(
-                                vCoulombV[i], vctp[i * 2], vctp[i * 2 + 1], egp_jj);
-                    }
-                }
-            }
-        }
-
-        if constexpr (c_iLJInteractions != ILJInteractions::None)
-        {
-            // Accumulate the Lennard-Jones energies
-            if constexpr (!useEnergyGroups)
-            {
-                for (int i = 0; i < c_nRLJ; i++)
-                {
-                    Vvdwtot_S = Vvdwtot_S + vLJV[i];
-                }
-            }
-            else
-            {
-                for (int i = 0; i < c_nRLJ; i++)
-                {
-                    if constexpr (kernelLayout == KernelLayout::r4xM)
-                    {
-                        accumulateGroupPairEnergies4xM<kernelLayout>(vLJV[i], vvdwtp[i], egp_jj);
-                    }
-                    else
-                    {
-                        accumulateGroupPairEnergies2xMM<kernelLayout>(
-                                vLJV[i], vvdwtp[i * 2], vvdwtp[i * 2 + 1], egp_jj);
-                    }
-                }
-            }
-        }
-
-    } // calculateEnergies
+    energyAccumulator.template addEnergies<c_calculateCoulombInteractions ? nR : 0, c_nRLJ, kernelLayout, c_iClusterSize>(
+            cj, vCoulombV, vLJV);
 
     if constexpr (c_iLJInteractions != ILJInteractions::None)
     {
         if constexpr (c_calculateCoulombInteractions)
         {
-            for (int i = 0; i < c_nRLJ; i++)
-            {
-                fScalarV[i] = rInvSquaredV[i] * (frCoulombV[i] + frLJV[i]);
-            }
-            for (int i = c_nRLJ; i < nR; i++)
-            {
-                fScalarV[i] = rInvSquaredV[i] * frCoulombV[i];
-            }
+            fScalarV = genArr<nR>([&](int i) {
+                return rInvSquaredV[i] * (i < c_nRLJ ? frCoulombV[i] + frLJV[i] : frCoulombV[i]);
+            });
         }
         else
         {
-            for (int i = 0; i < c_nRLJ; i++)
-            {
-                fScalarV[i] = rInvSquaredV[i] * frLJV[i];
-            }
+            // Note that here c_nRLJ=nR (otherwise this wouldn't compile)
+            fScalarV = genArr<c_nRLJ>([&](int i) { return rInvSquaredV[i] * frLJV[i]; });
         }
     }
     else
     {
-        for (int i = c_nRLJ; i < nR; i++)
-        {
-            fScalarV[i] = rInvSquaredV[i] * frCoulombV[i];
-        }
+        fScalarV = genArr<nR>([&](int i) { return rInvSquaredV[i] * frCoulombV[i]; });
     }
 
     /* Calculate temporary vectorial force */
@@ -452,15 +349,15 @@
     forceIZV = genArr<nR>([&](int i) { return forceIZV[i] + tzV[i]; });
 
     /* Decrement j atom force */
-    if constexpr (kernelLayout == KernelLayout::r4xM)
+    if constexpr (c_numJClustersPerSimdRegister == 1)
     {
-        store(f + ajx, load<SimdReal>(f + ajx) - (txV[0] + txV[1] + txV[2] + txV[3]));
-        store(f + ajy, load<SimdReal>(f + ajy) - (tyV[0] + tyV[1] + tyV[2] + tyV[3]));
-        store(f + ajz, load<SimdReal>(f + ajz) - (tzV[0] + tzV[1] + tzV[2] + tzV[3]));
+        store(f + ajx, load<SimdReal>(f + ajx) - sumArray(txV));
+        store(f + ajy, load<SimdReal>(f + ajy) - sumArray(tyV));
+        store(f + ajz, load<SimdReal>(f + ajz) - sumArray(tzV));
     }
     else
     {
-        decr3Hsimd(f + aj * DIM, txV[0] + txV[1], tyV[0] + tyV[1], tzV[0] + tzV[1]);
+        decr3Hsimd(f + aj * DIM, sumArray(txV), sumArray(tyV), sumArray(tzV));
     }
 }
 

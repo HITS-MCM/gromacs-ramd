@@ -130,7 +130,7 @@ void ThreadForceBuffer<ForceBufferElementType>::processMask()
 {
     // Now we are done setting the masks, generate the new list of used blocks
     usedBlockIndices_.clear();
-    for (int b = 0; b < ssize(reductionMask_); b++)
+    for (int b = 0; b < gmx::ssize(reductionMask_); b++)
     {
         if (bitmask_is_set(reductionMask_[b], threadIndex_))
         {
@@ -167,7 +167,11 @@ void reduceThreadForceBuffers(ArrayRef<gmx::RVec> force,
      * regions in OpenMP, otherwise the performance will degrade significantly.
      */
     const int gmx_unused numThreadsForReduction = threadForceBuffers.size();
-#pragma omp parallel for num_threads(numThreadsForReduction) schedule(static)
+// nvc++ 24.1+ version has bug due to which it generates incorrect OMP code for this region
+// so disable this until nvc++ gets fixed.
+#if !defined(__NVCOMPILER)
+#    pragma omp parallel for num_threads(numThreadsForReduction) schedule(static)
+#endif
     for (int b = 0; b < usedBlockIndices.ssize(); b++)
     {
         try
@@ -307,12 +311,12 @@ void ThreadedForceBuffer<ForceBufferElementType>::setupReduction()
         fprintf(debug,
                 "Number of %d atom blocks to reduce: %d\n",
                 ThreadForceBuffer<ForceBufferElementType>::s_reductionBlockSize,
-                int(ssize(usedBlockIndices_)));
+                int(gmx::ssize(usedBlockIndices_)));
         fprintf(debug,
                 "Reduction density %.2f for touched blocks only %.2f\n",
                 numBlocksUsed * ThreadForceBuffer<ForceBufferElementType>::s_reductionBlockSize
                         / static_cast<double>(numAtoms),
-                numBlocksUsed / static_cast<double>(ssize(usedBlockIndices_)));
+                numBlocksUsed / static_cast<double>(gmx::ssize(usedBlockIndices_)));
     }
 }
 

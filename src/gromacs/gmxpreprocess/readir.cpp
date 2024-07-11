@@ -732,12 +732,13 @@ void check_ir(const char*                    mdparin,
         CHECK(fep->sc_alpha != 0 && fep->sc_r_power != 6.0);
 
         /* We need special warnings if init-lambda > 1 && delta-lambda < 0 */
-        if (fep->delta_lambda < 0 && fep->init_lambda > 1)
+        if (fep->delta_lambda < 0 && fep->init_lambda_without_states > 1)
         {
             if (fep->n_lambda > 1)
             {
                 /* warn about capping if lambda vector is provided as user input */
-                double  stepNumberWhenLambdaIsOne = (1.0 - fep->init_lambda) / fep->delta_lambda;
+                double stepNumberWhenLambdaIsOne =
+                        (1.0 - fep->init_lambda_without_states) / fep->delta_lambda;
                 int64_t intStepNumberWhenLambdaIsOne =
                         static_cast<int64_t>(std::round(stepNumberWhenLambdaIsOne));
 
@@ -746,7 +747,7 @@ void check_ir(const char*                    mdparin,
                         "components won't change before step %" PRId64 " of %" PRId64
                         " simulation steps in total. "
                         "Consider setting init-lambda to a value less or equal to 1.\n",
-                        fep->init_lambda,
+                        fep->init_lambda_without_states,
                         fep->delta_lambda,
                         intStepNumberWhenLambdaIsOne,
                         ir->nsteps);
@@ -806,11 +807,12 @@ void check_ir(const char*                    mdparin,
                 }
             }
 
-            else if (fep->init_lambda >= 0)
+            else if (fep->init_lambda_without_states >= 0)
             {
                 if (fep->delta_lambda > 0)
                 {
-                    double stepNumberWhenLambdaIsCapped = (1.0 - fep->init_lambda) / fep->delta_lambda;
+                    double stepNumberWhenLambdaIsCapped =
+                            (1.0 - fep->init_lambda_without_states) / fep->delta_lambda;
                     stepNumberWhenLambdaIsCapped = std::max(stepNumberWhenLambdaIsCapped, 0.0);
                     intStepNumberWhenLambdaIsCapped =
                             static_cast<int64_t>(std::round(stepNumberWhenLambdaIsCapped));
@@ -831,7 +833,7 @@ void check_ir(const char*                    mdparin,
                                     "step %" PRId64 " of in total %" PRId64
                                     " steps. "
                                     "This is not compatible with using soft-core potentials.\n",
-                                    fep->init_lambda,
+                                    fep->init_lambda_without_states,
                                     fep->delta_lambda,
                                     intStepNumberWhenLambdaIsCapped,
                                     ir->nsteps);
@@ -843,7 +845,8 @@ void check_ir(const char*                    mdparin,
                 }
                 else if (fep->delta_lambda < 0)
                 {
-                    double stepNumberWhenLambdaIsCapped = (0.0 - fep->init_lambda) / fep->delta_lambda;
+                    double stepNumberWhenLambdaIsCapped =
+                            (0.0 - fep->init_lambda_without_states) / fep->delta_lambda;
                     intStepNumberWhenLambdaIsCapped =
                             static_cast<int64_t>(std::round(stepNumberWhenLambdaIsCapped));
                 }
@@ -854,7 +857,7 @@ void check_ir(const char*                    mdparin,
                             "With init-lambda = %g and delta_lambda = %g, the lambda components "
                             "won't change anymore after step %" PRId64
                             " until the end of the simulation after %" PRId64 " steps.\n",
-                            fep->init_lambda,
+                            fep->init_lambda_without_states,
                             fep->delta_lambda,
                             intStepNumberWhenLambdaIsCapped,
                             ir->nsteps);
@@ -902,17 +905,17 @@ void check_ir(const char*                    mdparin,
 
         sprintf(err_buf,
                 "Lambda state must be set, either with init-lambda-state or with init-lambda");
-        CHECK((fep->init_fep_state < 0) && (fep->init_lambda < 0));
+        CHECK((fep->init_fep_state < 0) && (fep->init_lambda_without_states < 0));
 
         sprintf(err_buf,
                 "init-lambda=%g while init-lambda-state=%d. Lambda state must be set either with "
                 "init-lambda-state or with init-lambda, but not both",
-                fep->init_lambda,
+                fep->init_lambda_without_states,
                 fep->init_fep_state);
-        CHECK((fep->init_fep_state >= 0) && (fep->init_lambda >= 0));
+        CHECK((fep->init_fep_state >= 0) && (fep->init_lambda_without_states >= 0));
 
 
-        if ((fep->init_lambda >= 0) && (fep->delta_lambda == 0))
+        if ((fep->init_lambda_without_states >= 0) && (fep->delta_lambda == 0))
         {
             int n_lambda_terms;
             n_lambda_terms = 0;
@@ -1269,7 +1272,7 @@ void check_ir(const char*                    mdparin,
                     "If you want to remove the rotation around the center of mass, you should set "
                     "comm_mode = Angular instead of setting nstcomm < 0. nstcomm is modified to "
                     "its absolute value");
-            ir->nstcomm = abs(ir->nstcomm);
+            ir->nstcomm = std::abs(ir->nstcomm);
         }
 
         if (ir->nstcalcenergy > 0 && ir->nstcomm < ir->nstcalcenergy
@@ -1877,7 +1880,7 @@ static void do_fep_params(t_inputrec*                ir,
     fep->n_lambda = max_n_lambda;
 
     /* if init_lambda is defined, we need to set lambda */
-    if ((fep->init_lambda > 0) && (fep->n_lambda == 0))
+    if ((fep->init_lambda_without_states > 0) && (fep->n_lambda == 0))
     {
         ir->fepvals->separate_dvdl[FreeEnergyPerturbationCouplingType::Fep] = TRUE;
     }
@@ -1898,11 +1901,11 @@ static void do_fep_params(t_inputrec*                ir,
     /* "fep-vals" is either zero or the full number. If zero, we'll need to define fep-lambdas for
        internal bookkeeping -- for now, init_lambda */
 
-    if ((nfep[FreeEnergyPerturbationCouplingType::Fep] == 0) && (fep->init_lambda >= 0))
+    if (nfep[FreeEnergyPerturbationCouplingType::Fep] == 0 && fep->init_lambda_without_states >= 0)
     {
         for (i = 0; i < fep->n_lambda; i++)
         {
-            fep->all_lambda[FreeEnergyPerturbationCouplingType::Fep][i] = fep->init_lambda;
+            fep->all_lambda[FreeEnergyPerturbationCouplingType::Fep][i] = fep->init_lambda_without_states;
         }
     }
 
@@ -2597,9 +2600,9 @@ void get_ir(const char*     mdparin,
     opts->couple_lam1  = get_eeenum(&inp, "couple-lambda1", couple_lam, wi);
     opts->bCoupleIntra = (getEnum<Boolean>(&inp, "couple-intramol", wi) != Boolean::No);
 
-    fep->init_lambda = get_ereal(&inp, "init-lambda", -1, wi); /* start with -1 so
-                                                                         we can recognize if
-                                                                         it was not entered */
+    fep->init_lambda_without_states = get_ereal(&inp, "init-lambda", -1, wi); /* start with -1 so
+                                                                                 we can recognize if
+                                                                                 it was not entered */
     fep->init_fep_state = get_eint(&inp, "init-lambda-state", -1, wi);
     fep->delta_lambda   = get_ereal(&inp, "delta-lambda", 0.0, wi);
     fep->nstdhdl        = get_eint(&inp, "nstdhdl", 50, wi);
@@ -3904,15 +3907,15 @@ void do_index(const char*                    mdparin,
         fprintf(stderr, "processing index file...\n");
     }
     std::vector<IndexGroup> defaultIndexGroups;
-    if (ndx == nullptr)
+    if (ndx != nullptr)
+    {
+        defaultIndexGroups = init_index(ndx);
+    }
+    else
     {
         atoms_all          = gmx_mtop_global_atoms(*mtop);
         defaultIndexGroups = analyse(&atoms_all, false, true);
         done_atom(&atoms_all);
-    }
-    else
-    {
-        defaultIndexGroups = init_index(ndx);
     }
 
     SimulationGroups* groups = &mtop->groups;
@@ -4017,6 +4020,8 @@ void do_index(const char*                    mdparin,
             }
             if (ir->pressureCouplingOptions.epc == PressureCoupling::Mttk)
             {
+                wi->addNote("MTTK coupling is deprecated and will soon be removed");
+
                 if (ir->etc != TemperatureCoupling::NoseHoover)
                 {
                     gmx_fatal(FARGS,
@@ -4776,8 +4781,9 @@ static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& m
     }
 
     /* lambda vector components > 1 at the beginning of the simulation */
-    if (ir.fepvals->delta_lambda < 0 && ir.fepvals->init_lambda > 1 && ir.fepvals->n_lambda <= 0
-        && ir.fepvals->sc_alpha <= 0 && ir.fepvals->softcoreFunction != SoftcoreType::Gapsys)
+    if (ir.fepvals->delta_lambda < 0 && ir.fepvals->init_lambda_without_states > 1
+        && ir.fepvals->n_lambda <= 0 && ir.fepvals->sc_alpha <= 0
+        && ir.fepvals->softcoreFunction != SoftcoreType::Gapsys)
     {
         auto warningText = gmx::formatString(
                 "You set init-lambda greater than 1 such that "
@@ -4788,10 +4794,11 @@ static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& m
     }
 
     /* lambda vector components become > 1 in the course of the simulation */
-    if (ir.fepvals->delta_lambda > 0 && ir.fepvals->init_lambda >= 0)
+    if (ir.fepvals->delta_lambda > 0 && ir.fepvals->init_lambda_without_states >= 0)
     {
-        double stepNumberWhenLambdaIsOne = (1.0 - ir.fepvals->init_lambda) / ir.fepvals->delta_lambda;
-        stepNumberWhenLambdaIsOne        = std::max(stepNumberWhenLambdaIsOne, 0.0);
+        double stepNumberWhenLambdaIsOne =
+                (1.0 - ir.fepvals->init_lambda_without_states) / ir.fepvals->delta_lambda;
+        stepNumberWhenLambdaIsOne = std::max(stepNumberWhenLambdaIsOne, 0.0);
         int64_t intStepNumberWhenLambdaIsOne =
                 static_cast<int64_t>(std::round(stepNumberWhenLambdaIsOne));
 
@@ -4805,7 +4812,7 @@ static void checksForFepLambaLargerOne(const t_inputrec& ir, const gmx_mtop_t& m
                     " steps. "
                     "Please only use this if you are aware of what you are "
                     "doing.\n",
-                    ir.fepvals->init_lambda,
+                    ir.fepvals->init_lambda_without_states,
                     ir.fepvals->delta_lambda,
                     intStepNumberWhenLambdaIsOne,
                     ir.nsteps);
@@ -5113,7 +5120,7 @@ void triple_check(const char* mdparin, t_inputrec* ir, gmx_mtop_t* sys, WarningH
         }
         for (m = 0; (m < DIM); m++)
         {
-            if (fabs(acceleration[m]) > 1e-6)
+            if (std::fabs(acceleration[m]) > 1e-6)
             {
                 const char* dim[DIM] = { "X", "Y", "Z" };
                 fprintf(stderr,

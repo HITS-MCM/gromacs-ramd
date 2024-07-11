@@ -71,7 +71,6 @@
 #include "gromacs/math/vec.h"
 #include "gromacs/mdlib/constr.h"
 #include "gromacs/mdlib/coupling.h"
-#include "gromacs/mdlib/dispersioncorrection.h"
 #include "gromacs/mdlib/ebin.h"
 #include "gromacs/mdlib/enerdata_utils.h"
 #include "gromacs/mdlib/energyoutput.h"
@@ -345,11 +344,11 @@ static void get_f_norm_max(const t_commrec*               cr,
 
     if (fnorm)
     {
-        *fnorm = sqrt(fnorm2);
+        *fnorm = std::sqrt(fnorm2);
     }
     if (fmax)
     {
-        *fmax = sqrt(fmax2);
+        *fmax = std::sqrt(fmax2);
     }
     if (a_fmax)
     {
@@ -480,12 +479,10 @@ static void init_em(FILE*                     fplog,
         if (!ir->bContinuation)
         {
             /* Constrain the starting coordinates */
-            bool needsLogging  = true;
-            bool computeEnergy = true;
+            bool computeRmsd   = true;
             bool computeVirial = false;
             dvdl_constr        = 0;
-            constr->apply(needsLogging,
-                          computeEnergy,
+            constr->apply(computeRmsd,
                           -1,
                           0,
                           1.0,
@@ -735,8 +732,7 @@ static bool do_em_step(const t_commrec*                          cr,
     if (constr)
     {
         dvdl_constr = 0;
-        validStep   = constr->apply(TRUE,
-                                  TRUE,
+        validStep   = constr->apply(true,
                                   count,
                                   0,
                                   1.0,
@@ -1105,34 +1101,16 @@ void EnergyEvaluator::run(em_state_t* ems, rvec mu_tot, tensor vir, tensor pres,
         wallcycle_stop(wcycle, WallCycleCounter::MoveE);
     }
 
-    if (fr->dispersionCorrection)
-    {
-        /* Calculate long range corrections to pressure and energy */
-        const DispersionCorrection::Correction correction = fr->dispersionCorrection->calculate(
-                ems->s.box, ems->s.lambda[FreeEnergyPerturbationCouplingType::Vdw]);
-
-        enerd->term[F_DISPCORR] = correction.energy;
-        enerd->term[F_EPOT] += correction.energy;
-        enerd->term[F_PRES] += correction.pressure;
-        enerd->term[F_DVDL] += correction.dvdl;
-    }
-    else
-    {
-        enerd->term[F_DISPCORR] = 0;
-    }
-
     ems->epot = enerd->term[F_EPOT];
 
     if (constr)
     {
         /* Project out the constraint components of the force */
-        bool needsLogging  = false;
-        bool computeEnergy = false;
+        bool computeRmsd   = false;
         bool computeVirial = true;
         dvdl_constr        = 0;
         auto f             = ems->f.view().forceWithPadding();
-        constr->apply(needsLogging,
-                      computeEnergy,
+        constr->apply(computeRmsd,
                       count,
                       0,
                       1.0,
@@ -1455,7 +1433,7 @@ void LegacySimulator::do_cg()
 
     if (MAIN(cr_))
     {
-        double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+        double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
         fprintf(stderr, "   F-max             = %12.5e on atom %d\n", s_min->fmax, s_min->a_fmax + 1);
         fprintf(stderr, "   F-Norm            = %12.5e\n", s_min->fnorm / sqrtNumAtoms);
         fprintf(stderr, "\n");
@@ -1540,7 +1518,7 @@ void LegacySimulator::do_cg()
         {
             for (m = 0; m < DIM; m++)
             {
-                tmp = fabs(s_min_x[i][m]);
+                tmp = std::fabs(s_min_x[i][m]);
                 if (tmp < 1.0)
                 {
                     tmp = 1.0;
@@ -1555,7 +1533,7 @@ void LegacySimulator::do_cg()
             gmx_sumd(1, &minstep, cr_);
         }
 
-        minstep = GMX_REAL_EPS / sqrt(minstep / (3 * topGlobal_.natoms));
+        minstep = GMX_REAL_EPS / std::sqrt(minstep / (3 * topGlobal_.natoms));
 
         if (stepsize < minstep)
         {
@@ -1638,7 +1616,7 @@ void LegacySimulator::do_cg()
         }
 
         /* This is the max amount of increase in energy we tolerate */
-        tmp = std::sqrt(GMX_REAL_EPS) * fabs(s_a->epot);
+        tmp = std::sqrt(GMX_REAL_EPS) * std::fabs(s_a->epot);
 
         /* Accept the step if the energy is lower, or if it is not significantly higher
          * and the line derivative is still negative.
@@ -1787,7 +1765,7 @@ void LegacySimulator::do_cg()
                 nminstep++;
             } while ((epot_repl > s_a->epot || epot_repl > s_c->epot) && (nminstep < 20));
 
-            if (std::fabs(epot_repl - s_min->epot) < fabs(s_min->epot) * GMX_REAL_EPS || nminstep >= 20)
+            if (std::fabs(epot_repl - s_min->epot) < std::fabs(s_min->epot) * GMX_REAL_EPS || nminstep >= 20)
             {
                 /* OK. We couldn't find a significantly lower energy.
                  * If beta==0 this was steepest descent, and then we give up.
@@ -1856,7 +1834,7 @@ void LegacySimulator::do_cg()
             beta = pr_beta(cr_, &inputRec_->opts, mdatoms, topGlobal_, s_min, s_b);
         }
         /* Limit beta to prevent oscillations */
-        if (fabs(beta) > 5.0)
+        if (std::fabs(beta) > 5.0)
         {
             beta = 0.0;
         }
@@ -1871,7 +1849,7 @@ void LegacySimulator::do_cg()
         {
             if (mdrunOptions_.verbose)
             {
-                double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+                double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
                 fprintf(stderr,
                         "\rStep %d, Epot=%12.6e, Fnorm=%9.3e, Fmax=%9.3e (atom %d)\n",
                         step,
@@ -1994,7 +1972,7 @@ void LegacySimulator::do_cg()
 
     if (MAIN(cr_))
     {
-        double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+        double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
         print_converged(stderr, CG, inputRec_->em_tol, step, converged, number_steps, s_min, sqrtNumAtoms);
         print_converged(fpLog_, CG, inputRec_->em_tol, step, converged, number_steps, s_min, sqrtNumAtoms);
 
@@ -2222,7 +2200,7 @@ void LegacySimulator::do_lbfgs()
 
     if (MAIN(cr_))
     {
-        double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+        double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
         fprintf(stderr, "Using %d BFGS correction steps.\n\n", nmaxcorr);
         fprintf(stderr, "   F-max             = %12.5e on atom %d\n", ems.fmax, ems.a_fmax + 1);
         fprintf(stderr, "   F-Norm            = %12.5e\n", ems.fnorm / sqrtNumAtoms);
@@ -2327,7 +2305,7 @@ void LegacySimulator::do_lbfgs()
         double minstep = 0;
         for (int i = 0; i < n; i++)
         {
-            double tmp = fabs(xx[i]);
+            double tmp = std::fabs(xx[i]);
             if (tmp < 1.0)
             {
                 tmp = 1.0;
@@ -2335,7 +2313,7 @@ void LegacySimulator::do_lbfgs()
             tmp = s[i] / tmp;
             minstep += tmp * tmp;
         }
-        minstep = GMX_REAL_EPS / sqrt(minstep / n);
+        minstep = GMX_REAL_EPS / std::sqrt(minstep / n);
 
         if (stepsize < minstep)
         {
@@ -2435,7 +2413,7 @@ void LegacySimulator::do_lbfgs()
         // This is the max amount of increase in energy we tolerate.
         // By allowing VERY small changes (close to numerical precision) we
         // frequently find even better (lower) final energies.
-        double tmp = std::sqrt(GMX_REAL_EPS) * fabs(sa->epot);
+        double tmp = std::sqrt(GMX_REAL_EPS) * std::fabs(sa->epot);
 
         // Accept the step if the energy is lower in the new position C (compared to A),
         // or if it is not significantly higher and the line derivative is still negative.
@@ -2703,7 +2681,7 @@ void LegacySimulator::do_lbfgs()
         {
             if (mdrunOptions_.verbose)
             {
-                double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+                double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
                 fprintf(stderr,
                         "\rStep %d, Epot=%12.6e, Fnorm=%9.3e, Fmax=%9.3e (atom %d)\n",
                         step,
@@ -2819,7 +2797,7 @@ void LegacySimulator::do_lbfgs()
 
     if (MAIN(cr_))
     {
-        double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+        double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
         print_converged(stderr, LBFGS, inputRec_->em_tol, step, converged, number_steps, &ems, sqrtNumAtoms);
         print_converged(fpLog_, LBFGS, inputRec_->em_tol, step, converged, number_steps, &ems, sqrtNumAtoms);
 
@@ -3158,7 +3136,7 @@ void LegacySimulator::do_steep()
 
     if (MAIN(cr_))
     {
-        double sqrtNumAtoms = sqrt(static_cast<double>(stateGlobal_->numAtoms()));
+        double sqrtNumAtoms = std::sqrt(static_cast<double>(stateGlobal_->numAtoms()));
 
         print_converged(stderr, SD, inputRec_->em_tol, count, bDone, nsteps, s_min, sqrtNumAtoms);
         print_converged(fpLog_, SD, inputRec_->em_tol, count, bDone, nsteps, s_min, sqrtNumAtoms);
@@ -3371,7 +3349,7 @@ void LegacySimulator::do_nm()
     bool bNS          = true;
     auto state_work_x = makeArrayRef(state_work.s.x);
     auto state_work_f = state_work.f.view().force();
-    for (Index aid = cr_->nodeid; aid < ssize(atom_index); aid += nnodes)
+    for (Index aid = cr_->nodeid; aid < gmx::ssize(atom_index); aid += nnodes)
     {
         size_t atom = atom_index[aid];
         for (size_t d = 0; d < DIM; d++)
@@ -3466,7 +3444,7 @@ void LegacySimulator::do_nm()
             }
             else
             {
-                for (Index node = 0; (node < nnodes && aid + node < ssize(atom_index)); node++)
+                for (Index node = 0; (node < nnodes && aid + node < gmx::ssize(atom_index)); node++)
                 {
                     if (node > 0)
                     {
@@ -3512,7 +3490,7 @@ void LegacySimulator::do_nm()
             fprintf(stderr,
                     "\rFinished step %d out of %td",
                     std::min<int>(atom + nnodes, atom_index.size()),
-                    ssize(atom_index));
+                    gmx::ssize(atom_index));
             fflush(stderr);
         }
     }

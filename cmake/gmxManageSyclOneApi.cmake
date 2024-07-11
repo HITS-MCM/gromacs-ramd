@@ -50,7 +50,10 @@ if(WIN32)
         # and -fsycl both appear before -link. Not possible to change order from cmake script. cmake fix is WIP.
     endif()
 endif()
-if(CMAKE_CXX_COMPILER MATCHES "dpcpp")
+
+# Prohibit the dpcpp compiler, but don't prohibit the use of e.g.
+# /opt/dpcpp/oneapi/....../icpx etc.
+if(CMAKE_CXX_COMPILER MATCHES "dpcpp$")
     message(FATAL_ERROR "Intel's \"dpcpp\" compiler is not supported; please use \"icpx\" for SYCL builds")
 endif()
 
@@ -155,13 +158,6 @@ endif()
 
 if(GMX_GPU_FFT_VKFFT)
     include(gmxManageVkFft)
-    if ("${SYCL_CXX_FLAGS_EXTRA}" MATCHES "fsycl-targets=.*(nvptx64|nvidia_gpu)")
-        gmx_manage_vkfft("CUDA")
-    elseif ("${SYCL_CXX_FLAGS_EXTRA}" MATCHES "fsycl-targets=.*(amdgcn|amd_gpu)")
-        gmx_manage_vkfft("HIP")
-    else()
-        message(FATAL_ERROR "VkFFT can only be used with CUDA or HIP backend")
-    endif()
     set(_sycl_has_valid_fft TRUE)
 endif()
 
@@ -190,6 +186,12 @@ int main() {
         message(WARNING "Cannot link mkl_sycl. Make sure the MKL and compiler versions are compatible.")
     endif()
 
+    set(_sycl_has_valid_fft TRUE)
+endif()
+
+if(GMX_GPU_FFT_ONEMKL)
+    include(gmxManageOneMKL)
+    gmx_manage_onemkl()
     set(_sycl_has_valid_fft TRUE)
 endif()
 

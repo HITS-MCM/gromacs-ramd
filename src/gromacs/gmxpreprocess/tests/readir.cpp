@@ -106,11 +106,11 @@ public:
                                    || testBehavior == TestBehavior::NoErrorAndCompareOutput;
 
         WarningHandler wi{ false, 0 };
-        std::string    inputMdpFilename = fileManager_.getTemporaryFilePath("input.mdp").u8string();
+        std::string    inputMdpFilename = fileManager_.getTemporaryFilePath("input.mdp").string();
         std::string    outputMdpFilename;
         if (compareOutput)
         {
-            outputMdpFilename = fileManager_.getTemporaryFilePath("output.mdp").u8string();
+            outputMdpFilename = fileManager_.getTemporaryFilePath("output.mdp").string();
         }
         if (setGenVelSeedToKnownValue)
         {
@@ -243,6 +243,12 @@ TEST_F(GetIrTest, MtsCheckNstdhdl)
     const char* inputMdpFile[] = {
         "mts = yes", "mts-level2-factor = 2", "free-energy = yes", "nstdhdl = 5"
     };
+    runTest(joinStrings(inputMdpFile, "\n"), TestBehavior::ErrorAndDoNotCompareOutput);
+}
+
+TEST_F(GetIrTest, MtsCheckSDNotSupported)
+{
+    const char* inputMdpFile[] = { "mts = yes", "integrator = sd" };
     runTest(joinStrings(inputMdpFile, "\n"), TestBehavior::ErrorAndDoNotCompareOutput);
 }
 

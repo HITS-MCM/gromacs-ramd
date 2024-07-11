@@ -106,13 +106,13 @@ static void low_do_four_core(int nframes, real c1[], real cfour[], int nCos)
         case enCos:
             for (i = 0; (i < nframes); i++)
             {
-                data[0][i] = cos(c1[i]);
+                data[0][i] = std::cos(c1[i]);
             }
             break;
         case enSin:
             for (i = 0; (i < nframes); i++)
             {
-                data[0][i] = sin(c1[i]);
+                data[0][i] = std::sin(c1[i]);
             }
             break;
         default: gmx_fatal(FARGS, "nCos = %d, %s %d", nCos, __FILE__, __LINE__);
@@ -241,7 +241,7 @@ static void do_ac_core(int nframes, int nout, real corr[], real c1[], int nresta
     /* Correct for the number of points and copy results to the data array */
     for (j = 0; (j < nout); j++)
     {
-        n     = (nframes - j + (nrestart - 1)) / nrestart;
+        n     = gmx::divideRoundUp(nframes - j, nrestart);
         c1[j] = corr[j] / n;
     }
 }
@@ -264,7 +264,7 @@ static void normalize_acf(int nout, real corr[])
     /* Normalisation makes that c[0] = 1.0 and that other points are scaled
      * accordingly.
      */
-    if (fabs(corr[0]) < 1e-5)
+    if (std::fabs(corr[0]) < 1e-5)
     {
         c0 = 1.0;
     }

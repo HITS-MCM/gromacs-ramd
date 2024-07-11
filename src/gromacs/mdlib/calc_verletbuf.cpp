@@ -120,14 +120,8 @@ VerletbufListSetup verletbufGetListSetup(Nbnxm::KernelType nbnxnKernelType)
      */
     VerletbufListSetup listSetup;
 
-    listSetup.cluster_size_i = Nbnxm::IClusterSizePerKernelType[nbnxnKernelType];
-    listSetup.cluster_size_j = Nbnxm::JClusterSizePerKernelType[nbnxnKernelType];
-
-    if (!Nbnxm::kernelTypeUsesSimplePairlist(nbnxnKernelType))
-    {
-        /* The GPU kernels (except for OpenCL) split the j-clusters in two halves */
-        listSetup.cluster_size_j /= 2;
-    }
+    listSetup.cluster_size_i = Nbnxm::sc_iClusterSize(nbnxnKernelType);
+    listSetup.cluster_size_j = Nbnxm::sc_jClusterSize(nbnxnKernelType);
 
     return listSetup;
 }
@@ -916,10 +910,10 @@ static real md3_force_switch(real p, real rswitch, real rc)
     real a, b;
     real md3_pot, md3_sw;
 
-    a = -((p + 4) * rc - (p + 1) * rswitch) / (pow(rc, p + 2) * gmx::square(rc - rswitch));
-    b = ((p + 3) * rc - (p + 1) * rswitch) / (pow(rc, p + 2) * gmx::power3(rc - rswitch));
+    a = -((p + 4) * rc - (p + 1) * rswitch) / (std::pow(rc, p + 2) * gmx::square(rc - rswitch));
+    b = ((p + 3) * rc - (p + 1) * rswitch) / (std::pow(rc, p + 2) * gmx::power3(rc - rswitch));
 
-    md3_pot = (p + 2) * (p + 1) * p * pow(rc, p + 3);
+    md3_pot = (p + 2) * (p + 1) * p * std::pow(rc, p + 3);
     md3_sw  = 2 * a + 6 * b * (rc - rswitch);
 
     return md3_pot + md3_sw;
@@ -978,7 +972,7 @@ static std::pair<pot_derivatives_t, pot_derivatives_t> getVdwDerivatives(const t
         // -dV/dr of g(br)*r^-6 [where g(x) = exp(-x^2)(1+x^2+x^4/2),
         // see LJ-PME equations in manual] and r^-reppow
         ljDisp.md1 = -std::exp(-br2) * (br6 + 3.0 * br4 + 6.0 * br2 + 6.0) * std::pow(r, -7.0);
-        ljRep.md1  = repPow * pow(r, -(repPow + 1));
+        ljRep.md1  = repPow * std::pow(r, -(repPow + 1));
         // The contribution of the higher derivatives is negligible
     }
     else
@@ -1119,18 +1113,29 @@ static real computeEffectiveAtomDensity(gmx::ArrayRef<const gmx::RVec> coordinat
     for (int d = 0; d < DIM; d++)
     {
         GMX_RELEASE_ASSERT(cutoff < box[d][d], "The cutoff should be smaller than the boxsize");
-        numCells[d]    = int(lround(box[d][d] / cutoff));
+        numCells[d]    = int(std::lround(box[d][d] / cutoff));
         invCellSize[d] = numCells[d] / box[d][d];
     }
 
     std::vector<int> atomCount(numCells[XX] * numCells[YY] * numCells[ZZ], 0);
 
-    for (const gmx::RVec& coord : coordinates)
+    // Create a new vector with all coordinates in the rectangular unit cell
+    std::vector<gmx::RVec> coordinatesInBox(coordinates.begin(), coordinates.end());
+    put_atoms_in_box(PbcType::Xyz, box, coordinatesInBox);
+
+    for (const gmx::RVec& coord : coordinatesInBox)
     {
         gmx::IVec indices;
         for (int d = 0; d < DIM; d++)
         {
-            indices[d] = (int(coord[d] * invCellSize[d]) + numCells[d]) % numCells[d];
+            indices[d] = static_cast<int>(coord[d] * invCellSize[d]);
+            // Acount for rounding errors in this assert; int cast goes towards zero
+            GMX_ASSERT(indices[d] >= 0 && indices[d] <= numCells[d],
+                       "Expect atoms to be in the box");
+            if (indices[d] == numCells[d])
+            {
+                indices[d] = numCells[d] - 1;
+            }
         }
         int index = (indices[XX] * numCells[YY] + indices[YY]) * numCells[ZZ] + indices[ZZ];
         atomCount[index]++;

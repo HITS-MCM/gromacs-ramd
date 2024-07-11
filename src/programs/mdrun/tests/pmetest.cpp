@@ -217,7 +217,7 @@ void PmeTest::SetUpTestSuite()
 
         std::string tprFileNameSuffix = formatString("%s.tpr", enumValueToString(pmeTestFlavor));
         std::replace(tprFileNameSuffix.begin(), tprFileNameSuffix.end(), ' ', '_');
-        runner.tprFileName_ = s_testFileManager->getTemporaryFilePath(tprFileNameSuffix).u8string();
+        runner.tprFileName_ = s_testFileManager->getTemporaryFilePath(tprFileNameSuffix).string();
         // Note that only one rank actually generates a tpr file
         runner.callGrompp();
         s_tprFileNames[pmeTestFlavor] = runner.tprFileName_;
@@ -289,7 +289,8 @@ MessageStringCollector PmeTest::getSkipMessagesIfNecessary(const CommandLine& co
         static constexpr bool sc_gpuBuildSyclWithoutGpuFft =
                 // NOLINTNEXTLINE(misc-redundant-expression)
                 (GMX_GPU_SYCL != 0) && (GMX_GPU_FFT_MKL == 0) && (GMX_GPU_FFT_ROCFFT == 0)
-                && (GMX_GPU_FFT_VKFFT == 0) && (GMX_GPU_FFT_BBFFT == 0); // NOLINT(misc-redundant-expression)
+                && (GMX_GPU_FFT_VKFFT == 0) && (GMX_GPU_FFT_BBFFT == 0)
+                && (GMX_GPU_FFT_ONEMKL == 0); // NOLINT(misc-redundant-expression)
         messages.appendIf(commandLineTargetsPmeFftOnGpu && sc_gpuBuildSyclWithoutGpuFft,
                           "it targets GPU execution of FFT work, which is not supported in the "
                           "current build");

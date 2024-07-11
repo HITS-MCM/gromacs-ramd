@@ -38,8 +38,6 @@
  *
  * \brief Declarations for DeviceContext class.
  *
- * Only needed for OpenCL builds. Other platforms will be given a stub class.
- *
  * \author Mark Abraham <mark.j.abraham@gmail.com>
  * \author Artem Zhmurov <zhmurov@gmail.com>
  *
@@ -49,8 +47,6 @@
 
 #include "config.h"
 
-#include <memory>
-
 #if GMX_GPU_OPENCL
 #    include "gromacs/gpu_utils/gmxopencl.h"
 #endif
@@ -58,7 +54,6 @@
 #    include "gromacs/gpu_utils/gmxsycl.h"
 #endif
 
-#include "gromacs/gpu_utils/gpu_utils.h"
 #include "gromacs/gpu_utils/pmalloc.h"
 #include "gromacs/hardware/device_management.h"
 #include "gromacs/utility/classhelpers.h"
@@ -69,7 +64,7 @@ struct DeviceInformation;
 class DeviceContext
 {
 public:
-    //! Constructor.
+    //! Constructs context and activates the device.
     DeviceContext(const DeviceInformation& deviceInfo);
     //! Destructor
     // NOLINTNEXTLINE(performance-trivially-destructible)
@@ -78,6 +73,7 @@ public:
     //! Get the associated device information
     const DeviceInformation& deviceInfo() const { return deviceInfo_; }
 
+    //! Activate the device
     void activate() const
     {
         setActiveDevice(deviceInfo_);

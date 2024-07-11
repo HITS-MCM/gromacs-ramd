@@ -76,7 +76,7 @@ endfunction()
 # GROMACS build configurations, and those expected for the current
 # CMake build type (e.g. Release) to TARGET. Other GROMACS CMake code
 # is expected to use either gmx_target_compile_options(name_of_target)
-# or gmx_cuda_target_compile_options(name_of_variable) because CUDA
+# or gmx_device_target_compile_options(name_of_variable) because CUDA
 # compilation has special requirements.
 #
 # Most targets (ie. libraries, executables) need compiler flags that
@@ -146,7 +146,9 @@ endfunction()
 # ${VARIABLE_NAME}, along with other such variables that are
 # specialized for the various build_types. Hopefully this will improve
 # when we use native CUDA language support in our CMake.
-function(gmx_cuda_target_compile_options VARIABLE_NAME)
+# This function is also used for wrapping the options passed to the HIP
+# compiler
+function(gmx_device_target_compile_options VARIABLE_NAME)
     if (GMX_SKIP_DEFAULT_CFLAGS)
         set (CXXFLAGS "")
     else()
@@ -226,6 +228,9 @@ function(gmx_target_interface_warning_suppression TARGET WARNING_FLAG VARNAME)
     check_cxx_compiler_flag(${WARNING_FLAG} ${VARNAME})
     if(${VARNAME})
         target_compile_options(${TARGET} INTERFACE $<$<COMPILE_LANGUAGE:CXX>:${WARNING_FLAG}>)
+        if (GMX_GPU_HIP)
+            target_compile_options(${TARGET} INTERFACE $<$<COMPILE_LANGUAGE:HIP>:${WARNING_FLAG}>)
+        endif()
     endif()
 endfunction()
 
@@ -236,7 +241,7 @@ macro (gmx_c_flags)
     include(CheckCXXCompilerFlag)
 
     # gcc
-    if(CMAKE_COMPILER_IS_GNUCC)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU")
         #flags are added in reverse order and -Wno* need to appear after -Wall
         if(NOT GMX_OPENMP)
             GMX_TEST_CFLAG(CFLAGS_PRAGMA "-Wno-unknown-pragmas" GMXC_CFLAGS)
@@ -259,7 +264,7 @@ macro (gmx_c_flags)
         GMX_TEST_CFLAG(CFLAGS_NOINLINE "-fno-inline" GMXC_CFLAGS_DEBUG)
     endif()
     # g++
-    if(CMAKE_COMPILER_IS_GNUCXX)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         if(NOT GMX_OPENMP)
             GMX_TEST_CXXFLAG(CXXFLAGS_PRAGMA "-Wno-unknown-pragmas" GMXC_CXXFLAGS)
         endif()
@@ -282,7 +287,13 @@ macro (gmx_c_flags)
                          GMXC_CXXFLAGS_RELEASE)
         GMX_TEST_CXXFLAG(CXXFLAGS_NOINLINE "-fno-inline" GMXC_CXXFLAGS_DEBUG)
     endif()
-
+    # NVHPC Compiler supported from version 24.1.
+    if (CMAKE_CXX_COMPILER_ID MATCHES "NVHPC")
+        GMX_TEST_CXXFLAG(CXXFLAGS_NVCXX_FAST "-fast" GMXC_CXXFLAGS)
+        GMX_TEST_CXXFLAG(CXXFLAGS_NVCXX_NOFLUSHZ "-Mnoflushz" GMXC_CXXFLAGS)
+        GMX_TEST_CXXFLAG(CXXFLAGS_NVCXX_NODAZ "-Mnodaz" GMXC_CXXFLAGS)
+        GMX_TEST_CFLAG(CFLAGS_NVC_FAST "-fast" GMXC_CFLAGS)
+    endif()
     # PGI
     # Inter-procedural analysis causes pgcc/pgc++ to crash when linking the library with PGI release 15.7.
     if (CMAKE_C_COMPILER_ID MATCHES "PGI")
@@ -357,6 +368,8 @@ macro (gmx_c_flags)
             GMX_TEST_CXXFLAG(CXXFLAGS_WARN "/wd4800;/wd4355;/wd4996;/wd4305;/wd4244;/wd4101;/wd4267;/wd4090;/wd4068;" GMXC_CXXFLAGS)
         endif()
         GMX_TEST_CXXFLAG(CXXFLAGS_LANG "/permissive-" GMXC_CXXFLAGS)
+        # Set source and execution character sets to UTF-8
+        GMX_TEST_CXXFLAG(CXXFLAGS_LANG "/utf-8" GMXC_CXXFLAGS)
     endif()
 
     if (CMAKE_C_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID MATCHES "IntelLLVM")
@@ -402,6 +415,16 @@ macro (gmx_c_flags)
         endif()
         GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_RESERVED_IDENTIFIER "-Wno-reserved-identifier" GMXC_CXXFLAGS) # LLVM BUG #50644
         GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_MISSING_FIELD_INITIALIZERS "-Wno-missing-field-initializers" GMXC_CXXFLAGS)
+        if(GMX_GPU)
+            string(TOUPPER "${GMX_GPU}" _gmx_gpu_uppercase)
+            if(${_gmx_gpu_uppercase} STREQUAL "CUDA")
+                # disable the missing prototypes warning as there are some tests which builds with nvcc and clang as host compiler
+                # still have this issue
+                GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_MISSING_PROTOTYPES "-Wno-missing-prototypes" GMXC_CXXFLAGS)
+                GMX_TEST_CXXFLAG(CXXFLAGS_WARN_NO_CONSTANT_LOGICAL_OPERAND "-Wno-constant-logical-operand" GMXC_CXXFLAGS)
+            endif()
+        endif()
+
         if (CMAKE_BUILD_TYPE MATCHES "Debug")
             GMX_TEST_CXXFLAG(CXXFLAGS_NO_DEBUG_DISABLES_OPTIMIZATION "-Wno-debug-disables-optimization" GMXC_CXXFLAGS)
         endif()

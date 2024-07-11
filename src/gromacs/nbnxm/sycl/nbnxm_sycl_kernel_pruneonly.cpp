@@ -64,19 +64,32 @@ namespace Nbnxm
  */
 template<bool haveFreshList>
 auto nbnxmKernelPruneOnly(sycl::handler& cgh,
+                          const int      numSci,
+                          const int      numParts,
                           const Float4* __restrict__ gm_xq,
                           const Float3* __restrict__ gm_shiftVec,
                           nbnxn_cj_packed_t* __restrict__ gm_plistCJPacked,
                           const nbnxn_sci_t* __restrict__ gm_plistSci,
                           unsigned int* __restrict__ gm_plistIMask,
+                          int* __restrict__ gm_rollingPruningPart,
+                          int* __restrict__ gm_sciHistogram,
+                          int* __restrict__ gm_sciCount,
                           const float rlistOuterSq,
-                          const float rlistInnerSq,
-                          const int   numParts,
-                          const int   part)
+                          const float rlistInnerSq)
 {
     /* shmem buffer for i x+q pre-loading */
     sycl::local_accessor<Float4, 1> sm_xq(
             sycl::range<1>(c_nbnxnGpuNumClusterPerSupercluster * c_clSize), cgh);
+    auto sm_prunedPairCount = [&]() {
+        if constexpr (haveFreshList && nbnxmSortListsOnGpu())
+        {
+            return sycl::local_accessor<int, 1>(sycl::range<1>(1), cgh);
+        }
+        else
+        {
+            return nullptr;
+        }
+    }();
 
     constexpr int warpSize = c_clSize * c_splitClSize;
 
@@ -99,10 +112,25 @@ auto nbnxmKernelPruneOnly(sycl::handler& cgh,
         const unsigned tidxj = itemIdx.get_local_id(1);
         const int      tidx  = tidxj * c_clSize + tidxi;
         const unsigned tidxz = itemIdx.get_local_id(0);
-        const unsigned bidx  = itemIdx.get_group(0);
+        const int      bidx  = itemIdx.get_group(0);
+
+        int part = gm_rollingPruningPart[bidx];
+        itemIdx.barrier(fence_space::global_and_local);
+        if (tidxi == 0 && tidxj == 0 && tidxz == 0)
+        {
+            gm_rollingPruningPart[bidx] = (part + 1) % numParts;
+        }
+
+        // Kernel has been launched with max number of blocks across all passes (plist.nsci/numParts),
+        // but the last pass will require 1 less block, so extra block should return early.
+        const int numSciInPart = (numSci - part) / numParts;
+        if (bidx >= numSciInPart)
+        {
+            return; // Since the whole block is exiting, it is fine w.r.t. group_barrier
+        }
 
         const sycl::sub_group sg   = itemIdx.get_sub_group();
-        const unsigned        widx = tidx / warpSize;
+        const int             widx = tidx / warpSize;
 
         // my i super-cluster's index = sciOffset + current bidx * numParts + part
         const nbnxn_sci_t nbSci          = gm_plistSci[bidx * numParts + part];
@@ -129,8 +157,18 @@ auto nbnxmKernelPruneOnly(sycl::handler& cgh,
                 sm_xq[(tidxj + i) * c_clSize + tidxi] = xi;
             }
         }
+        /* Initialise one int for reducing prunedPairCount over warps */
+        if constexpr (haveFreshList && nbnxmSortListsOnGpu())
+        {
+            if (tidx == 0 && tidxz == 0)
+            {
+                sm_prunedPairCount[0] = 0;
+            }
+        }
+
         itemIdx.barrier(fence_space::local_space);
 
+        int prunedPairCount = 0;
         /* loop over the j clusters = seen by any of the atoms in the current super-cluster.
          * The loop stride c_syclPruneKernelJPackedConcurrency ensures that consecutive warps-pairs
          * are assigned consecutive jPacked's entries. */
@@ -208,17 +246,44 @@ auto nbnxmKernelPruneOnly(sycl::handler& cgh,
                 {
                     /* copy the list pruned to rlistOuter to a separate buffer */
                     gm_plistIMask[jPacked * c_nbnxnGpuClusterpairSplit + widx] = imaskFull;
+                    if constexpr (nbnxmSortListsOnGpu())
+                    {
+                        /* add to neighbour count, to be used in bucket sci sort */
+                        prunedPairCount += sycl::popcount(imaskNew);
+                    }
                 }
                 /* update the imask with only the pairs up to rlistInner */
                 gm_plistCJPacked[jPacked].imei[widx].imask = imaskNew;
             } // (imaskCheck)
         } // for (int jPacked = cijPackedBegin + tidxz; jPacked < cijPackedEnd; jPacked += c_syclPruneKernelJPackedConcurrency)
+
+
+        /* aggregate neighbour counts, to be used in bucket sci sort */
+        if constexpr (haveFreshList && nbnxmSortListsOnGpu())
+        {
+            /* One thread in each warp contributes the count for that warp as soon as it reaches
+             * here. Masks are calculated per warp in a warp synchronising operation, so no
+             * syncthreads required here. */
+            if (sg.leader())
+            {
+                atomicFetchAddLocal(sm_prunedPairCount[0], prunedPairCount);
+            }
+            itemIdx.barrier(fence_space::local_space);
+            prunedPairCount = sm_prunedPairCount[0];
+            if (tidxi == 0 && tidxj == 0 && tidxz == 0)
+            {
+                /* one thread in the block writes the final count for this sci */
+                int index = sycl::max(c_sciHistogramSize - prunedPairCount - 1, 0);
+                atomicFetchAdd(gm_sciHistogram[index], 1);
+                gm_sciCount[bidx * numParts + part] = index;
+            }
+        }
     };
 }
 
 //! \brief Leap Frog SYCL prune-only kernel launch code.
 template<bool haveFreshList, class... Args>
-void launchNbnxmKernelPruneOnly(const DeviceStream& deviceStream, const int numSciInPart, Args&&... args)
+void launchNbnxmKernelPruneOnly(const DeviceStream& deviceStream, const int numSciInPartMax, Args&&... args)
 {
     using kernelNameType = NbnxmKernelPruneOnly<haveFreshList>;
 
@@ -227,7 +292,7 @@ void launchNbnxmKernelPruneOnly(const DeviceStream& deviceStream, const int numS
      *   and j-cluster concurrency, in x, y, and z, respectively.
      * - The 1D block-grid contains as many blocks as super-clusters.
      */
-    const unsigned long     numBlocks = numSciInPart;
+    const unsigned long     numBlocks = numSciInPartMax;
     const sycl::range<3>    blockSize{ c_syclPruneKernelJPackedConcurrency, c_clSize, c_clSize };
     const sycl::range<3>    globalSize{ numBlocks * blockSize[0], blockSize[1], blockSize[2] };
     const sycl::nd_range<3> range{ globalSize, blockSize };
@@ -251,30 +316,31 @@ void chooseAndLaunchNbnxmKernelPruneOnly(bool haveFreshList, Args&&... args)
             haveFreshList);
 }
 
-void launchNbnxmKernelPruneOnly(NbnxmGpu*                 nb,
-                                const InteractionLocality iloc,
-                                const int                 numParts,
-                                const int                 part,
-                                const int                 numSciInPart)
+void launchNbnxmKernelPruneOnly(NbnxmGpu* nb, const InteractionLocality iloc, const int numParts, const int numSciInPartMax)
 {
     NBAtomDataGpu*      adat          = nb->atdat;
     NBParamGpu*         nbp           = nb->nbparam;
-    gpu_plist*          plist         = nb->plist[iloc];
+    auto*               plist         = nb->plist[iloc].get();
     const bool          haveFreshList = plist->haveFreshList;
     const DeviceStream& deviceStream  = *nb->deviceStreams[iloc];
 
     chooseAndLaunchNbnxmKernelPruneOnly(haveFreshList,
                                         deviceStream,
-                                        numSciInPart,
+                                        numSciInPartMax,
+                                        plist->numSci,
+                                        numParts,
                                         adat->xq.get_pointer(),
                                         adat->shiftVec.get_pointer(),
                                         plist->cjPacked.get_pointer(),
-                                        plist->sci.get_pointer(),
+                                        (haveFreshList || !nbnxmSortListsOnGpu())
+                                                ? plist->sci.get_pointer()
+                                                : plist->sorting.sciSorted.get_pointer(),
                                         plist->imask.get_pointer(),
+                                        plist->d_rollingPruningPart.get_pointer(),
+                                        plist->sorting.sciHistogram.get_pointer(),
+                                        plist->sorting.sciCount.get_pointer(),
                                         nbp->rlistOuter_sq,
-                                        nbp->rlistInner_sq,
-                                        numParts,
-                                        part);
+                                        nbp->rlistInner_sq);
 }
 
 } // namespace Nbnxm

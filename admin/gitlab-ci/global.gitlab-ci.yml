@@ -3,22 +3,8 @@
 # definitions in other files because this file is first in the *include* list
 # in the root `.gitlab-ci.yml` file.
 
-# Centralized definitions of common job parameter values.
 # Parameters with many optional configurations may be in separate files.
 # Refer to the Infrastructure section of the GROMACS Developer Guide.
-
-.variables:default:
-  variables:
-    KUBERNETES_CPU_LIMIT: 8
-    KUBERNETES_CPU_REQUEST: 4
-    KUBERNETES_MEMORY_REQUEST: 4Gi
-    KUBERNETES_MEMORY_LIMIT: 8Gi
-    KUBERNETES_EXTENDED_RESOURCE_NAME: ""
-    KUBERNETES_EXTENDED_RESOURCE_LIMIT: 0
-    CACHE_FALLBACK_KEY: "$CI_JOB_NAME-$CI_JOB_STAGE-release-2024"
-    BUILD_DIR: build
-    INSTALL_DIR: install
-    CMAKE_GMXAPI_OPTIONS: ""
 
 # Our generic before_script to install dependencies and prepare the ccache directory.
 .before_script:default:
@@ -42,6 +28,11 @@
   variables:
     CMAKE_PRECISION_OPTIONS: "-DGMX_DOUBLE=OFF"
     CMAKE_GPU_OPTIONS: -DGMX_GPU=CUDA
+
+.use-hip:
+  variables:
+    CMAKE_PRECISION_OPTIONS: "-DGMX_DOUBLE=OFF"
+    CMAKE_GPU_OPTIONS: -DGMX_GPU=HIP -DCMAKE_PREFIX_PATH=/opt/rocm -DCMAKE_HIP_COMPILER=/opt/rocm/bin/amdclang++
 
 .use-mpi:
   variables:
@@ -109,7 +100,7 @@
   variables:
     # We need to add -isystem directories manually for OpenMP to work.
     # With CMake 3.26+, OpenMP_*_INCLUDE_DIR could be used instead of CMAKE_*_FLAGS
-    CMAKE_COMPILER_SCRIPT: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_FLAGS=-isystem/opt/intel/oneapi/compiler/latest/linux/compiler/include/ -DCMAKE_CXX_FLAGS=-isystem/opt/intel/oneapi/compiler/latest/linux/compiler/include/
+    CMAKE_COMPILER_SCRIPT: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_FLAGS=-isystem/opt/intel/oneapi/compiler/latest/opt/compiler/include/ -DCMAKE_CXX_FLAGS=-isystem/opt/intel/oneapi/compiler/latest/opt/compiler/include/
   before_script:
     # Necessary to override gitlab default 'set -e' which breaks Intel's setvar.sh script
     - set +e

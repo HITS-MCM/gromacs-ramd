@@ -81,7 +81,7 @@ static bool is_bond(int nnm, t_nm2type nmt[], char* ai, char* aj, real blen)
                   && (gmx::equalCaseInsensitive(aj, nmt[i].bond[j], 1)))
                  || ((gmx::equalCaseInsensitive(ai, nmt[i].bond[j], 1))
                      && (gmx::equalCaseInsensitive(aj, nmt[i].elem, 1))))
-                && (fabs(blen - nmt[i].blen[j]) <= 0.1 * nmt[i].blen[j]))
+                && (std::fabs(blen - nmt[i].blen[j]) <= 0.1 * nmt[i].blen[j]))
             {
                 return TRUE;
             }
@@ -502,15 +502,14 @@ int gmx_x2top(int argc, char* argv[])
     {
         gmx_fatal(FARGS,
                   "No or incorrect atomname2type.n2t file found (looking for %s)",
-                  ffdir.u8string().c_str());
+                  ffdir.string().c_str());
     }
     else
     {
         GMX_LOG(logger.info)
                 .asParagraph()
-                .appendTextFormatted("There are %d name to type translations in file %s",
-                                     nnm,
-                                     ffdir.u8string().c_str());
+                .appendTextFormatted(
+                        "There are %d name to type translations in file %s", nnm, ffdir.string().c_str());
     }
     if (debug)
     {
