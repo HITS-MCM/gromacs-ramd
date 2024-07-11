@@ -82,16 +82,6 @@ Please use following mdp options:
 
    Ligand for the first RAMD group. Default name is 'INH'.
 
- * ramd-group1-receptor-res
-
-   Binding residues of the receptor for the residence time calculation. Default name is 'bind_res_receptor'.
-   Only supported for a single RAMD group.
-
- * ramd-group1-ligand-res
-
-   Binding residues of the ligand for the residence time calculation. Default name is 'bind_res_ligand'.
-   Only supported for a single RAMD group.
-
  * ramd-group1-receptor-pbcatom
 
    The value will be forwarded to the associated pull group of the receptor.
