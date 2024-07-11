@@ -70,7 +70,8 @@ RAMD::RAMD(const RAMDParams&           params,
     cr(cr),
     ligand_exited(params.ngroup, 0),
     write_trajectory(false),
-    log(log)
+    log(log),
+    residence_dist_reached(false)
 {
     for (int g = 0; g < params.ngroup; ++g)
     {
@@ -220,7 +221,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
 
     if (step % params.eval_freq == 0)
     {
-        if (params.use_residence_dist)
+        if (params.use_residence_dist and !residence_dist_reached)
         {
             // Extra groups for residence time computation
             int nb_residence_contacts = (std::size(pull->group) - 2 * params.ngroup - 1) / 2;
@@ -244,6 +245,7 @@ void RAMD::calculateForces(const ForceProviderInput& forceProviderInput,
             if (MAIN(cr)) {
                 if (std::accumulate(std::begin(residence_dist), std::end(residence_dist), 0.0) / nb_residence_contacts > params.residence_dist) {
                     fprintf(this->log, "==== RAMD ==== Residence time obtained after %ld steps.\n", step);
+                    residence_dist_reached = true;
                 }
             }
         }
