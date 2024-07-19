@@ -514,6 +514,14 @@ void gmx::LegacySimulator::do_md()
     {
         EnergyData::initializeEnergyHistory(startingBehavior_, observablesHistory_, &energyOutput);
     }
+    
+    /* RAMD */
+    std::unique_ptr<RAMD> ramd = nullptr;
+    if (ir->bRAMD)
+    {
+        ramd = std::make_unique<RAMD>(*ir->ramdParams, pullWork_, startingBehavior_, cr_, nFile_, fnm_, oenv_, fpLog_);
+        fr_->forceProviders->addForceProvider(ramd.get());
+    }
 
     preparePrevStepPullCom(
             ir, pullWork_, md->massT, state_, stateGlobal_, cr_, startingBehavior_ != StartingBehavior::NewSimulation);
@@ -625,14 +633,6 @@ void gmx::LegacySimulator::do_md()
 
     int64_t step     = ir->init_step;
     int64_t step_rel = 0;
-
-    /* RAMD */
-    std::unique_ptr<RAMD> ramd = nullptr;
-    if (ir->bRAMD)
-    {
-        ramd = std::make_unique<RAMD>(*ir->ramdParams, pullWork_, startingBehavior_, cr_, nFile_, fnm_, oenv_, fpLog_);
-        fr_->forceProviders->addForceProvider(ramd.get());
-    }
 
     /* To minimize communication, compute_globals computes the COM velocity
      * and the kinetic energy for the velocities without COM motion removed.

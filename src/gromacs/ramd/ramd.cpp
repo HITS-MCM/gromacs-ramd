@@ -83,8 +83,20 @@ RAMD::RAMD(const RAMDParams&           params,
 
     for (int g = 2 * params.ngroup + 1; g < pull->params.ngroup; ++g)
     {
-        if (!pull->group[g].params_.ind.empty()){
+        if (!pull->group[g].params_.ind.empty())
+        {
            pull->group[g].needToCalcCom = true;
+        }
+    }
+
+    if (params.use_residence_dist)
+    {
+        for (size_t g = 2 * params.ngroup + 1; g < std::size(pull->group); ++g)
+        {
+            if (!pull->group[g].params_.ind.empty())
+            {
+                pull->group[g].needToCalcCom = true;
+            }
         }
     }
 
