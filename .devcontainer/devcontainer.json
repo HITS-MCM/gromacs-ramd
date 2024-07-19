@@ -4,8 +4,10 @@
 		"dockerfile": "Dockerfile"
 	},
     "runArgs": [
-        "--cap-add=SYS_PTRACE",
-        "--security-opt", "seccomp=unconfined"
+		"--gpus=all",
+		"--cap-add=SYS_PTRACE",
+		"--security-opt",
+		"seccomp=unconfined"
     ],
 
     // Add the IDs of extensions you want installed when the container is created.
@@ -31,7 +33,7 @@
     "remoteUser": "vscode",
 
     // Mount external data volume for debugging purposes
-    // "mounts": [
-    //     "source=/hits/fast/its/doserbd/data/gromacs-ramd,target=/data,type=bind,consistency=cached"
-    // ]
+    "mounts": [
+        "source=/home/doserbd/data/gromacs-ramd,target=/data,type=bind,consistency=cached"
+    ]
 }
