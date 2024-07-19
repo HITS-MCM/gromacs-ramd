@@ -1,6 +1,7 @@
 {
     "cmake.configureSettings": {
-        "GMX_BUILD_OWN_FFTW": "ON"
+        "GMX_BUILD_OWN_FFTW": "ON",
+        "GMX_GPU": "CUDA"
     },
     "cmake.generator": "Unix Makefiles",
     "clang-format.executable": "/usr/bin/clang-format-7",
@@ -97,5 +98,4 @@
     "editor.codeActionsOnSave": {
         "source.organizeImports": "explicit"
     },
-    "sarif-viewer.connectToGithubCodeScanning": "off",
 }
