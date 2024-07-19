@@ -1518,18 +1518,23 @@ static void do_inputrec(gmx::ISerializer* serializer, t_inputrec* ir, int file_v
                 serializer->doInt(&ir->ramdParams->ngroup);
                 if (serializer->reading())
                 {
-                    snew(ir->ramdParams->group, ir->ramdParams->ngroup);
+                    ir->ramdParams->group.resize(ir->ramdParams->ngroup);
                 }
                 for (int g = 0; g < ir->ramdParams->ngroup; g++)
                 {
                     serializer->doReal(&ir->ramdParams->group[g].force);
                     serializer->doReal(&ir->ramdParams->group[g].max_dist);
                     serializer->doReal(&ir->ramdParams->group[g].r_min_dist);
+                    serializer->doString(&ir->ramdParams->group[g].bind_res_receptor);
+                    serializer->doString(&ir->ramdParams->group[g].bind_res_ligand);
+
                 }
                 serializer->doInt(&ir->ramdParams->eval_freq);
                 serializer->doInt(&ir->ramdParams->force_out_freq);
                 serializer->doBool(&ir->ramdParams->old_angle_dist);
                 serializer->doBool(&ir->ramdParams->connected_ligands);
+                serializer->doBool(&ir->ramdParams->use_residence_dist);
+                serializer->doReal(&ir->ramdParams->residence_dist);
             }
         }
     }

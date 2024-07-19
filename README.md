@@ -60,7 +60,7 @@ Please use following mdp options:
 
    This parameter affect absolute dissociation time but have less
    effect on the relative dissociation times of different compounds. It is
-   recommended to use default value.
+   recommended to use default value. Default value is 0.0025 nm.
 
  * ramd-group1-max-dist
 
@@ -72,7 +72,7 @@ Please use following mdp options:
    upper limit of this parameter since motion of the free ligand due to the
    external force is very fast (i.e. the last part of the trajectory, where the
    ligand does not interact with the protein, usually has a negligible contribution
-   to the observed dissociation time).
+   to the observed dissociation time). Default value is 4 nm.
 
  * ramd-group1-receptor
 
@@ -105,3 +105,13 @@ Please use following mdp options:
    Each ligand is subject to a RAMD force until the individual ligand has left the
    dissociation radius. The simulation stops when all ligands have left the
    dissociation radius. Default value is 'yes'.
+
+ * ramd-use-residence-dist
+
+   If 'yes', the residence time will be printed to the log file.
+   Default value is 'no'.
+
+ * ramd-residence-dist
+
+   Residence distance in nm. If the ligand is within this distance from the receptor, it is considered to be bound.
+   Default value is 0.55 nm.

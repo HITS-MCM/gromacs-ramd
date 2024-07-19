@@ -121,6 +121,10 @@ private:
     /// Logfile
     FILE* log;
 
+    /// True if residence distance was reached, to print notification only once
+    /// and to avoid unneeded calculations
+    gmx_bool residence_dist_reached;
+
 };
 
 } // namespace gmx

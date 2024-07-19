@@ -640,6 +640,8 @@ static void pr_ramd_group(FILE* fp, int indent, int g, const gmx::RAMDGroup grp)
     PR("force", grp.force);
     PR("max_dist", grp.max_dist);
     PR("r_min_dist", grp.r_min_dist);
+    PS("bind_res_receptor", grp.bind_res_receptor.c_str());
+    PS("bind_res_ligand", grp.bind_res_ligand.c_str());
 }
 
 static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams ramd)
@@ -654,6 +656,8 @@ static void pr_ramd(FILE* fp, int indent, const gmx::RAMDParams ramd)
     PI("ramd-force-out-freq", ramd.force_out_freq);
     PS("ramd-old-angle-dist", EBOOL(ramd.old_angle_dist));
     PS("ramd-connected-ligands", EBOOL(ramd.connected_ligands));
+    PS("ramd-use-residence-dist", EBOOL(ramd.use_residence_dist));
+    PR("ramd-residence-dist", ramd.residence_dist);
 }
 
 static void pr_awh_bias_dim(FILE* fp, int indent, const gmx::AwhDimParams& awhDimParams, const char* prefix)

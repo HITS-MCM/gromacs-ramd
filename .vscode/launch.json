@@ -217,6 +217,30 @@
             ]
         },
         {
+            "name": "(gdb) 4water grompp ramd",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/gmx",
+            "args": ["grompp",
+                     "-f", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.mdp",
+                     "-c", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.gro",
+                     "-p", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water.top",
+                     "-n", "${workspaceFolder}/src/gromacs/ramd/tests/data/4water/4water2.ndx",
+                     "-o", "topol.tpr"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/tests",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
             "name": "(gdb) mdrun",
             "type": "cppdbg",
             "request": "launch",
@@ -377,7 +401,8 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/ramd-test",
-            "args": [],
+            // "args": ["--gtest_filter=RAMDTest.CalculateForces1WDHI"],
+            // "args": ["--gtest_filter=RAMDTest.binding_residues"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/tests",
             "environment": [],
