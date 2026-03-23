@@ -108,9 +108,6 @@ private:
     //! Reference to local atom sets
     const std::vector<std::unique_ptr<LocalAtomSet>>& localAtoms_;
 
-    //! Reference to topology
-    const gmx_mtop_t& topology_;
-
     const PbcType       pbcType_;
     const MDLogger&     logger_;
     RAMDOutputProvider& ramdOutputProvider_;

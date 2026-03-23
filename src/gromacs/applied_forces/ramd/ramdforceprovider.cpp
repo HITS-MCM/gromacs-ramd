@@ -56,7 +56,6 @@ RAMDForceProvider::RAMDForceProvider(const RAMDParameters&                      
                                      RAMDOutputProvider& ramdOutputProvider) :
     parameters_(parameters),
     localAtoms_(localAtoms),
-    topology_(topology),
     pbcType_(pbcType),
     logger_(logger),
     ramdOutputProvider_(ramdOutputProvider),

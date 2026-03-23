@@ -278,14 +278,14 @@ void RAMDOptions::readConfigString()
                     continue;
                 if (line.find_first_of("#;") != std::string::npos)
                     continue;
-                std::istringstream lineStream(line);
-                lineStream >> key;
+                std::istringstream lineStream2(line);
+                lineStream2 >> key;
                 if (key == "}")
                 {
                     parameters_.groups_.push_back(newGroup);
                     break;
                 }
-                lineStream >> value;
+                lineStream2 >> value;
                 if (key == "receptor")
                 {
                     newGroup.receptor_ = value;
