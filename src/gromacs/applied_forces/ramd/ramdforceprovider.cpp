@@ -68,6 +68,11 @@ RAMDForceProvider::RAMDForceProvider(const RAMDParameters&                      
     write_trajectory_(false),
     mTopLookUp_(topology)
 {
+    total_ligand_mass_.reserve(parameters_.groups_.size());
+    for (const auto& group : parameters_.groups_)
+    {
+        total_ligand_mass_.push_back(calc_total_mass(group.ligand_indices_));
+    }
 }
 
 RAMDForceProvider::~RAMDForceProvider() {}
@@ -186,17 +191,24 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
         }
     }
 
-    // Apply forces to ligand atoms
+    // Apply forces to ligand atoms, distributed by mass fraction so that the total
+    // force on the ligand's center of mass equals parameters_.groups_[g].force_
     for (size_t g = 0; g < parameters_.groups_.size(); ++g)
     {
+        if (total_ligand_mass_[g] <= 0.0)
+        {
+            continue;
+        }
         for (size_t i = 0; i < localAtoms_[g]->numAtomsLocal(); ++i)
         {
+            const real mass = mTopLookUp_.getAtomParameters(localAtoms_[g]->globalIndex()[i]).m;
+            const real forceFraction = mass / total_ligand_mass_[g] * parameters_.groups_[g].force_;
             fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][XX] +=
-                    direction_[g][XX] * parameters_.groups_[g].force_;
+                    direction_[g][XX] * forceFraction;
             fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][YY] +=
-                    direction_[g][YY] * parameters_.groups_[g].force_;
+                    direction_[g][YY] * forceFraction;
             fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][ZZ] +=
-                    direction_[g][ZZ] * parameters_.groups_[g].force_;
+                    direction_[g][ZZ] * forceFraction;
         }
     }
 }

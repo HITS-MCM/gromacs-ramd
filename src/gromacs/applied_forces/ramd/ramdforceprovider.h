@@ -112,6 +112,17 @@ private:
         return com;
     }
 
+    //! Sum of atomic masses of the given (global) atom indices
+    real calc_total_mass(const std::vector<Index>& indices)
+    {
+        real total_mass = 0.0;
+        for (auto idx : indices)
+        {
+            total_mass += mTopLookUp_.getAtomParameters(idx).m;
+        }
+        return total_mass;
+    }
+
     //! The parameters for RAMD
     const RAMDParameters& parameters_;
 
@@ -139,6 +150,9 @@ private:
 
     //! Has the ligand left his binding site?
     std::vector<int> ligand_exited_;
+
+    //! Total mass of the ligand atoms per group, used to distribute the RAMD force by mass fraction
+    std::vector<real> total_ligand_mass_;
 
     //! Control trajectory output
     gmx_bool write_trajectory_;
