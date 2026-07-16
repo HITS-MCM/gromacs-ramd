@@ -93,9 +93,9 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
 {
     const std::string ramdValues = formatString(
             "ramd-active                = yes\n"
-            "ramd-seed                  = 42\n"
+            "ramd-seed                  = 1234\n"
             "ramd-eval-freq             = 10\n"
-            "ramd-out-freq              = 100\n"
+            "ramd-out-freq              = 10\n"
             "ramd-groups-file           = %s\n"
             "ramd-pbc-ref-prev-step-com = yes\n"
             "ramd-connected-ligands     = yes\n",
@@ -121,7 +121,7 @@ TEST_F(RAMDTest, RAMD_connected_ligands)
             number_of_steps = stoi(gmx::splitString(line)[8]);
         }
     }
-    EXPECT_EQ(number_of_steps, 420);
+    EXPECT_EQ(number_of_steps, 910);
 
     TextReader reader_ramd(fileManager_.getTemporaryFilePath("state.xvg"));
     // std::cout << reader_ramd.readAll();
