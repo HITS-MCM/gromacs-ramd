@@ -90,14 +90,15 @@ private:
     //! of the group (by position), a value > 0 is a 1-based global atom number.
     DVec calc_com(ArrayRef<const RVec> x, const std::vector<Index>& indices, const t_pbc& pbc, int pbcatom = 0)
     {
-        DVec com        = DVec(0.0, 0.0, 0.0);
-        real total_mass = 0.0;
-        const Index refIndex = pbcatom > 0 ? static_cast<Index>(pbcatom - 1) : indices[indices.size() / 2];
-        const RVec& x_ref    = x[refIndex];
+        DVec        com        = DVec(0.0, 0.0, 0.0);
+        real        total_mass = 0.0;
+        const Index refIndex =
+                pbcatom > 0 ? static_cast<Index>(pbcatom - 1) : indices[indices.size() / 2];
+        const RVec& x_ref = x[refIndex];
         for (auto idx : indices)
         {
             const real mass = mTopLookUp_.getAtomParameters(idx).m;
-            rvec dx;
+            rvec       dx;
             pbc_dx(&pbc, x[idx], x_ref, dx);
             for (int j = 0; j < DIM; ++j)
             {
