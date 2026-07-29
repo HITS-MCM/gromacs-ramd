@@ -67,6 +67,11 @@ RAMDForceProvider::RAMDForceProvider(const RAMDParameters&                      
     write_trajectory_(false),
     mTopLookUp_(topology)
 {
+    total_ligand_mass_.reserve(parameters_.groups_.size());
+    for (const auto& group : parameters_.groups_)
+    {
+        total_ligand_mass_.push_back(calc_total_mass(group.ligand_indices_));
+    }
 }
 
 RAMDForceProvider::~RAMDForceProvider() {}
@@ -81,7 +86,7 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
     {
         if (fInput.step_ == 0)
         {
-            GMX_LOG(logger_.warning).appendText("==== RAMD ==== Initial COM calculation");
+            GMX_LOG(logger_.info).appendText("==== RAMD ==== Initial COM calculation");
         }
         if (fInput.step_ % parameters_.eval_freq_ == 0)
         {
@@ -92,28 +97,30 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
     // Evaluate RAMD every eval_freq steps
     if (fInput.step_ % parameters_.eval_freq_ == 0)
     {
-        GMX_LOG(logger_.warning).appendText("==== RAMD ==== evaluation ").appendText(std::to_string(fInput.step_));
+        GMX_LOG(logger_.info).appendText("==== RAMD ==== evaluation ").appendText(std::to_string(fInput.step_));
         for (int g = 0; g < parameters_.ngroups_; ++g)
         {
             std::string logPrefix = "==== RAMD group " + std::to_string(g) + " ====";
-            DVec com_rec_curr     = calc_com(fInput.x_, parameters_.groups_[g].receptor_indices_);
-            DVec com_lig_curr     = calc_com(fInput.x_, parameters_.groups_[g].ligand_indices_);
+            DVec com_rec_curr     = calc_com(fInput.x_, parameters_.groups_[g].receptor_indices_, pbc,
+                                             parameters_.groups_[g].receptor_pbcatom_);
+            DVec com_lig_curr     = calc_com(fInput.x_, parameters_.groups_[g].ligand_indices_, pbc,
+                                             parameters_.groups_[g].ligand_pbcatom_);
             DVec curr_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
             real curr_dist = std::sqrt(curr_dist_vect.norm2());
             ramdOutputProvider_.addDistance(curr_dist);
 
-            GMX_LOG(logger_.info)
-                    .appendText(logPrefix + "Current COM ligand position at ["
-                                + std::to_string(com_lig_curr[0]) + ", " + std::to_string(com_lig_curr[1])
-                                + ", " + std::to_string(com_lig_curr[2]) + "]");
-            GMX_LOG(logger_.info)
-                    .appendText(logPrefix + "Current COM receptor position at ["
-                                + std::to_string(com_rec_curr[0]) + ", " + std::to_string(com_rec_curr[1])
-                                + ", " + std::to_string(com_rec_curr[2]) + "]");
-            GMX_LOG(logger_.info)
-                    .appendText(logPrefix + "Distance between COM of receptor and COM of ligand is "
-                                + std::to_string(curr_dist) + "\n");
+            GMX_LOG(logger_.debug)
+                        .appendText(logPrefix + "Current COM ligand position at ["
+                                    + std::to_string(com_lig_curr[0]) + ", " + std::to_string(com_lig_curr[1])
+                                    + ", " + std::to_string(com_lig_curr[2]) + "]");
+            GMX_LOG(logger_.debug)
+                        .appendText(logPrefix + "Current COM receptor position at ["
+                                    + std::to_string(com_rec_curr[0]) + ", " + std::to_string(com_rec_curr[1])
+                                    + ", " + std::to_string(com_rec_curr[2]) + "]");
+            GMX_LOG(logger_.debug)
+                        .appendText(logPrefix + "Distance between COM of receptor and COM of ligand is "
+                                    + std::to_string(curr_dist) + "\n");
 
             if (curr_dist >= parameters_.groups_[g].max_dist_)
             {
@@ -140,24 +147,24 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
                 pbc_dx_d(&pbc, com_lig_curr - com_rec_curr, com_lig_prev_[g] - com_rec_prev_[g], walk_dist_vect);
                 walk_dist = std::sqrt(walk_dist_vect.norm2());
 
-                GMX_LOG(logger_.info)
+                GMX_LOG(logger_.debug)
                         .appendText(logPrefix + "Previous COM ligand position at ["
                                     + std::to_string(com_lig_prev_[g][0]) + ", "
                                     + std::to_string(com_lig_prev_[g][1]) + ", "
                                     + std::to_string(com_lig_prev_[g][2]) + "]");
-                GMX_LOG(logger_.info)
+                GMX_LOG(logger_.debug)
                         .appendText(logPrefix + "Previous COM receptor position at ["
                                     + std::to_string(com_rec_prev_[g][0]) + ", "
                                     + std::to_string(com_rec_prev_[g][1]) + ", "
                                     + std::to_string(com_rec_prev_[g][2]) + "]");
-                GMX_LOG(logger_.info).appendText(logPrefix + "Change in receptor-ligand"
+                GMX_LOG(logger_.debug).appendText(logPrefix + "Change in receptor-ligand"
                     " distance since last RAMD evaluation is " + std::to_string(walk_dist) + "\n");
             }
 
             if (walk_dist < parameters_.groups_[0].r_min_dist_)
             {
                 direction_[g] = random_spherical_direction_generator();
-                GMX_LOG(logger_.warning)
+                GMX_LOG(logger_.debug)
                         .appendText("==== RAMD ==== New random direction is ["
                                     + std::to_string(direction_[g][0]) + ", "
                                     + std::to_string(direction_[g][1]) + ", "
@@ -183,17 +190,24 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
         }
     }
 
-    // Apply forces to ligand atoms
+    // Apply forces to ligand atoms, distributed by mass fraction so that the total
+    // force on the ligand's center of mass equals parameters_.groups_[g].force_
     for (size_t g = 0; g < parameters_.groups_.size(); ++g)
     {
+        if (total_ligand_mass_[g] <= 0.0)
+        {
+            continue;
+        }
         for (size_t i = 0; i < localAtoms_[g]->numAtomsLocal(); ++i)
         {
+            const real mass = mTopLookUp_.getAtomParameters(localAtoms_[g]->globalIndex()[i]).m;
+            const real forceFraction = mass / total_ligand_mass_[g] * parameters_.groups_[g].force_;
             fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][XX] +=
-                    direction_[g][XX] * parameters_.groups_[g].force_;
+                    direction_[g][XX] * forceFraction;
             fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][YY] +=
-                    direction_[g][YY] * parameters_.groups_[g].force_;
+                    direction_[g][YY] * forceFraction;
             fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][ZZ] +=
-                    direction_[g][ZZ] * parameters_.groups_[g].force_;
+                    direction_[g][ZZ] * forceFraction;
         }
     }
 }

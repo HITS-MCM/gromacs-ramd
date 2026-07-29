@@ -42,6 +42,8 @@
 
 #include "ramdoptions.h"
 
+#include <sstream>
+
 #include "gromacs/applied_forces/ramd/ramd.h"
 #include "gromacs/math/densityfit.h"
 #include "gromacs/mdrunutility/mdmodulesnotifiers.h"
