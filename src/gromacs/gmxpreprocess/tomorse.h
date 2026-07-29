@@ -35,15 +35,16 @@
 #ifndef GMX_GMXPREPROCESS_TOMORSE_H
 #define GMX_GMXPREPROCESS_TOMORSE_H
 
-class PreprocessingAtomTypes;
-struct MoleculeInformation;
-
 namespace gmx
 {
+
+struct MoleculeInformation;
 template<typename>
 class ArrayRef;
-}
+class PreprocessingAtomTypes;
 
-void convert_harmonics(gmx::ArrayRef<MoleculeInformation> mols, PreprocessingAtomTypes* atype);
+void convert_harmonics(ArrayRef<MoleculeInformation> mols, PreprocessingAtomTypes* atype);
+
+} // namespace gmx
 
 #endif

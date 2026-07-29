@@ -41,14 +41,17 @@
 
 struct t_atoms;
 struct t_symtab;
-struct MoleculePatchDatabase;
-struct PreprocessResidue;
 
 namespace gmx
 {
 template<typename>
 class ArrayRef;
-}
+struct MoleculePatchDatabase;
+struct PreprocessResidue;
+} // namespace gmx
+
+namespace gmx
+{
 
 /*! \brief
  * Generate hydrogen atoms and N and C terminal patches.
@@ -81,4 +84,7 @@ int add_h(t_atoms**                                   initialAtoms,
           gmx::ArrayRef<const int>                    rC,
           bool                                        bMissing,
           gmx::ArrayRef<const int>                    cyclicBondsIndex);
+
+} // namespace gmx
+
 #endif

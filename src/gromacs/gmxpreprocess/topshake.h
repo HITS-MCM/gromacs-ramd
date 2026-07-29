@@ -39,18 +39,19 @@
 #include "gromacs/utility/enumerationhelpers.h"
 
 struct t_atoms;
-struct InteractionsOfType;
 
 namespace gmx
 {
+struct InteractionsOfType;
 template<typename>
 class ArrayRef;
 class MDLogger;
-} // namespace gmx
 
-void make_shake(gmx::EnumerationArray<InteractionFunction, InteractionsOfType>& plist,
-                t_atoms*                                                        atoms,
-                int                                                             nshake,
-                const gmx::MDLogger&                                            logger);
+void make_shake(EnumerationArray<InteractionFunction, InteractionsOfType>& plist,
+                t_atoms*                                                   atoms,
+                int                                                        nshake,
+                const MDLogger&                                            logger);
+
+} // namespace gmx
 
 #endif
