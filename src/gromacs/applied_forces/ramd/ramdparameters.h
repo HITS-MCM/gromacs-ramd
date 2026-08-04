@@ -105,9 +105,6 @@ struct RAMDParameters
     //! Use previous step COM as PBC reference
     bool pbc_ref_prev_step_com_ = false;
 
-    //! Use old angle distribution
-    bool old_angle_dist_ = false;
-
     //! Behavior of re-entering ligands into the dissociation radius
     bool connected_ligands_ = false;
 };

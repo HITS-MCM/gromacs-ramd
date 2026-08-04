@@ -60,7 +60,7 @@ RAMDForceProvider::RAMDForceProvider(const RAMDParameters&                      
     pbcType_(pbcType),
     logger_(logger),
     ramdOutputProvider_(ramdOutputProvider),
-    random_spherical_direction_generator(parameters.seed_, parameters.old_angle_dist_),
+    random_spherical_direction_generator(parameters.seed_),
     direction_(parameters.groups_.size()),
     com_rec_prev_(parameters.groups_.size()),
     com_lig_prev_(parameters.groups_.size()),

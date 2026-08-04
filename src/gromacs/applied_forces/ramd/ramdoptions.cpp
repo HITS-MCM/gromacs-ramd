@@ -81,7 +81,6 @@ const std::string c_groupForceTag           = "force";
 const std::string c_groupMaxDistTag         = "max-dist";
 const std::string c_groupRMinDistTag        = "r-min-dist";
 const std::string c_pbcRefPrevStepComTag    = "pbc-ref-prev-step-com";
-const std::string c_oldAngleDistTag         = "old-angle-dist";
 const std::string c_connectedLigandsTag     = "connected-ligands";
 
 } // namespace
@@ -98,7 +97,6 @@ void RAMDOptions::initMdpTransform(IKeyValueTreeTransformRules* rules)
             rules, stringIdentityTransform, RAMDModuleInfo::sc_name, c_groupsFileTag);
     addMdpTransformFromString<bool>(
             rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_pbcRefPrevStepComTag);
-    addMdpTransformFromString<bool>(rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_oldAngleDistTag);
     addMdpTransformFromString<bool>(
             rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_connectedLigandsTag);
 }
@@ -132,7 +130,6 @@ void RAMDOptions::initMdpOptions(IOptionsContainerWithSections* options)
     section.addOption(StringOption(c_groupsFileTag.c_str()).store(&groupsFile_));
     section.addOption(
             BooleanOption(c_pbcRefPrevStepComTag.c_str()).store(&parameters_.pbc_ref_prev_step_com_));
-    section.addOption(BooleanOption(c_oldAngleDistTag.c_str()).store(&parameters_.old_angle_dist_));
     section.addOption(BooleanOption(c_connectedLigandsTag.c_str()).store(&parameters_.connected_ligands_));
 }
 
