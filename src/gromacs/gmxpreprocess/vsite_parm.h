@@ -35,38 +35,39 @@
 #ifndef GMX_GMXPREPROCESS_VSITE_PARM_H
 #define GMX_GMXPREPROCESS_VSITE_PARM_H
 
-class PreprocessingAtomTypes;
 struct gmx_moltype_t;
 struct t_atoms;
-struct InteractionsOfType;
 
 #include "gromacs/topology/ifunc.h"
 #include "gromacs/utility/enumerationhelpers.h"
 
 namespace gmx
 {
+struct InteractionsOfType;
+class PreprocessingAtomTypes;
 template<typename>
 class ArrayRef;
 class MDLogger;
-} // namespace gmx
 
-int set_vsites(bool                                                            bVerbose,
-               t_atoms*                                                        atoms,
-               PreprocessingAtomTypes*                                         atype,
-               gmx::EnumerationArray<InteractionFunction, InteractionsOfType>& plist,
-               const gmx::MDLogger&                                            logger);
+int set_vsites(bool                                                       bVerbose,
+               t_atoms*                                                   atoms,
+               PreprocessingAtomTypes*                                    atype,
+               EnumerationArray<InteractionFunction, InteractionsOfType>& plist,
+               const MDLogger&                                            logger);
 /* set parameters for virtual sites, return number of virtual sites */
 
-void set_vsites_ptype(bool bVerbose, gmx_moltype_t* molt, const gmx::MDLogger& logger);
+void set_vsites_ptype(bool bVerbose, gmx_moltype_t* molt, const MDLogger& logger);
 /* set ptype to VSite for virtual sites */
 
 /*! \brief Clean up the bonded interactions
  *
  * Throw away all obsolete bonds, angles and dihedrals.
  * Throw away all constraints. */
-void clean_vsite_bondeds(gmx::EnumerationArray<InteractionFunction, InteractionsOfType>& ps,
-                         int                                                             natoms,
-                         bool                 bRmVSiteBds,
-                         const gmx::MDLogger& logger);
+void clean_vsite_bondeds(EnumerationArray<InteractionFunction, InteractionsOfType>& ps,
+                         int                                                        natoms,
+                         bool                                                       bRmVSiteBds,
+                         const MDLogger&                                            logger);
+
+} // namespace gmx
 
 #endif

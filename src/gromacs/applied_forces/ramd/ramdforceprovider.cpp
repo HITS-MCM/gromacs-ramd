@@ -100,27 +100,31 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
         GMX_LOG(logger_.info).appendText("==== RAMD ==== evaluation ").appendText(std::to_string(fInput.step_));
         for (int g = 0; g < parameters_.ngroups_; ++g)
         {
-            std::string logPrefix = "==== RAMD group " + std::to_string(g) + " ====";
-            DVec com_rec_curr     = calc_com(fInput.x_, parameters_.groups_[g].receptor_indices_, pbc,
-                                             parameters_.groups_[g].receptor_pbcatom_);
-            DVec com_lig_curr     = calc_com(fInput.x_, parameters_.groups_[g].ligand_indices_, pbc,
-                                             parameters_.groups_[g].ligand_pbcatom_);
-            DVec curr_dist_vect;
+            std::string logPrefix    = "==== RAMD group " + std::to_string(g) + " ====";
+            DVec        com_rec_curr = calc_com(fInput.x_,
+                                         parameters_.groups_[g].receptor_indices_,
+                                         pbc,
+                                         parameters_.groups_[g].receptor_pbcatom_);
+            DVec        com_lig_curr = calc_com(fInput.x_,
+                                         parameters_.groups_[g].ligand_indices_,
+                                         pbc,
+                                         parameters_.groups_[g].ligand_pbcatom_);
+            DVec        curr_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
             real curr_dist = std::sqrt(curr_dist_vect.norm2());
             ramdOutputProvider_.addDistance(curr_dist);
 
             GMX_LOG(logger_.debug)
-                        .appendText(logPrefix + "Current COM ligand position at ["
-                                    + std::to_string(com_lig_curr[0]) + ", " + std::to_string(com_lig_curr[1])
-                                    + ", " + std::to_string(com_lig_curr[2]) + "]");
+                    .appendText(logPrefix + "Current COM ligand position at ["
+                                + std::to_string(com_lig_curr[0]) + ", " + std::to_string(com_lig_curr[1])
+                                + ", " + std::to_string(com_lig_curr[2]) + "]");
             GMX_LOG(logger_.debug)
-                        .appendText(logPrefix + "Current COM receptor position at ["
-                                    + std::to_string(com_rec_curr[0]) + ", " + std::to_string(com_rec_curr[1])
-                                    + ", " + std::to_string(com_rec_curr[2]) + "]");
+                    .appendText(logPrefix + "Current COM receptor position at ["
+                                + std::to_string(com_rec_curr[0]) + ", " + std::to_string(com_rec_curr[1])
+                                + ", " + std::to_string(com_rec_curr[2]) + "]");
             GMX_LOG(logger_.debug)
-                        .appendText(logPrefix + "Distance between COM of receptor and COM of ligand is "
-                                    + std::to_string(curr_dist) + "\n");
+                    .appendText(logPrefix + "Distance between COM of receptor and COM of ligand is "
+                                + std::to_string(curr_dist) + "\n");
 
             if (curr_dist >= parameters_.groups_[g].max_dist_)
             {

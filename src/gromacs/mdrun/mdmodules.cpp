@@ -239,7 +239,7 @@ void MDModules::buildMdpOutput(KeyValueTreeObjectBuilder* builder)
 void MDModules::assignOptionsToModules(const KeyValueTreeObject&  params,
                                        IKeyValueTreeErrorHandler* errorHandler,
                                        t_inputrec*                inputrec,
-                                       gmx_inputrec_strings*      preprocessingStrings)
+                                       inputrec_strings*          preprocessingStrings)
 {
     // Configure module targets if inputrec provided
     if (inputrec)
@@ -267,9 +267,7 @@ void MDModules::assignOptionsToModules(const KeyValueTreeObject&  params,
     assignOptionsFromKeyValueTree(&moduleOptions, params, errorHandler);
 }
 
-void MDModules::adjustInputrecBasedOnModules(t_inputrec*           ir,
-                                             bool                  routeSubObjects,
-                                             gmx_inputrec_strings* preprocessingStrings)
+void MDModules::adjustInputrecBasedOnModules(t_inputrec* ir, bool routeSubObjects, inputrec_strings* preprocessingStrings)
 {
     GMX_RELEASE_ASSERT(ir, "adjustInputrecBasedOnModules() called with null inputrec");
     GMX_RELEASE_ASSERT(ir->params, "adjustInputrecBasedOnModules() called but ir->params is null");

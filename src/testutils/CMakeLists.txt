@@ -75,6 +75,7 @@ target_sources(testutils PRIVATE
                conftest.cpp
                filematchers.cpp
                generate_frame_data.cpp
+               hardware_test_fixture.cpp
                interactivetest.cpp
                loggertest.cpp
                mpi_printer.cpp
@@ -101,7 +102,6 @@ target_sources(testutils PRIVATE
                xvgtest.cpp
                )
 
-
 if(HAVE_TINYXML2)
     target_include_directories(testutils SYSTEM PRIVATE ${TinyXML2_INCLUDE_DIR})
     target_link_libraries(testutils PRIVATE ${TinyXML2_LIBRARIES})
@@ -115,7 +115,9 @@ target_include_directories(testutils PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if (GMX_GPU_SYCL)
     add_sycl_to_target(
         TARGET testutils
-        SOURCES test_device.cpp
+        SOURCES
+            hardware_test_fixture.cpp
+            test_device.cpp
         )
 endif()
 
@@ -130,6 +132,12 @@ target_include_directories(testutils SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}
 target_include_directories(testutils SYSTEM BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/src/external/googletest/googlemock/include)
 target_link_libraries(testutils PRIVATE libgromacs ${GMX_COMMON_LIBRARIES} gmock)
 target_link_libraries(testutils PUBLIC common)
+
+if(GMX_OPENMP)
+    # Until we have fully transitioned GROMACS modules to OBJECT targets, we need
+    # this to handle cases when internal headers have OpenMP.
+    target_link_libraries(testutils PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # GROMACS module dependencies.
 # Note that testutils conveys transitive dependencies on some modules.
