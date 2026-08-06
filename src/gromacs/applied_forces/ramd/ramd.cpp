@@ -201,6 +201,13 @@ public:
             return;
         }
 
+        // Set the directory containing the .mdp file during pre-processing, for
+        // resolving relative paths (must be subscribed so it is available before
+        // setInputGroupIndicesFunction reads the groups file)
+        const auto setMdpFileDirectoryFunction = [this](const MdpFileDirectory& mdpFileDirectory)
+        { ramdOptions_.setMdpFileDirectory(mdpFileDirectory.directory_); };
+        notifiers->preProcessingNotifier_.subscribe(setMdpFileDirectoryFunction);
+
         // Set input group indices during pre-processing
         const auto setInputGroupIndicesFunction = [this](const IndexGroupsAndNames& indexGroupsAndNames)
         { ramdOptions_.setInputGroupIndices(indexGroupsAndNames); };

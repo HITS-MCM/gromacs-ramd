@@ -2271,6 +2271,13 @@ int gmx_grompp(int argc, char* argv[])
         mdModules.notifiers().preProcessingNotifier_.notify(qmInputFileName);
     }
 
+    // Notify MDModules of the directory containing the .mdp file, so mdp
+    // options can resolve file paths relative to it
+    {
+        MdpFileDirectory mdpFileDirectory = { std::filesystem::path(mdparin).parent_path() };
+        mdModules.notifiers().preProcessingNotifier_.notify(mdpFileDirectory);
+    }
+
     // Notify MDModules of the coulomb type
     MdModulesCoulombTypeInfo coulombType = { ir->coulombtype };
     mdModules.notifiers().preProcessingNotifier_.notify(coulombType);

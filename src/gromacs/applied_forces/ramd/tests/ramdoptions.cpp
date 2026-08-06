@@ -44,6 +44,7 @@
 
 #include <cstdint>
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -51,18 +52,41 @@
 
 #include "gromacs/applied_forces/ramd/ramd.h"
 #include "gromacs/mdtypes/imdpoptionprovider_test_helper.h"
+#include "gromacs/selection/indexutil.h"
+#include "gromacs/topology/index.h"
 #include "gromacs/utility/keyvaluetree.h"
 #include "gromacs/utility/keyvaluetreebuilder.h"
 #include "gromacs/utility/keyvaluetreemdpwriter.h"
 #include "gromacs/utility/logger.h"
+#include "gromacs/utility/textwriter.h"
 
 #include "testutils/testasserts.h"
+#include "testutils/testfilemanager.h"
 #include "testutils/testmatchers.h"
 
 namespace gmx
 {
 namespace
 {
+
+//! Content of a minimal, valid RAMD groups file
+const char* const c_groupsFileContent =
+        "ramd-group {\n"
+        "    receptor Protein\n"
+        "    ligand Ligand\n"
+        "    force 600.0\n"
+        "    max-dist 4.0\n"
+        "    r-min-dist 0.0025\n"
+        "}\n";
+
+//! Build IndexGroupsAndNames containing the groups referenced by c_groupsFileContent
+IndexGroupsAndNames ramdIndexGroupsAndNames()
+{
+    std::vector<IndexGroup> indexGroups;
+    indexGroups.push_back({ "Protein", { 0 } });
+    indexGroups.push_back({ "Ligand", { 1 } });
+    return IndexGroupsAndNames(indexGroups);
+}
 
 class RAMDOptionsTest : public ::testing::Test
 {
@@ -119,6 +143,43 @@ TEST_F(RAMDOptionsTest, OptionSetsActive)
     EXPECT_TRUE(ramdOptions.active());
     EXPECT_TRUE(ramdOptions.parameters().active_);
     EXPECT_EQ(42, ramdOptions.parameters().seed_);
+}
+
+TEST_F(RAMDOptionsTest, GroupsFileRelativeToMdpDirectoryIsResolved)
+{
+    test::TestFileManager fileManager;
+    const std::filesystem::path groupsFilePath = fileManager.getTemporaryFilePath("ramd_groups.dat");
+    TextWriter::writeFileFromString(groupsFilePath, c_groupsFileContent);
+
+    // Set the groups-file option to just the filename, as if it had been
+    // written relative to the .mdp file rather than the current working directory
+    KeyValueTreeBuilder mdpValueBuilder;
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active", std::string("true"));
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-groups-file",
+                                          groupsFilePath.filename().string());
+    RAMDOptions ramdOptionsWithGroupsFile;
+    test::fillOptionsFromMdpValues(mdpValueBuilder.build(), &ramdOptionsWithGroupsFile);
+    ramdOptionsWithGroupsFile.setMdpFileDirectory(groupsFilePath.parent_path());
+
+    EXPECT_NO_THROW(ramdOptionsWithGroupsFile.setInputGroupIndices(ramdIndexGroupsAndNames()));
+    EXPECT_EQ(1, ramdOptionsWithGroupsFile.parameters().ngroups_);
+}
+
+TEST_F(RAMDOptionsTest, GroupsFileAbsolutePathIsUnaffectedByMdpDirectory)
+{
+    test::TestFileManager fileManager;
+    const std::filesystem::path groupsFilePath = fileManager.getTemporaryFilePath("ramd_groups.dat");
+    TextWriter::writeFileFromString(groupsFilePath, c_groupsFileContent);
+
+    KeyValueTreeBuilder mdpValueBuilder;
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active", std::string("true"));
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-groups-file",
+                                          groupsFilePath.string());
+    RAMDOptions ramdOptions;
+    test::fillOptionsFromMdpValues(mdpValueBuilder.build(), &ramdOptions);
+    // No mdp directory set, matching the pre-existing (cwd-relative/absolute) behavior
+    EXPECT_NO_THROW(ramdOptions.setInputGroupIndices(ramdIndexGroupsAndNames()));
+    EXPECT_EQ(1, ramdOptions.parameters().ngroups_);
 }
 
 } // namespace

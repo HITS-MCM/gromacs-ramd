@@ -45,6 +45,7 @@
 
 #include <cstdint>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -309,6 +310,16 @@ struct QMInputFileName
     std::string qmInputFileName_;
 };
 
+/*! \libinternal \brief Notification for the directory containing the .mdp
+ *  input file being processed by grompp, so mdp options that reference
+ *  external files can resolve relative paths against it.
+ */
+struct MdpFileDirectory
+{
+    //! Directory containing the .mdp file, empty if not known
+    std::filesystem::path directory_;
+};
+
 /*! \libinternal \brief Notification for the optional plumed input filename
  *  provided by user as command-line argument for mdrun
  */
@@ -448,6 +459,8 @@ struct MDModulesNotifiers
      *                              Enables writing of module internal data to .tpr files.
      * \tparam QMInputFileName      Allows the QMMM module to know if the user has provided
      *                              an external QM input file
+     * \tparam MdpFileDirectory     Allows modules to resolve mdp options referencing external
+     *                              files relative to the .mdp file's directory
      * \tparam MdModulesCoulombTypeInfo
      *                              Allows modules to access the Coulomb interaction type configured
      *                              for the simulation (e.g., PME, RF, FMM, etc.).
@@ -461,6 +474,7 @@ struct MDModulesNotifiers
                            const IndexGroupsAndNames&,
                            KeyValueTreeObjectBuilder,
                            const QMInputFileName&,
+                           const MdpFileDirectory&,
                            const MdModulesCoulombTypeInfo&,
                            const EnsembleTemperature&>::type preProcessingNotifier_;
 

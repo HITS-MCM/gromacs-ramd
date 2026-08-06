@@ -42,6 +42,7 @@
 
 #include "ramdoptions.h"
 
+#include <filesystem>
 #include <sstream>
 
 #include "gromacs/applied_forces/ramd/ramd.h"
@@ -160,6 +161,11 @@ const MDLogger& RAMDOptions::logger() const
     return *logger_;
 }
 
+void RAMDOptions::setMdpFileDirectory(const std::filesystem::path& directory)
+{
+    mdpFileDirectory_ = directory;
+}
+
 void RAMDOptions::setInputGroupIndices(const IndexGroupsAndNames& indexGroupsAndNames)
 {
     // Exit if RAMD module is not active
@@ -171,7 +177,12 @@ void RAMDOptions::setInputGroupIndices(const IndexGroupsAndNames& indexGroupsAnd
     // Copy the content of the RAMD input file into a string for latter save in KVT
     if (!groupsFile_.empty())
     {
-        groupsString_ = TextReader::readFileToString(groupsFile_);
+        std::filesystem::path groupsFilePath(groupsFile_);
+        if (groupsFilePath.is_relative() && !mdpFileDirectory_.empty())
+        {
+            groupsFilePath = mdpFileDirectory_ / groupsFilePath;
+        }
+        groupsString_ = TextReader::readFileToString(groupsFilePath.string());
         readConfigString();
     }
 

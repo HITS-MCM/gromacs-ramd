@@ -41,6 +41,7 @@
 #ifndef GMX_APPLIED_FORCES_RAMDOPTIONS_H
 #define GMX_APPLIED_FORCES_RAMDOPTIONS_H
 
+#include <filesystem>
 #include <string>
 
 #include "gromacs/mdtypes/imdpoptionprovider.h"
@@ -92,6 +93,9 @@ public:
     //! Set atom groups
     void setInputGroupIndices(const IndexGroupsAndNames&);
 
+    //! Set the directory containing the .mdp file, for resolving relative file paths
+    void setMdpFileDirectory(const std::filesystem::path& directory);
+
     //! Store the parameters that are not mdp options in the tpr file
     void writeInternalParametersToKvt(KeyValueTreeObjectBuilder treeBuilder);
 
@@ -113,6 +117,9 @@ private:
 
     //! RAMD groups input file
     std::string groupsFile_;
+
+    //! Directory containing the .mdp file, for resolving groupsFile_ if relative
+    std::filesystem::path mdpFileDirectory_;
 
     //! Content of the RAMD groups file
     std::string groupsString_;
