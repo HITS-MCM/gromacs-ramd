@@ -97,7 +97,7 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
     // Evaluate RAMD every eval_freq steps
     if (fInput.step_ % parameters_.eval_freq_ == 0)
     {
-        GMX_LOG(logger_.info).appendText("==== RAMD ==== evaluation ").appendText(std::to_string(fInput.step_));
+        GMX_LOG(logger_.debug).appendText("==== RAMD ==== evaluation ").appendText(std::to_string(fInput.step_));
         for (int g = 0; g < parameters_.ngroups_; ++g)
         {
             std::string logPrefix    = "==== RAMD group " + std::to_string(g) + " ====";

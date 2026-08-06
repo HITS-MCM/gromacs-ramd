@@ -610,6 +610,10 @@ static LoggerOwner buildLogger(FILE* fplog, const bool isSimulationMainRank)
     {
         builder.addTargetStream(MDLogger::LogLevel::Warning, &TextOutputFile::standardError());
     }
+    if (debug != nullptr)
+    {
+        builder.addTargetFile(MDLogger::LogLevel::Debug, debug);
+    }
     return builder.build();
 }
 
