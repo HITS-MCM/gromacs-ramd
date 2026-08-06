@@ -82,21 +82,10 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
     t_pbc pbc;
     set_pbc(&pbc, this->pbcType_, fInput.box_);
 
-    if (fInput.mpiComm_.isMainRank())
-    {
-        if (fInput.step_ == 0)
-        {
-            GMX_LOG(logger_.info).appendText("==== RAMD ==== Initial COM calculation");
-        }
-        if (fInput.step_ % parameters_.eval_freq_ == 0)
-        {
-            ramdOutputProvider_.addTime(fInput.t_);
-        }
-    }
-
     // Evaluate RAMD every eval_freq steps
     if (fInput.step_ % parameters_.eval_freq_ == 0)
     {
+        ramdOutputProvider_.addTime(fInput.t_);
         GMX_LOG(logger_.debug).appendText("==== RAMD ==== evaluation ").appendText(std::to_string(fInput.step_));
         for (int g = 0; g < parameters_.ngroups_; ++g)
         {
