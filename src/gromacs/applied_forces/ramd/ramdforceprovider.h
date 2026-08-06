@@ -50,6 +50,7 @@
 #include "gromacs/topology/mtop_lookup.h"
 #include "gromacs/utility/basedefinitions.h"
 #include "gromacs/utility/classhelpers.h"
+#include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/logger.h"
 
 #include "ramdoutputprovider.h"
@@ -66,7 +67,10 @@ class RAMDForceProvider final : public IForceProvider
 {
 public:
     RAMDForceProvider(const RAMDParameters&                             parameters,
-                      const std::vector<std::unique_ptr<LocalAtomSet>>& localAtoms,
+                      const std::vector<std::unique_ptr<LocalAtomSet>>& receptorAtoms,
+                      const std::vector<std::unique_ptr<LocalAtomSet>>& ligandAtoms,
+                      const std::vector<std::unique_ptr<LocalAtomSet>>& receptorPbcAtoms,
+                      const std::vector<std::unique_ptr<LocalAtomSet>>& ligandPbcAtoms,
                       const gmx_mtop_t&                                 topology,
                       PbcType                                           pbcType,
                       const MDLogger&                                   logger,
@@ -82,24 +86,38 @@ public:
     void calculateForces(const ForceProviderInput& fInput, ForceProviderOutput* fOutput) override;
 
 private:
-    //! Computes the mass-weighted center of mass of the given (global) atom indices.
-    //! Atoms are first re-referenced to a pbc reference atom via the minimum-image convention
-    //! so that a group split across a periodic boundary is treated as whole, matching the
-    //! approach used by the GROMACS pull code (sum of mass-weighted differences to a reference
-    //! atom). \p pbcatom follows the pull-group-pbcatom convention: 0 selects the middle atom
-    //! of the group (by position), a value > 0 is a 1-based global atom number.
-    DVec calc_com(ArrayRef<const RVec> x, const std::vector<Index>& indices, const t_pbc& pbc, int pbcatom = 0)
+    //! Computes the mass-weighted center of mass of the atoms of the given local atom set.
+    //! Atoms are first re-referenced to the group's pbc reference atom via the minimum-image
+    //! convention so that a group split across a periodic boundary is treated as whole, matching
+    //! the approach used by the GROMACS pull code (sum of mass-weighted differences to a
+    //! reference atom). The pbc reference atom is not necessarily a member of \p atomSet itself
+    //! (it may be a fixed external anchor atom), so it is passed as its own single-atom
+    //! \p pbcAtomSet, mirroring how the pull code tracks its pbc atom separately from the pull
+    //! group's own atom set.
+    //!
+    //! \p x is indexed by domain-decomposition-local atom index (as delivered via
+    //! ForceProviderInput::x_), which does not match the global/topology atom order used by
+    //! \p atomSet's and \p pbcAtomSet's underlying indices -- not even for a single-rank run,
+    //! since GROMACS always runs atoms through its domain-decomposition atom sorting. The atom
+    //! sets translate between the two index spaces.
+    DVec calc_com(ArrayRef<const RVec> x, const LocalAtomSet& atomSet, const LocalAtomSet& pbcAtomSet, const t_pbc& pbc)
     {
-        DVec        com        = DVec(0.0, 0.0, 0.0);
-        real        total_mass = 0.0;
-        const Index refIndex =
-                pbcatom > 0 ? static_cast<Index>(pbcatom - 1) : indices[indices.size() / 2];
-        const RVec& x_ref = x[refIndex];
-        for (auto idx : indices)
+        const auto localIndices  = atomSet.localIndex();
+        const auto globalIndices = atomSet.globalIndex();
+
+        GMX_RELEASE_ASSERT(pbcAtomSet.numAtomsLocal() == 1,
+                            "RAMD pbc-atom must be a home atom on the same rank as the rest of "
+                            "its group; RAMD does not support a pbc atom that is not a local home "
+                            "atom (e.g. under multi-rank domain decomposition).");
+        const RVec& x_ref = x[pbcAtomSet.localIndex()[0]];
+
+        DVec com        = DVec(0.0, 0.0, 0.0);
+        real total_mass = 0.0;
+        for (size_t i = 0; i < localIndices.size(); ++i)
         {
-            const real mass = mTopLookUp_.getAtomParameters(idx).m;
+            const real mass = mTopLookUp_.getAtomParameters(globalIndices[i]).m;
             rvec       dx;
-            pbc_dx(&pbc, x[idx], x_ref, dx);
+            pbc_dx(&pbc, x[localIndices[i]], x_ref, dx);
             for (int j = 0; j < DIM; ++j)
             {
                 com[j] += mass * (x_ref[j] + dx[j]);
@@ -127,8 +145,17 @@ private:
     //! The parameters for RAMD
     const RAMDParameters& parameters_;
 
-    //! Reference to local atom sets
-    const std::vector<std::unique_ptr<LocalAtomSet>>& localAtoms_;
+    //! Reference to local atom sets of the receptor groups
+    const std::vector<std::unique_ptr<LocalAtomSet>>& receptorAtoms_;
+
+    //! Reference to local atom sets of the ligand groups
+    const std::vector<std::unique_ptr<LocalAtomSet>>& ligandAtoms_;
+
+    //! Reference to the (single-atom) local atom sets of the receptor groups' pbc reference atoms
+    const std::vector<std::unique_ptr<LocalAtomSet>>& receptorPbcAtoms_;
+
+    //! Reference to the (single-atom) local atom sets of the ligand groups' pbc reference atoms
+    const std::vector<std::unique_ptr<LocalAtomSet>>& ligandPbcAtoms_;
 
     const PbcType       pbcType_;
     const MDLogger&     logger_;

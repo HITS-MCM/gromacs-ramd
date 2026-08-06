@@ -49,13 +49,19 @@ namespace gmx
 {
 
 RAMDForceProvider::RAMDForceProvider(const RAMDParameters&                             parameters,
-                                     const std::vector<std::unique_ptr<LocalAtomSet>>& localAtoms,
+                                     const std::vector<std::unique_ptr<LocalAtomSet>>& receptorAtoms,
+                                     const std::vector<std::unique_ptr<LocalAtomSet>>& ligandAtoms,
+                                     const std::vector<std::unique_ptr<LocalAtomSet>>& receptorPbcAtoms,
+                                     const std::vector<std::unique_ptr<LocalAtomSet>>& ligandPbcAtoms,
                                      const gmx_mtop_t&                                 topology,
                                      PbcType                                           pbcType,
                                      const MDLogger&                                   logger,
                                      RAMDOutputProvider& ramdOutputProvider) :
     parameters_(parameters),
-    localAtoms_(localAtoms),
+    receptorAtoms_(receptorAtoms),
+    ligandAtoms_(ligandAtoms),
+    receptorPbcAtoms_(receptorPbcAtoms),
+    ligandPbcAtoms_(ligandPbcAtoms),
     pbcType_(pbcType),
     logger_(logger),
     ramdOutputProvider_(ramdOutputProvider),
@@ -90,14 +96,8 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
         for (int g = 0; g < parameters_.ngroups_; ++g)
         {
             std::string logPrefix    = "==== RAMD group " + std::to_string(g) + " ====";
-            DVec        com_rec_curr = calc_com(fInput.x_,
-                                         parameters_.groups_[g].receptor_indices_,
-                                         pbc,
-                                         parameters_.groups_[g].receptor_pbcatom_);
-            DVec        com_lig_curr = calc_com(fInput.x_,
-                                         parameters_.groups_[g].ligand_indices_,
-                                         pbc,
-                                         parameters_.groups_[g].ligand_pbcatom_);
+            DVec        com_rec_curr = calc_com(fInput.x_, *receptorAtoms_[g], *receptorPbcAtoms_[g], pbc);
+            DVec        com_lig_curr = calc_com(fInput.x_, *ligandAtoms_[g], *ligandPbcAtoms_[g], pbc);
             DVec        curr_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
             real curr_dist = std::sqrt(curr_dist_vect.norm2());
@@ -191,15 +191,15 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
         {
             continue;
         }
-        for (size_t i = 0; i < localAtoms_[g]->numAtomsLocal(); ++i)
+        for (size_t i = 0; i < ligandAtoms_[g]->numAtomsLocal(); ++i)
         {
-            const real mass = mTopLookUp_.getAtomParameters(localAtoms_[g]->globalIndex()[i]).m;
+            const real mass = mTopLookUp_.getAtomParameters(ligandAtoms_[g]->globalIndex()[i]).m;
             const real forceFraction = mass / total_ligand_mass_[g] * parameters_.groups_[g].force_;
-            fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][XX] +=
+            fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][XX] +=
                     direction_[g][XX] * forceFraction;
-            fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][YY] +=
+            fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][YY] +=
                     direction_[g][YY] * forceFraction;
-            fOutput->forceWithVirial_.force_[localAtoms_[g]->localIndex()[i]][ZZ] +=
+            fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][ZZ] +=
                     direction_[g][ZZ] * forceFraction;
         }
     }

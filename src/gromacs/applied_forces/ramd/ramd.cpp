@@ -105,22 +105,52 @@ public:
         return *logger_;
     }
 
-    //! Set the local atom sets
-    void setLocalAtomSets(const LocalAtomSet& localAtomSet)
+    //! Add a local atom set for a receptor group
+    void addReceptorAtomSet(const LocalAtomSet& localAtomSet)
     {
-        localAtomSets_.emplace_back(std::make_unique<LocalAtomSet>(localAtomSet));
+        receptorAtomSets_.emplace_back(std::make_unique<LocalAtomSet>(localAtomSet));
     }
 
-    /*! \brief Return local atom sets
-     * \throws InternalError if local atom set is not set
-     */
-    const std::vector<std::unique_ptr<LocalAtomSet>>& localAtomSets() const
+    //! Add a local atom set for a ligand group
+    void addLigandAtomSet(const LocalAtomSet& localAtomSet)
     {
-        // if (localAtomSets_.empty())
-        // {
-        //     GMX_THROW(InternalError("Local atom sets are not set for RAMD."));
-        // }
-        return localAtomSets_;
+        ligandAtomSets_.emplace_back(std::make_unique<LocalAtomSet>(localAtomSet));
+    }
+
+    //! Add a (single-atom) local atom set for a receptor group's pbc reference atom
+    void addReceptorPbcAtomSet(const LocalAtomSet& localAtomSet)
+    {
+        receptorPbcAtomSets_.emplace_back(std::make_unique<LocalAtomSet>(localAtomSet));
+    }
+
+    //! Add a (single-atom) local atom set for a ligand group's pbc reference atom
+    void addLigandPbcAtomSet(const LocalAtomSet& localAtomSet)
+    {
+        ligandPbcAtomSets_.emplace_back(std::make_unique<LocalAtomSet>(localAtomSet));
+    }
+
+    //! Return the local atom sets of the receptor groups
+    const std::vector<std::unique_ptr<LocalAtomSet>>& receptorAtomSets() const
+    {
+        return receptorAtomSets_;
+    }
+
+    //! Return the local atom sets of the ligand groups
+    const std::vector<std::unique_ptr<LocalAtomSet>>& ligandAtomSets() const
+    {
+        return ligandAtomSets_;
+    }
+
+    //! Return the (single-atom) local atom sets of the receptor groups' pbc reference atoms
+    const std::vector<std::unique_ptr<LocalAtomSet>>& receptorPbcAtomSets() const
+    {
+        return receptorPbcAtomSets_;
+    }
+
+    //! Return the (single-atom) local atom sets of the ligand groups' pbc reference atoms
+    const std::vector<std::unique_ptr<LocalAtomSet>>& ligandPbcAtomSets() const
+    {
+        return ligandPbcAtomSets_;
     }
 
     /*! \brief Set the topology for RAMD during mdrun
@@ -151,8 +181,17 @@ private:
      * actual reference. */
     const MDLogger* logger_ = nullptr;
 
-    //! The local atom sets to act on
-    std::vector<std::unique_ptr<LocalAtomSet>> localAtomSets_;
+    //! The local atom sets of the receptor groups
+    std::vector<std::unique_ptr<LocalAtomSet>> receptorAtomSets_;
+
+    //! The local atom sets of the ligand groups
+    std::vector<std::unique_ptr<LocalAtomSet>> ligandAtomSets_;
+
+    //! The (single-atom) local atom sets of the receptor groups' pbc reference atoms
+    std::vector<std::unique_ptr<LocalAtomSet>> receptorPbcAtomSets_;
+
+    //! The (single-atom) local atom sets of the ligand groups' pbc reference atoms
+    std::vector<std::unique_ptr<LocalAtomSet>> ligandPbcAtomSets_;
 
     //! The topology of the system
     const gmx_mtop_t* top_ = nullptr;
@@ -184,7 +223,10 @@ public:
             const auto& parameters = ramdOptions_.parameters();
             forceProvider_         = std::make_unique<RAMDForceProvider>(
                     parameters,
-                    ramdSimulationParameters_.localAtomSets(),
+                    ramdSimulationParameters_.receptorAtomSets(),
+                    ramdSimulationParameters_.ligandAtomSets(),
+                    ramdSimulationParameters_.receptorPbcAtomSets(),
+                    ramdSimulationParameters_.ligandPbcAtomSets(),
                     ramdSimulationParameters_.topology(),
                     ramdSimulationParameters_.periodicBoundaryConditionType(),
                     ramdSimulationParameters_.logger(),
@@ -242,9 +284,31 @@ public:
         {
             for (int g = 0; g < ramdOptions_.parameters().ngroups_; ++g)
             {
-                LocalAtomSet atomSet =
-                        localAtomSetManager->add(ramdOptions_.parameters().groups_[g].ligand_indices_);
-                this->ramdSimulationParameters_.setLocalAtomSets(atomSet);
+                const auto& group = ramdOptions_.parameters().groups_[g];
+
+                LocalAtomSet receptorAtomSet = localAtomSetManager->add(group.receptor_indices_);
+                this->ramdSimulationParameters_.addReceptorAtomSet(receptorAtomSet);
+
+                LocalAtomSet ligandAtomSet = localAtomSetManager->add(group.ligand_indices_);
+                this->ramdSimulationParameters_.addLigandAtomSet(ligandAtomSet);
+
+                // The pbc reference atom is not necessarily a member of its own receptor/ligand
+                // group (e.g. a fixed anchor atom used purely for minimum-image referencing), so
+                // it is tracked as its own single-atom local atom set, following the same
+                // approach as the pbc atom of a GROMACS pull group.
+                const Index receptorPbcGlobalIndex = group.receptor_pbcatom_ > 0
+                                                              ? static_cast<Index>(group.receptor_pbcatom_ - 1)
+                                                              : group.receptor_indices_[group.receptor_indices_.size() / 2];
+                LocalAtomSet receptorPbcAtomSet =
+                        localAtomSetManager->add(std::vector<Index>{ receptorPbcGlobalIndex });
+                this->ramdSimulationParameters_.addReceptorPbcAtomSet(receptorPbcAtomSet);
+
+                const Index ligandPbcGlobalIndex = group.ligand_pbcatom_ > 0
+                                                            ? static_cast<Index>(group.ligand_pbcatom_ - 1)
+                                                            : group.ligand_indices_[group.ligand_indices_.size() / 2];
+                LocalAtomSet ligandPbcAtomSet =
+                        localAtomSetManager->add(std::vector<Index>{ ligandPbcGlobalIndex });
+                this->ramdSimulationParameters_.addLigandPbcAtomSet(ligandPbcAtomSet);
             }
         };
         notifiers->simulationSetupNotifier_.subscribe(setLocalAtomSetFunction);
