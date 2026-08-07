@@ -132,8 +132,8 @@ private:
             mpiComm.sumReduce(DIM, x_ref);
         }
 
-        DVec com        = DVec(0.0, 0.0, 0.0);
-        real total_mass = 0.0;
+        DVec   com        = DVec(0.0, 0.0, 0.0);
+        double total_mass = 0.0;
         for (size_t i = 0; i < localIndices.size(); ++i)
         {
             const real mass = mTopLookUp_.getAtomParameters(globalIndices[i]).m;
@@ -145,6 +145,19 @@ private:
             }
             total_mass += mass;
         }
+
+        // atomSet may be split across domains under DD, so the mass-weighted sum and
+        // total mass accumulated above only cover this rank's home atoms; reduce them
+        // across ranks before dividing, mirroring the pull code's sum_com_part()/
+        // pullAllReduce() handling of a pull group split across domains.
+        if (mpiComm.isParallel())
+        {
+            double buffer[4] = { com[0], com[1], com[2], total_mass };
+            mpiComm.sumReduce(4, buffer);
+            com        = DVec(buffer[0], buffer[1], buffer[2]);
+            total_mass = buffer[3];
+        }
+
         if (total_mass > 0.0)
         {
             com /= total_mass;
