@@ -52,6 +52,8 @@
 #include "gromacs/utility/classhelpers.h"
 #include "gromacs/utility/exceptions.h"
 #include "gromacs/utility/logger.h"
+#include "gromacs/utility/mpicomm.h"
+#include "gromacs/utility/vec.h"
 
 #include "ramdoutputprovider.h"
 #include "ramdparameters.h"
@@ -95,21 +97,40 @@ private:
     //! \p pbcAtomSet, mirroring how the pull code tracks its pbc atom separately from the pull
     //! group's own atom set.
     //!
+    //! Under multi-rank domain decomposition, the pbc atom is not guaranteed to be a home atom
+    //! on every rank that holds (part of) \p atomSet, so its coordinates are gathered with an
+    //! allreduce-sum: the owning rank contributes its local copy and every other rank
+    //! contributes zero, so the sum equals the pbc atom's coordinates everywhere. This mirrors
+    //! how the pull code resolves its own pbc atom across ranks
+    //! (see pullutil.cpp's setPbcAtomCoords()/pullAllReduce()).
+    //!
     //! \p x is indexed by domain-decomposition-local atom index (as delivered via
     //! ForceProviderInput::x_), which does not match the global/topology atom order used by
     //! \p atomSet's and \p pbcAtomSet's underlying indices -- not even for a single-rank run,
     //! since GROMACS always runs atoms through its domain-decomposition atom sorting. The atom
     //! sets translate between the two index spaces.
-    DVec calc_com(ArrayRef<const RVec> x, const LocalAtomSet& atomSet, const LocalAtomSet& pbcAtomSet, const t_pbc& pbc)
+    DVec calc_com(ArrayRef<const RVec> x,
+                  const LocalAtomSet&  atomSet,
+                  const LocalAtomSet&  pbcAtomSet,
+                  const t_pbc&         pbc,
+                  const MpiComm&       mpiComm)
     {
         const auto localIndices  = atomSet.localIndex();
         const auto globalIndices = atomSet.globalIndex();
 
-        GMX_RELEASE_ASSERT(pbcAtomSet.numAtomsLocal() == 1,
-                            "RAMD pbc-atom must be a home atom on the same rank as the rest of "
-                            "its group; RAMD does not support a pbc atom that is not a local home "
-                            "atom (e.g. under multi-rank domain decomposition).");
-        const RVec& x_ref = x[pbcAtomSet.localIndex()[0]];
+        rvec x_ref;
+        if (pbcAtomSet.numAtomsLocal() > 0)
+        {
+            copy_rvec(x[pbcAtomSet.localIndex()[0]], x_ref);
+        }
+        else
+        {
+            clear_rvec(x_ref);
+        }
+        if (mpiComm.isParallel())
+        {
+            mpiComm.sumReduce(DIM, x_ref);
+        }
 
         DVec com        = DVec(0.0, 0.0, 0.0);
         real total_mass = 0.0;

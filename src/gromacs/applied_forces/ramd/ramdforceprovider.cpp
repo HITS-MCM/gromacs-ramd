@@ -96,8 +96,10 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
         for (int g = 0; g < parameters_.ngroups_; ++g)
         {
             std::string logPrefix    = "==== RAMD group " + std::to_string(g) + " ====";
-            DVec        com_rec_curr = calc_com(fInput.x_, *receptorAtoms_[g], *receptorPbcAtoms_[g], pbc);
-            DVec        com_lig_curr = calc_com(fInput.x_, *ligandAtoms_[g], *ligandPbcAtoms_[g], pbc);
+            DVec com_rec_curr =
+                    calc_com(fInput.x_, *receptorAtoms_[g], *receptorPbcAtoms_[g], pbc, fInput.mpiComm_);
+            DVec com_lig_curr =
+                    calc_com(fInput.x_, *ligandAtoms_[g], *ligandPbcAtoms_[g], pbc, fInput.mpiComm_);
             DVec        curr_dist_vect;
             pbc_dx_d(&pbc, com_lig_curr, com_rec_curr, curr_dist_vect);
             real curr_dist = std::sqrt(curr_dist_vect.norm2());
