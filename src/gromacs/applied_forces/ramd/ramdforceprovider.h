@@ -108,15 +108,22 @@ private:
     //! ForceProviderInput::x_), which does not match the global/topology atom order used by
     //! \p atomSet's and \p pbcAtomSet's underlying indices -- not even for a single-rank run,
     //! since GROMACS always runs atoms through its domain-decomposition atom sorting. The atom
-    //! sets translate between the two index spaces.
+    //! sets translate between the two index spaces. \p atomSet.globalIndex() lists all atoms of
+    //! the group (size numAtomsGlobal()) in the group's original order, not just this rank's
+    //! home atoms, so the i-th home atom's global index is
+    //! globalIndex()[atomSet.collectiveIndex()[i]], not globalIndex()[i] -- the latter is only
+    //! correct by accident when the whole group happens to be local (e.g. a small group under a
+    //! single rank), and silently mismatches mass with position once a group is split across
+    //! domains, as the receptor group of a large protein typically is.
     DVec calc_com(ArrayRef<const RVec> x,
                   const LocalAtomSet&  atomSet,
                   const LocalAtomSet&  pbcAtomSet,
                   const t_pbc&         pbc,
                   const MpiComm&       mpiComm)
     {
-        const auto localIndices  = atomSet.localIndex();
-        const auto globalIndices = atomSet.globalIndex();
+        const auto localIndices      = atomSet.localIndex();
+        const auto globalIndices     = atomSet.globalIndex();
+        const auto collectiveIndices = atomSet.collectiveIndex();
 
         rvec x_ref;
         if (pbcAtomSet.numAtomsLocal() > 0)
@@ -136,7 +143,7 @@ private:
         double total_mass = 0.0;
         for (size_t i = 0; i < localIndices.size(); ++i)
         {
-            const real mass = mTopLookUp_.getAtomParameters(globalIndices[i]).m;
+            const real mass = mTopLookUp_.getAtomParameters(globalIndices[collectiveIndices[i]]).m;
             rvec       dx;
             pbc_dx(&pbc, x[localIndices[i]], x_ref, dx);
             for (int j = 0; j < DIM; ++j)
