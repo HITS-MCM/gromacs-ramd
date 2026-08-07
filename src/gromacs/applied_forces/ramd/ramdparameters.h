@@ -57,7 +57,7 @@ namespace gmx
  */
 struct RAMDGroup
 {
-    //! Force to be applied in kcal/mol/Angstrom
+    //! Force to be applied in kJ/mol/nm
     real force_ = 600.0;
 
     std::string        receptor_         = "Protein";
@@ -68,11 +68,11 @@ struct RAMDGroup
     std::vector<Index> ligand_indices_ = {};
     int                ligand_pbcatom_ = 0;
 
-    //! Specifies the distance in Angstrom between the COMs of the ligand
+    //! Specifies the distance in nm between the COMs of the ligand
     //! and the receptor when the simulation is stopped
     real max_dist_ = 4.0;
 
-    //! Specifies the minimum distance in Angstrom
+    //! Specifies the minimum distance in nm
     //! to be traveled by the ligand in one RAMD step
     real r_min_dist_ = 0.0025;
 };
