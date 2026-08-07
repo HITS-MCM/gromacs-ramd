@@ -296,16 +296,18 @@ public:
                 // group (e.g. a fixed anchor atom used purely for minimum-image referencing), so
                 // it is tracked as its own single-atom local atom set, following the same
                 // approach as the pbc atom of a GROMACS pull group.
-                const Index receptorPbcGlobalIndex = group.receptor_pbcatom_ > 0
-                                                              ? static_cast<Index>(group.receptor_pbcatom_ - 1)
-                                                              : group.receptor_indices_[group.receptor_indices_.size() / 2];
+                const Index receptorPbcGlobalIndex =
+                        group.receptor_pbcatom_ > 0
+                                ? static_cast<Index>(group.receptor_pbcatom_ - 1)
+                                : group.receptor_indices_[group.receptor_indices_.size() / 2];
                 LocalAtomSet receptorPbcAtomSet =
                         localAtomSetManager->add(std::vector<Index>{ receptorPbcGlobalIndex });
                 this->ramdSimulationParameters_.addReceptorPbcAtomSet(receptorPbcAtomSet);
 
-                const Index ligandPbcGlobalIndex = group.ligand_pbcatom_ > 0
-                                                            ? static_cast<Index>(group.ligand_pbcatom_ - 1)
-                                                            : group.ligand_indices_[group.ligand_indices_.size() / 2];
+                const Index ligandPbcGlobalIndex =
+                        group.ligand_pbcatom_ > 0
+                                ? static_cast<Index>(group.ligand_pbcatom_ - 1)
+                                : group.ligand_indices_[group.ligand_indices_.size() / 2];
                 LocalAtomSet ligandPbcAtomSet =
                         localAtomSetManager->add(std::vector<Index>{ ligandPbcGlobalIndex });
                 this->ramdSimulationParameters_.addLigandPbcAtomSet(ligandPbcAtomSet);

@@ -147,14 +147,16 @@ TEST_F(RAMDOptionsTest, OptionSetsActive)
 
 TEST_F(RAMDOptionsTest, GroupsFileRelativeToMdpDirectoryIsResolved)
 {
-    test::TestFileManager fileManager;
-    const std::filesystem::path groupsFilePath = fileManager.getTemporaryFilePath("ramd_groups.dat");
+    test::TestFileManager       fileManager;
+    const std::filesystem::path groupsFilePath =
+            fileManager.getTemporaryFilePath("ramd_groups.dat");
     TextWriter::writeFileFromString(groupsFilePath, c_groupsFileContent);
 
     // Set the groups-file option to just the filename, as if it had been
     // written relative to the .mdp file rather than the current working directory
     KeyValueTreeBuilder mdpValueBuilder;
-    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active", std::string("true"));
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active",
+                                          std::string("true"));
     mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-groups-file",
                                           groupsFilePath.filename().string());
     RAMDOptions ramdOptionsWithGroupsFile;
@@ -167,12 +169,14 @@ TEST_F(RAMDOptionsTest, GroupsFileRelativeToMdpDirectoryIsResolved)
 
 TEST_F(RAMDOptionsTest, GroupsFileAbsolutePathIsUnaffectedByMdpDirectory)
 {
-    test::TestFileManager fileManager;
-    const std::filesystem::path groupsFilePath = fileManager.getTemporaryFilePath("ramd_groups.dat");
+    test::TestFileManager       fileManager;
+    const std::filesystem::path groupsFilePath =
+            fileManager.getTemporaryFilePath("ramd_groups.dat");
     TextWriter::writeFileFromString(groupsFilePath, c_groupsFileContent);
 
     KeyValueTreeBuilder mdpValueBuilder;
-    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active", std::string("true"));
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active",
+                                          std::string("true"));
     mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-groups-file",
                                           groupsFilePath.string());
     RAMDOptions ramdOptions;
