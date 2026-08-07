@@ -159,10 +159,18 @@ private:
         // pullAllReduce() handling of a pull group split across domains.
         if (mpiComm.isParallel())
         {
-            double buffer[4] = { com[0], com[1], com[2], total_mass };
-            mpiComm.sumReduce(4, buffer);
-            com        = DVec(buffer[0], buffer[1], buffer[2]);
-            total_mass = buffer[3];
+            double buffer[DIM + 1];
+            for (int j = 0; j < DIM; ++j)
+            {
+                buffer[j] = com[j];
+            }
+            buffer[DIM] = total_mass;
+            mpiComm.sumReduce(DIM + 1, buffer);
+            for (int j = 0; j < DIM; ++j)
+            {
+                com[j] = buffer[j];
+            }
+            total_mass = buffer[DIM];
         }
 
         if (total_mass > 0.0)
