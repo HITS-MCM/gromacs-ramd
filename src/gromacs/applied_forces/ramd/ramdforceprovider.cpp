@@ -127,7 +127,8 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
                                     + std::to_string(com_rec_curr[1]) + ", "
                                     + std::to_string(com_rec_curr[2]) + "]");
                 GMX_LOG(logger_.debug)
-                        .appendText(logPrefix + " Distance between COM of receptor and COM of ligand is "
+                        .appendText(logPrefix
+                                    + " Distance between COM of receptor and COM of ligand is "
                                     + std::to_string(curr_dist) + "\n");
             }
 
