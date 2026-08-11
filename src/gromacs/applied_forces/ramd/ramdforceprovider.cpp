@@ -74,9 +74,11 @@ RAMDForceProvider::RAMDForceProvider(const RAMDParameters&                      
     mTopLookUp_(topology)
 {
     total_ligand_mass_.reserve(parameters_.groups_.size());
+    total_receptor_mass_.reserve(parameters_.groups_.size());
     for (const auto& group : parameters_.groups_)
     {
         total_ligand_mass_.push_back(calc_total_mass(group.ligand_indices_));
+        total_receptor_mass_.push_back(calc_total_mass(group.receptor_indices_));
     }
 }
 
@@ -186,23 +188,45 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
     }
 
     // Apply forces to ligand atoms, distributed by mass fraction so that the total
-    // force on the ligand's center of mass equals parameters_.groups_[g].force_
+    // force on the ligand's center of mass equals parameters_.groups_[g].force_, and
+    // an equal-and-opposite reaction force to the receptor atoms, distributed by the
+    // receptor's own mass fraction, mirroring how the GROMACS pull code applies an
+    // external pull-coordinate force to both groups of the coordinate (Newton's
+    // third law) so that RAMD does not inject net momentum into the system.
     for (size_t g = 0; g < parameters_.groups_.size(); ++g)
     {
-        if (total_ligand_mass_[g] <= 0.0)
+        if (total_ligand_mass_[g] > 0.0)
         {
-            continue;
+            const auto globalIndices     = ligandAtoms_[g]->globalIndex();
+            const auto collectiveIndices = ligandAtoms_[g]->collectiveIndex();
+            for (size_t i = 0; i < ligandAtoms_[g]->numAtomsLocal(); ++i)
+            {
+                const real mass = mTopLookUp_.getAtomParameters(globalIndices[collectiveIndices[i]]).m;
+                const real forceFraction = mass / total_ligand_mass_[g] * parameters_.groups_[g].force_;
+                fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][XX] +=
+                        direction_[g][XX] * forceFraction;
+                fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][YY] +=
+                        direction_[g][YY] * forceFraction;
+                fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][ZZ] +=
+                        direction_[g][ZZ] * forceFraction;
+            }
         }
-        for (size_t i = 0; i < ligandAtoms_[g]->numAtomsLocal(); ++i)
+
+        if (total_receptor_mass_[g] > 0.0)
         {
-            const real mass = mTopLookUp_.getAtomParameters(ligandAtoms_[g]->globalIndex()[i]).m;
-            const real forceFraction = mass / total_ligand_mass_[g] * parameters_.groups_[g].force_;
-            fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][XX] +=
-                    direction_[g][XX] * forceFraction;
-            fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][YY] +=
-                    direction_[g][YY] * forceFraction;
-            fOutput->forceWithVirial_.force_[ligandAtoms_[g]->localIndex()[i]][ZZ] +=
-                    direction_[g][ZZ] * forceFraction;
+            const auto globalIndices     = receptorAtoms_[g]->globalIndex();
+            const auto collectiveIndices = receptorAtoms_[g]->collectiveIndex();
+            for (size_t i = 0; i < receptorAtoms_[g]->numAtomsLocal(); ++i)
+            {
+                const real mass = mTopLookUp_.getAtomParameters(globalIndices[collectiveIndices[i]]).m;
+                const real forceFraction = mass / total_receptor_mass_[g] * parameters_.groups_[g].force_;
+                fOutput->forceWithVirial_.force_[receptorAtoms_[g]->localIndex()[i]][XX] -=
+                        direction_[g][XX] * forceFraction;
+                fOutput->forceWithVirial_.force_[receptorAtoms_[g]->localIndex()[i]][YY] -=
+                        direction_[g][YY] * forceFraction;
+                fOutput->forceWithVirial_.force_[receptorAtoms_[g]->localIndex()[i]][ZZ] -=
+                        direction_[g][ZZ] * forceFraction;
+            }
         }
     }
 }

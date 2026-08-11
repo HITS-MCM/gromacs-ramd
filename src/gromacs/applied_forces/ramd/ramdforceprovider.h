@@ -228,6 +228,9 @@ private:
     //! Total mass of the ligand atoms per group, used to distribute the RAMD force by mass fraction
     std::vector<real> total_ligand_mass_;
 
+    //! Total mass of the receptor atoms per group, used to distribute the RAMD reaction force by mass fraction
+    std::vector<real> total_receptor_mass_;
+
     //! Control trajectory output
     gmx_bool write_trajectory_;
 
