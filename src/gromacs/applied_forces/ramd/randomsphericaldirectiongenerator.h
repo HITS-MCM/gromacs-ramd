@@ -33,8 +33,9 @@
  */
 #pragma once
 
-#include <random>
-
+#include "gromacs/random/seed.h"
+#include "gromacs/random/threefry.h"
+#include "gromacs/random/uniformrealdistribution.h"
 #include "gromacs/utility/vectypes.h"
 
 namespace gmx
@@ -43,7 +44,10 @@ namespace gmx
 class RandomSphericalDirectionGenerator
 {
 public:
-    RandomSphericalDirectionGenerator(int64_t seed) : engine_(seed), dist_(0.0, 1.0) {}
+    // ThreeFry2x64, unlike std::default_random_engine, is fully specified by GROMACS
+    // rather than left to the standard library implementation, so a given seed
+    // produces the same sequence of directions regardless of compiler/platform.
+    RandomSphericalDirectionGenerator(int64_t seed) : engine_(seed, RandomDomain::Other) {}
 
     DVec operator()()
     {
@@ -63,10 +67,10 @@ public:
 
 private:
     /// Random number generator
-    std::default_random_engine engine_;
+    ThreeFry2x64<> engine_;
 
     /// Random number distribution
-    std::uniform_real_distribution<> dist_;
+    UniformRealDistribution<real> dist_;
 };
 
 } // namespace gmx
