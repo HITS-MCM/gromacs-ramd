@@ -76,13 +76,27 @@ const std::string c_groupsFileTag           = "groups-file";
 const std::string c_groupsStringTag         = "groups-string";
 const std::string c_groupReceptorTag        = "receptor";
 const std::string c_groupReceptorIndicesTag = "receptor-indices";
+const std::string c_groupReceptorPbcAtomTag = "receptor-pbcatom";
 const std::string c_groupLigandTag          = "ligand";
 const std::string c_groupLigandIndicesTag   = "ligand-indices";
+const std::string c_groupLigandPbcAtomTag   = "ligand-pbcatom";
 const std::string c_groupForceTag           = "force";
 const std::string c_groupMaxDistTag         = "max-dist";
 const std::string c_groupRMinDistTag        = "r-min-dist";
 const std::string c_pbcRefPrevStepComTag    = "pbc-ref-prev-step-com";
 const std::string c_connectedLigandsTag     = "connected-ligands";
+
+/*! \brief Strips a trailing comment and surrounding whitespace from \p line.
+ *
+ * As in the mdp file format, a comment starts at the first '#' or ';' and runs to
+ * the end of the line. Blank and comment-only lines yield an empty string.
+ */
+std::string stripComment(const std::string& line)
+{
+    std::string content = line.substr(0, line.find_first_of("#;"));
+    const auto  last    = content.find_last_not_of(" \t\r");
+    return last == std::string::npos ? std::string() : content.substr(0, last + 1);
+}
 
 } // namespace
 
@@ -273,59 +287,80 @@ void RAMDOptions::readConfigString()
 
     while (std::getline(ss, line))
     {
-        if (line.find_first_not_of(" \t") == std::string::npos)
-            continue;
-        if (line.find_first_of("#;") != std::string::npos)
+        line = stripComment(line);
+        if (line.empty())
             continue;
         std::istringstream lineStream(line);
         lineStream >> key;
-        if (key == "ramd-group")
+        if (key != "ramd-group")
         {
-            gmx::RAMDGroup newGroup;
-            while (std::getline(ss, line))
+            GMX_THROW(InconsistentInputError(
+                    formatString("Unrecognized key '%s' in the RAMD groups input, expected a "
+                                 "'ramd-group {' block.",
+                                 key.c_str())));
+        }
+
+        gmx::RAMDGroup newGroup;
+        bool           blockIsClosed = false;
+        while (std::getline(ss, line))
+        {
+            line = stripComment(line);
+            if (line.empty())
+                continue;
+            std::istringstream lineStream2(line);
+            lineStream2 >> key;
+            if (key == "}")
             {
-                if (line.find_first_not_of(" \t") == std::string::npos)
-                    continue;
-                if (line.find_first_of("#;") != std::string::npos)
-                    continue;
-                std::istringstream lineStream2(line);
-                lineStream2 >> key;
-                if (key == "}")
-                {
-                    parameters_.groups_.push_back(newGroup);
-                    break;
-                }
-                lineStream2 >> value;
-                if (key == "receptor")
-                {
-                    newGroup.receptor_ = value;
-                }
-                if (key == "receptor-pbcatom")
-                {
-                    newGroup.receptor_pbcatom_ = std::stoi(value);
-                }
-                if (key == "ligand")
-                {
-                    newGroup.ligand_ = value;
-                }
-                if (key == "ligand-pbcatom")
-                {
-                    newGroup.ligand_pbcatom_ = std::stoi(value);
-                }
-                if (key == "force")
-                {
-                    newGroup.force_ = std::stod(value);
-                }
-                if (key == "max-dist")
-                {
-                    newGroup.max_dist_ = std::stod(value);
-                }
-                if (key == "r-min-dist")
-                {
-                    newGroup.r_min_dist_ = std::stod(value);
-                }
+                blockIsClosed = true;
+                break;
+            }
+            if (!(lineStream2 >> value))
+            {
+                GMX_THROW(InconsistentInputError(formatString(
+                        "Missing value for key '%s' in the RAMD groups input.", key.c_str())));
+            }
+            if (key == c_groupReceptorTag)
+            {
+                newGroup.receptor_ = value;
+            }
+            else if (key == c_groupReceptorPbcAtomTag)
+            {
+                newGroup.receptor_pbcatom_ = std::stoi(value);
+            }
+            else if (key == c_groupLigandTag)
+            {
+                newGroup.ligand_ = value;
+            }
+            else if (key == c_groupLigandPbcAtomTag)
+            {
+                newGroup.ligand_pbcatom_ = std::stoi(value);
+            }
+            else if (key == c_groupForceTag)
+            {
+                newGroup.force_ = std::stod(value);
+            }
+            else if (key == c_groupMaxDistTag)
+            {
+                newGroup.max_dist_ = std::stod(value);
+            }
+            else if (key == c_groupRMinDistTag)
+            {
+                newGroup.r_min_dist_ = std::stod(value);
+            }
+            else
+            {
+                GMX_THROW(InconsistentInputError(
+                        formatString("Unrecognized key '%s' in a ramd-group block of the RAMD "
+                                     "groups input.",
+                                     key.c_str())));
             }
         }
+        if (!blockIsClosed)
+        {
+            GMX_THROW(InconsistentInputError(
+                    "Unterminated ramd-group block in the RAMD groups input, '}' is missing."));
+        }
+        parameters_.groups_.push_back(newGroup);
     }
 
     // Write number of groups for reading KeyValueTreeObject
