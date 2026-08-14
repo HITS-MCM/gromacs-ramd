@@ -2389,6 +2389,23 @@ applied to a molecule in the system.
    dissociation radius. The simulation stops when all ligands have left the
    dissociation radius. Default value is 'yes'.
 
+.. mdp:: ramd-legacy-rng
+
+   .. mdp-value:: no
+
+      Use GROMACS' portable ThreeFry2x64 random number engine for the random
+      direction generator. A given :mdp:`ramd-seed` always reproduces the same
+      sequence of directions, regardless of compiler or platform.
+
+   .. mdp-value:: yes
+
+      Use the ``std::default_random_engine``-based random number engine that
+      RAMD used before switching to ThreeFry2x64. This engine's sequence is
+      defined by the standard library implementation and is not portable
+      across compilers or platforms, so this option only exists to reproduce
+      trajectories generated with a :mdp:`ramd-seed` from before that switch.
+      Default value is 'no'.
+
 
 Enforced rotation
 ^^^^^^^^^^^^^^^^^

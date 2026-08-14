@@ -85,6 +85,7 @@ const std::string c_groupMaxDistTag         = "max-dist";
 const std::string c_groupRMinDistTag        = "r-min-dist";
 const std::string c_pbcRefPrevStepComTag    = "pbc-ref-prev-step-com";
 const std::string c_connectedLigandsTag     = "connected-ligands";
+const std::string c_legacyRngTag            = "legacy-rng";
 
 /*! \brief Strips a trailing comment and surrounding whitespace from \p line.
  *
@@ -114,6 +115,7 @@ void RAMDOptions::initMdpTransform(IKeyValueTreeTransformRules* rules)
             rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_pbcRefPrevStepComTag);
     addMdpTransformFromString<bool>(
             rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_connectedLigandsTag);
+    addMdpTransformFromString<bool>(rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_legacyRngTag);
 }
 
 void RAMDOptions::buildMdpOutput(KeyValueTreeObjectBuilder* builder) const
@@ -132,6 +134,7 @@ void RAMDOptions::buildMdpOutput(KeyValueTreeObjectBuilder* builder) const
                 builder, RAMDModuleInfo::sc_name, c_pbcRefPrevStepComTag, parameters_.pbc_ref_prev_step_com_);
         addMdpOutputValue(
                 builder, RAMDModuleInfo::sc_name, c_connectedLigandsTag, parameters_.connected_ligands_);
+        addMdpOutputValue(builder, RAMDModuleInfo::sc_name, c_legacyRngTag, parameters_.legacy_rng_);
     }
 }
 
@@ -146,6 +149,7 @@ void RAMDOptions::initMdpOptions(IOptionsContainerWithSections* options)
     section.addOption(
             BooleanOption(c_pbcRefPrevStepComTag.c_str()).store(&parameters_.pbc_ref_prev_step_com_));
     section.addOption(BooleanOption(c_connectedLigandsTag.c_str()).store(&parameters_.connected_ligands_));
+    section.addOption(BooleanOption(c_legacyRngTag.c_str()).store(&parameters_.legacy_rng_));
 }
 
 bool RAMDOptions::active() const

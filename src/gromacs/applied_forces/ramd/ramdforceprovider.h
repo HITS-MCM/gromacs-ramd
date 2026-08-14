@@ -41,6 +41,7 @@
 #ifndef GMX_APPLIED_FORCES_RAMDFORCEPROVIDER_H
 #define GMX_APPLIED_FORCES_RAMDFORCEPROVIDER_H
 
+#include <memory>
 #include <string>
 
 #include "gromacs/domdec/localatomset.h"
@@ -211,7 +212,7 @@ private:
     RAMDOutputProvider& ramdOutputProvider_;
 
     //! Random pull direction
-    RandomSphericalDirectionGenerator random_spherical_direction_generator;
+    std::unique_ptr<IRandomSphericalDirectionGenerator> random_spherical_direction_generator_;
 
     //! Current pull direction
     std::vector<DVec> direction_;

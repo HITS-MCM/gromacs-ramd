@@ -107,6 +107,12 @@ struct RAMDParameters
 
     //! Behavior of re-entering ligands into the dissociation radius
     bool connected_ligands_ = false;
+
+    //! Use the pre-ThreeFry2x64 std::default_random_engine-based RNG for the random
+    //! direction generator, for reproducing trajectories generated with a ramd-seed
+    //! from before that switch. Its sequence depends on the standard library
+    //! implementation, so it is not portable across compilers/platforms.
+    bool legacy_rng_ = false;
 };
 
 } // namespace gmx

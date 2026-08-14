@@ -65,7 +65,12 @@ RAMDForceProvider::RAMDForceProvider(const RAMDParameters& parameters,
     pbcType_(pbcType),
     logger_(logger),
     ramdOutputProvider_(ramdOutputProvider),
-    random_spherical_direction_generator(parameters.seed_),
+    random_spherical_direction_generator_(
+            parameters.legacy_rng_
+                    ? std::unique_ptr<IRandomSphericalDirectionGenerator>(
+                              std::make_unique<LegacyRandomSphericalDirectionGenerator>(parameters.seed_))
+                    : std::unique_ptr<IRandomSphericalDirectionGenerator>(
+                              std::make_unique<RandomSphericalDirectionGenerator>(parameters.seed_))),
     direction_(parameters.groups_.size()),
     com_rec_prev_(parameters.groups_.size()),
     com_lig_prev_(parameters.groups_.size()),
@@ -179,7 +184,7 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
 
             if (walk_dist < parameters_.groups_[0].r_min_dist_)
             {
-                direction_[g] = random_spherical_direction_generator();
+                direction_[g] = (*random_spherical_direction_generator_)();
                 if (isMainRank)
                 {
                     GMX_LOG(logger_.debug)

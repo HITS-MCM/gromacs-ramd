@@ -33,6 +33,8 @@
  */
 #pragma once
 
+#include <random>
+
 #include "gromacs/random/seed.h"
 #include "gromacs/random/threefry.h"
 #include "gromacs/random/uniformrealdistribution.h"
@@ -41,7 +43,20 @@
 namespace gmx
 {
 
-class RandomSphericalDirectionGenerator
+/*! \internal \brief
+ * Common interface for generating random points on the unit sphere, so that
+ * RAMD can switch between RNG implementations at run time (see
+ * RandomSphericalDirectionGenerator and LegacyRandomSphericalDirectionGenerator).
+ */
+class IRandomSphericalDirectionGenerator
+{
+public:
+    virtual ~IRandomSphericalDirectionGenerator() = default;
+
+    virtual DVec operator()() = 0;
+};
+
+class RandomSphericalDirectionGenerator final : public IRandomSphericalDirectionGenerator
 {
 public:
     // ThreeFry2x64, unlike std::default_random_engine, is fully specified by GROMACS
@@ -49,7 +64,7 @@ public:
     // produces the same sequence of directions regardless of compiler/platform.
     RandomSphericalDirectionGenerator(int64_t seed) : engine_(seed, RandomDomain::Other) {}
 
-    DVec operator()()
+    DVec operator()() override
     {
         // azimuth angle
         real theta = 2 * M_PI * dist_(engine_);
@@ -71,6 +86,42 @@ private:
 
     /// Random number distribution
     UniformRealDistribution<real> dist_;
+};
+
+/*! \internal \brief
+ * Reproduces the RNG used by RandomSphericalDirectionGenerator prior to the switch
+ * to GROMACS' portable ThreeFry2x64 engine. std::default_random_engine's sequence is
+ * left to the standard library implementation, so it differs between compilers and
+ * platforms; this is kept only so that a ramd-seed from before that switch can still
+ * reproduce the exact same trajectory (via the ramd-legacy-rng mdp option).
+ */
+class LegacyRandomSphericalDirectionGenerator final : public IRandomSphericalDirectionGenerator
+{
+public:
+    LegacyRandomSphericalDirectionGenerator(int64_t seed) : engine_(seed), dist_(0.0, 1.0) {}
+
+    DVec operator()() override
+    {
+        // azimuth angle
+        real theta = 2 * M_PI * dist_(engine_);
+
+        // polar angle
+        real psi = std::acos(1.0 - 2 * dist_(engine_));
+
+        DVec direction;
+        direction[0] = std::cos(theta) * std::sin(psi);
+        direction[1] = std::sin(theta) * std::sin(psi);
+        direction[2] = std::cos(psi);
+
+        return direction;
+    }
+
+private:
+    /// Random number generator
+    std::default_random_engine engine_;
+
+    /// Random number distribution
+    std::uniform_real_distribution<> dist_;
 };
 
 } // namespace gmx
