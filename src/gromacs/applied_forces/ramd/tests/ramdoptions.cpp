@@ -88,6 +88,25 @@ IndexGroupsAndNames ramdIndexGroupsAndNames()
     return IndexGroupsAndNames(indexGroups);
 }
 
+//! Content of a RAMD groups file using an inline comment and a fully commented-out (defaulted) key
+const char* const c_groupsFileContentWithComments =
+        "ramd-group {\n"
+        "    receptor prot\n"
+        "    ligand lig-10\n"
+        "    force 0.5  ; ignore comment\n"
+        "    max-dist 7.2\n"
+        "    # r-min-dist 0.2; use default\n"
+        "}\n";
+
+//! Build IndexGroupsAndNames containing the groups referenced by c_groupsFileContentWithComments
+IndexGroupsAndNames ramdIndexGroupsAndNamesWithComments()
+{
+    std::vector<IndexGroup> indexGroups;
+    indexGroups.push_back({ "prot", { 0 } });
+    indexGroups.push_back({ "lig-10", { 1 } });
+    return IndexGroupsAndNames(indexGroups);
+}
+
 class RAMDOptionsTest : public ::testing::Test
 {
 public:
@@ -184,6 +203,33 @@ TEST_F(RAMDOptionsTest, GroupsFileAbsolutePathIsUnaffectedByMdpDirectory)
     // No mdp directory set, matching the pre-existing (cwd-relative/absolute) behavior
     EXPECT_NO_THROW(ramdOptions.setInputGroupIndices(ramdIndexGroupsAndNames()));
     EXPECT_EQ(1, ramdOptions.parameters().ngroups_);
+}
+
+TEST_F(RAMDOptionsTest, GroupsFileWithInlineCommentsAndDefaultedValueIsParsedCorrectly)
+{
+    test::TestFileManager       fileManager;
+    const std::filesystem::path groupsFilePath =
+            fileManager.getTemporaryFilePath("ramd_groups_comments.dat");
+    TextWriter::writeFileFromString(groupsFilePath, c_groupsFileContentWithComments);
+
+    KeyValueTreeBuilder mdpValueBuilder;
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-active",
+                                          std::string("true"));
+    mdpValueBuilder.rootObject().addValue(std::string(RAMDModuleInfo::sc_name) + "-groups-file",
+                                          groupsFilePath.string());
+    RAMDOptions ramdOptions;
+    test::fillOptionsFromMdpValues(mdpValueBuilder.build(), &ramdOptions);
+
+    EXPECT_NO_THROW(ramdOptions.setInputGroupIndices(ramdIndexGroupsAndNamesWithComments()));
+    ASSERT_EQ(1, ramdOptions.parameters().ngroups_);
+
+    const auto& group = ramdOptions.parameters().groups_[0];
+    EXPECT_EQ("prot", group.receptor_);
+    EXPECT_EQ("lig-10", group.ligand_);
+    EXPECT_REAL_EQ(0.5, group.force_);
+    EXPECT_REAL_EQ(7.2, group.max_dist_);
+    // r-min-dist line is fully commented out, so the default value should be kept
+    EXPECT_REAL_EQ(0.0025, group.r_min_dist_);
 }
 
 } // namespace
