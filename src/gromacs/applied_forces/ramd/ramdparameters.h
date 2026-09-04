@@ -108,6 +108,9 @@ struct RAMDParameters
     //! Behavior of re-entering ligands into the dissociation radius
     bool connected_ligands_ = false;
 
+    //! Apply an equal-and-opposite reaction force to the receptor atoms
+    bool receptor_counterforce_ = true;
+
     //! Use the pre-ThreeFry2x64 std::default_random_engine-based RNG for the random
     //! direction generator, for reproducing trajectories generated with a ramd-seed
     //! from before that switch. Its sequence depends on the standard library

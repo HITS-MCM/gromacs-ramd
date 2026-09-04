@@ -2406,6 +2406,22 @@ applied to a molecule in the system.
       trajectories generated with a :mdp:`ramd-seed` from before that switch.
       Default value is 'no'.
 
+.. mdp:: ramd-receptor-counterforce
+
+   .. mdp-value:: yes
+
+      Apply an equal-and-opposite reaction force to the receptor atoms,
+      distributed by mass fraction, in addition to the RAMD force applied to
+      the ligand, mirroring how the GROMACS pull code applies an external
+      pull-coordinate force to both groups of the coordinate (Newton's third
+      law) so that RAMD does not inject net momentum into the system.
+      Default value is 'yes'.
+
+   .. mdp-value:: no
+
+      Do not apply a reaction force to the receptor atoms. The RAMD force is
+      applied to the ligand only, as in the original RAMD method.
+
 
 Enforced rotation
 ^^^^^^^^^^^^^^^^^

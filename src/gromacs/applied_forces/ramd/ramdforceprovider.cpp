@@ -218,11 +218,12 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
     }
 
     // Apply forces to ligand atoms, distributed by mass fraction so that the total
-    // force on the ligand's center of mass equals parameters_.groups_[g].force_, and
-    // an equal-and-opposite reaction force to the receptor atoms, distributed by the
-    // receptor's own mass fraction, mirroring how the GROMACS pull code applies an
-    // external pull-coordinate force to both groups of the coordinate (Newton's
-    // third law) so that RAMD does not inject net momentum into the system.
+    // force on the ligand's center of mass equals parameters_.groups_[g].force_, and,
+    // if parameters_.receptor_counterforce_ is enabled, an equal-and-opposite reaction
+    // force to the receptor atoms, distributed by the receptor's own mass fraction,
+    // mirroring how the GROMACS pull code applies an external pull-coordinate force to
+    // both groups of the coordinate (Newton's third law) so that RAMD does not inject
+    // net momentum into the system.
     for (size_t g = 0; g < parameters_.groups_.size(); ++g)
     {
         if (total_ligand_mass_[g] > 0.0)
@@ -242,7 +243,7 @@ void RAMDForceProvider::calculateForces(const ForceProviderInput&             fI
             }
         }
 
-        if (total_receptor_mass_[g] > 0.0)
+        if (parameters_.receptor_counterforce_ && total_receptor_mass_[g] > 0.0)
         {
             const auto globalIndices     = receptorAtoms_[g]->globalIndex();
             const auto collectiveIndices = receptorAtoms_[g]->collectiveIndex();

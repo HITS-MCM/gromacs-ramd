@@ -86,6 +86,7 @@ const std::string c_groupRMinDistTag        = "r-min-dist";
 const std::string c_pbcRefPrevStepComTag    = "pbc-ref-prev-step-com";
 const std::string c_connectedLigandsTag     = "connected-ligands";
 const std::string c_legacyRngTag            = "legacy-rng";
+const std::string c_receptorCounterforceTag = "receptor-counterforce";
 
 /*! \brief Strips a trailing comment and surrounding whitespace from \p line.
  *
@@ -116,6 +117,8 @@ void RAMDOptions::initMdpTransform(IKeyValueTreeTransformRules* rules)
     addMdpTransformFromString<bool>(
             rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_connectedLigandsTag);
     addMdpTransformFromString<bool>(rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_legacyRngTag);
+    addMdpTransformFromString<bool>(
+            rules, &fromStdString<bool>, RAMDModuleInfo::sc_name, c_receptorCounterforceTag);
 }
 
 void RAMDOptions::buildMdpOutput(KeyValueTreeObjectBuilder* builder) const
@@ -135,6 +138,8 @@ void RAMDOptions::buildMdpOutput(KeyValueTreeObjectBuilder* builder) const
         addMdpOutputValue(
                 builder, RAMDModuleInfo::sc_name, c_connectedLigandsTag, parameters_.connected_ligands_);
         addMdpOutputValue(builder, RAMDModuleInfo::sc_name, c_legacyRngTag, parameters_.legacy_rng_);
+        addMdpOutputValue(
+                builder, RAMDModuleInfo::sc_name, c_receptorCounterforceTag, parameters_.receptor_counterforce_);
     }
 }
 
@@ -150,6 +155,8 @@ void RAMDOptions::initMdpOptions(IOptionsContainerWithSections* options)
             BooleanOption(c_pbcRefPrevStepComTag.c_str()).store(&parameters_.pbc_ref_prev_step_com_));
     section.addOption(BooleanOption(c_connectedLigandsTag.c_str()).store(&parameters_.connected_ligands_));
     section.addOption(BooleanOption(c_legacyRngTag.c_str()).store(&parameters_.legacy_rng_));
+    section.addOption(
+            BooleanOption(c_receptorCounterforceTag.c_str()).store(&parameters_.receptor_counterforce_));
 }
 
 bool RAMDOptions::active() const
